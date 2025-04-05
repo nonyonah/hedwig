@@ -5,17 +5,39 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 export default function VerifyEmailPage() {
   const router = useRouter();
+  const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+  const [otp, setOtp] = useState('');
 
-  const handleResendEmail = async () => {
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) {
+      setVerificationError('Please enter all 6 digits of the verification code');
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerificationError('');
+    
+    // Here you would implement the actual OTP verification logic
+    // For now, we'll just simulate a successful verification
+    setTimeout(() => {
+      setIsVerifying(false);
+      // Redirect to bio-data page after successful verification
+      router.push('/auth/bio-data');
+    }, 1500);
+  };
+
+  const handleResendOtp = async () => {
     setIsResending(true);
     setResendSuccess(false);
     
-    // Here you would implement the actual email resending logic
+    // Here you would implement the actual OTP resending logic
     // For now, we'll just simulate a successful resend
     setTimeout(() => {
       setIsResending(false);
@@ -24,36 +46,68 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Check Your Email</CardTitle>
+          <CardTitle className="text-2xl font-bold">Verify Your Email</CardTitle>
           <CardDescription>
-            We've sent a verification link to your email address
+            Enter the 6-digit code we sent to your email
           </CardDescription>
         </CardHeader>
-        <CardContent className="text-center space-y-4">
+        <CardContent className="text-center space-y-6">
           <div className="py-4">
-            <p className="text-gray-600 dark:text-gray-400">
-              Please check your inbox and click on the verification link to complete your registration.
-              If you don't see the email, check your spam folder.
-            </p>
+            <InputOTP
+              maxLength={6}
+              value={otp}
+              onChange={setOtp}
+              pattern="[0-9]*"
+              type="number"
+              containerClassName="justify-center gap-3"
+              render={({ slots }) => (
+                <InputOTPGroup>
+                  {slots.map((slot, index) => (
+                    <InputOTPSlot
+                      key={index}
+                      index={index}
+                      className="w-12 h-12 text-center text-xl font-bold dark:bg-gray-800 dark:text-white"
+                    />
+                  ))}
+                </InputOTPGroup>
+              )}
+            />
           </div>
+          
+          {verificationError && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
+              {verificationError}
+            </div>
+          )}
           
           {resendSuccess && (
             <div className="bg-green-50 text-green-600 p-3 rounded-md text-sm">
-              Verification email has been resent successfully!
+              Verification code has been resent successfully!
             </div>
           )}
           
           <Button 
-            onClick={handleResendEmail} 
-            variant="outline" 
-            className="w-full" 
-            disabled={isResending}
+            onClick={handleVerifyOtp} 
+            className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-200 dark:hover:bg-gray-300 dark:text-gray-800" 
+            variant="outline"
+            disabled={isVerifying}
           >
-            {isResending ? 'Sending...' : 'Resend verification email'}
+            {isVerifying ? 'Verifying...' : 'Verify'}
           </Button>
+          
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Didn't receive the code?{' '}
+            <button 
+              onClick={handleResendOtp} 
+              className="text-blue-600 hover:underline focus:outline-none" 
+              disabled={isResending}
+            >
+              {isResending ? 'Sending...' : 'Resend code'}
+            </button>
+          </div>
         </CardContent>
         <CardFooter className="text-center">
           <div className="text-sm w-full">

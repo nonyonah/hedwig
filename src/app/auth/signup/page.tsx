@@ -3,28 +3,22 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import Link from "next/link";
 import { useRouter } from 'next/navigation';
 
 export default function SignUpPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [appleLoading, setAppleLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
+  const handleAppleSignUp = async () => {
+    setAppleLoading(true);
     
-    // Here you would implement Firebase authentication with email
+    // Here you would implement Apple authentication
     // For now, we'll just simulate a successful registration
     setTimeout(() => {
-      setIsLoading(false);
-      router.push('/auth/verify-email');
+      setAppleLoading(false);
+      // Skip bio-data page for Apple Auth users
+      router.push('/auth/account-connection');
     }, 1500);
   };
 
@@ -33,14 +27,16 @@ export default function SignUpPage() {
     
     // Here you would implement Google authentication
     // For now, we'll just simulate a successful registration
+    // Google Auth users skip bio-data and go directly to account connection
     setTimeout(() => {
       setGoogleLoading(false);
-      router.push('/auth/verify-email');
+      // Skip bio-data page for Google Auth users
+      router.push('/auth/account-connection');
     }, 1500);
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Albus</CardTitle>
@@ -53,7 +49,7 @@ export default function SignUpPage() {
             <Button 
               type="button" 
               variant="outline" 
-              className="w-full flex items-center justify-center gap-2" 
+              className="w-full flex items-center justify-center gap-2 bg-black text-white border border-white hover:bg-black/90" 
               onClick={handleGoogleSignUp}
               disabled={googleLoading}
             >
@@ -78,31 +74,28 @@ export default function SignUpPage() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white dark:bg-gray-900 px-2 text-gray-500">Or</span>
+                <span className="bg-white dark:bg-background px-2 text-gray-500">Or</span>
               </div>
             </div>
             
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
-                  {error}
-                </div>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="w-full flex items-center justify-center gap-2 bg-black text-white border border-white hover:bg-black/90" 
+              onClick={handleAppleSignUp}
+              disabled={appleLoading}
+            >
+              {appleLoading ? (
+                'Connecting...'
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
+                    <path d="M17.05 20.28c-.98.95-2.05.86-3.08.38-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.38C2.79 15.75 3.51 7.1 9.05 6.88c1.65.08 2.78 1.11 3.66 1.13 1.37-.1 2.63-1.21 4.02-1.03 1.69.18 2.94 1.01 3.76 2.56-3.37 2.09-2.8 6.5.38 7.68-.56 1.78-1.28 3.55-2.82 5.06zm-5.35-14.6c-.1-2.48 2.16-4.64 4.54-4.76.26 2.68-2.62 4.9-4.54 4.76z" fill="white"/>
+                  </svg>
+                  Continue with Apple
+                </>
               )}
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="your@email.com" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Continuing...' : 'Continue'}
-              </Button>
-            </form>
+            </Button>
           </div>
         </CardContent>
         <CardFooter className="text-center">

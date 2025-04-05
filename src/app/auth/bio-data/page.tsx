@@ -35,7 +35,7 @@ export default function BioDataPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Complete Your Profile</CardTitle>
@@ -78,7 +78,8 @@ export default function BioDataPage() {
             <Button 
               type="submit" 
               onClick={handleSubmit}
-              className="w-full h-10" 
+              className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-200 dark:hover:bg-gray-300 dark:text-gray-800" 
+              variant="outline"
               disabled={isLoading}
             >
               {isLoading ? (
