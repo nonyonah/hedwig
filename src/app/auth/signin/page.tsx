@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
+import { signInWithOAuth } from '@/lib/supabase';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -13,25 +14,43 @@ export default function SignInPage() {
   const handleAppleSignIn = async () => {
     setAppleLoading(true);
     
-    // Here you would implement Apple authentication
-    // For now, we'll just simulate a successful login
-    setTimeout(() => {
+    try {
+      // Implement Apple authentication with Supabase
+      const { error } = await signInWithOAuth('apple');
+      
+      if (error) {
+        console.error('Apple sign in error:', error);
+        // Handle error here
+      }
+      
+      // Note: The actual redirect is handled in the callback page
+      // This function just initiates the OAuth flow
+    } catch (error) {
+      console.error('Unexpected error during Apple sign in:', error);
+    } finally {
       setAppleLoading(false);
-      // Apple Auth users go to account connection page
-      router.push('/auth/account-connection');
-    }, 1500);
+    }
   };
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     
-    // Here you would implement Google authentication
-    // For now, we'll just simulate a successful login
-    setTimeout(() => {
+    try {
+      // Implement Google authentication with Supabase
+      const { error } = await signInWithOAuth('google');
+      
+      if (error) {
+        console.error('Google sign in error:', error);
+        // Handle error here
+      }
+      
+      // Note: The actual redirect is handled in the callback page
+      // This function just initiates the OAuth flow
+    } catch (error) {
+      console.error('Unexpected error during Google sign in:', error);
+    } finally {
       setGoogleLoading(false);
-      // Google Auth users go to account connection page
-      router.push('/auth/account-connection');
-    }, 1500);
+    }
   };
 
   return (
@@ -68,6 +87,7 @@ export default function SignInPage() {
               )}
             </Button>
             
+            {/* Apple authentication button commented out as requested
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t" />
@@ -95,6 +115,7 @@ export default function SignInPage() {
                 </>
               )}
             </Button>
+            */}
           </div>
         </CardContent>
         <CardFooter className="text-center">
