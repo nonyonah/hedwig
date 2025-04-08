@@ -15,16 +15,14 @@ export default function SignInPage() {
     setAppleLoading(true);
     
     try {
-      // Implement Apple authentication with Supabase
+      // Use the Supabase helper for Apple sign-in
       const { error } = await signInWithOAuth('apple');
-      
       if (error) {
-        console.error('Apple sign in error:', error);
-        // Handle error here
+        // Optionally use toast for user feedback
+        console.error('Apple sign in error:', error.message);
+        // toast.error(`Apple sign-in failed: ${error.message}`);
       }
-      
-      // Note: The actual redirect is handled in the callback page
-      // This function just initiates the OAuth flow
+      // Redirect is handled by Supabase/callback page
     } catch (error) {
       console.error('Unexpected error during Apple sign in:', error);
     } finally {
@@ -36,16 +34,14 @@ export default function SignInPage() {
     setGoogleLoading(true);
     
     try {
-      // Implement Google authentication with Supabase
+      // Use the Supabase helper for Google sign-in
       const { error } = await signInWithOAuth('google');
-      
       if (error) {
-        console.error('Google sign in error:', error);
-        // Handle error here
+        // Optionally use toast for user feedback
+        console.error('Google sign in error:', error.message);
+        // toast.error(`Google sign-in failed: ${error.message}`);
       }
-      
-      // Note: The actual redirect is handled in the callback page
-      // This function just initiates the OAuth flow
+      // Redirect is handled by Supabase/callback page
     } catch (error) {
       console.error('Unexpected error during Google sign in:', error);
     } finally {
