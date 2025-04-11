@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation';
 import { supabase, getSession } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { formatAddress } from '@/lib/utils';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useIdentity } from '@coinbase/onchainkit/identity';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +18,9 @@ import {
 
 export default function AccountConnectionPage() {
   const router = useRouter();
+  const { user, authenticated, login, logout } = usePrivy();
+  const { wallets } = useWallets();
+  const { resolveName } = useIdentity();
   const [isLoading, setIsLoading] = useState(false);
   const [bankLoading, setBankLoading] = useState(false);
   const [bankConnected, setBankConnected] = useState(false);
@@ -48,9 +53,31 @@ export default function AccountConnectionPage() {
   const handleConnectCrypto = async () => {
     try {
       setCryptoLoading(true);
-      // TODO: Implement wallet connection
+      if (!authenticated) {
+        await login();
+        return;
+      }
+      
+      const wallet = wallets[0];
+      if (!wallet) {
+        throw new Error('No wallet found');
+      }
+
       setCryptoConnected(true);
-      setAddress('0x123...abc');
+      setAddress(wallet.address);
+
+      // Try to resolve ENS or Base name
+      try {
+        const name = await resolveName(wallet.address);
+        if (name) {
+          setDisplayName(name);
+        } else {
+          setDisplayName(formatAddress(wallet.address));
+        }
+      } catch (error) {
+        console.error('Error resolving name:', error);
+        setDisplayName(formatAddress(wallet.address));
+      }
     } catch (error) {
       console.error('Error connecting wallet:', error);
       toast.error('Failed to connect wallet');
@@ -63,6 +90,8 @@ export default function AccountConnectionPage() {
     try {
       setCryptoConnected(false);
       setAddress(null);
+      setDisplayName(null);
+      await logout();
       toast.success('Wallet disconnected successfully');
     } catch (error) {
       console.error('Error disconnecting wallet:', error);
@@ -70,13 +99,6 @@ export default function AccountConnectionPage() {
     }
   };
   
-  // Update display name when wallet connects
-  useEffect(() => {
-    if (address) {
-      setDisplayName(formatAddress(address));
-    }
-  }, [address]);
-
   // Update Supabase profile when wallet connects
   useEffect(() => {
     const updateUserProfile = async () => {
@@ -180,7 +202,7 @@ export default function AccountConnectionPage() {
           <Button
             onClick={handleContinue}
             disabled={!accountConnected || isLoading}
-            className="w-full"
+            className="w-full bg-black text-white border border-white hover:bg-black/90 hover:text-white"
           >
             Continue
           </Button>

@@ -63,7 +63,7 @@ export default function SignInPage() {
             <Button 
               type="button" 
               variant="outline" 
-              className="w-full flex items-center justify-center gap-2 bg-black text-white border border-white hover:bg-black/90" 
+              className="w-full flex items-center justify-center gap-2 bg-black text-white border border-white hover:bg-black/90 hover:text-white" 
               onClick={handleGoogleSignIn}
               disabled={googleLoading}
             >
