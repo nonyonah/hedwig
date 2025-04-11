@@ -44,7 +44,7 @@ export const signInWithOAuth = async (
         },
       },
     });
-
+    
     if (error) throw error;
     // No direct data returned here, flow continues via redirect
     return { data: null, error: null }; 
@@ -91,4 +91,4 @@ export const signOut = async (): Promise<SupabaseHelperResponse<null>> => {
       error: error instanceof Error ? error : new Error('Sign out failed') 
     };
   }
-}; 
+};

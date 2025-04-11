@@ -15,7 +15,7 @@ Follow these steps to upload your Albus project to GitHub:
 After creating the repository, GitHub will show commands to connect your local repository. Run these commands in your terminal:
 
 ```bash
-git remote add origin https://github.com/YOUR-USERNAME/albus-web.git
+git remote add origin https://github.com/nonyonah/albus-web.git
 git branch -M main
 git push --set-upstream origin main
 ```
