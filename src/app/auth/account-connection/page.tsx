@@ -8,7 +8,8 @@ import { supabase, getSession } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { formatAddress } from '@/lib/utils';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { useIdentity } from '@coinbase/onchainkit/identity';
+import { getName } from '@coinbase/onchainkit/identity';
+import { base } from 'viem/chains';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,16 +21,15 @@ export default function AccountConnectionPage() {
   const router = useRouter();
   const { user, authenticated, login, logout } = usePrivy();
   const { wallets } = useWallets();
-  const { resolveName } = useIdentity();
   const [isLoading, setIsLoading] = useState(false);
   const [bankLoading, setBankLoading] = useState(false);
   const [bankConnected, setBankConnected] = useState(false);
   const [cryptoConnected, setCryptoConnected] = useState(false);
   const [cryptoLoading, setCryptoLoading] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(2);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  const [displayName, setDisplayName] = useState<string | null>(null);
   
   const handleContinue = () => {
     setIsLoading(true);
@@ -68,7 +68,7 @@ export default function AccountConnectionPage() {
 
       // Try to resolve ENS or Base name
       try {
-        const name = await resolveName(wallet.address);
+        const name = await getName({ address: wallet.address as `0x${string}`, chain: base });
         if (name) {
           setDisplayName(name);
         } else {
