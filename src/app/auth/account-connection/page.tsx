@@ -122,7 +122,7 @@ export default function AccountConnectionPage() {
     
     try {
       // Here you would implement stock portfolio connection
-      // For now, we'll just simulate a successful connection
+    // For now, we'll just simulate a successful connection
       const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=${process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY}`);
       const data = await response.json();
       
@@ -170,7 +170,7 @@ export default function AccountConnectionPage() {
         if (timeSinceDisconnect > 24 * 60 * 60 * 1000) {
           console.log('Long disconnect, showing modal');
           if (!authenticated) {
-            await connectWallet();
+      await connectWallet();
           }
         } else {
           console.log('Recent disconnect, using login without modal');
