@@ -3,40 +3,48 @@
 import * as React from 'react';
 import { Moon, Sun, Monitor } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string } = {}) {
   const { theme, setTheme } = useTheme();
 
+  // Check if the className contains flex-col to determine if sidebar is collapsed
+  const isVertical = className?.includes('flex-col');
+
   return (
-    <div className="flex items-center space-x-2">
+    <div className={cn(
+      "flex items-center", 
+      isVertical ? "space-y-1" : "space-x-1", 
+      className
+    )}>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => setTheme('light')}
-        className={theme === 'light' ? 'bg-accent' : ''}
+        className={cn("h-8 w-8", theme === 'light' ? 'bg-accent' : '')}
         aria-label="Light mode"
       >
-        <Sun className="h-5 w-5" />
+        <Sun className="h-4 w-4" />
       </Button>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => setTheme('dark')}
-        className={theme === 'dark' ? 'bg-accent' : ''}
+        className={cn("h-8 w-8", theme === 'dark' ? 'bg-accent' : '')}
         aria-label="Dark mode"
       >
-        <Moon className="h-5 w-5" />
+        <Moon className="h-4 w-4" />
       </Button>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => setTheme('system')}
-        className={theme === 'system' ? 'bg-accent' : ''}
+        className={cn("h-8 w-8", theme === 'system' ? 'bg-accent' : '')}
         aria-label="System preference"
       >
-        <Monitor className="h-5 w-5" />
+        <Monitor className="h-4 w-4" />
       </Button>
     </div>
   );
