@@ -26,17 +26,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 // Add CSS for main content transition
 const sidebarStyles = `
   /* Add styles to adjust main content when sidebar collapses */
-  body.sidebar-collapsed main {
-    margin-left: 4.5rem;
-    width: calc(100% - 4.5rem);
-    transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out;
-  }
-  
-  body:not(.sidebar-collapsed) main {
-    margin-left: 16rem;
-    width: calc(100% - 16rem);
-    transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out;
-  }
+  /* Removed global main margin/width styles to fix layout gap */
 `;
 
 interface SidebarNavProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -62,39 +52,7 @@ export function SidebarNav({ className, ...props }: SidebarNavProps) {
 
   const pathname = usePathname();
   const { user } = usePrivy();
-  // Initialize state first before any references to it
-  const [collapsed, setCollapsed] = useState(false);
-  
-  // Load collapsed state from localStorage on component mount
-  // This needs to be the first useEffect to ensure state is properly initialized
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedState = localStorage.getItem('sidebar-collapsed');
-      if (savedState !== null) {
-        setCollapsed(savedState === 'true');
-      }
-    }
-  }, []);
-  
-  // Add a custom class to the body element when the sidebar is collapsed
-  // This will be used to adjust the main content area
-  useEffect(() => {
-    if (typeof document !== 'undefined') {
-      document.body.classList.toggle('sidebar-collapsed', collapsed);
-    }
-    return () => {
-      if (typeof document !== 'undefined') {
-        document.body.classList.remove('sidebar-collapsed');
-      }
-    };
-  }, [collapsed]);
-  
-  // Save collapsed state to localStorage when it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('sidebar-collapsed', String(collapsed));
-    }
-  }, [collapsed]);
+  // Remove collapsed state and related effects
 
   const routes = [
     {
@@ -137,63 +95,30 @@ export function SidebarNav({ className, ...props }: SidebarNavProps) {
       <InjectStyles />
       <Sidebar 
         className={cn(
-          'h-screen flex flex-col transition-all duration-300 ease-in-out border-r overflow-y-auto overflow-x-hidden', 
-          collapsed ? 'w-[4.5rem]' : 'w-[16rem]', 
+          'h-screen flex flex-col transition-all duration-300 ease-in-out border-r overflow-y-auto overflow-x-hidden w-[16rem] bg-white', // Added bg-white
           className
         )} 
         {...props}
       >
       <SidebarContent className="px-2 overflow-hidden">
         <SidebarGroup>
-          <div className={cn(
-            "flex items-center h-14 px-3", 
-            collapsed ? "justify-center" : "justify-between"
-          )}>
-            {!collapsed && <h2 className="text-lg font-semibold tracking-tight">Albus</h2>}
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-8 w-8" 
-              onClick={() => setCollapsed(!collapsed)}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? <PanelRightIcon className="h-4 w-4" /> : <PanelLeftIcon className="h-4 w-4" />}
-            </Button>
+          <div className="flex items-center h-14 px-3 justify-between">
+            <h2 className="text-lg font-semibold tracking-tight">Albus</h2>
           </div>
           <div className="space-y-1 px-2 mt-2">
             {routes.map((route) => (
-              collapsed ? (
-                <TooltipProvider key={route.href}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href={route.href}
-                        className={cn(
-                          buttonVariants({ variant: pathname === route.href ? 'secondary' : 'ghost', size: 'sm' }),
-                          'w-full justify-center px-2'
-                        )}
-                      >
-                        <route.icon className="h-4 w-4 mr-0" />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {route.label}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : (
                 <Link
                   key={route.href}
                   href={route.href}
                   className={cn(
-                    buttonVariants({ variant: pathname === route.href ? 'secondary' : 'ghost', size: 'sm' }),
-                    'w-full justify-start'
+                    buttonVariants({ variant: 'ghost', size: 'sm' }), // Default to ghost
+                    'w-full justify-start',
+                    pathname === route.href && 'bg-[#7F56D9] text-white hover:bg-[#7F56D9]/90' // Active state styles
                   )}
                 >
-                  <route.icon className="h-4 w-4 mr-2" />
+                  <route.icon className={cn("h-4 w-4 mr-2", pathname === route.href && "text-white")} />
                   {route.label}
                 </Link>
-              )
             ))}
           </div>
         </SidebarGroup>
@@ -203,26 +128,6 @@ export function SidebarNav({ className, ...props }: SidebarNavProps) {
         <SidebarGroup>
           <div className="space-y-1 px-3">
             {bottomRoutes.map((route) => (
-              collapsed ? (
-                <TooltipProvider key={route.href}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href={route.href}
-                        className={cn(
-                          buttonVariants({ variant: 'ghost', size: 'sm' }),
-                          'w-full justify-center px-2'
-                        )}
-                      >
-                        <route.icon className="h-4 w-4 mr-0" />
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {route.label}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : (
                 <Link
                   key={route.href}
                   href={route.href}
@@ -234,7 +139,6 @@ export function SidebarNav({ className, ...props }: SidebarNavProps) {
                   <route.icon className="h-4 w-4 mr-2" />
                   {route.label}
                 </Link>
-              )
             ))}
           </div>
         </SidebarGroup>
@@ -242,42 +146,22 @@ export function SidebarNav({ className, ...props }: SidebarNavProps) {
       
       <div className="mt-auto px-3 py-4 sticky bottom-0">
         <Separator className="mb-4" />
-        <div className={cn(
-          "flex items-center mb-4", 
-          collapsed ? "justify-center" : "justify-between px-2"
-        )}>
-          {!collapsed && <h3 className="text-sm font-medium">Theme</h3>}
-          {collapsed ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div>
-                    <ThemeToggle className="flex-col space-y-1 space-x-0" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  Theme Settings
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            <ThemeToggle />
-          )}
+        <div className="flex items-center mb-4 justify-between px-2">
+          <h3 className="text-sm font-medium">Theme</h3>
+          <ThemeToggle />
         </div>
-        <div className={cn("flex items-center gap-2 p-2 rounded-md bg-secondary/20", collapsed && "justify-center")}>  
+        <div className="flex items-center gap-2 p-2 rounded-md bg-secondary/20">  
           <Avatar>
             <AvatarImage src={undefined} />
             <AvatarFallback>
               {user?.id ? user.id.slice(0, 2).toUpperCase() : '?'}
             </AvatarFallback>
           </Avatar>
-          {!collapsed && (
-            <div className="flex-1 overflow-hidden">
-              <p className="text-sm font-medium truncate">
-                {user?.email?.toString() || formatAddress(user?.wallet?.address || '')}
-              </p>
-            </div>
-          )}
+          <div className="flex-1 overflow-hidden">
+            <p className="text-sm font-medium truncate">
+              {user?.email?.toString() || formatAddress(user?.wallet?.address || '')}
+            </p>
+          </div>
         </div>
       </div>
     </Sidebar>

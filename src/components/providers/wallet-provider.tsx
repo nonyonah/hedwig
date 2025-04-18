@@ -24,7 +24,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         loginMethods: ['wallet'],
         appearance: {
           theme: 'light',
-          accentColor: '#000000',
+          accentColor: '#7F56D9',
         },
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
@@ -41,4 +41,4 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       </OnchainKitProvider>
     </PrivyProvider>
   );
-} 
+}

@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { supabase, getSession } from '@/lib/supabase';
 import { ChevronDown } from 'lucide-react';
-import { NetworkIcon } from '@web3icons/react';
 
 // Define supported chains and their properties
 // The 'key' should match the names expected by web3icons (usually lowercase)
@@ -177,8 +176,9 @@ export default function DashboardPage() {
         <div className="flex items-center space-x-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex items-center justify-center p-2" size="icon" title={currentChain.name}>
-                <NetworkIcon chainId={currentChain.key} size={24} />
+              <Button variant="outline" className="flex items-center justify-center gap-1 min-w-0" size="default" title={currentChain.name}>
+                <img src={`/chains/${currentChain.key}.svg`} alt={currentChain.name + ' icon'} width={20} height={20} className="rounded-full object-cover" />
+                <span className="ml-1 font-medium text-sm text-black">{currentChain.name}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -186,11 +186,11 @@ export default function DashboardPage() {
                 <DropdownMenuItem
                   key={chain.name}
                   onClick={() => handleChainSelect(chain.name)}
-                  className="flex items-center gap-2"
                   title={chain.name}
+                  className="flex items-center gap-2"
                 >
-                  <NetworkIcon chainId={chain.key} size={20} />
-                  <span className="sr-only">{chain.name}</span>
+                  <img src={`/chains/${chain.key}.svg`} alt={chain.name + ' icon'} width={20} height={20} className="rounded-full object-cover" />
+                  <span className="font-medium text-black">{chain.name}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -236,7 +236,6 @@ export default function DashboardPage() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="pnl">PnL</TabsTrigger>
-          <TabsTrigger value="bank-assets">Bank Assets</TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
            <Card>
@@ -250,12 +249,6 @@ export default function DashboardPage() {
               <CardContent>Placeholder content for PnL.</CardContent>
             </Card>
           </TabsContent>
-           <TabsContent value="bank-assets">
-             <Card>
-               <CardHeader><CardTitle>Bank Assets</CardTitle></CardHeader>
-               <CardContent>Placeholder content for bank assets.</CardContent>
-             </Card>
-           </TabsContent>
       </Tabs>
     </div>
   );
