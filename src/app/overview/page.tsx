@@ -18,7 +18,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase, getSession } from '@/lib/supabase';
-import { ChevronDown } from 'lucide-react';
+import { 
+  ChevronDown, 
+  ArrowDown,
+  Search,
+  LayoutDashboard,
+  CreditCard,
+  Clock,
+  ShoppingCart,
+  List,
+  Users,
+  Settings,
+  LogOut,
+  Moon,
+  Sun
+} from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { ThemeToggle } from '@/components/theme-toggle';
+import { useTheme } from 'next-themes';
 
 // Define supported chains and their properties
 // The 'key' should match the names expected by web3icons (usually lowercase)
@@ -37,10 +54,11 @@ export default function DashboardPage() {
   const [address, setAddress] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [selectedChainName, setSelectedChainName] = useState(supportedChains[0].name); // Default to Base
+  const [selectedChainName, setSelectedChainName] = useState('All'); // Default to All option
   const [isConnecting, setIsConnecting] = useState(false);
+  const { theme, setTheme } = useTheme();
 
-  const currentChain = supportedChains.find(c => c.name === selectedChainName) || supportedChains[0];
+  const currentChain = selectedChainName === 'All' ? supportedChains[0] : supportedChains.find(c => c.name === selectedChainName) || supportedChains[0];
 
   useEffect(() => {
     const loadWalletInfo = async () => {
@@ -168,88 +186,228 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex-1 space-y-4 p-8 pt-6 w-full max-w-full">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">
-          {displayName ? `Hi ${displayName.split('.')[0]}` : address ? `Hi ${formatAddress(address)}` : 'Welcome'}
-        </h2>
-        <div className="flex items-center space-x-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex items-center justify-center gap-1 min-w-0" size="default" title={currentChain.name}>
-                <img src={`/chains/${currentChain.key}.svg`} alt={currentChain.name + ' icon'} width={20} height={20} className="rounded-full object-cover" />
-                <span className="ml-1 font-medium text-sm text-black">{currentChain.name}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {supportedChains.map((chain) => (
-                <DropdownMenuItem
-                  key={chain.name}
-                  onClick={() => handleChainSelect(chain.name)}
-                  title={chain.name}
-                  className="flex items-center gap-2"
-                >
-                  <img src={`/chains/${chain.key}.svg`} alt={chain.name + ' icon'} width={20} height={20} className="rounded-full object-cover" />
-                  <span className="font-medium text-black">{chain.name}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+    <div className="flex min-h-screen bg-background">
+      {/* Sidebar */}
+      <div className="hidden w-64 flex-col border-r bg-white p-4 md:flex">
+        <div className="mb-8">
+          <Input
+            type="search"
+            placeholder="Search"
+            className="h-9"
+            prefix={<Search className="h-4 w-4 text-muted-foreground" />}
 
-          {address ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="default" className="flex items-center gap-2">
-                  {avatarUrl ? (
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={avatarUrl} alt={displayName || address} />
-                      <AvatarFallback>{(displayName || address).slice(0, 2)}</AvatarFallback>
-                    </Avatar>
-                  ) : (
-                     <Avatar className="h-6 w-6">
-                       <AvatarFallback>{(displayName || address)?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                     </Avatar>
-                   )}
-                  <span className="truncate max-w-[150px]">{displayName || formatAddress(address)}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleDisconnectWallet}>
-                  Disconnect Wallet
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button
-              variant="default"
-              onClick={handleConnectWallet}
-              disabled={isConnecting}
-            >
-              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+          />
+        </div>
+        <div className="space-y-4">
+          <div className="px-2 py-1">
+            <h3 className="mb-2 text-sm font-medium text-muted-foreground">General</h3>
+            <nav className="space-y-1">
+              <Button
+                variant="secondary"
+                className="w-full justify-start bg-primary/10 text-primary hover:bg-primary/20"
+              >
+                <LayoutDashboard className="mr-2 h-4 w-4" />
+                Dashboard
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <CreditCard className="mr-2 h-4 w-4" />
+                Accounts
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <Clock className="mr-2 h-4 w-4" />
+                Transactions
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                NFTs
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <List className="mr-2 h-4 w-4" />
+                Watchlist
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <Users className="mr-2 h-4 w-4" />
+                Support
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Button>
+            </nav>
+          </div>
+        </div>
+        <div className="mt-auto">
+          <div className="flex items-center justify-between px-4 py-2">
+            <h3 className="text-sm font-medium text-muted-foreground">Theme</h3>
+            <ThemeToggle />
+          </div>
+          <div className="flex items-center gap-3 rounded-lg p-3">
+            <Avatar>
+              {avatarUrl ? (
+                <AvatarImage src={avatarUrl} alt={displayName || address || 'User'} />
+              ) : (
+                <AvatarFallback>{(displayName || address)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+              )}
+            </Avatar>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{displayName || formatAddress(address || '')}</span>
+              <span className="text-xs text-muted-foreground">{address ? formatAddress(address) : 'Not connected'}</span>
+            </div>
+            <Button variant="ghost" size="icon" className="ml-auto h-8 w-8" onClick={handleDisconnectWallet}>
+              <LogOut className="h-4 w-4" />
             </Button>
-          )}
+          </div>
         </div>
       </div>
-      <p className="text-muted-foreground">Here's a comprehensive view of your accounts and wallets</p>
 
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="pnl">PnL</TabsTrigger>
-        </TabsList>
-        <TabsContent value="overview">
-           <Card>
-             <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
-             <CardContent>Placeholder content for overview.</CardContent>
-           </Card>
-         </TabsContent>
-          <TabsContent value="pnl">
-            <Card>
-              <CardHeader><CardTitle>Profit & Loss</CardTitle></CardHeader>
-              <CardContent>Placeholder content for PnL.</CardContent>
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">{displayName ? `Hi ${displayName.split('.')[0]}` : address ? `Hi ${formatAddress(address)}` : 'Welcome'}</h1>
+              <p className="text-muted-foreground">Here's a comprehensive view of your accounts and wallets</p>
+            </div>
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="bg-primary/10 text-primary hover:bg-primary/20">
+                    {selectedChainName !== 'All' && (
+                      <img 
+                        src={`/chains/${supportedChains.find(chain => chain.name === selectedChainName)?.key}.svg`} 
+                        alt={selectedChainName + ' icon'} 
+                        width={20} 
+                        height={20} 
+                        className="mr-2 rounded-full object-cover" 
+                      />
+                    )}
+                    {selectedChainName} <ChevronDown className="ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    key="all"
+                    onClick={() => handleChainSelect('All')}
+                    title="All"
+                    className="flex items-center gap-2"
+                  >
+                    <span className="font-medium">All</span>
+                  </DropdownMenuItem>
+                  {supportedChains.map((chain) => (
+                    <DropdownMenuItem
+                      key={chain.name}
+                      onClick={() => handleChainSelect(chain.name)}
+                      title={chain.name}
+                      className="flex items-center gap-2"
+                    >
+                      <img src={`/chains/${chain.key}.svg`} alt={chain.name + ' icon'} width={20} height={20} className="rounded-full object-cover" />
+                      <span className="font-medium">{chain.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {address ? (
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
+                  Connected
+                </Button>
+              ) : (
+                <Button
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={handleConnectWallet}
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <Tabs defaultValue="overview" className="mb-6">
+            <TabsList className="w-full max-w-md">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="pnl">PnL</TabsTrigger>
+              <TabsTrigger value="bank-assets">Bank Assets</TabsTrigger>
+            </TabsList>
+
+            {/* Content Sections */}
+            <TabsContent value="overview" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Overview</CardTitle>
+                </CardHeader>
+                <CardContent>Placeholder content for overview.</CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="pnl" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Profit & Loss</CardTitle>
+                </CardHeader>
+                <CardContent>Placeholder content for PnL.</CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="bank-assets" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Bank Assets</CardTitle>
+                </CardHeader>
+                <CardContent>Placeholder content for Bank Assets.</CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+
+          {/* Stats Cards */}
+          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
+            <Card className="w-[310px] h-[150px]">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Net Worth</CardTitle>
+                <span className="flex items-center text-xs font-medium text-destructive">
+                  <ArrowDown className="mr-1 h-3 w-3" />
+                  10%
+                </span>
+              </CardHeader>
+              <CardContent className="px-4 pt-2">
+                <div className="text-3xl font-bold">$45,823</div>
+                <p className="text-xs text-muted-foreground">$1,873 last year</p>
+              </CardContent>
             </Card>
-          </TabsContent>
-      </Tabs>
+            <Card className="w-[310px] h-[150px]">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Token Worth</CardTitle>
+                <span className="flex items-center text-xs font-medium text-green-500">
+                  <ArrowDown className="mr-1 h-3 w-3 rotate-180" />
+                  8%
+                </span>
+              </CardHeader>
+              <CardContent className="px-4 pt-2">
+                <div className="text-3xl font-bold">$12,234</div>
+                <p className="text-xs text-muted-foreground">+$2,345 this month</p>
+              </CardContent>
+            </Card>
+            <Card className="w-[310px] h-[150px]">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Number of NFTs</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pt-2">
+                <div className="text-3xl font-bold">12</div>
+                <p className="text-xs text-muted-foreground">+3 this year</p>
+              </CardContent>
+            </Card>
+            <Card className="w-[310px] h-[150px]">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Transactions</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pt-2">
+                <div className="text-3xl font-bold">1,234</div>
+                <p className="text-xs text-muted-foreground">+120 this year</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
