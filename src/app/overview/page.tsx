@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { DashboardCharts } from '@/components/dashboard/charts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -325,87 +326,20 @@ export default function DashboardPage() {
           </div>
 
           {/* Tabs */}
-          <Tabs defaultValue="overview" className="mb-6">
-            <TabsList className="w-full max-w-md">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="pnl">PnL</TabsTrigger>
-              <TabsTrigger value="bank-assets">Bank Assets</TabsTrigger>
             </TabsList>
 
             {/* Content Sections */}
             <TabsContent value="overview" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Overview</CardTitle>
-                </CardHeader>
-                <CardContent>Placeholder content for overview.</CardContent>
-              </Card>
+              <DashboardCharts />
             </TabsContent>
             <TabsContent value="pnl" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Profit & Loss</CardTitle>
-                </CardHeader>
-                <CardContent>Placeholder content for PnL.</CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="bank-assets" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Bank Assets</CardTitle>
-                </CardHeader>
-                <CardContent>Placeholder content for Bank Assets.</CardContent>
-              </Card>
+              {/* PnL content will be added here */}
             </TabsContent>
           </Tabs>
-
-          {/* Stats Cards */}
-          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-            <Card className="w-[310px] h-[150px]">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Net Worth</CardTitle>
-                <span className="flex items-center text-xs font-medium text-destructive">
-                  <ArrowDown className="mr-1 h-3 w-3" />
-                  10%
-                </span>
-              </CardHeader>
-              <CardContent className="px-4 pt-2">
-                <div className="text-3xl font-bold">$45,823</div>
-                <p className="text-xs text-muted-foreground">$1,873 last year</p>
-              </CardContent>
-            </Card>
-            <Card className="w-[310px] h-[150px]">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Token Worth</CardTitle>
-                <span className="flex items-center text-xs font-medium text-green-500">
-                  <ArrowDown className="mr-1 h-3 w-3 rotate-180" />
-                  8%
-                </span>
-              </CardHeader>
-              <CardContent className="px-4 pt-2">
-                <div className="text-3xl font-bold">$12,234</div>
-                <p className="text-xs text-muted-foreground">+$2,345 this month</p>
-              </CardContent>
-            </Card>
-            <Card className="w-[310px] h-[150px]">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Number of NFTs</CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pt-2">
-                <div className="text-3xl font-bold">12</div>
-                <p className="text-xs text-muted-foreground">+3 this year</p>
-              </CardContent>
-            </Card>
-            <Card className="w-[310px] h-[150px]">
-              <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Transactions</CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pt-2">
-                <div className="text-3xl font-bold">1,234</div>
-                <p className="text-xs text-muted-foreground">+120 this year</p>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </div>
     </div>
