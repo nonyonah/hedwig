@@ -7,9 +7,9 @@ import { useRouter } from 'next/navigation';
 import { supabase, getSession } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { formatAddress } from '@/lib/utils';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { createAppKit } from '@reown/appkit';
 import { getName, getAvatar } from '@coinbase/onchainkit/identity';
-import { base, baseSepolia } from 'viem/chains';
+import { base, baseSepolia, optimism, arbitrum, mainnet, bsc } from 'viem/chains';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -18,10 +18,28 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// Set up Reown AppKit
+const metadata = {
+  name: 'Albus Dashboard',
+  description: 'Comprehensive view of your crypto accounts and wallets',
+  url: 'https://albus.app',
+  icons: ['https://albus.app/logo.png'] // Replace with your actual logo URL
+};
+
+// Create modal with Reown AppKit
+const modal = createAppKit({
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '', // Make sure this is set in your .env
+  networks: [mainnet, base, optimism, arbitrum, bsc],
+  metadata: metadata,
+  features: {
+    analytics: true,
+    email: false,
+  },
+  allWallets: "SHOW",
+});
+
 export default function AccountConnectionPage() {
   const router = useRouter();
-  const { user, authenticated, login, logout, connectWallet } = usePrivy();
-  const { wallets } = useWallets();
   const [isLoading, setIsLoading] = useState(false);
   const [cryptoConnected, setCryptoConnected] = useState(false);
   const [cryptoLoading, setCryptoLoading] = useState(false);
@@ -64,16 +82,21 @@ export default function AccountConnectionPage() {
           console.log('Profile found with wallet:', profile.wallet_address);
           console.log('Last disconnect time:', profile.last_disconnect_time);
           
-          // Check if we're already authenticated
-          if (authenticated) {
-            console.log('Already authenticated, no need to login');
-            return;
-          }
-          
           // If there's no last_disconnect_time, it's a new connection
           if (!profile.last_disconnect_time) {
-            console.log('No last disconnect time, using login without modal');
-            await login();
+            console.log('No last disconnect time, connecting wallet');
+            try {
+              await modal.open();
+              const account = await modal.getAccount();
+              if (account) {
+                setCryptoConnected(true);
+                setAddress(account.address || null);
+                setDisplayName(profile.display_name);
+                setAvatarUrl(profile.avatar_url);
+              }
+            } catch (error) {
+              console.error('Error connecting wallet:', error);
+            }
           } else {
             const timeSinceDisconnect = Date.now() - profile.last_disconnect_time;
             console.log('Time since disconnect (hours):', timeSinceDisconnect / (60 * 60 * 1000));
@@ -81,32 +104,36 @@ export default function AccountConnectionPage() {
             // Only show modal if disconnected for more than 24 hours
             if (timeSinceDisconnect > 24 * 60 * 60 * 1000) {
               console.log('Long disconnect, showing modal');
-              await connectWallet();
+              try {
+                await modal.open();
+                const account = await modal.getAccount();
+                if (account) {
+                  setCryptoConnected(true);
+                  setAddress(account.address || null);
+                  setDisplayName(profile.display_name);
+                  setAvatarUrl(profile.avatar_url);
+                  setLastDisconnectTime(profile.last_disconnect_time);
+                }
+              } catch (error) {
+                console.error('Error connecting wallet:', error);
+              }
             } else {
-              console.log('Recent disconnect, using login without modal');
-              await login();
+              console.log('Recent disconnect, connecting silently');
+              try {
+                // Remove the silent option as it's not supported
+                await modal.open();
+                const account = await modal.getAccount();
+                if (account) {
+                  setCryptoConnected(true);
+                  setAddress(account.address || null);
+                  setDisplayName(profile.display_name);
+                  setAvatarUrl(profile.avatar_url);
+                  setLastDisconnectTime(profile.last_disconnect_time);
+                }
+              } catch (error) {
+                console.error('Error connecting wallet silently:', error);
+              }
             }
-          }
-
-          // Wait for the wallet to be connected
-          let attempts = 0;
-          const maxAttempts = 10; // 5 seconds total
-          
-          while (attempts < maxAttempts) {
-            if (wallets.length > 0) {
-              break;
-            }
-            await new Promise(resolve => setTimeout(resolve, 500));
-            attempts++;
-          }
-
-          if (wallets.length > 0) {
-            const wallet = wallets[0];
-            setCryptoConnected(true);
-            setAddress(wallet.address);
-            setDisplayName(profile.display_name);
-            setAvatarUrl(profile.avatar_url);
-            setLastDisconnectTime(profile.last_disconnect_time);
           }
         }
       } catch (error) {
@@ -145,12 +172,12 @@ export default function AccountConnectionPage() {
     try {
       setCryptoLoading(true);
       
-      // Check if we're already authenticated and have a wallet
-      if (authenticated && wallets.length > 0) {
-        console.log('Already authenticated with wallet, no need to login');
-        const wallet = wallets[0];
+      // Check if we're already connected
+      const account = await modal.getAccount();
+      if (account) {
+        console.log('Already connected with wallet:', account.address);
         setCryptoConnected(true);
-        setAddress(wallet.address);
+        setAddress(account.address || null);
         return;
       }
       
@@ -158,10 +185,8 @@ export default function AccountConnectionPage() {
       
       // If there's no lastDisconnectTime, it's a new connection
       if (!lastDisconnectTime) {
-        console.log('No last disconnect time, using login without modal');
-        if (!authenticated) {
-          await login();
-        }
+        console.log('No last disconnect time, connecting wallet');
+        await modal.open();
       } else {
         const timeSinceDisconnect = Date.now() - lastDisconnectTime;
         console.log('Time since disconnect (hours):', timeSinceDisconnect / (60 * 60 * 1000));
@@ -169,42 +194,28 @@ export default function AccountConnectionPage() {
         // Only show modal if disconnected for more than 24 hours
         if (timeSinceDisconnect > 24 * 60 * 60 * 1000) {
           console.log('Long disconnect, showing modal');
-          if (!authenticated) {
-      await connectWallet();
-          }
+          await modal.open();
         } else {
-          console.log('Recent disconnect, using login without modal');
-          if (!authenticated) {
-            await login();
-          }
+          console.log('Recent disconnect, connecting silently');
+          // Remove the silent option as it's not supported
+          await modal.open();
         }
       }
       
-      // Wait for the wallet to be connected
-      let attempts = 0;
-      const maxAttempts = 10; // 5 seconds total
-      
-      while (attempts < maxAttempts) {
-        if (wallets.length > 0) {
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempts++;
-      }
-      
-      if (wallets.length === 0) {
+      // Get the connected account
+      const connectedAccount = await modal.getAccount();
+      if (!connectedAccount) {
         throw new Error('No wallet connected');
       }
 
-      const wallet = wallets[0];
       setCryptoConnected(true);
-      setAddress(wallet.address);
+      setAddress(connectedAccount.address || null);
 
       // Try to resolve name on both Base mainnet and Base Sepolia
       try {
         // Try Base mainnet first
         const mainnetName = await getName({ 
-          address: wallet.address as `0x${string}`, 
+          address: connectedAccount.address as `0x${string}`, 
           chain: base 
         });
         
@@ -212,7 +223,7 @@ export default function AccountConnectionPage() {
 
         // If no name on mainnet, try Base Sepolia
         const sepoliaName = mainnetName ? null : await getName({ 
-          address: wallet.address as `0x${string}`, 
+          address: connectedAccount.address as `0x${string}`, 
           chain: baseSepolia 
         });
         
@@ -239,12 +250,12 @@ export default function AccountConnectionPage() {
           }
         } else {
           // If no name found, use formatted address
-          const formattedAddress = formatAddress(wallet.address);
+          const formattedAddress = formatAddress(connectedAccount.address || '');
           setDisplayName(formattedAddress);
         }
       } catch (error) {
         console.error('Error resolving name:', error);
-        const formattedAddress = formatAddress(wallet.address);
+        const formattedAddress = formatAddress(connectedAccount.address || '');
         setDisplayName(formattedAddress);
       }
     } catch (error) {
@@ -288,7 +299,7 @@ export default function AccountConnectionPage() {
         throw new Error(`Failed to save disconnect time: ${updateError.message}`);
       }
 
-      await logout();
+      await modal.disconnect();
       toast.success('Wallet disconnected successfully');
     } catch (error) {
       console.error('Error disconnecting wallet:', error);
