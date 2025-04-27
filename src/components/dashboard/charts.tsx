@@ -264,7 +264,7 @@ export function DashboardCharts() {
       {/* Stats Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card 
-          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'netWorth' ? 'ring-2 ring-primary' : ''}`}
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'netWorth' ? 'ring-1 ring-primary/40' : ''}`}
           onClick={() => setSelectedMetric('netWorth')}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
@@ -280,7 +280,7 @@ export function DashboardCharts() {
           </CardContent>
         </Card>
         <Card 
-          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'tokenWorth' ? 'ring-2 ring-primary' : ''}`}
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'tokenWorth' ? 'ring-1 ring-primary/40' : ''}`}
           onClick={() => setSelectedMetric('tokenWorth')}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
@@ -305,7 +305,7 @@ export function DashboardCharts() {
           </CardContent>
         </Card>
         <Card 
-          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'transactions' ? 'ring-2 ring-primary' : ''}`}
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'transactions' ? 'ring-1 ring-primary/40' : ''}`}
           onClick={() => setSelectedMetric('transactions')}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
@@ -314,6 +314,18 @@ export function DashboardCharts() {
           <CardContent className="px-4 pt-2">
             <div className="text-3xl font-bold">1,234</div>
             <p className="text-xs text-muted-foreground">+120 this year</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'nfts' ? 'ring-1 ring-primary/40' : ''}`}
+          onClick={() => setSelectedMetric('nfts')}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Number of NFTs</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-2">
+            <div className="text-3xl font-bold">12</div>
+            <p className="text-xs text-muted-foreground">+3 this year</p>
           </CardContent>
         </Card>
       </div>

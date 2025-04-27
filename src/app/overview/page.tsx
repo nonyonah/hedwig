@@ -35,9 +35,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useTheme } from 'next-themes';
-import { createAppKit } from '@reown/appkit';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useAccount, useDisconnect } from 'wagmi';
 
 // Define supported chains and their properties
 // The 'key' should match the names expected by web3icons (usually lowercase)
@@ -52,26 +51,7 @@ const supportedChains = [
 // Initialize QueryClient for React Query
 const queryClient = new QueryClient();
 
-// Set up Reown AppKit
-const metadata = {
-  name: 'Albus Dashboard',
-  description: 'Comprehensive view of your crypto accounts and wallets',
-  url: 'https://albus.app',
-  icons: ['https://albus.app/logo.png'] // Replace with your actual logo URL
-};
-
-// Create modal with Reown AppKit
-const modal = createAppKit({
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '', // Make sure this is set in your .env
-  networks: [mainnet, base, optimism, arbitrum, bsc],
-  metadata: metadata,
-  features: {
-    analytics: true,
-    email: false,
-  },
-  allWallets: "SHOW",
-});
-
+// Export the dashboard page directly - no longer wrapped with PrivyProvider
 export default function DashboardPage() {
   const [timeframe, setTimeframe] = useState('weekly');
   const [address, setAddress] = useState<string | null>(null);
@@ -81,9 +61,13 @@ export default function DashboardPage() {
   const [isConnecting, setIsConnecting] = useState(false);
   const { theme, setTheme } = useTheme();
   
-  // Use wagmi hooks for account and disconnect
-  const { address: connectedAddress, isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
+  // Use Privy hooks for authentication and wallet management
+  const { login, logout, authenticated, user } = usePrivy();
+  const { wallets } = useWallets();
+  
+  // Get the connected wallet address
+  const connectedAddress = user?.wallet?.address || null;
+  const isConnected = authenticated && !!connectedAddress;
 
   const currentChain = selectedChainName === 'All' ? supportedChains[0] : supportedChains.find(c => c.name === selectedChainName) || supportedChains[0];
 
@@ -146,7 +130,7 @@ export default function DashboardPage() {
   const handleConnectWallet = async () => {
     try {
       setIsConnecting(true);
-      await modal.open();
+      await login();
       toast.success('Wallet connected successfully');
     } catch (error) {
       console.error('Error connecting wallet:', error);
@@ -158,7 +142,7 @@ export default function DashboardPage() {
 
   const handleDisconnectWallet = async () => {
     try {
-      disconnect();
+      await logout();
       setAddress(null);
       setDisplayName(null);
       setAvatarUrl(null);
@@ -173,165 +157,179 @@ export default function DashboardPage() {
     setSelectedChainName(chainName);
   };
 
+  // Function to copy wallet address to clipboard
+  const copyAddressToClipboard = () => {
+    if (address) {
+      navigator.clipboard.writeText(address);
+      toast.success('Address copied to clipboard');
+    }
+  };
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <div className="flex min-h-screen bg-background">
-        {/* Sidebar */}
-        <div className="hidden w-64 flex-col border-r bg-white p-4 md:flex">
-          <div className="mb-8">
+    <div className="flex min-h-screen bg-background">
+      {/* Sidebar */}
+      <div className="hidden w-64 flex-col border-r bg-white p-4 md:flex">
+        <div className="mb-8">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search"
-              className="h-9"
-              prefix={<Search className="h-4 w-4 text-muted-foreground" />}
+              className="h-9 pl-8"
             />
           </div>
-          <div className="space-y-4">
-            <div className="px-2 py-1">
-              <h3 className="mb-2 text-sm font-medium text-muted-foreground">General</h3>
-              <nav className="space-y-1">
-                <Button
-                  variant="secondary"
-                  className="w-full justify-start bg-primary/10 text-primary hover:bg-primary/20"
-                >
-                  <LayoutDashboard className="mr-2 h-4 w-4" />
-                  Dashboard
-                </Button>
-                <Button variant="ghost" className="w-full justify-start">
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Accounts
-                </Button>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Clock className="mr-2 h-4 w-4" />
-                  Transactions
-                </Button>
-                <Button variant="ghost" className="w-full justify-start">
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  NFTs
-                </Button>
-                <Button variant="ghost" className="w-full justify-start">
-                  <List className="mr-2 h-4 w-4" />
-                  Watchlist
-                </Button>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Users className="mr-2 h-4 w-4" />
-                  Support
-                </Button>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </Button>
-              </nav>
-            </div>
+        </div>
+        <div className="space-y-4">
+          <div className="px-2 py-1">
+            <h3 className="mb-2 text-sm font-medium text-muted-foreground">General</h3>
+            <nav className="space-y-1">
+              <Button
+                variant="secondary"
+                className="w-full justify-start bg-primary/10 text-primary hover:bg-primary/20"
+              >
+                <LayoutDashboard className="mr-2 h-4 w-4" />
+                Dashboard
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <CreditCard className="mr-2 h-4 w-4" />
+                Accounts
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <Clock className="mr-2 h-4 w-4" />
+                Transactions
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                NFTs
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <List className="mr-2 h-4 w-4" />
+                Watchlist
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <Users className="mr-2 h-4 w-4" />
+                Support
+              </Button>
+              <Button variant="ghost" className="w-full justify-start">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Button>
+            </nav>
           </div>
-          <div className="mt-auto">
-            <div className="flex items-center justify-between px-4 py-2">
-              <h3 className="text-sm font-medium text-muted-foreground">Theme</h3>
-              <ThemeToggle />
+        </div>
+        <div className="mt-auto">
+          <div className="flex items-center justify-between px-4 py-2">
+            <h3 className="text-sm font-medium text-muted-foreground">Theme</h3>
+            <ThemeToggle />
+          </div>
+          {/* Removed wallet info from sidebar */}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">{displayName ? `Hi ${displayName.split('.')[0]}` : address ? `Hi ${formatAddress(address)}` : 'Welcome'}</h1>
+              <p className="text-muted-foreground">Here's a comprehensive view of your accounts and wallets</p>
             </div>
-            <div className="flex items-center gap-3 rounded-lg p-3">
-              <Avatar>
-                {avatarUrl ? (
-                  <AvatarImage src={avatarUrl} alt={displayName || address || 'User'} />
-                ) : (
-                  <AvatarFallback>{(displayName || address)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-                )}
-              </Avatar>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">{displayName || formatAddress(address || '')}</span>
-                <span className="text-xs text-muted-foreground">{address ? formatAddress(address) : 'Not connected'}</span>
-              </div>
-              {address && (
-                <Button variant="ghost" size="icon" className="ml-auto h-8 w-8" onClick={handleDisconnectWallet}>
-                  <LogOut className="h-4 w-4" />
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="bg-primary/10 text-primary hover:bg-primary/20">
+                    {selectedChainName !== 'All' && (
+                      <img 
+                        src={`/chains/${supportedChains.find(chain => chain.name === selectedChainName)?.key}.svg`} 
+                        alt={selectedChainName + ' icon'} 
+                        width={20} 
+                        height={20} 
+                        className="mr-2 rounded-full object-cover" 
+                      />
+                    )}
+                    {selectedChainName} <ChevronDown className="ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    key="all"
+                    onClick={() => handleChainSelect('All')}
+                    title="All"
+                    className="flex items-center gap-2"
+                  >
+                    <span className="font-medium">All</span>
+                  </DropdownMenuItem>
+                  {supportedChains.map((chain) => (
+                    <DropdownMenuItem
+                      key={chain.name}
+                      onClick={() => handleChainSelect(chain.name)}
+                      title={chain.name}
+                      className="flex items-center gap-2"
+                    >
+                      <img src={`/chains/${chain.key}.svg`} alt={chain.name + ' icon'} width={20} height={20} className="rounded-full object-cover" />
+                      <span className="font-medium">{chain.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {isConnected ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-2">
+                      {avatarUrl ? (
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={avatarUrl} alt={displayName || address || 'User'} />
+                          <AvatarFallback>{(displayName || address)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback>{(displayName || address)?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                        </Avatar>
+                      )}
+                      <span className="max-w-[100px] truncate">{displayName || formatAddress(address || '')}</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={copyAddressToClipboard}>
+                      Copy Address
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDisconnectWallet}>
+                      Disconnect
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={handleConnectWallet}
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? 'Connecting...' : 'Connect Wallet'}
                 </Button>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-auto">
-          <div className="container mx-auto p-6">
-            {/* Header */}
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold">{displayName ? `Hi ${displayName.split('.')[0]}` : address ? `Hi ${formatAddress(address)}` : 'Welcome'}</h1>
-                <p className="text-muted-foreground">Here's a comprehensive view of your accounts and wallets</p>
-              </div>
-              <div className="flex gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="bg-primary/10 text-primary hover:bg-primary/20">
-                      {selectedChainName !== 'All' && (
-                        <img 
-                          src={`/chains/${supportedChains.find(chain => chain.name === selectedChainName)?.key}.svg`} 
-                          alt={selectedChainName + ' icon'} 
-                          width={20} 
-                          height={20} 
-                          className="mr-2 rounded-full object-cover" 
-                        />
-                      )}
-                      {selectedChainName} <ChevronDown className="ml-2 h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      key="all"
-                      onClick={() => handleChainSelect('All')}
-                      title="All"
-                      className="flex items-center gap-2"
-                    >
-                      <span className="font-medium">All</span>
-                    </DropdownMenuItem>
-                    {supportedChains.map((chain) => (
-                      <DropdownMenuItem
-                        key={chain.name}
-                        onClick={() => handleChainSelect(chain.name)}
-                        title={chain.name}
-                        className="flex items-center gap-2"
-                      >
-                        <img src={`/chains/${chain.key}.svg`} alt={chain.name + ' icon'} width={20} height={20} className="rounded-full object-cover" />
-                        <span className="font-medium">{chain.name}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                
-                {isConnected ? (
-                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-                    Connected
-                  </Button>
-                ) : (
-                  <Button
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
-                    onClick={handleConnectWallet}
-                    disabled={isConnecting}
-                  >
-                    {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-                  </Button>
-                )}
-              </div>
-            </div>
+          {/* Tabs */}
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="pnl">PnL</TabsTrigger>
+            </TabsList>
 
-            {/* Tabs */}
-            <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full max-w-md grid-cols-2">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="pnl">PnL</TabsTrigger>
-              </TabsList>
-
-              {/* Content Sections */}
-              <TabsContent value="overview" className="mt-6">
-                <DashboardCharts />
-              </TabsContent>
-              <TabsContent value="pnl" className="mt-6">
-                {/* PnL content will be added here */}
-              </TabsContent>
-            </Tabs>
-          </div>
+            {/* Content Sections */}
+            <TabsContent value="overview" className="mt-6">
+              <DashboardCharts />
+            </TabsContent>
+            <TabsContent value="pnl" className="mt-6">
+              {/* PnL content will be added here */}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
-    </QueryClientProvider>
+    </div>
   );
 }
