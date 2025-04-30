@@ -27,6 +27,10 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { formatAddress } from '@/lib/utils'; // <-- Add this import
 
 // Sample data for different metrics
 const netWorthData = [
@@ -136,21 +140,105 @@ const chartConfig = {
   },
 };
 
-export function DashboardCharts() {
+// Define the WalletData type (should match the one in page.tsx)
+type WalletData = {
+  nativeBalance: {
+    value: number;
+    usdValue?: number;
+  };
+  tokenBalances: {
+    symbol: string | null;
+    name: string | null;
+    logo: string | null;
+    balance: number;
+    usdValue?: number;
+  }[];
+  nftCount: number;
+  totalValueUsd?: number;
+};
+
+// Define the props interface for DashboardCharts
+interface DashboardChartsProps {
+  walletData: WalletData | null;
+  isLoading: boolean;
+  error: string | null;
+  address?: `0x${string}`; // Optional address prop
+  chainId?: number; // Optional chainId prop
+}
+
+// Update the component definition to accept and type the props
+export function DashboardCharts({ walletData, isLoading, error, address, chainId }: DashboardChartsProps) {
   const [timeframe, setTimeframe] = useState('Weekly');
-  const [authenticated, setAuthenticated] = useState(false); // Replace Privy with local state
-  const [wallets, setWallets] = useState([]); // Replace Privy wallets with local state
-  const [chainAllocation, setChainAllocation] = useState(pieChartData);
+  // Remove local authenticated/wallets state, rely on props
+  // const [authenticated, setAuthenticated] = useState(false);
+  // const [wallets, setWallets] = useState([]);
+  const [chainAllocation, setChainAllocation] = useState(pieChartData); // Keep default for initial render
   const [selectedMetric, setSelectedMetric] = useState('netWorth');
-  
+
+  // Log props on component render/update
+  useEffect(() => {
+    console.log("DashboardCharts props:", { walletData, isLoading, error, address, chainId });
+
+    // Update chain allocation based on actual walletData when available
+    if (walletData && walletData.tokenBalances) {
+        // --- Logic to calculate chain allocation from walletData.tokenBalances ---
+        // This is a simplified example; you'll need price data for accurate USD allocation
+        const allocationMap = new Map<string, number>();
+        let totalValue = 0;
+
+        walletData.tokenBalances.forEach(token => {
+            // Find the chain for the token (you might need a mapping or add chain info to tokenBalances)
+            // For now, let's assume all tokens are on the connected chainId for simplicity
+            const chainKey = supportedChains.find(c => c.id === chainId)?.key || 'unknown';
+            const value = token.usdValue || 0; // Use USD value if available, otherwise 0
+
+            allocationMap.set(chainKey, (allocationMap.get(chainKey) || 0) + value);
+            totalValue += value;
+        });
+
+        // Add native balance value
+        const nativeChainKey = supportedChains.find(c => c.id === chainId)?.key || 'unknown';
+        const nativeValue = walletData.nativeBalance.usdValue || 0;
+        allocationMap.set(nativeChainKey, (allocationMap.get(nativeChainKey) || 0) + nativeValue);
+        totalValue += nativeValue;
+
+
+        if (totalValue > 0) {
+            const updatedAllocation = pieChartData.map(item => {
+                 const chainValue = allocationMap.get(item.chain) || 0;
+                 return {
+                     ...item,
+                     value: parseFloat(((chainValue / totalValue) * 100).toFixed(2)) // Calculate percentage
+                 };
+            });
+             console.log("Updated Chain Allocation:", updatedAllocation);
+            setChainAllocation(updatedAllocation);
+        } else {
+             console.log("Total value is 0, using default allocation.");
+            setChainAllocation(pieChartData); // Reset if no value
+        }
+        // --- End of allocation logic ---
+    } else {
+        console.log("No walletData or tokenBalances, using default allocation.");
+        setChainAllocation(pieChartData); // Reset to default if no data
+    }
+
+  }, [walletData, chainId]); // Re-calculate when walletData or chainId changes
+
   // Get the appropriate data based on selected metric and timeframe
   const getChartData = () => {
-    // If authenticated and wallet connected, show real data (simulated)
-    if (authenticated && wallets.length > 0) {
-      return generateTimeframeData(selectedMetric, timeframe);
+    // If walletData is available, derive chart data from it (Needs implementation)
+    if (walletData) {
+      // TODO: Implement logic to transform walletData into the format needed by the line chart
+      // based on the selectedMetric (netWorth, tokenWorth, transactions) and timeframe.
+      // This might involve fetching historical data or processing transaction history.
+      // For now, we'll still return sample data until this is built.
+      console.log("Wallet data available, but chart data derivation not implemented yet. Using sample data.");
+      return generateTimeframeData(selectedMetric, timeframe); // Placeholder
     }
-    
-    // Default data when not connected
+
+    // Default data when not connected or data not loaded
+    console.log("No wallet data, using default chart data.");
     switch(selectedMetric) {
       case 'netWorth':
         return netWorthData;
@@ -162,7 +250,7 @@ export function DashboardCharts() {
         return netWorthData;
     }
   };
-  
+
   // Get the chart title based on selected metric
   const getChartTitle = () => {
     switch(selectedMetric) {
@@ -176,7 +264,7 @@ export function DashboardCharts() {
         return 'Total Net Worth';
     }
   };
-  
+
   // Get the chart description based on selected metric
   const getChartDescription = () => {
     switch(selectedMetric) {
@@ -190,7 +278,10 @@ export function DashboardCharts() {
         return 'Shows your total net worth on and off-chain';
     }
   };
-  
+
+  // REMOVE the entire useEffect block below as it uses undefined variables
+  // and its logic seems redundant or misplaced.
+  /*
   // Update chain allocation data when wallet is connected
   // Update data when timeframe changes or wallet connection status changes
   useEffect(() => {
@@ -205,7 +296,7 @@ export function DashboardCharts() {
             // Increase the max listeners limit to prevent warnings
             window.ethereum.setMaxListeners(20); // Set a higher limit than default (10)
           }
-          
+
           // For providers that don't expose setMaxListeners but use Node's EventEmitter
           // Try to access the internal _events property that some providers expose
           if (window.ethereum._events && typeof window.ethereum._events === 'object') {
@@ -216,7 +307,7 @@ export function DashboardCharts() {
             }
           }
         }
-        
+
         // Handle WalletConnect specific event emitters if present
         // WalletConnect often creates its own event emitters
         // Use type assertion to safely access WalletConnectProvider
@@ -225,16 +316,16 @@ export function DashboardCharts() {
           walletConnectProvider.setMaxListeners(20);
         }
       };
-      
+
       // Apply the fix
       increaseMaxListeners();
     }
-    
-    if (authenticated && wallets.length > 0) {
+
+    if (authenticated && wallets.length > 0) { // Error occurs here
       // In a real implementation, you would fetch token data from the wallet
       // and calculate the allocation by chain
       // For now, we'll simulate this with sample data
-      
+
       // This would be replaced with actual API calls to get token balances by chain
       const updatedAllocation = [
         { chain: 'base', name: 'Base', value: 35, fill: 'hsl(var(--chart-1))' },
@@ -243,20 +334,21 @@ export function DashboardCharts() {
         { chain: 'ethereum', name: 'Ethereum', value: 8, fill: 'hsl(var(--chart-4))' },
         { chain: 'binance', name: 'BNB Chain', value: 2, fill: 'hsl(var(--chart-5))' },
       ];
-      
+
       setChainAllocation(updatedAllocation);
     } else {
       // Reset to default data when wallet is disconnected
       setChainAllocation(pieChartData);
     }
-    
+
     // Cleanup function to prevent memory leaks and listener buildup
     return () => {
       if (typeof window !== 'undefined' && window.ethereum && window.ethereum.removeAllListeners) {
         window.ethereum.removeAllListeners();
       }
     };
-  }, [authenticated, wallets, timeframe]); // Added timeframe dependency
+  }, [authenticated, wallets, timeframe]); // Error occurs here
+  */
 
   return (
     <div className="space-y-6">
@@ -313,18 +405,6 @@ export function DashboardCharts() {
           <CardContent className="px-4 pt-2">
             <div className="text-3xl font-bold">1,234</div>
             <p className="text-xs text-muted-foreground">+120 this year</p>
-          </CardContent>
-        </Card>
-        <Card 
-          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'nfts' ? 'ring-1 ring-primary/40' : ''}`}
-          onClick={() => setSelectedMetric('nfts')}
-        >
-          <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Number of NFTs</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pt-2">
-            <div className="text-3xl font-bold">12</div>
-            <p className="text-xs text-muted-foreground">+3 this year</p>
           </CardContent>
         </Card>
       </div>
@@ -440,8 +520,9 @@ export function DashboardCharts() {
           <CardHeader className="items-center pb-0">
             <CardTitle className="text-base font-medium">Chain Allocation</CardTitle>
             <p className="text-xs text-muted-foreground">
-              {authenticated && wallets.length > 0 
-                ? "Shows your token allocation across multiple chains" 
+              {/* Replace 'authenticated && wallets.length > 0' with 'address' */}
+              {address
+                ? "Shows your token allocation across multiple chains"
                 : "Connect wallet to see your chain allocation"}
             </p>
           </CardHeader>
@@ -475,42 +556,49 @@ export function DashboardCharts() {
         </Card>
       </div>
 
-      {/* Token Allocation Table */}
+      {/* Token Allocation Table - Replace with walletData */}
       <Card className="border border-[#E9EAEB]">
         <CardHeader>
           <CardTitle className="text-base font-medium">Token Allocation</CardTitle>
+           <p className="text-xs text-muted-foreground">
+              {/* Use 'address' prop and imported formatAddress */}
+              {address ? `Tokens found for address ${formatAddress(address)} on chain ${chainId}` : "Connect wallet to see token allocation"}
+            </p>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Price (24h)</TableHead>
+                {/* <TableHead>Price (24h)</TableHead> */}
                 <TableHead>Amount</TableHead>
-                <TableHead>Share</TableHead>
-                <TableHead>Value</TableHead>
+                {/* <TableHead>Share</TableHead> */}
+                <TableHead>Value (USD)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tokenAllocationData.map((token, index) => (
-                <TableRow key={index}>
-                  <TableCell className="font-medium">{token.name}</TableCell>
-                  <TableCell>{token.price}</TableCell>
-                  <TableCell>{token.amount}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div 
-                          className="bg-primary h-2.5 rounded-full" 
-                          style={{ width: token.share }}
-                        ></div>
-                      </div>
-                      {token.share}
-                    </div>
-                  </TableCell>
-                  <TableCell>{token.value}</TableCell>
-                </TableRow>
-              ))}
+              {/* Map over walletData.tokenBalances */}
+              {walletData && walletData.tokenBalances.length > 0 ? (
+                walletData.tokenBalances.map((token, index) => (
+                  <TableRow key={token.symbol || index}>
+                    <TableCell className="font-medium flex items-center gap-2">
+                       {token.logo && <img src={token.logo} alt={token.name || ''} className="h-5 w-5 rounded-full" />}
+                       {token.name || 'Unknown'} ({token.symbol || '???'})
+                    </TableCell>
+                    {/* <TableCell>{token.price}</TableCell> */}
+                    <TableCell>{token.balance.toFixed(4)}</TableCell>
+                    {/* <TableCell>...</TableCell> */}
+                    <TableCell>{token.usdValue ? `$${token.usdValue.toFixed(2)}` : '--'}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                 <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      {/* This line should now be fine */}
+                      {walletData ? "No tokens found or data unavailable." : "Connect wallet to view tokens."}
+                    </TableCell>
+                  </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -518,3 +606,12 @@ export function DashboardCharts() {
     </div>
   );
 }
+
+// Helper function to find supported chain (add if not already present)
+const supportedChains: { name: string; key: string; id: number; isTestnet: boolean }[] = [
+  { name: 'Base', key: 'base', id: 8453, isTestnet: false }, // Example IDs, use actual ones
+  { name: 'Optimism', key: 'optimism', id: 10, isTestnet: false },
+  { name: 'Arbitrum', key: 'arbitrum', id: 42161, isTestnet: false },
+  { name: 'Ethereum', key: 'ethereum', id: 1, isTestnet: false },
+  { name: 'BNB Chain', key: 'binance', id: 56, isTestnet: false },
+];
