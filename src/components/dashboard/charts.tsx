@@ -315,6 +315,18 @@ export function DashboardCharts() {
             <p className="text-xs text-muted-foreground">+120 this year</p>
           </CardContent>
         </Card>
+        <Card 
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'nfts' ? 'ring-1 ring-primary/40' : ''}`}
+          onClick={() => setSelectedMetric('nfts')}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Number of NFTs</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-2">
+            <div className="text-3xl font-bold">12</div>
+            <p className="text-xs text-muted-foreground">+3 this year</p>
+          </CardContent>
+        </Card>
       </div>
       
       {/* Charts Row */}
