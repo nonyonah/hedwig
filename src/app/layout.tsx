@@ -1,28 +1,22 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import { WalletProvider } from '@/components/providers/wallet-provider';
+import { ThemeProvider } from '@/components/theme-provider';
+import { WalletConnectProvider } from '@/components/providers/connectkit-provider';
 import { Toaster } from 'sonner';
-import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
-
-export const metadata: Metadata = {
-  title: "Albus Finance",
-  description: "Your financial companion",
-};
+import './globals.css';
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <WalletProvider>
-          {children}
-          <Toaster />
-        </WalletProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <ThemeProvider>
+          <WalletConnectProvider>
+            {children}
+            <Toaster position="top-right" />
+          </WalletConnectProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

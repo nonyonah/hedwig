@@ -6,7 +6,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ArrowDown, TrendingUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
 import {
   LineChart,
   Line,
@@ -139,8 +138,8 @@ const chartConfig = {
 
 export function DashboardCharts() {
   const [timeframe, setTimeframe] = useState('Weekly');
-  const { authenticated } = usePrivy();
-  const { wallets } = useWallets();
+  const [authenticated, setAuthenticated] = useState(false); // Replace Privy with local state
+  const [wallets, setWallets] = useState([]); // Replace Privy wallets with local state
   const [chainAllocation, setChainAllocation] = useState(pieChartData);
   const [selectedMetric, setSelectedMetric] = useState('netWorth');
   
@@ -264,7 +263,7 @@ export function DashboardCharts() {
       {/* Stats Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card 
-          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'netWorth' ? 'ring-2 ring-primary' : ''}`}
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'netWorth' ? 'ring-1 ring-primary/40' : ''}`}
           onClick={() => setSelectedMetric('netWorth')}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
@@ -280,7 +279,7 @@ export function DashboardCharts() {
           </CardContent>
         </Card>
         <Card 
-          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'tokenWorth' ? 'ring-2 ring-primary' : ''}`}
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'tokenWorth' ? 'ring-1 ring-primary/40' : ''}`}
           onClick={() => setSelectedMetric('tokenWorth')}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
@@ -305,7 +304,7 @@ export function DashboardCharts() {
           </CardContent>
         </Card>
         <Card 
-          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'transactions' ? 'ring-2 ring-primary' : ''}`}
+          className={`h-[150px] cursor-pointer transition-all ${selectedMetric === 'transactions' ? 'ring-1 ring-primary/40' : ''}`}
           onClick={() => setSelectedMetric('transactions')}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">

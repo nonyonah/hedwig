@@ -8,7 +8,6 @@ import { Sidebar, SidebarContent, SidebarGroup } from '@/components/ui/sidebar';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { usePrivy } from '@privy-io/react-auth';
 import { formatAddress } from '@/lib/utils';
 import { 
   LayoutDashboard, 
@@ -49,10 +48,9 @@ function InjectStyles() {
 }
 
 export function SidebarNav({ className, ...props }: SidebarNavProps) {
-
   const pathname = usePathname();
-  const { user } = usePrivy();
-  // Remove collapsed state and related effects
+  // Replace Privy user with local state
+  const [user, setUser] = useState(null);
 
   const routes = [
     {
@@ -95,7 +93,7 @@ export function SidebarNav({ className, ...props }: SidebarNavProps) {
       <InjectStyles />
       <Sidebar 
         className={cn(
-          'h-screen flex flex-col transition-all duration-300 ease-in-out border-r overflow-y-auto overflow-x-hidden w-[16rem] bg-white', // Added bg-white
+          'h-screen flex flex-col transition-all duration-300 ease-in-out border-r overflow-y-auto overflow-x-hidden w-[16rem] bg-white',
           className
         )} 
         {...props}
@@ -159,7 +157,7 @@ export function SidebarNav({ className, ...props }: SidebarNavProps) {
           </Avatar>
           <div className="flex-1 overflow-hidden">
             <p className="text-sm font-medium truncate">
-              {user?.email?.toString() || formatAddress(user?.wallet?.address || '')}
+              {user?.email || 'Not connected'}
             </p>
           </div>
         </div>
