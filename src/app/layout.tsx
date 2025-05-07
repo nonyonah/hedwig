@@ -1,7 +1,7 @@
 import { ThemeProvider } from '@/components/theme-provider';
-import { WalletConnectProvider } from '@/components/providers/connectkit-provider';
 import { Toaster } from 'sonner';
 import './globals.css';
+import { ThirdwebProviderWrapper } from "@/providers/ThirdwebProvider";
 
 export default function RootLayout({
   children,
@@ -9,14 +9,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body>
-        <ThemeProvider>
-          <WalletConnectProvider>
+        <ThirdwebProviderWrapper>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             {children}
-            <Toaster position="top-right" />
-          </WalletConnectProvider>
-        </ThemeProvider>
+            <Toaster />
+          </ThemeProvider>
+        </ThirdwebProviderWrapper>
       </body>
     </html>
   );
