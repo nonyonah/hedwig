@@ -1,14 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: {
-    domains: [
-      'cryptologos.cc',
-      'metadata.ens.domains',
-      'api.basename.app',
-      'ipfs.io',
-      'gateway.ipfs.io'
-    ],
+  webpack: (config, { isServer }) => {
+    // Increase chunk loading timeout to 60 seconds
+    config.watchOptions = {
+      ...config.watchOptions,
+      aggregateTimeout: 60000,
+    };
+    return config;
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

@@ -1,15 +1,23 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAddress, useChainId, useDisconnect, useConnectionStatus } from "thirdweb/react";
+import { 
+  useActiveWallet,
+  useActiveAccount,
+  useDisconnect,
+  useActiveWalletChain,
+  useWalletBalance,
+  useActiveWalletConnectionStatus, // Corrected: Use useActiveWalletConnectionStatus
+} from "thirdweb/react";
+import { client } from "@/providers/ThirdwebProvider";
 
-// Define the WalletData type
+
 export type WalletData = {
   nativeBalance: {
     value: number;
     usdValue?: number;
   };
-  tokenBalances: {
+  tokenBalances: Array<{
     symbol: string | null;
     name: string | null;
     logo: string | null;
@@ -18,109 +26,111 @@ export type WalletData = {
     chain?: string;
     marketShare?: number;
     priceChange24h?: number;
-  }[];
+  }>;
   nftCount: number;
   totalValueUsd?: number;
 };
 
 export function useWalletConnection() {
-  const address = useAddress();
-  const chainId = useChainId();
-  const connectionStatus = useConnectionStatus();
-  const { disconnect } = useDisconnect();
+  const activeWallet = useActiveWallet(); 
+  const activeAccount = useActiveAccount(); 
+  const connectionStatus = useActiveWalletConnectionStatus(); // Corrected: Get active wallet's connection status
+  
+  const address = activeAccount?.address; 
+
+  const disconnectWallet = useDisconnect();
+  const chain = useActiveWalletChain();
+  
+  const { data: balance, isLoading: isLoadingBalance } = useWalletBalance({ 
+    client: client, 
+    chain: chain,
+    address: address, 
+  }); 
   
   const [walletData, setWalletData] = useState<WalletData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true); 
   const [error, setError] = useState<string | null>(null);
 
-  const isConnected = connectionStatus === "connected";
+  const nftCount = 0;
+  const isLoadingNFTs = false;
 
   useEffect(() => {
     const fetchWalletData = async () => {
-      if (!isConnected || !address || !chainId) {
+      // Ensure all necessary data is available
+      if (!address || connectionStatus !== "connected" || !chain) {
         setWalletData(null);
+        setIsLoading(false);
         return;
       }
 
-      setIsLoading(true);
-      setError(null);
-
+      setIsLoading(true); 
       try {
-        // For now, we'll use mock data
-        // In a real implementation, you would use ThirdWeb SDK to fetch real data
-        const mockData: WalletData = {
-          nativeBalance: {
-            value: 1.25,
-            usdValue: 2500,
-          },
-          tokenBalances: [
-            {
-              symbol: "ETH",
-              name: "Ethereum",
-              logo: null,
-              balance: 1.25,
-              usdValue: 2500,
-              chain: "ethereum",
-              marketShare: 60,
-              priceChange24h: 2.5,
+        if (balance) {
+         
+          const nativeValueBigInt = balance.value;
+          const nativeValue = parseFloat(balance.displayValue); 
+          
+         
+          // const usdPricePerToken = balance.price || 0; // 'price' does not exist on GetBalanceResult
+          const usdPricePerToken = 0; // Placeholder: USD price for native token needs a separate source
+          const usdValue = nativeValue * usdPricePerToken;
+          
+          const currentWalletData: WalletData = {
+            nativeBalance: {
+              value: nativeValue,
+              usdValue: usdValue
             },
-            {
-              symbol: "USDC",
-              name: "USD Coin",
-              logo: null,
-              balance: 1000,
-              usdValue: 1000,
-              chain: "base",
-              marketShare: 25,
-              priceChange24h: 0.1,
-            },
-            {
-              symbol: "MATIC",
-              name: "Polygon",
-              logo: null,
-              balance: 500,
-              usdValue: 400,
-              chain: "polygon",
-              marketShare: 10,
-              priceChange24h: -1.2,
-            },
-            {
-              symbol: "UNI",
-              name: "Uniswap",
-              logo: null,
-              balance: 50,
-              usdValue: 250,
-              chain: "ethereum",
-              marketShare: 5,
-              priceChange24h: 5.3,
-            },
-          ],
-          nftCount: 3,
-          totalValueUsd: 4150,
-        };
-
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        setWalletData(mockData);
+            tokenBalances: [ // This is simplified to only show native balance as a token
+              {
+                symbol: balance.symbol || null,
+                name: balance.name || null,
+                logo: null, 
+                balance: nativeValue,
+                usdValue: usdValue,
+                chain: chain?.name || String(chain?.id),
+              }
+            ],
+            nftCount: nftCount, 
+            totalValueUsd: usdValue // Simplified: In reality, sum of all token USD values
+          };
+          
+          setWalletData(currentWalletData);
+        } else if (!isLoadingBalance) {
+          // If balance is not available and not loading, set to a default/empty state
+           setWalletData({
+            nativeBalance: { value: 0, usdValue: 0 },
+            tokenBalances: [],
+            nftCount: 0,
+            totalValueUsd: 0,
+          });
+        }
       } catch (err) {
         console.error("Error fetching wallet data:", err);
-        setError("Failed to fetch wallet data. Please try again later.");
+        setError("Failed to fetch wallet data");
+        setWalletData(null);
       } finally {
-        setIsLoading(false);
+        // Overall loading state depends on balance loading
+        setIsLoading(isLoadingBalance); 
       }
     };
 
     fetchWalletData();
-  }, [address, chainId, isConnected]);
+  }, [address, connectionStatus, chain, balance, isLoadingBalance, nftCount]);
+
+  const disconnect = async () => {
+    // Corrected disconnect call
+    if (disconnectWallet.disconnect && activeWallet) { 
+      await disconnectWallet.disconnect(activeWallet); 
+    }
+  };
 
   return {
     address,
-    isConnected,
-    chainId,
+    isConnected: connectionStatus === "connected",
+    chainId: chain?.id,
     disconnect,
     walletData,
-    isLoading,
+    isLoading: isLoading, 
     error,
   };
 }
