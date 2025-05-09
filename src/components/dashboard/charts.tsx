@@ -96,10 +96,15 @@ interface WalletData {
     name: string | null;
     logo: string | null;
     balance: number;
-    usdValue?: number;
+    usdValue?: number | undefined;
+    chain?: string; // Add the optional chain property
   }>;
   nftCount: number;
   totalValueUsd?: number;
+  historicalData?: Array<{
+    timestamp: number;
+    value: number;
+  }>;
 }
 
 interface DashboardChartsProps {
@@ -130,10 +135,13 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
   const calculateTotalValue = () => {
     if (!walletData) return 0;
     
-    // Native token value
-    const nativeValue = walletData.nativeBalance?.usdValue || 0;
+    // If we have totalValueUsd from the multichain query, use it
+    if (walletData.totalValueUsd !== undefined) {
+      return walletData.totalValueUsd;
+    }
     
-    // Sum of all token values
+    // Otherwise calculate it
+    const nativeValue = walletData.nativeBalance?.usdValue || 0;
     const tokenValues = walletData.tokenBalances?.reduce((sum, token) => 
       sum + (token.usdValue || 0), 0) || 0;
     
@@ -142,14 +150,28 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
   
   // Check if wallet is connected
   useEffect(() => {
-    // Consider wallet connected if address exists, regardless of walletData
     setWalletConnected(!!address);
   }, [address]);
 
   // Generate historical data based on wallet data
   useEffect(() => {
-    // Generate mock data even if wallet is not connected for demo purposes
-    // In a real app, you'd fetch this from an API
+    // If we have historical data from the multichain query, use it
+    if (walletData?.historicalData && walletData.historicalData.length > 0) {
+      // Format the historical data for our chart
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const formattedData = walletData.historicalData.map((item: { timestamp: number; value: number }) => {
+        const date = new Date(item.timestamp);
+        return {
+          month: months[date.getMonth()],
+          value: item.value
+        };
+      });
+      
+      setHistoricalData(formattedData);
+      return;
+    }
+    
+    // Otherwise, use mock data as before
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentMonth = new Date().getMonth();
     
@@ -192,24 +214,89 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
   
   // Update chain allocation based on actual wallet data
   useEffect(() => {
-    // Always show some allocation data for demonstration
-    // In a real app, this would be based on actual wallet data
+    if (!walletData || !walletData.tokenBalances || walletData.tokenBalances.length === 0) {
+      // If no wallet data, show demo allocation
+      const currentChain = chainId 
+        ? supportedChains.find(c => c.id === chainId) 
+        : supportedChains[0];
+      
+      const allocation = supportedChains.map(chain => ({
+        chain: chain.key,
+        name: chain.name,
+        value: chain.key === currentChain?.key ? 60 : 10, // 60% for current chain, 10% for others
+        fill: chain.color
+      }));
+      
+      setChainAllocation(allocation);
+      return;
+    }
     
-    // Find the current chain or default to the first one
-    const currentChain = chainId 
-      ? supportedChains.find(c => c.id === chainId) 
-      : supportedChains[0];
+    // Group token balances by chain
+    const chainValues: Record<string, number> = {};
+    let totalValue = 0;
     
-    // Create allocation data with the current chain having the highest value
-    const allocation = supportedChains.map(chain => ({
-      chain: chain.key,
-      name: chain.name,
-      value: chain.key === currentChain?.key ? 60 : 10, // 60% for current chain, 10% for others
-      fill: chain.color
-    }));
+    // Add native token to the current chain
+    if (walletData.nativeBalance && walletData.nativeBalance.usdValue) {
+      const currentChain = chainId 
+        ? supportedChains.find(c => c.id === chainId)?.key || 'ethereum'
+        : 'ethereum';
+      
+      chainValues[currentChain] = walletData.nativeBalance.usdValue;
+      totalValue += walletData.nativeBalance.usdValue;
+    }
+    
+    // Add token values by chain
+    walletData.tokenBalances.forEach(token => {
+      if (token.usdValue) {
+        // Check if token has a chain property
+        if (token.chain) {
+          const chain = token.chain.toLowerCase();
+          chainValues[chain] = (chainValues[chain] || 0) + token.usdValue;
+          totalValue += token.usdValue;
+        } else {
+          // If no chain specified, add to current chain
+          const currentChain = chainId 
+            ? supportedChains.find(c => c.id === chainId)?.key || 'ethereum'
+            : 'ethereum';
+          
+          chainValues[currentChain] = (chainValues[currentChain] || 0) + token.usdValue;
+          totalValue += token.usdValue;
+        }
+      }
+    });
+    
+    // Convert to pie chart data format
+    const allocation = Object.entries(chainValues).map(([chain, value]) => {
+      const chainInfo = supportedChains.find(c => c.key === chain) || {
+        key: chain,
+        name: chain.charAt(0).toUpperCase() + chain.slice(1),
+        color: '#888888'
+      };
+      
+      return {
+        chain: chainInfo.key,
+        name: chainInfo.name,
+        value: Math.round((value / totalValue) * 100),
+        fill: chainInfo.color
+      };
+    });
+    
+    // Ensure we have at least one item
+    if (allocation.length === 0) {
+      const currentChain = chainId 
+        ? supportedChains.find(c => c.id === chainId) 
+        : supportedChains[0];
+      
+      allocation.push({
+        chain: currentChain?.key || 'ethereum',
+        name: currentChain?.name || 'Ethereum',
+        value: 100,
+        fill: currentChain?.color || 'hsl(var(--chart-4))'
+      });
+    }
     
     setChainAllocation(allocation);
-  }, [chainId]);
+  }, [walletData, chainId]);
 
   // Get the appropriate data based on selected metric and timeframe
   const getChartData = () => {
@@ -246,7 +333,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
         netWorth: totalValue,
         tokenWorth: tokenValue,
         nftCount: walletData.nftCount || 0,
-        // Transactions would come from transaction history in a real app
+        // For transactions, we could get this from the ThirdWeb API if available
         transactions: Math.round(totalValue / 100) || 0
       };
     }
@@ -283,6 +370,9 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
   // Get metrics data
   const metrics = getMetrics();
 
+  // Determine if we're loading data
+  const isDataLoading = isLoading; // Remove reference to isLoadingTokens
+  
   return (
     <div className="space-y-6">
       {/* Stats Cards Row */}
@@ -293,7 +383,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Net Worth</CardTitle>
-            {isLoading ? (
+            {isDataLoading ? (
               <Skeleton className="h-4 w-12" />
             ) : walletConnected && metrics.netWorth !== null && metrics.netWorth > 0 && (
               <span className="flex items-center text-xs font-medium text-green-500">
@@ -303,7 +393,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
             )}
           </CardHeader>
           <CardContent className="px-4 pt-2">
-            {isLoading ? (
+            {isDataLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-8 w-32" />
                 <Skeleton className="h-4 w-24" />
@@ -327,7 +417,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Token Worth</CardTitle>
-            {isLoading ? (
+            {isDataLoading ? (
               <Skeleton className="h-4 w-12" />
             ) : walletConnected && metrics.tokenWorth !== null && metrics.tokenWorth > 0 && (
               <span className="flex items-center text-xs font-medium text-green-500">
@@ -337,7 +427,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
             )}
           </CardHeader>
           <CardContent className="px-4 pt-2">
-            {isLoading ? (
+            {isDataLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-8 w-32" />
                 <Skeleton className="h-4 w-24" />
@@ -358,10 +448,10 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
         <Card className="h-36">
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Number of NFTs</CardTitle>
-            {isLoading && <Skeleton className="h-4 w-12" />}
+            {isDataLoading && <Skeleton className="h-4 w-12" />}
           </CardHeader>
           <CardContent className="px-4 pt-2">
-            {isLoading ? (
+            {isDataLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-8 w-16" />
                 <Skeleton className="h-4 w-24" />
@@ -385,10 +475,10 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
         >
           <CardHeader className="flex flex-row items-center justify-between pb-1 px-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">Transactions</CardTitle>
-            {isLoading && <Skeleton className="h-4 w-12" />}
+            {isDataLoading && <Skeleton className="h-4 w-12" />}
           </CardHeader>
           <CardContent className="px-4 pt-2">
-            {isLoading ? (
+            {isDataLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-8 w-24" />
                 <Skeleton className="h-4 w-24" />
@@ -414,7 +504,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
         <Card className="border border-[#E9EAEB] md:col-span-8">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
-              {isLoading ? (
+              {isDataLoading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-5 w-32" />
                   <Skeleton className="h-4 w-48" />
@@ -426,7 +516,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
                 </>
               )}
             </div>
-            {isLoading ? (
+            {isDataLoading ? (
               <Skeleton className="h-8 w-24" />
             ) : (
               <DropdownMenu>
@@ -446,7 +536,7 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {isLoading ? (
+              {isDataLoading ? (
                 <div className="flex flex-col space-y-2 h-full">
                   <Skeleton className="h-full w-full rounded-md" />
                   <div className="flex justify-between">
@@ -475,72 +565,33 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
                     margin={{
                       top: 15,
                       right: 25,
-                      left: 25,
-                      bottom: 15,
+                      left: 5,
+                      bottom: 5,
                     }}
                   >
-                    <CartesianGrid 
-                      strokeDasharray="3 3" 
-                      vertical={false} 
-                      stroke="hsl(var(--border))" 
-                      opacity={0.5}
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis 
+                      tickFormatter={(value) => 
+                        selectedMetric === 'transactions' 
+                          ? value.toString() 
+                          : `$${value}`
+                      } 
                     />
-                    <XAxis 
-                      dataKey="month" 
-                      stroke="hsl(var(--muted-foreground))" 
-                      tickLine={true}
-                      axisLine={true}
-                      tickMargin={10}
-                      tickFormatter={(value) => value.slice(0, 3)}
-                      fontSize={12}
+                    <Tooltip 
+                      formatter={(value) => 
+                        selectedMetric === 'transactions' 
+                          ? [value.toString(), 'Transactions'] 
+                          : [`$${value}`, selectedMetric === 'netWorth' ? 'Net Worth' : 'Token Worth']
+                      }
                     />
-                    <YAxis
-                      stroke="hsl(var(--muted-foreground))"
-                      tickFormatter={(value) => selectedMetric === 'transactions' ? value.toLocaleString() : `$${value.toLocaleString()}`}
-                      tickLine={true}
-                      axisLine={true}
-                      tickMargin={10}
-                      fontSize={12}
-                      width={65}
-                      domain={['auto', 'auto']}
-                    />
-                    <ChartTooltip
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <ChartTooltipContent>
-                              <div className="text-sm font-medium">{payload[0].payload.month}</div>
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1">
-                                  <div
-                                    className="h-2 w-2 rounded-full"
-                                    style={{ backgroundColor: "hsl(var(--primary))" }}
-                                  />
-                                  <span>Value</span>
-                                </div>
-                                <div className="font-medium">
-                                  {selectedMetric === 'transactions' 
-                                    ? Number(payload[0].value).toLocaleString() 
-                                    : `$${Number(payload[0].value).toLocaleString()}`}
-                                </div>
-                              </div>
-                            </ChartTooltipContent>
-                          )
-                        }
-                        return null
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ 
-                        stroke: 'hsl(var(--primary))', 
-                        strokeWidth: 2,
-                        r: 4
-                      }}
+                    <Line 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke="hsl(var(--chart-1))" 
+                      strokeWidth={2}
+                      dot={{ r: 4 }}
+                      activeDot={{ r: 6 }}
                     />
                   </LineChart>
                 </ChartContainer>
@@ -548,140 +599,81 @@ export function DashboardCharts({ walletData, isLoading, error, address, chainId
             </div>
           </CardContent>
         </Card>
-
+        
         {/* Pie Chart */}
-        <Card className="border border-[#E9EAEB] md:col-span-4 flex flex-col">
-          <CardHeader className="items-center pb-0">
-            {isLoading ? (
-              <div className="flex flex-col items-center space-y-2">
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-4 w-48" />
-              </div>
-            ) : (
-              <>
-                <CardTitle className="text-base font-medium">Chain Allocation</CardTitle>
-                <p className="text-xs text-muted-foreground text-center">Distribution of your assets across chains</p>
-              </>
-            )}
+        <Card className="border border-[#E9EAEB] md:col-span-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-medium">Chain Allocation</CardTitle>
+            <p className="text-xs text-muted-foreground">Distribution of your assets across chains</p>
           </CardHeader>
-          <CardContent className="flex-1 flex flex-col justify-center items-center">
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center h-full w-full space-y-4">
-                <Skeleton className="h-48 w-48 rounded-full" />
-                <div className="w-full space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-3 w-3 rounded-full" />
-                      <Skeleton className="h-4 w-20" />
-                    </div>
-                    <Skeleton className="h-4 w-12" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-3 w-3 rounded-full" />
-                      <Skeleton className="h-4 w-20" />
-                    </div>
-                    <Skeleton className="h-4 w-12" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-3 w-3 rounded-full" />
-                      <Skeleton className="h-4 w-20" />
-                    </div>
-                    <Skeleton className="h-4 w-12" />
-                  </div>
+          <CardContent>
+            <div className="h-64">
+              {isDataLoading ? (
+                <div className="flex flex-col space-y-2 h-full">
+                  <Skeleton className="h-full w-full rounded-md" />
                 </div>
-              </div>
-            ) : error ? (
-              <Alert variant="destructive" className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>
-                  {error}
-                </AlertDescription>
-              </Alert>
-            ) : !walletConnected ? (
-              <div className="flex flex-col items-center justify-center h-full w-full p-6 text-center">
-                <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">Connect your wallet to see your chain allocation</p>
-              </div>
-            ) : (
-              <div className="h-64 w-full">
-                <ChartContainer
-                  config={chartConfig}
-                  className="h-full w-full"
-                >
-                  {chainAllocation.filter(item => item.value > 0).length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full w-full p-6 text-center">
-                      <p className="text-muted-foreground">No assets found on any chain</p>
-                    </div>
-                  ) : (
-                    <PieChart>
-                      <Pie
-                        data={chainAllocation.filter(item => item.value > 0)}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={2}
-                        dataKey="value"
-                        nameKey="name"
-                        label={({ name, value }) => `${name}: ${value}%`}
-                        labelLine={false}
-                      >
-                        {chainAllocation.filter(item => item.value > 0).map((entry, index) => {
-                          const chain = supportedChains.find(c => c.key === entry.chain);
+              ) : !walletConnected ? (
+                <div className="flex flex-col items-center justify-center h-full w-full p-6 text-center">
+                  <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">Connect your wallet to see your chain allocation</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={chainAllocation}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={30}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="value"
+                      nameKey="name"
+                      label={({ name, value }) => `${name}: ${value}%`}
+                      labelLine={false}
+                    >
+                      {chainAllocation.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number) => `${value}%`}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload as PieChartPayload;
                           return (
-                            <Cell 
-                              key={`cell-${index}`} 
-                              fill={chain?.color || entry.fill} 
-                            />
+                            <div className="bg-white dark:bg-gray-800 p-2 border border-gray-200 dark:border-gray-700 rounded shadow-sm">
+                              <p className="font-medium">{data.name}</p>
+                              <p className="text-sm">{`${data.value}% of portfolio`}</p>
+                            </div>
                           );
-                        })}
-                      </Pie>
-                      <ChartLegend
-                        content={({ payload }) => {
-                          if (payload && payload.length) {
-                            return (
-                              <ChartLegendContent>
-                                {payload.map((entry, index) => {
-                                  // Safe type assertion through unknown
-                                  const item = entry.payload as unknown as PieChartPayload;
-                                  return (
-                                    <div key={`item-${index}`} className="flex items-center gap-2">
-                                      <div
-                                        className="h-3 w-3 rounded-full"
-                                        style={{ backgroundColor: entry.color }}
-                                      />
-                                      <span className="text-xs">{item.name}: {item.value}%</span>
-                                    </div>
-                                  );
-                                })}
-                              </ChartLegendContent>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                    </PieChart>
-                  )}
-                </ChartContainer>
-              </div>
-            )}
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
       
-      {/* Token Table Card - New Addition */}
-      <Card>
+      {/* Token Table Card */}
+      <Card className="border border-[#E9EAEB]">
         <CardHeader>
-          <CardTitle>Token Holdings</CardTitle>
-          <CardDescription>
-            Your token balances across different chains
+          <CardTitle className="text-base font-medium">Token Holdings</CardTitle>
+          <CardDescription className="text-xs">
+            View all your tokens across multiple chains
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <TokenTable walletData={walletData} isLoading={isLoading} />
+          <TokenTable 
+            tokenBalances={walletData?.tokenBalances} 
+            isLoading={isLoading} 
+            error={error} 
+          />
         </CardContent>
       </Card>
     </div>
@@ -695,3 +687,4 @@ interface PieChartPayload {
   chain: string;
   fill: string;
 }
+

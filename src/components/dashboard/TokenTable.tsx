@@ -1,16 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import Image from "next/image";
-import { WalletData } from "@/hooks/useWalletConnection";
-import { TokenIcon } from "@/components/dashboard/TokenIcon";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TokenData } from "@/hooks/useMultichainData";
 
 interface TokenTableProps {
-  walletData: WalletData | null;
+  tokenBalances: TokenData[] | undefined;
   isLoading: boolean;
+  error: string | null;
 }
 
-export function TokenTable({ walletData, isLoading }: TokenTableProps) {
+export function TokenTable({ tokenBalances, isLoading, error }: TokenTableProps) {
   // Chain colors for badges
   const chainColors: Record<string, string> = {
     ethereum: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
@@ -44,7 +44,15 @@ export function TokenTable({ walletData, isLoading }: TokenTableProps) {
     );
   }
 
-  if (!walletData || !walletData.tokenBalances || walletData.tokenBalances.length === 0) {
+  if (error) {
+    return (
+      <div className="text-center py-8 text-red-500">
+        Error loading token data: {error}
+      </div>
+    );
+  }
+
+  if (!tokenBalances || tokenBalances.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         No token data available. Connect your wallet to view your tokens.
@@ -59,21 +67,24 @@ export function TokenTable({ walletData, isLoading }: TokenTableProps) {
           <TableHead>Token</TableHead>
           <TableHead>Chain</TableHead>
           <TableHead className="text-right">Price</TableHead>
+          <TableHead className="text-right">Balance</TableHead>
           <TableHead className="text-right">USD Value</TableHead>
-          <TableHead className="text-right">Market Share</TableHead>
           <TableHead className="text-right">24h Change</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {walletData.tokenBalances.map((token, index) => (
+        {tokenBalances.map((token, index) => (
           <TableRow key={index}>
             <TableCell className="font-medium">
               <div className="flex items-center gap-2">
-                <TokenIcon 
-                  symbol={token.symbol || "UNKNOWN"} 
-                  size="md"
-                />
-                <span>{token.name || "Unknown Token"}</span>
+                {token.logo && (
+                  <img 
+                    src={token.logo} 
+                    alt={token.symbol || "Token"} 
+                    className="w-6 h-6 rounded-full"
+                  />
+                )}
+                <span>{token.name || token.symbol || "Unknown Token"}</span>
               </div>
             </TableCell>
             <TableCell>
@@ -87,10 +98,10 @@ export function TokenTable({ walletData, isLoading }: TokenTableProps) {
               ${(token.usdValue && token.balance ? (token.usdValue / token.balance).toFixed(2) : "0.00")}
             </TableCell>
             <TableCell className="text-right">
-              ${token.usdValue?.toFixed(2) || "0.00"}
+              {token.balance.toFixed(4)}
             </TableCell>
             <TableCell className="text-right">
-              {token.marketShare?.toFixed(1) || "0.0"}%
+              ${token.usdValue?.toFixed(2) || "0.00"}
             </TableCell>
             <TableCell className="text-right">
               <div className={`flex items-center justify-end ${
