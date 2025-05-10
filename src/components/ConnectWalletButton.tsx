@@ -9,9 +9,9 @@ export default function ConnectWalletButton() {
       client={client}
       chains={defaultSupportedChains}
       appMetadata={defaultDAppMeta}
-      theme="dark" // or "light"
+      theme="dark"
       connectModal={{
-         size: "wide",
+         size: "compact",
         title: "Connect to Albus",
         showThirdwebBranding: false,
        }}
