@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useThirdweb } from 'thirdweb/react';
+import { getWalletBalance } from 'thirdweb/wallets';
 import { client } from '@/providers/ThirdwebProvider';
+import { ethereum, base, optimism, arbitrum, bsc } from "thirdweb/chains";
 
 // Define the structure of token data
 export interface TokenData {
@@ -33,11 +34,9 @@ export function useMultichainData(address: string | undefined, days: number = 30
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const { sdk } = useThirdweb();
-  
   useEffect(() => {
     const fetchMultichainData = async () => {
-      if (!address || !sdk) {
+      if (!address || !client) {
         setIsLoading(false);
         return;
       }
@@ -45,52 +44,21 @@ export function useMultichainData(address: string | undefined, days: number = 30
       try {
         setIsLoading(true);
         
-        // Use multichain query to get data across all chains
-        const response = await sdk.multichain.query({
-          queries: [
-            {
-              queryKey: ["native-balance", address],
-              queryFn: async () => {
-                return await sdk.wallet.getNativeBalance({
-                  address: address,
-                  includePrice: true,
-                });
-              },
-            },
-            {
-              queryKey: ["tokens", address],
-              queryFn: async () => {
-                return await sdk.wallet.getTokenBalances({
-                  address: address,
-                  includePrice: true,
-                });
-              },
-            },
-            {
-              queryKey: ["nfts", address],
-              queryFn: async () => {
-                return await sdk.wallet.getNFTs({
-                  address: address,
-                });
-              },
-            },
-            {
-              queryKey: ["portfolio-history", address, days],
-              queryFn: async () => {
-                return await sdk.wallet.getPortfolioHistory({
-                  address: address,
-                  days: days,
-                });
-              },
-            }
-          ],
+        // Use the ethereum chain object instead of a string
+        const balanceResult = await getWalletBalance({
+          client,
+          address,
+          chain: ethereum // Use the imported chain object
         });
         
-        // Process the response data
-        const nativeBalance = response[0].data || { value: 0 };
-        const tokens = response[1].data || [];
-        const nfts = response[2].data || [];
-        const history = response[3].data || [];
+        // Extract native balance - convert bigint to string then to number
+        const nativeBalance = {
+          value: parseFloat(balanceResult.value.toString()),
+          usdValue: 0 // We don't have USD value from the API
+        };
+        
+        // Since tokens aren't included in the result, we'll use an empty array
+        const tokens: any[] = [];
         
         // Format tokens with chain information
         const formattedTokens = tokens.map((token: any) => ({
@@ -103,25 +71,20 @@ export function useMultichainData(address: string | undefined, days: number = 30
           priceChange24h: token.priceChange24h || 0,
         }));
         
-        // Calculate total USD value
-        const nativeValue = nativeBalance.usdValue || 0;
-        const tokenValue = formattedTokens.reduce((sum: number, token: TokenData) => sum + (token.usdValue || 0), 0);
-        const totalValueUsd = nativeValue + tokenValue;
+        // Calculate total USD value (which will be 0 without price data)
+        const totalValueUsd = 0;
         
         setWalletData({
-          nativeBalance: {
-            value: parseFloat(nativeBalance.value || '0'),
-            usdValue: nativeBalance.usdValue || 0,
-          },
+          nativeBalance,
           tokenBalances: formattedTokens,
-          nftCount: nfts.length,
-          totalValueUsd: totalValueUsd,
-          historicalData: history,
+          nftCount: 0, // We don't have NFT data available with current APIs
+          totalValueUsd,
+          historicalData: [], // We don't have historical data available with current APIs
         });
         
         setError(null);
       } catch (err) {
-        console.error('Error fetching multichain data:', err);
+        console.error('Error fetching wallet data:', err);
         setError('Failed to fetch wallet data');
       } finally {
         setIsLoading(false);
@@ -129,7 +92,7 @@ export function useMultichainData(address: string | undefined, days: number = 30
     };
     
     fetchMultichainData();
-  }, [address, days, sdk]);
+  }, [address, days]);
   
   return { walletData, isLoading, error };
 }

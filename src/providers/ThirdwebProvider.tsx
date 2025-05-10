@@ -5,7 +5,7 @@ import { ReactNode } from "react";
 import { ethereum, base, optimism, arbitrum, bsc } from "thirdweb/chains";
 import { createThirdwebClient, type ThirdwebClient } from "thirdweb"; 
 
-// Create the client
+// Create the client for use in other components
 export const client: ThirdwebClient = createThirdwebClient({
   clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID || "", 
 });
@@ -20,16 +20,7 @@ export const defaultDAppMeta = {
 
 export function ThirdwebProviderWrapper({ children }: { children: ReactNode }) {
   return (
-    <ThirdwebProvider
-      activeChain="ethereum"
-      client={client}
-      supportedChains={defaultSupportedChains}
-      dAppMeta={defaultDAppMeta}
-      // Enable multichain queries
-      queryOptions={{
-        multicall: true,
-      }}
-    >
+    <ThirdwebProvider>
       {children}
     </ThirdwebProvider>
   );
