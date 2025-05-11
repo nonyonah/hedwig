@@ -49,8 +49,8 @@ export default function AccountConnectionPage() {
   const [currentStep, setCurrentStep] = useState(2);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [lastDisconnectTime, setLastDisconnectTime] = useState<number | null>(null);
-  const [portfolioLoading, setPortfolioLoading] = useState(false);
-  const [portfolioConnected, setPortfolioConnected] = useState(false);
+  const [bankLoading, setBankLoading] = useState(false);
+  const [bankConnected, setBankConnected] = useState(false);
   
   const handleContinue = () => {
     setIsLoading(true);
@@ -58,7 +58,7 @@ export default function AccountConnectionPage() {
   };
   
   // Check if any account is connected to enable the continue button
-  const accountConnected = portfolioConnected || cryptoConnected;
+  const accountConnected = bankConnected || cryptoConnected;
 
   // Load saved wallet info from Supabase on component mount and auto-connect
   useEffect(() => {
@@ -144,27 +144,21 @@ export default function AccountConnectionPage() {
     loadAndConnectWallet();
   }, []);
 
-  const handleConnectPortfolio = async () => {
-    setPortfolioLoading(true);
+  const handleConnectBank = async () => {
+    setBankLoading(true);
     
     try {
-      // Here you would implement stock portfolio connection
-    // For now, we'll just simulate a successful connection
-      const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=${process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY}`);
-      const data = await response.json();
-      
-      if (data['Global Quote']) {
-        // Successfully connected to the API
-        setPortfolioConnected(true);
-        toast.success('Stock portfolio connected successfully');
-      } else {
-        throw new Error('Failed to connect to stock portfolio');
-      }
+      // Here you would implement bank account connection
+      // For now, we'll just simulate a successful connection
+      setTimeout(() => {
+        setBankConnected(true);
+        toast.success('Bank account connected successfully');
+      }, 1500);
     } catch (error) {
-      console.error('Error connecting to stock portfolio:', error);
-      toast.error('Failed to connect to stock portfolio');
+      console.error('Error connecting bank account:', error);
+      toast.error('Failed to connect bank account');
     } finally {
-      setPortfolioLoading(false);
+      setBankLoading(false);
     }
   };
 
@@ -366,19 +360,19 @@ export default function AccountConnectionPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Connect Your Accounts</CardTitle>
           <CardDescription>
-            Link your stock portfolio and crypto accounts to get started
+            Link your bank account and crypto wallet to get started
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <h3 className="font-medium">Stock Portfolio</h3>
+            <h3 className="font-medium">Bank Account</h3>
             <Button 
-              onClick={handleConnectPortfolio}
-              disabled={portfolioLoading || portfolioConnected}
+              onClick={handleConnectBank}
+              disabled={bankLoading || bankConnected}
               className="w-full"
               variant="secondary"
             >
-              {portfolioLoading ? 'Connecting...' : portfolioConnected ? 'Connected' : 'Connect Stock Portfolio'}
+              {bankLoading ? 'Connecting...' : bankConnected ? 'Connected' : 'Connect Bank Account'}
             </Button>
           </div>
 
