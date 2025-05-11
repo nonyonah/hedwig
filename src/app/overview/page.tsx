@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardCharts } from '@/components/dashboard/charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from "@/components/ui/button"; // Add this import
 import { base, optimism, arbitrum, mainnet, bsc } from 'viem/chains';
 import { Input } from "@/components/ui/input";
 import { useTheme } from 'next-themes';
@@ -65,8 +66,9 @@ export default function DashboardPage() {
 
           {/* Tabs */}
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsList className="grid w-full max-w-md grid-cols-3">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="bank">Bank Assets</TabsTrigger>
               <TabsTrigger value="pnl">PnL</TabsTrigger>
             </TabsList>
 
@@ -80,6 +82,14 @@ export default function DashboardPage() {
                 address={address as string | undefined}
                 chainId={chainId as number | undefined}
               />
+            </TabsContent>
+            <TabsContent value="bank" className="mt-6">
+              <div className="grid gap-4">
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Connect your bank account to view your bank assets.</p>
+                  <Button className="mt-4">Connect Bank Account</Button>
+                </div>
+              </div>
             </TabsContent>
             <TabsContent value="pnl" className="mt-6">
               {/* PnL content will be added here */}

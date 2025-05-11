@@ -15,7 +15,7 @@ export function TokenIcon({ symbol, size = 'md' }: TokenIconProps) {
   const symbolText = symbol?.slice(0, 2) || '??';
   
   return (
-    <div className={`${sizeClass} rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary`}>
+    <div className={`${sizeClass} rounded-full bg-[#8d99ae]/10 flex items-center justify-center text-xs font-bold text-[#8d99ae]`}>
       {symbolText}
     </div>
   );

@@ -97,7 +97,8 @@ export function Sidebar() {
   const [transactionsOpen, setTransactionsOpen] = useState(false);
   
   return (
-    <div className="h-screen w-60 flex flex-col border-r bg-background p-3">
+    <div className="h-screen w-60 flex flex-col border-r bg-background p-3 overflow-y-auto sticky top-0">
+      {/* Sidebar content */}
       <div className="mb-4 flex items-center gap-2 px-2">
         <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
           A

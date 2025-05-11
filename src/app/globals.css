@@ -135,7 +135,7 @@ body {
   --card-foreground: #1a1a1a;
   --popover: #fff;
   --popover-foreground: #1a1a1a;
-  --primary: #000000;
+  --primary: #8d99ae;  /* Updated primary color to match the PRIMARY_COLOR in charts.tsx */
   --primary-foreground: #fff;
   --secondary: #f3f4f6;
   --secondary-foreground: #111827;
@@ -154,7 +154,7 @@ body {
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: #f3f4f6;
   --sidebar-foreground: #1a1a1a;
-  --sidebar-primary: #000000;
+  --sidebar-primary: #8d99ae;  /* Updated sidebar primary color */
   --sidebar-primary-foreground: #fff;
   --sidebar-accent: #e5e7eb;
   --sidebar-accent-foreground: #111827;
@@ -169,7 +169,7 @@ body {
   --card-foreground: #ffffff;
   --popover: #2d2d2d;
   --popover-foreground: #ffffff;
-  --primary: #000000;
+  --primary: #8d99ae;  /* Updated primary color in dark mode */
   --primary-foreground: #ffffff;
   --secondary: #333333;
   --secondary-foreground: #ffffff;
@@ -188,7 +188,7 @@ body {
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: #2d2d2d;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #000000;
+  --sidebar-primary: #8d99ae;  /* Updated sidebar primary color in dark mode */
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e5e7eb;
   --sidebar-accent-foreground: #ffffff;
