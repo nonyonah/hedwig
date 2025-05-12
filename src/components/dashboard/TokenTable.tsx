@@ -4,24 +4,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowDown, TrendingUp, TrendingDown } from 'lucide-react';
 
+// Import Badge component if not already imported
+import { Badge } from "@/components/ui/badge";
+
+// Define the Token interface
 interface Token {
   symbol: string | null;
   name: string | null;
   logo: string | null;
   balance: number;
-  usdValue?: number;
+  usdValue?: number | undefined;
   chain?: string;
-  contractAddress?: string;
   priceChange24h?: number;
 }
 
+// Update the TokenTableProps interface to include chainColors
 interface TokenTableProps {
   tokens: Token[];
   isLoading: boolean;
   walletConnected: boolean;
+  chainColors?: Record<string, string>;
 }
 
-export function TokenTable({ tokens, isLoading, walletConnected }: TokenTableProps) {
+// Update your component to use the props interface
+export function TokenTable({ tokens, isLoading, walletConnected, chainColors }: TokenTableProps) {
   // Get chain display name
   const getChainName = (chain?: string) => {
     if (!chain) return 'Unknown';
@@ -35,6 +41,14 @@ export function TokenTable({ tokens, isLoading, walletConnected }: TokenTablePro
     };
     
     return chainMap[chain as keyof typeof chainMap] || chain.charAt(0).toUpperCase() + chain.slice(1);
+  };
+  
+  // Add the missing getChainColor function
+  const getChainColor = (chainName: string | undefined): string => {
+    if (!chainName || !chainColors) return '#8d99ae'; // Default color
+    
+    const normalizedChain = chainName.toLowerCase();
+    return chainColors[normalizedChain] || '#8d99ae';
   };
   
   // Sort tokens by USD value
@@ -151,6 +165,7 @@ export function TokenTable({ tokens, isLoading, walletConnected }: TokenTablePro
   
   return renderTable(sortedTokens);
   
+  // In your renderTable function, update the chain cell to use badges
   function renderTable(tokensToRender: Token[]) {
     return (
       <Table>
@@ -182,7 +197,21 @@ export function TokenTable({ tokens, isLoading, walletConnected }: TokenTablePro
                 </div>
               </TableCell>
               <TableCell>
-                {getChainName(token.chain)}
+                {token.chain ? (
+                  <Badge 
+                    style={{ 
+                      backgroundColor: getChainColor(token.chain),
+                      color: '#ffffff',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(255,255,255,0.1)'
+                    }}
+                  >
+                    {getChainName(token.chain)}
+                  </Badge>
+                ) : (
+                  '-'
+                )}
               </TableCell>
               <TableCell className="text-right">{token.balance.toLocaleString()}</TableCell>
               <TableCell className="text-right">${token.usdValue?.toLocaleString() || '0'}</TableCell>
