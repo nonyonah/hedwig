@@ -36,17 +36,6 @@ export default function ConnectWalletButton() {
           fontWeight: "500", // Match Shadcn button font weight
           lineHeight: "1.25rem" // Match Shadcn button line height
         },
-        // Custom render function to create a smaller button without balance
-        render: () => (
-          <div className="flex items-center gap-2">
-            <div className="h-5 w-5 rounded-full overflow-hidden">
-              {/* This will be automatically filled with the user's avatar */}
-            </div>
-            <span className="text-sm truncate max-w-[100px]">
-              {/* This will be automatically filled with the shortened address */}
-            </span>
-          </div>
-        )
       }}
     />
   );

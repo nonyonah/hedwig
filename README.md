@@ -1,33 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Albus
+
+## Your All-in-One Financial Tracker
+
+Albus is a comprehensive financial tracking platform that bridges the gap between traditional banking and blockchain technology, allowing users to monitor and manage their finances both on and off chain.
+
+## Key Features
+
+### Unified Financial Tracking
+- Track all your financial assets in one place
+- Monitor bank accounts, cryptocurrencies, and investments
+- Get a holistic view of your net worth across all platforms
+
+### Cryptocurrency Trading
+- Buy and sell cryptocurrencies directly within the platform
+- Support for multiple chains including Ethereum, Base, Optimism, Arbitrum, and BNB Chain
+- Real-time price updates and transaction history
+
+### AI-Powered DeFi Trading
+- Intelligent AI agents that assist with DeFi trading strategies
+- Automated market analysis and trading recommendations
+- Risk assessment and portfolio optimization
+
+### Yield Generation
+- Earn rewards by investing your assets
+- Access to various yield-generating protocols
+- Track and compare yields across different platforms
+
+### Intuitive Dashboard
+- Clean, modern interface for easy navigation
+- Customizable charts and metrics
+- Mobile-responsive design for on-the-go access
 
 ## Getting Started
 
-First, run the development server:
+Visit [albus.finance](https://albus.finance) to create your account and start tracking your financial journey today.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Security
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Albus prioritizes the security of your financial data with:
+- End-to-end encryption
+- Non-custodial wallet integration
+- Regular security audits
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Support
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+For questions or assistance, reach out to our support team at support@albus.finance.
 
 ## Deploy on Vercel
 
