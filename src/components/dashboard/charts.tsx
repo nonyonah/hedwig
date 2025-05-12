@@ -121,26 +121,37 @@ interface WalletData {
 
 interface DashboardChartsProps {
   error?: string | null;
+  walletData?: WalletData | null;
+  isLoading?: boolean;
+  address?: string;
+  chainId?: number;
 }
 
 /**
  * Dashboard charts component that displays wallet metrics
  */
-export function DashboardCharts({ error: propError }: DashboardChartsProps) {
+export function DashboardCharts({ 
+  error: propError, 
+  walletData: propWalletData,
+  isLoading: propIsLoading,
+  address: propAddress,
+  chainId: propChainId
+}: DashboardChartsProps) {
   const [timeframe, setTimeframe] = useState('Weekly');
   const [chainAllocation, setChainAllocation] = useState<Array<{chain: string, name: string, value: number, fill: string}>>([]);
   const [selectedMetric, setSelectedMetric] = useState<'netWorth' | 'tokenWorth' | 'transactions'>('netWorth');
   const [historicalData, setHistoricalData] = useState<Array<{month: string, value: number}>>([]);
   const [walletConnected, setWalletConnected] = useState(false);
-  const [walletData, setWalletData] = useState<WalletData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  // Update your state initialization to use props if provided
+  const [walletData, setWalletData] = useState<WalletData | null>(propWalletData || null);
+  const [isLoading, setIsLoading] = useState(propIsLoading || false);
   const [error, setError] = useState<string | null>(propError || null);
   
-  // Get wallet address and chain from ThirdWeb
+  // Get wallet address from ThirdWeb or props
   const account = useActiveAccount();
-  const address = account?.address;
+  const address = propAddress || account?.address;
   const chain = useActiveWalletChain();
-  const chainId = chain?.id;
+  const chainId = propChainId || chain?.id;
   
   // Calculate total value function
   const calculateTotalValue = () => {
@@ -185,7 +196,7 @@ export function DashboardCharts({ error: propError }: DashboardChartsProps) {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [address, chainId]);
+  }, [address, chainId, propWalletData]);
   
   // Check if wallet is connected
   useEffect(() => {
@@ -721,54 +732,6 @@ export function DashboardCharts({ error: propError }: DashboardChartsProps) {
               </div>
             </CardContent>
           </Card>
-          
-          {/* Bank Balance Card */}
-          <Card className="border border-[#E9EAEB]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Bank Balance</CardTitle>
-              <CardDescription className="text-xs">Shows your token allocation across multiple chains</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {isDataLoading ? (
-                  <>
-                    <Skeleton className="h-12 w-full" />
-                    <Skeleton className="h-12 w-full" />
-                  </>
-                ) : !walletConnected ? (
-                  <div className="flex flex-col items-center justify-center h-32 w-full p-6 text-center">
-                    <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">Connect your wallet to see your bank balance</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold">
-                          GT
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">GT Bank</p>
-                        </div>
-                      </div>
-                      <p className="text-sm font-medium">₦2,500</p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-purple-800 flex items-center justify-center text-white font-bold">
-                          K
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">Kuda Bank</p>
-                        </div>
-                      </div>
-                      <p className="text-sm font-medium">₦2,500</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
       
@@ -782,7 +745,11 @@ export function DashboardCharts({ error: propError }: DashboardChartsProps) {
             tokens={walletData?.tokenBalances || []}
             isLoading={isLoading}
             walletConnected={walletConnected}
-          />
+            chainColors={supportedChains.reduce((acc, chain) => {
+              acc[chain.key] = chain.color;
+              return acc;
+            }, {} as Record<string, string>)}
+            />
         </CardContent>
       </Card>
     </div>
