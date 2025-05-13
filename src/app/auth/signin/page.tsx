@@ -4,118 +4,271 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
-import { signInWithOAuth } from '@/lib/supabase';
+import { inAppWallet } from "thirdweb/wallets";
+import { sepolia } from "thirdweb/chains";
+import { createThirdwebClient } from "thirdweb";
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 
 export default function SignInPage() {
   const router = useRouter();
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [appleLoading, setAppleLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("social");
 
-  const handleAppleSignIn = async () => {
-    setAppleLoading(true);
+  // Initialize ThirdWeb client
+  const thirdwebClient = createThirdwebClient({
+    clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID || '',
+  });
+
+  const handleSocialSignIn = async (strategy: "google" | "apple" | "passkey") => {
+    setIsLoading(true);
     
     try {
-      // Use the Supabase helper for Apple sign-in
-      const { error } = await signInWithOAuth('apple');
-      if (error) {
-        // Optionally use toast for user feedback
-        console.error('Apple sign in error:', error.message);
-        // toast.error(`Apple sign-in failed: ${error.message}`);
+      // Create an in-app wallet with smart account capabilities
+      const wallet = inAppWallet({
+        smartAccount: {
+          chain: sepolia,
+          sponsorGas: true,
+        }
+      });
+
+      // Connect using the wallet UI with selected authentication strategy
+      if (strategy === "passkey") {
+        await wallet.connect({
+          client: thirdwebClient,
+          strategy: strategy,
+          type: "sign-in" // Required for passkey
+        });
+      } else {
+        // For Google and Apple
+        await wallet.connect({
+          client: thirdwebClient,
+          strategy: strategy as "google" | "apple"
+        });
       }
-      // Redirect is handled by Supabase/callback page
+
+      const account = await wallet.getAccount();
+
+      if (account) {
+        const walletAddress = account.address;
+        
+        // Check if the wallet address exists in our database
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, wallet_address, bank_account_connected')
+          .eq('wallet_address', walletAddress)
+          .single();
+
+        if (error || !data) {
+          // Wallet not found, create a new user profile
+          const { data: newUser, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              wallet_address: walletAddress,
+              wallet_created_at: new Date().toISOString(),
+            })
+            .select();
+
+          if (createError) {
+            console.error('Error creating user profile:', createError);
+            toast.error("Failed to create user profile");
+            return;
+          }
+
+          // Redirect to account connection page for new users
+          router.push('/auth/account-connection?wallet_only=true');
+        } else {
+          // Existing user - check if they have connected a bank account
+          if (data.bank_account_connected) {
+            // User has completed onboarding, go to dashboard
+            router.push('/overview');
+          } else {
+            // User needs to connect bank account
+            router.push('/auth/account-connection?wallet_only=true');
+          }
+        }
+      }
     } catch (error) {
-      console.error('Unexpected error during Apple sign in:', error);
+      console.error('Error handling sign-in:', error);
+      toast.error("Sign-in failed. Please try again.");
     } finally {
-      setAppleLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    setGoogleLoading(true);
+  const handleExistingWalletConnect = async () => {
+    setIsLoading(true);
     
     try {
-      // Use the Supabase helper for Google sign-in
-      const { error } = await signInWithOAuth('google');
-      if (error) {
-        // Optionally use toast for user feedback
-        console.error('Google sign in error:', error.message);
-        // toast.error(`Google sign-in failed: ${error.message}`);
+      // Create an in-app wallet with smart account capabilities for existing wallets
+      const wallet = inAppWallet({
+        smartAccount: {
+          chain: sepolia,
+          sponsorGas: true,
+        }
+      });
+      
+      // Connect to the wallet
+      await wallet.connect({
+        client: thirdwebClient,
+        strategy: 'google'
+      });
+      
+      const account = await wallet.getAccount();
+
+      if (account) {
+        const walletAddress = account.address;
+        
+        // Check if the wallet address exists in our database
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, wallet_address, bank_account_connected')
+          .eq('wallet_address', walletAddress)
+          .single();
+
+        if (error || !data) {
+          // Wallet not found, create a new user profile
+          const { data: newUser, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              wallet_address: walletAddress,
+              wallet_created_at: new Date().toISOString(),
+            })
+            .select();
+
+          if (createError) {
+            console.error('Error creating user profile:', createError);
+            toast.error("Failed to create user profile");
+            return;
+          }
+
+          // Redirect to account connection page for new users
+          router.push('/auth/account-connection?wallet_only=true');
+        } else {
+          // Existing user - check if they have connected a bank account
+          if (data.bank_account_connected) {
+            // User has completed onboarding, go to dashboard
+            router.push('/overview');
+          } else {
+            // User needs to connect bank account
+            router.push('/auth/account-connection?wallet_only=true');
+          }
+        }
       }
-      // Redirect is handled by Supabase/callback page
     } catch (error) {
-      console.error('Unexpected error during Google sign in:', error);
+      console.error('Error handling wallet connect:', error);
+      toast.error("Wallet connection failed. Please try again.");
     } finally {
-      setGoogleLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center pb-4">
           <CardTitle className="text-2xl font-bold">Albus</CardTitle>
           <CardDescription>
-            Keep track of your finances both on and offchain
+            Track your finances on and offchain
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="w-full flex items-center justify-center gap-2 bg-black text-white border border-white hover:bg-black/90 hover:text-white" 
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading}
-            >
-              {googleLoading ? (
-                'Connecting...'
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                    <path d="M1 1h22v22H1z" fill="none"/>
-                  </svg>
-                  Continue with Google
-                </>
-              )}
-            </Button>
+          <Tabs defaultValue="social" value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid grid-cols-2 mb-4">
+              <TabsTrigger value="social">Social Login</TabsTrigger>
+              <TabsTrigger value="wallet">Connect Wallet</TabsTrigger>
+            </TabsList>
             
-            {/* Apple authentication button commented out as requested
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white dark:bg-background px-2 text-gray-500">Or</span>
-              </div>
-            </div>
+            <TabsContent value="social" className="space-y-3">
+              <Button 
+                type="button" 
+                variant="default" 
+                className="w-full flex items-center justify-center gap-2" 
+                onClick={() => handleSocialSignIn("google")}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  'Signing in...'
+                ) : (
+                  <>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Sign in with Google
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full flex items-center justify-center gap-2" 
+                onClick={() => handleSocialSignIn("apple")}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  'Signing in...'
+                ) : (
+                  <>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.05 12.536c-.02-2.075 1.699-3.085 1.777-3.131-0.969-1.419-2.476-1.613-3.009-1.631-1.269-0.132-2.499 0.754-3.146 0.754-0.654 0-1.649-0.741-2.722-0.719-1.382 0.02-2.671 0.813-3.39 2.047-1.464 2.546-0.373 6.3 1.032 8.363 0.699 1.004 1.515 2.128 2.584 2.086 1.045-0.042 1.436-0.67 2.696-0.67 1.249 0 1.619 0.67 2.708 0.645 1.123-0.018 1.829-1.004 2.505-2.018 0.803-1.142 1.127-2.263 1.142-2.32-0.025-0.01-2.177-0.835-2.197-3.326zM15.344 6.805c0.563-0.699 0.946-1.657 0.839-2.623-0.813 0.035-1.832 0.563-2.415 1.251-0.52 0.608-0.984 1.6-0.863 2.532 0.914 0.07 1.851-0.461 2.439-1.16z" fill="currentColor"/>
+                    </svg>
+                    Sign in with Apple
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full flex items-center justify-center gap-2" 
+                onClick={() => handleSocialSignIn("passkey")}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  'Signing in...'
+                ) : (
+                  <>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 5C13.66 5 15 6.34 15 8C15 9.66 13.66 11 12 11C10.34 11 9 9.66 9 8C9 6.34 10.34 5 12 5ZM12 19.2C9.5 19.2 7.29 17.92 6 15.98C6.03 13.99 10 12.9 12 12.9C13.99 12.9 17.97 13.99 18 15.98C16.71 17.92 14.5 19.2 12 19.2Z" fill="currentColor"/>
+                    </svg>
+                    Sign in with Passkey
+                  </>
+                )}
+              </Button>
+            </TabsContent>
             
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="w-full flex items-center justify-center gap-2 bg-black text-white border border-white hover:bg-black/90" 
-              onClick={handleAppleSignIn}
-              disabled={appleLoading}
-            >
-              {appleLoading ? (
-                'Connecting...'
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">
-                    <path d="M17.05 20.28c-.98.95-2.05.86-3.08.38-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.38C2.79 15.75 3.51 7.1 9.05 6.88c1.65.08 2.78 1.11 3.66 1.13 1.37-.1 2.63-1.21 4.02-1.03 1.69.18 2.94 1.01 3.76 2.56-3.37 2.09-2.8 6.5.38 7.68-.56 1.78-1.28 3.55-2.82 5.06zm-5.35-14.6c-.1-2.48 2.16-4.64 4.54-4.76.26 2.68-2.62 4.9-4.54 4.76z" fill="white"/>
-                  </svg>
-                  Continue with Apple
-                </>
-              )}
-            </Button>
-            */}
-          </div>
+            <TabsContent value="wallet">
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full flex items-center justify-center gap-2" 
+                onClick={handleExistingWalletConnect}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  'Connecting...'
+                ) : (
+                  <>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M21 18V19C21 20.1 20.1 21 19 21H5C3.89 21 3 20.1 3 19V5C3 3.9 3.89 3 5 3H19C20.1 3 21 3.9 21 5V6H12C10.89 6 10 6.9 10 8V16C10 17.1 10.89 18 12 18H21ZM12 16H22V8H12V16ZM16 13.5C15.17 13.5 14.5 12.83 14.5 12C14.5 11.17 15.17 10.5 16 10.5C16.83 10.5 17.5 11.17 17.5 12C17.5 12.83 16.83 13.5 16 13.5Z" fill="currentColor"/>
+                    </svg>
+                    Connect Existing Wallet
+                  </>
+                )}
+              </Button>
+            </TabsContent>
+          </Tabs>
         </CardContent>
-        <CardFooter className="text-center">
-          {/* Navigation links removed as users will always need email verification */}
+        <CardFooter className="text-center pt-2">
+          <p className="text-xs text-gray-500">
+            By signing in, you agree to our Terms of Service and Privacy Policy
+          </p>
         </CardFooter>
       </Card>
     </div>

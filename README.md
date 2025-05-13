@@ -33,7 +33,7 @@ Albus is a comprehensive financial tracking platform that bridges the gap betwee
 
 ## Getting Started
 
-Visit [albus.finance](https://albus.finance) to create your account and start tracking your financial journey today.
+Visit [albusapp.xyz](https://albusapp.xyz) to create your account and start tracking your financial journey today.
 
 ## Security
 

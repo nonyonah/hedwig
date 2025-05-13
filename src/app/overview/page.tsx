@@ -90,10 +90,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center gap-2">
               <ConnectWalletButton />
-              <Button variant="outline" className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                Connect Bank
-              </Button>
+              {/* Connect Bank button removed */}
             </div>
           </div>
 
