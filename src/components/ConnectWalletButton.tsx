@@ -36,6 +36,19 @@ export default function ConnectWalletButton() {
           fontWeight: "500", // Match Shadcn button font weight
           lineHeight: "1.25rem" // Match Shadcn button line height
         },
+        // Set a custom render function to control the appearance
+        render: () => (
+          <div className="flex items-center gap-2">
+            <div className="h-5 w-5 rounded-full overflow-hidden">
+              {/* This will be automatically filled with the user's avatar */}
+            </div>
+            <span className="text-sm truncate max-w-[100px]">
+              {/* This will be automatically filled with the shortened address */}
+            </span>
+          </div>
+        ),
+        // Explicitly set displayBalanceToken to undefined to remove balance display
+        displayBalanceToken: undefined
       }}
     />
   );

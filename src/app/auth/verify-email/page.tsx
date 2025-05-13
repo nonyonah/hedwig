@@ -28,8 +28,8 @@ export default function VerifyEmailPage() {
     // For now, we'll just simulate a successful verification
     setTimeout(() => {
       setIsVerifying(false);
-      // Redirect to bio-data page after successful verification
-      router.push('/auth/bio-data');
+      // Redirect to account connection page after successful verification
+      router.push('/auth/account-connection');
     }, 1500);
   };
 
