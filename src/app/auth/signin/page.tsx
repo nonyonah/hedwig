@@ -110,10 +110,10 @@ export default function SignInPage() {
         }
       });
       
-      // Connect to the wallet
+      // Connect to the wallet without specifying a strategy to use browser wallets
       await wallet.connect({
         client: thirdwebClient,
-        strategy: 'google'
+        // No strategy specified - will use browser wallets
       });
       
       const account = await wallet.getAccount();
@@ -185,7 +185,7 @@ export default function SignInPage() {
               <Button 
                 type="button" 
                 variant="default" 
-                className="w-full flex items-center justify-center gap-2" 
+                className="w-full flex items-center justify-center gap-2 bg-[#240046] hover:bg-[#240046]/90" 
                 onClick={() => handleSocialSignIn("google")}
                 disabled={isLoading}
               >
@@ -207,7 +207,7 @@ export default function SignInPage() {
               <Button 
                 type="button" 
                 variant="outline" 
-                className="w-full flex items-center justify-center gap-2" 
+                className="w-full flex items-center justify-center gap-2 border-[#240046] text-[#240046] hover:bg-[#240046]/10" 
                 onClick={() => handleSocialSignIn("apple")}
                 disabled={isLoading}
               >
@@ -226,7 +226,7 @@ export default function SignInPage() {
               <Button 
                 type="button" 
                 variant="outline" 
-                className="w-full flex items-center justify-center gap-2" 
+                className="w-full flex items-center justify-center gap-2 border-[#240046] text-[#240046] hover:bg-[#240046]/10" 
                 onClick={() => handleSocialSignIn("passkey")}
                 disabled={isLoading}
               >
@@ -247,7 +247,7 @@ export default function SignInPage() {
               <Button 
                 type="button" 
                 variant="outline" 
-                className="w-full flex items-center justify-center gap-2" 
+                className="w-full flex items-center justify-center gap-2 border-[#240046] text-[#240046] hover:bg-[#240046]/10" 
                 onClick={handleExistingWalletConnect}
                 disabled={isLoading}
               >

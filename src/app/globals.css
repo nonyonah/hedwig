@@ -135,7 +135,7 @@ body {
   --card-foreground: #1a1a1a;
   --popover: #fff;
   --popover-foreground: #1a1a1a;
-  --primary: #8d99ae;  /* Updated primary color to match the PRIMARY_COLOR in charts.tsx */
+  --primary: #240046;  /* Updated primary color to match the PRIMARY_COLOR in charts.tsx */
   --primary-foreground: #fff;
   --secondary: #f3f4f6;
   --secondary-foreground: #111827;
@@ -169,7 +169,7 @@ body {
   --card-foreground: #ffffff;
   --popover: #2d2d2d;
   --popover-foreground: #ffffff;
-  --primary: #8d99ae;  /* Updated primary color in dark mode */
+  --primary: #240046;  /* Updated primary color in dark mode */
   --primary-foreground: #ffffff;
   --secondary: #333333;
   --secondary-foreground: #ffffff;
