@@ -33,3 +33,12 @@ export const useTheme = () => {
 
   return { theme, setTheme };
 };
+
+const themes = {
+  light: {
+    primary: '#240046',
+  },
+  dark: {
+    primary: '#240046',
+  },
+}

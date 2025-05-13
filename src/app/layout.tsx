@@ -3,6 +3,7 @@ import { Toaster } from 'sonner';
 import './globals.css';
 import { ThirdwebProviderWrapper } from '@/providers/ThirdwebProvider';
 import { Sidebar } from '@/components/Sidebar';
+import { SidebarWrapper } from '@/components/SidebarWrapper';
 
 export default function RootLayout({
   children,
@@ -14,14 +15,9 @@ export default function RootLayout({
       <body className="min-h-screen bg-background">
         <ThirdwebProviderWrapper>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <div className="flex min-h-screen">
-              <Sidebar />
-              <div className="flex-1 ml-60"> {/* Match the width of your sidebar (w-60) */}
-                <main className="p-4">
-                  {children}
-                </main>
-              </div>
-            </div>
+            <SidebarWrapper>
+              {children}
+            </SidebarWrapper>
             <Toaster />
           </ThemeProvider>
         </ThirdwebProviderWrapper>
