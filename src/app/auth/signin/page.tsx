@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
-import { inAppWallet } from "thirdweb/wallets";
+import { inAppWallet, createWallet } from "thirdweb/wallets";
 import { sepolia } from "thirdweb/chains";
 import { createThirdwebClient } from "thirdweb";
+import { useConnectModal } from "thirdweb/react";
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +17,7 @@ export default function SignInPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("social");
+  const { connect, isConnecting } = useConnectModal();
 
   // Initialize ThirdWeb client
   const thirdwebClient = createThirdwebClient({
@@ -102,60 +104,67 @@ export default function SignInPage() {
     setIsLoading(true);
     
     try {
-      // Create an in-app wallet with smart account capabilities for existing wallets
-      const wallet = inAppWallet({
-        smartAccount: {
-          chain: sepolia,
-          sponsorGas: true,
-        }
-      });
+      // Define the wallets to show in the connect modal
+      // Excluding inAppWallet as requested
+      const wallets = [
+        createWallet("io.metamask"),
+        createWallet("com.coinbase.wallet"),
+        createWallet("me.rainbow"),
+      ];
       
-      // Connect to the wallet without specifying a strategy to use browser wallets
-      await wallet.connect({
+      // Use the connect modal hook with specific wallets
+      const wallet = await connect({ 
         client: thirdwebClient,
-        // No strategy specified - will use browser wallets
+        wallets
       });
       
-      const account = await wallet.getAccount();
-
-      if (account) {
-        const walletAddress = account.address;
+      if (wallet) {
+        const account = await wallet.getAccount();
         
-        // Check if the wallet address exists in our database
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, wallet_address, bank_account_connected')
-          .eq('wallet_address', walletAddress)
-          .single();
-
-        if (error || !data) {
-          // Wallet not found, create a new user profile
-          const { data: newUser, error: createError } = await supabase
+        if (account) {
+          const walletAddress = account.address;
+          
+          // Check if the wallet address exists in our database
+          const { data, error } = await supabase
             .from('profiles')
-            .insert({
-              wallet_address: walletAddress,
-              wallet_created_at: new Date().toISOString(),
-            })
-            .select();
-
-          if (createError) {
-            console.error('Error creating user profile:', createError);
-            toast.error("Failed to create user profile");
-            return;
-          }
-
-          // Redirect to account connection page for new users
-          router.push('/auth/account-connection?wallet_only=true');
-        } else {
-          // Existing user - check if they have connected a bank account
-          if (data.bank_account_connected) {
-            // User has completed onboarding, go to dashboard
-            router.push('/overview');
-          } else {
-            // User needs to connect bank account
+            .select('id, wallet_address, bank_account_connected')
+            .eq('wallet_address', walletAddress)
+            .single();
+  
+          if (error || !data) {
+            // Wallet not found, create a new user profile
+            const { data: newUser, error: createError } = await supabase
+              .from('profiles')
+              .insert({
+                wallet_address: walletAddress,
+                wallet_created_at: new Date().toISOString(),
+              })
+              .select();
+  
+            if (createError) {
+              console.error('Error creating user profile:', createError);
+              toast.error("Failed to create user profile");
+              return;
+            }
+  
+            // Redirect to account connection page for new users
             router.push('/auth/account-connection?wallet_only=true');
+          } else {
+            // Existing user - check if they have connected a bank account
+            if (data.bank_account_connected) {
+              // User has completed onboarding, go to dashboard
+              router.push('/overview');
+            } else {
+              // User needs to connect bank account
+              router.push('/auth/account-connection?wallet_only=true');
+            }
           }
+        } else {
+          toast.error("Failed to get wallet account");
         }
+      } else {
+        // Handle case where wallet connection was cancelled or failed
+        toast.error("Wallet connection cancelled or failed");
       }
     } catch (error) {
       console.error('Error handling wallet connect:', error);
@@ -273,4 +282,3 @@ export default function SignInPage() {
       </Card>
     </div>
   );
-}
