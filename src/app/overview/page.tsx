@@ -13,6 +13,7 @@ import type { Chain } from 'viem/chains';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
 import { CreditCard } from 'lucide-react';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import {
   Card,
   CardContent,
@@ -43,7 +44,7 @@ import { ArrowDown, Filter } from "lucide-react";
 // Remove this import
 // import { Sidebar } from '@/components/Sidebar';
 
-export default function DashboardPage() {
+function DashboardContent() {
   const [timeframe, setTimeframe] = useState('weekly');
   const { theme, setTheme } = useTheme();
 
@@ -56,7 +57,7 @@ export default function DashboardPage() {
     walletData, 
     isLoading: isLoadingData, 
     error: dataError,
-    autoConnect // Add this
+    autoConnect
   } = useWalletConnection();
 
   // Auto-connect wallet when page loads
@@ -279,5 +280,13 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <ProtectedRoute>
+      <DashboardContent />
+    </ProtectedRoute>
   );
 }

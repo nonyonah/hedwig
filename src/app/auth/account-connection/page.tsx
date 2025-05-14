@@ -7,24 +7,31 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import OnboardingAgent from '@/components/OnboardingAgent';
 import { loadAndInitMonoConnect, saveBankConnection, hasBankAccount } from '@/lib/mono-connect';
-import ConnectWalletButton from '@/components/ConnectWalletButton';
+// In the imports section
+import AuthenticatedConnectButton from '@/components/AuthenticatedConnectButton';
+// Remove the original import: import ConnectWalletButton from '@/components/ConnectWalletButton';
+
+// Then in the JSX part, replace:
+<ConnectWalletButton />
+
+// With:
+<AuthenticatedConnectButton />
 import { useWalletConnection } from '@/hooks/useWalletConnection';
 
 export default function AccountConnectionPage() {
   const router = useRouter();
-  const { user } = useUser();
-  const { autoConnect } = useWalletConnection(); // Add this hook
+  const { user, isAuthenticated } = useUser();
+  const { isConnected, address } = useWalletConnection(); // Only get connection status, not autoConnect
   const [bankConnected, setBankConnected] = useState(false);
   const [isWalletOnlySignIn, setIsWalletOnlySignIn] = useState(false);
 
-  // Auto-connect wallet when page loads
+  // Check if user is authenticated and redirect if not
   useEffect(() => {
-    const connectWallet = async () => {
-      await autoConnect();
-    };
-    
-    connectWallet();
-  }, [autoConnect]);
+    // If not authenticated, redirect to sign in page
+    if (!isAuthenticated && !user) {
+      router.push('/auth/signin');
+    }
+  }, [isAuthenticated, user, router]);
 
   // Check for existing bank connection
   useEffect(() => {
