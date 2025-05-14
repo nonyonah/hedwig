@@ -7,9 +7,11 @@ import {
   useDisconnect,
   useActiveWalletChain,
   useWalletBalance,
-  useActiveWalletConnectionStatus, // Corrected: Use useActiveWalletConnectionStatus
+  useActiveWalletConnectionStatus,
+  useConnectModal,
 } from "thirdweb/react";
 import { client } from "@/providers/ThirdwebProvider";
+import { createWallet } from "thirdweb/wallets";
 
 
 export type WalletData = {
@@ -34,7 +36,8 @@ export type WalletData = {
 export function useWalletConnection() {
   const activeWallet = useActiveWallet(); 
   const activeAccount = useActiveAccount(); 
-  const connectionStatus = useActiveWalletConnectionStatus(); // Corrected: Get active wallet's connection status
+  const connectionStatus = useActiveWalletConnectionStatus();
+  const { connect } = useConnectModal();
   
   const address = activeAccount?.address; 
 
@@ -53,6 +56,34 @@ export function useWalletConnection() {
 
   const nftCount = 0;
   const isLoadingNFTs = false;
+
+  // New function to automatically connect wallet
+  const autoConnect = async () => {
+    // Only attempt to connect if not already connected
+    if (connectionStatus !== "connected" && !activeWallet) {
+      try {
+        // Define the wallets to show in the connect modal (same as in signin page)
+        const wallets = [
+          createWallet("io.metamask"),
+          createWallet("com.coinbase.wallet"),
+          createWallet("me.rainbow"),
+        ];
+        
+        // Use the connect function without showing the modal
+        await connect({ 
+          client: client,
+          wallets
+          // Remove the autoSelect parameter as it's not supported
+        });
+        
+        return true;
+      } catch (error) {
+        console.error('Auto-connect failed:', error);
+        return false;
+      }
+    }
+    return connectionStatus === "connected";
+  };
 
   useEffect(() => {
     const fetchWalletData = async () => {
@@ -128,9 +159,10 @@ export function useWalletConnection() {
     address,
     isConnected: connectionStatus === "connected",
     chainId: chain?.id,
-    disconnect,
+    disconnect, // Return the local function instead of disconnectWallet
     walletData,
-    isLoading: isLoading, 
+    isLoading,
     error,
+    autoConnect, // Export the new function
   };
 }

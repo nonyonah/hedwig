@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardCharts } from '@/components/dashboard/charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from "@/components/ui/button"; // Add this import
+import { Button } from "@/components/ui/button";
 import { base, optimism, arbitrum, mainnet, bsc } from 'viem/chains';
 import { Input } from "@/components/ui/input";
 import { useTheme } from 'next-themes';
@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import type { Chain } from 'viem/chains';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
-import { CreditCard } from 'lucide-react'; // Add this import
+import { CreditCard } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -55,13 +55,26 @@ export default function DashboardPage() {
     disconnect,
     walletData, 
     isLoading: isLoadingData, 
-    error: dataError 
+    error: dataError,
+    autoConnect // Add this
   } = useWalletConnection();
 
+  // Auto-connect wallet when page loads
+  useEffect(() => {
+    const connectWallet = async () => {
+      await autoConnect();
+    };
+    
+    connectWallet();
+  }, [autoConnect]);
+
   const handleDisconnectWallet = async () => {
-    if (disconnect) {
+    try {
       await disconnect();
       toast.success("Wallet disconnected successfully");
+    } catch (error) {
+      console.error("Error disconnecting wallet:", error);
+      toast.error("Failed to disconnect wallet");
     }
   };
 

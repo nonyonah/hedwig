@@ -282,3 +282,4 @@ export default function SignInPage() {
       </Card>
     </div>
   );
+}

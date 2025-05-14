@@ -7,12 +7,24 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import OnboardingAgent from '@/components/OnboardingAgent';
 import { loadAndInitMonoConnect, saveBankConnection, hasBankAccount } from '@/lib/mono-connect';
+import ConnectWalletButton from '@/components/ConnectWalletButton';
+import { useWalletConnection } from '@/hooks/useWalletConnection';
 
 export default function AccountConnectionPage() {
   const router = useRouter();
   const { user } = useUser();
+  const { autoConnect } = useWalletConnection(); // Add this hook
   const [bankConnected, setBankConnected] = useState(false);
   const [isWalletOnlySignIn, setIsWalletOnlySignIn] = useState(false);
+
+  // Auto-connect wallet when page loads
+  useEffect(() => {
+    const connectWallet = async () => {
+      await autoConnect();
+    };
+    
+    connectWallet();
+  }, [autoConnect]);
 
   // Check for existing bank connection
   useEffect(() => {
@@ -73,66 +85,84 @@ export default function AccountConnectionPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Connect Your Bank Account</CardTitle>
-          <CardDescription>
-            Connect your bank account to complete your profile
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Bank Account Connection Section */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Bank Account Connection</h3>
-            <p className="text-sm text-muted-foreground">
-              Connect your Nigerian bank account to track your finances
-            </p>
-            
-            {!bankConnected ? (
-              <div className="flex flex-col gap-3">
-                <Button 
-                  onClick={openMonoWidget} 
-                  variant="outline"
-                  className="w-full"
-                >
-                  Link Account
-                </Button>
-                
-                <div className="flex items-center justify-center text-xs text-gray-500 mt-1">
-                  <span>powered by</span>
-                  <img 
-                    src="/mono (2).svg" 
-                    alt="Mono" 
-                    width="16" 
-                    height="16" 
-                    className="ml-1" 
-                  />
-                </div>
-                
-                <button 
-                  onClick={handleSkipBankConnection} 
-                  className="text-sm text-gray-500 hover:text-gray-700 mt-2 text-center w-full"
-                >
-                  Skip
-                </button>
-              </div>
-            ) : (
-              <div className="bg-green-50 text-green-600 p-3 rounded-md text-sm">
-                Bank account connected successfully!
-              </div>
-            )}
+    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-background">
+      {/* Header with wallet button */}
+      <div className="w-full p-4 border-b">
+        <div className="container mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
+              A
+            </div>
+            <span className="font-semibold">Albus</span>
           </div>
-        </CardContent>
-        <CardFooter>
-          <Button 
-            onClick={handleContinue} 
-            className="w-full"
-          >
-            Continue to Dashboard
-          </Button>
-        </CardFooter>
-      </Card>
+          <div className="flex items-center gap-2">
+            <ConnectWalletButton />
+          </div>
+        </div>
+      </div>
+      
+      {/* Main content */}
+      <div className="flex-1 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold">Connect Your Bank Account</CardTitle>
+            <CardDescription>
+              Connect your bank account to complete your profile
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Bank Account Connection Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Bank Account Connection</h3>
+              <p className="text-sm text-muted-foreground">
+                Connect your Nigerian bank account to track your finances
+              </p>
+              
+              {!bankConnected ? (
+                <div className="flex flex-col gap-3">
+                  <Button 
+                    onClick={openMonoWidget} 
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Link Account
+                  </Button>
+                  
+                  <div className="flex items-center justify-center text-xs text-gray-500 mt-1">
+                    <span>powered by</span>
+                    <img 
+                      src="/mono (2).svg" 
+                      alt="Mono" 
+                      width="16" 
+                      height="16" 
+                      className="ml-1" 
+                    />
+                  </div>
+                  
+                  <button 
+                    onClick={handleSkipBankConnection} 
+                    className="text-sm text-gray-500 hover:text-gray-700 mt-2 text-center w-full"
+                  >
+                    Skip
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-green-50 text-green-600 p-3 rounded-md text-sm">
+                  Bank account connected successfully!
+                </div>
+              )}
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button 
+              onClick={handleContinue} 
+              className="w-full"
+            >
+              Continue to Dashboard
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
       <OnboardingAgent />
     </div>
   );
