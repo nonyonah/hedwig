@@ -1,54 +1,124 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bot, User, X } from 'lucide-react';
+import { useChat } from 'ai/react';
+import { useUser } from '@/hooks/useUser';
+import { useWalletConnection } from '@/hooks/useWalletConnection';
+import { AgentKit } from "@coinbase/agentkit";
+import { cdpApiActionProvider } from "@coinbase/agentkit";
+import { CdpWalletProvider } from "@coinbase/agentkit";
 
 type Message = {
   role: 'user' | 'assistant';
   content: string;
 };
 
-const initialMessages: Message[] = [
-  {
-    role: 'assistant',
-    content: 'Hi there! I\'m your Albus assistant. I can help you set up your account, connect your wallet, or link your bank account. What would you like help with today?'
-  }
-];
+// Define the system prompt for the AI agent
+const SYSTEM_PROMPT = `
+You're Albus, a smart AI onboarding agent for a web-based finance dashboard that tracks stablecoins and Nigerian bank accounts. Your job is to help users connect their wallet and bank in the simplest way possible.
+
+Use this context:
+- Users sign in using google, apple or passkey which also creates a smart wallet for them.
+- Each user must have a smart wallet. If they don't, it should be automatically created using Thirdweb's embedded wallet SDK.
+- Users also need to link their Nigerian bank account using Mono Connect.
+
+Your goals:
+- Welcome the user and explain that Albus tracks both on-chain and fiat money.
+- Ensure they've logged in with email or Google.
+- Check if their crypto wallet is connected. If not, offer to set it up instantly.
+- Prompt the user to connect their bank account via Mono if they haven't already.
+- Confirm when both wallet and bank are connected, and show them their dashboard.
+- Provide financial insights by analyzing transaction patterns across both crypto and fiat accounts.
+- Suggest budget improvements and highlight unusual transactions.
+
+Be friendly, clear, and confident. Use short sentences and always offer a button or action to move forward, e.g. "Click 'Connect Wallet'" or "Tap 'Link My Bank'".
+
+If they ask questions like "What is Mono?" or "Why do I need a wallet?", give simple, beginner-friendly explanations.
+`;
 
 export default function OnboardingAgent() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [input, setInput] = useState('');
+  const { user } = useUser();
+  const { address, isConnected, walletData, autoConnect } = useWalletConnection();
+  const [bankConnected, setBankConnected] = useState(false);
+  
+  // Initialize Coinbase Agent Kit with the correct approach
+  const [agent, setAgent] = useState<any>(null);
 
-  const handleSendMessage = () => {
-    if (!input.trim()) return;
-    
-    // Add user message
-    setMessages(prev => [...prev, { role: 'user', content: input }]);
-    
-    // Process the message and generate a response
-    setTimeout(() => {
-      let response = '';
-      const lowerInput = input.toLowerCase();
-      
-      if (lowerInput.includes('wallet')) {
-        response = 'To connect your wallet, click on the "Connect Existing Wallet" button. If you don\'t have a wallet, you can create a smart wallet by clicking "Create Smart Wallet". This will create a wallet that\'s easy to use and doesn\'t require you to remember a seed phrase.';
-      } else if (lowerInput.includes('bank')) {
-        response = 'To connect your Nigerian bank account, click on the "Connect Bank Account" button. This will open Mono Connect, which allows you to securely link your bank account. We only receive read access to your transactions and balance.';
-      } else if (lowerInput.includes('help') || lowerInput.includes('how')) {
-        response = 'I can help you with setting up your account, connecting your wallet, or linking your bank account. Just let me know what you need assistance with!';
-      } else {
-        response = 'I\'m here to help you set up your Albus account. Would you like to know more about connecting your wallet or linking your bank account?';
+  useEffect(() => {
+    const initializeAgent = async () => {
+      try {
+        // Create a wallet provider
+        const walletProvider = await CdpWalletProvider.configureWithWallet({
+          apiKeyName: process.env.NEXT_PUBLIC_COINBASE_API_KEY_NAME as string,
+          apiKeyPrivateKey: process.env.NEXT_PUBLIC_COINBASE_API_KEY as string,
+          networkId: "base-mainnet", // Or your preferred network
+        });
+
+        // Initialize AgentKit
+        const agentKit = await AgentKit.from({
+          walletProvider,
+          actionProviders: [
+            cdpApiActionProvider({
+              apiKeyName: process.env.NEXT_PUBLIC_COINBASE_API_KEY_NAME as string,
+              apiKeyPrivateKey: process.env.NEXT_PUBLIC_COINBASE_API_KEY as string,
+            }),
+          ],
+        });
+
+        setAgent(agentKit);
+      } catch (error) {
+        console.error("Failed to initialize Coinbase Agent Kit:", error);
       }
-      
-      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
-    }, 1000);
-    
-    setInput('');
+    };
+
+    initializeAgent();
+  }, []);
+
+  // Use the Vercel AI SDK's useChat hook with Coinbase Agent
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    api: '/api/chat',
+    initialMessages: [
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: 'Hi there! I\'m your Albus assistant. I can help you set up your account, connect your wallet, or link your bank account. What would you like help with today?'
+      }
+    ],
+    body: {
+      // Pass user context to the API
+      userContext: {
+        isLoggedIn: !!user,
+        hasWallet: isConnected,
+        walletAddress: address || null,
+        walletData: walletData || null,
+        hasBankConnected: bankConnected,
+        agent: agent // Pass the Coinbase agent to the API
+      }
+    }
+  });
+
+  // Function to handle wallet connection
+  const handleConnectWallet = async () => {
+    await autoConnect();
   };
+
+  // Function to handle bank connection
+  const handleConnectBank = async () => {
+    // Implement Mono Connect logic here
+    // After successful connection:
+    setBankConnected(true);
+  };
+
+  // Quick action buttons for common tasks
+  const quickActions = [
+    { label: 'Connect Wallet', action: handleConnectWallet, show: !isConnected },
+    { label: 'Link Bank Account', action: handleConnectBank, show: !bankConnected }
+  ];
 
   return (
     <>
@@ -70,9 +140,9 @@ export default function OnboardingAgent() {
             </Button>
           </CardHeader>
           <CardContent className="flex-1 overflow-auto p-3 space-y-4">
-            {messages.map((message, index) => (
+            {messages.map((message) => (
               <div
-                key={index}
+                key={message.id}
                 className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}
               >
                 <div
@@ -87,16 +157,31 @@ export default function OnboardingAgent() {
               </div>
             ))}
           </CardContent>
+          
+          {/* Quick action buttons */}
+          {quickActions.some(action => action.show) && (
+            <div className="px-3 py-2 border-t border-b flex gap-2 overflow-x-auto">
+              {quickActions.filter(action => action.show).map((action, index) => (
+                <Button key={index} variant="outline" size="sm" onClick={action.action}>
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          )}
+          
           <div className="p-3 border-t">
-            <div className="flex gap-2">
+            <form 
+              className="flex gap-2" 
+              onSubmit={handleSubmit}
+            >
               <Input
                 placeholder="Ask me anything..."
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                onChange={handleInputChange}
+                disabled={isLoading}
               />
-              <Button onClick={handleSendMessage}>Send</Button>
-            </div>
+              <Button type="submit" disabled={isLoading}>Send</Button>
+            </form>
           </div>
         </Card>
       )}

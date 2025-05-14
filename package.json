@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ai-sdk/google": "^1.2.18",
+    "@coinbase/agentkit": "^0.7.1",
+    "@coinbase/agentkit-vercel-ai-sdk": "^0.1.0",
     "@coinbase/onchainkit": "^0.38.8",
     "@hookform/resolvers": "^5.0.1",
     "@mono.co/connect.js": "^2.1.0",
@@ -26,6 +29,7 @@
     "@radix-ui/react-tooltip": "^1.2.0",
     "@supabase/supabase-js": "^2.49.4",
     "@tanstack/react-query": "^5.75.5",
+    "ai": "^4.3.15",
     "alchemy-sdk": "^3.5.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
