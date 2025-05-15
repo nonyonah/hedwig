@@ -41,8 +41,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ArrowDown, Filter } from "lucide-react";
-// Remove this import
-// import { Sidebar } from '@/components/Sidebar';
+import OnboardingAgentWrapper from '@/components/OnboardingAgentWrapper';
 
 function DashboardContent() {
   const [timeframe, setTimeframe] = useState('weekly');
@@ -110,12 +109,107 @@ function DashboardContent() {
 
           {/* Tabs */}
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full max-w-md grid-cols-3">
+            // In the Tabs section, update the TabsList to include History and NFTs
+            <TabsList className="grid w-full max-w-md grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="bank">Bank Assets</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+              <TabsTrigger value="nfts">NFTs</TabsTrigger>
               <TabsTrigger value="pnl">PnL</TabsTrigger>
             </TabsList>
-
+            
+            {/* Add new TabsContent sections for History and NFTs */}
+            <TabsContent value="history" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Transaction History</CardTitle>
+                  <CardDescription>View all your recent transactions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex justify-between items-center mb-4">
+                    <Select defaultValue="all">
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Transactions</SelectItem>
+                        <SelectItem value="send">Send</SelectItem>
+                        <SelectItem value="receive">Receive</SelectItem>
+                        <SelectItem value="buy">Buy</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" size="sm">
+                      <Filter className="h-4 w-4 mr-2" />
+                      Filter
+                    </Button>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell>Apr 23, 2023</TableCell>
+                        <TableCell>Send</TableCell>
+                        <TableCell>-0.5 ETH</TableCell>
+                        <TableCell><Badge>Completed</Badge></TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>Apr 22, 2023</TableCell>
+                        <TableCell>Receive</TableCell>
+                        <TableCell>+1.2 ETH</TableCell>
+                        <TableCell><Badge>Completed</Badge></TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>Apr 20, 2023</TableCell>
+                        <TableCell>Buy</TableCell>
+                        <TableCell>+0.3 ETH</TableCell>
+                        <TableCell><Badge>Completed</Badge></TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="nfts" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>NFT Collection</CardTitle>
+                  <CardDescription>View all your NFTs across different chains</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="aspect-square rounded-lg bg-muted mb-3"></div>
+                        <h3 className="font-medium">NFT #1234</h3>
+                        <p className="text-sm text-muted-foreground">Collection Name</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="aspect-square rounded-lg bg-muted mb-3"></div>
+                        <h3 className="font-medium">NFT #5678</h3>
+                        <p className="text-sm text-muted-foreground">Collection Name</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="aspect-square rounded-lg bg-muted mb-3"></div>
+                        <h3 className="font-medium">NFT #9012</h3>
+                        <p className="text-sm text-muted-foreground">Collection Name</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
             {/* Content Sections */}
             <TabsContent value="overview" className="mt-6">
               {/* Pass fetched data, loading state, and error state to DashboardCharts */}
@@ -287,6 +381,8 @@ export default function DashboardPage() {
   return (
     <ProtectedRoute>
       <DashboardContent />
+      {/* Add the OnboardingAgentWrapper here instead */}
+      <OnboardingAgentWrapper />
     </ProtectedRoute>
   );
 }

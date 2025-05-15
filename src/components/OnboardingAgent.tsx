@@ -37,20 +37,27 @@ Be friendly, clear, and confident. Use short sentences and always offer a button
 If they ask questions like "What is Mono?" or "Why do I need a wallet?", give simple, beginner-friendly explanations.
 `;
 
-export default function OnboardingAgent({ agentKit }: { agentKit: any }) {
+// Update the component props to include pageContext
+export default function OnboardingAgent({ 
+  agentKit, 
+  pageContext = 'other' 
+}: { 
+  agentKit: any, 
+  pageContext?: 'overview' | 'signin' | 'other' 
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useUser();
   const { address, isConnected, walletData, autoConnect } = useWalletConnection();
   const [bankConnected, setBankConnected] = useState(false);
 
-  // Use the Vercel AI SDK's useChat hook with Coinbase Agent
+  // Use the Vercel AI SDK's useChat hook with Coinbase Agent and page context
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
     api: '/api/chat',
     initialMessages: [
       {
         id: 'welcome',
         role: 'assistant',
-        content: 'Hi there! I\'m your Albus assistant. I can help you set up your account, connect your wallet, or link your bank account. What would you like help with today?'
+        content: getWelcomeMessage(pageContext)
       }
     ],
     body: {
@@ -61,10 +68,23 @@ export default function OnboardingAgent({ agentKit }: { agentKit: any }) {
         walletAddress: address || null,
         walletData: walletData || null,
         hasBankConnected: bankConnected,
-        agent: agentKit // Pass the Coinbase agent from props
+        agent: agentKit, // Pass the Coinbase agent to the API
+        pageContext // Pass the current page context
       }
     }
   });
+
+  // Function to get context-aware welcome message
+  function getWelcomeMessage(context: string) {
+    switch(context) {
+      case 'overview':
+        return 'Welcome to your dashboard! I can help you understand your finances or assist with any questions about your accounts.';
+      case 'signin':
+        return 'Welcome to Albus! I can help you sign in and set up your account. Would you like to connect with Google, Apple, or an existing wallet?';
+      default:
+        return 'Hi there! I\'m your Albus assistant. How can I help you today?';
+    }
+  }
 
   // Function to handle wallet connection
   const handleConnectWallet = async () => {
