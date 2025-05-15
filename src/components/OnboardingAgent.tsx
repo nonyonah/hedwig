@@ -1,16 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bot, User, X } from 'lucide-react';
+import { Bot, X } from 'lucide-react';
 import { useChat } from 'ai/react';
 import { useUser } from '@/hooks/useUser';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
-import { AgentKit } from "@coinbase/agentkit";
-import { cdpApiActionProvider } from "@coinbase/agentkit";
-import { CdpWalletProvider } from "@coinbase/agentkit";
 
 type Message = {
   role: 'user' | 'assistant';
@@ -40,44 +37,11 @@ Be friendly, clear, and confident. Use short sentences and always offer a button
 If they ask questions like "What is Mono?" or "Why do I need a wallet?", give simple, beginner-friendly explanations.
 `;
 
-export default function OnboardingAgent() {
+export default function OnboardingAgent({ agentKit }: { agentKit: any }) {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useUser();
   const { address, isConnected, walletData, autoConnect } = useWalletConnection();
   const [bankConnected, setBankConnected] = useState(false);
-  
-  // Initialize Coinbase Agent Kit with the correct approach
-  const [agent, setAgent] = useState<any>(null);
-
-  useEffect(() => {
-    const initializeAgent = async () => {
-      try {
-        // Create a wallet provider
-        const walletProvider = await CdpWalletProvider.configureWithWallet({
-          apiKeyName: process.env.NEXT_PUBLIC_COINBASE_API_KEY_NAME as string,
-          apiKeyPrivateKey: process.env.NEXT_PUBLIC_COINBASE_API_KEY as string,
-          networkId: "base-mainnet", // Or your preferred network
-        });
-
-        // Initialize AgentKit
-        const agentKit = await AgentKit.from({
-          walletProvider,
-          actionProviders: [
-            cdpApiActionProvider({
-              apiKeyName: process.env.NEXT_PUBLIC_COINBASE_API_KEY_NAME as string,
-              apiKeyPrivateKey: process.env.NEXT_PUBLIC_COINBASE_API_KEY as string,
-            }),
-          ],
-        });
-
-        setAgent(agentKit);
-      } catch (error) {
-        console.error("Failed to initialize Coinbase Agent Kit:", error);
-      }
-    };
-
-    initializeAgent();
-  }, []);
 
   // Use the Vercel AI SDK's useChat hook with Coinbase Agent
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
@@ -97,7 +61,7 @@ export default function OnboardingAgent() {
         walletAddress: address || null,
         walletData: walletData || null,
         hasBankConnected: bankConnected,
-        agent: agent // Pass the Coinbase agent to the API
+        agent: agentKit // Pass the Coinbase agent from props
       }
     }
   });

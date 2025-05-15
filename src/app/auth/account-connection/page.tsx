@@ -9,12 +9,7 @@ import OnboardingAgent from '@/components/OnboardingAgent';
 import { loadAndInitMonoConnect, saveBankConnection, hasBankAccount } from '@/lib/mono-connect';
 // In the imports section
 import AuthenticatedConnectButton from '@/components/AuthenticatedConnectButton';
-// Remove the original import: import ConnectWalletButton from '@/components/ConnectWalletButton';
 
-// Then in the JSX part, replace:
-<ConnectWalletButton />
-
-// With:
 <AuthenticatedConnectButton />
 import { useWalletConnection } from '@/hooks/useWalletConnection';
 
@@ -103,7 +98,7 @@ export default function AccountConnectionPage() {
             <span className="font-semibold">Albus</span>
           </div>
           <div className="flex items-center gap-2">
-            <ConnectWalletButton />
+            <AuthenticatedConnectButton />
           </div>
         </div>
       </div>
@@ -112,19 +107,14 @@ export default function AccountConnectionPage() {
       <div className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold">Connect Your Bank Account</CardTitle>
+            <CardTitle className="text-2xl font-bold">Let's link your account</CardTitle>
             <CardDescription>
-              Connect your bank account to complete your profile
+              Get a complete picture of your finances with your accounts and wallets in one place
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Bank Account Connection Section */}
+            {/* Bank Account Connection Section - removed heading and description */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Bank Account Connection</h3>
-              <p className="text-sm text-muted-foreground">
-                Connect your Nigerian bank account to track your finances
-              </p>
-              
               {!bankConnected ? (
                 <div className="flex flex-col gap-3">
                   <Button 
@@ -160,14 +150,7 @@ export default function AccountConnectionPage() {
               )}
             </div>
           </CardContent>
-          <CardFooter>
-            <Button 
-              onClick={handleContinue} 
-              className="w-full"
-            >
-              Continue to Dashboard
-            </Button>
-          </CardFooter>
+          {/* CardFooter with Continue button removed */}
         </Card>
       </div>
       <OnboardingAgent />
