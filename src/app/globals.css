@@ -204,3 +204,25 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Add these to your globals.css file */
+button, .button, [class*="btn"] {
+  border-color: transparent !important;
+}
+
+/* Soften input fields */
+input, select, textarea {
+  border-color: var(--border) !important;
+  border-width: 1px !important;
+}
+
+/* Soften sidebar */
+.sidebar, [class*="sidebar"] {
+  border-color: var(--sidebar-border) !important;
+}
+
+.no-borders {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
