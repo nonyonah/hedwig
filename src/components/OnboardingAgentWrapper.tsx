@@ -1,3 +1,5 @@
+'use client';
+
 import { initializeCoinbaseAgent } from './CoinbaseAgentServer';
 import OnboardingAgent from './OnboardingAgent';
 import { usePathname } from 'next/navigation';
@@ -10,8 +12,6 @@ export default async function OnboardingAgentWrapper() {
   return <OnboardingAgentClientWrapper agentKit={agentKit} />;
 }
 
-// Create a client wrapper to access client-side hooks
-'use client';
 
 function OnboardingAgentClientWrapper({ agentKit }: { agentKit: any }) {
   const pathname = usePathname();
