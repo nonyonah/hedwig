@@ -8,15 +8,14 @@ import { cn } from "@/lib/utils";
 import {
   Search,
   LayoutDashboard,
-  Clock,
-  ShoppingCart,
-  List,
   Settings,
   ChevronDown,
   ChevronRight,
-  ArrowUpDown,
-  CreditCard,
-  Wallet
+  Wallet,
+  LineChart,
+  Landmark,
+  BarChart3,
+  Layers
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -72,7 +71,7 @@ const SidebarSection = ({ title, children, collapsible = false, defaultOpen = tr
       {title && (
         <div 
           className={cn(
-            "flex items-center px-3 py-2 text-xs font-medium text-muted-foreground",
+            "flex items-center px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground",
             collapsible && "cursor-pointer"
           )}
           onClick={collapsible ? () => setIsOpen(!isOpen) : undefined}
@@ -94,7 +93,8 @@ const SidebarSection = ({ title, children, collapsible = false, defaultOpen = tr
 
 export function Sidebar() {
   const [activePath, setActivePath] = useState('/overview');
-  const [transactionsOpen, setTransactionsOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [defiOpen, setDefiOpen] = useState(false);
   
   return (
     <div className="fixed h-screen w-60 flex flex-col border-r bg-background p-3 overflow-y-auto">
@@ -123,71 +123,102 @@ export function Sidebar() {
             href="/overview"
             active={activePath === '/overview'}
           />
-          
-          {/* Transactions with collapsible submenu */}
+        </SidebarSection>
+        
+        {/* Wallet section with collapsible submenu */}
+        <SidebarSection title="Wallet">
           <div>
             <div
               className={cn(
                 "flex items-center justify-between py-2 px-3 rounded-md text-sm transition-colors cursor-pointer",
-                (activePath.startsWith('/transactions') || transactionsOpen) 
+                (activePath.startsWith('/wallet') || walletOpen) 
                   ? "bg-primary/10 text-primary font-medium" 
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
-              onClick={() => setTransactionsOpen(!transactionsOpen)}
+              onClick={() => setWalletOpen(!walletOpen)}
             >
               <div className="flex items-center gap-3">
-                <Clock className="h-4 w-4" />
-                <span>Transactions</span>
+                <Wallet className="h-4 w-4" />
+                <span>Wallet</span>
               </div>
-              {transactionsOpen ? (
+              {walletOpen ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (
                 <ChevronRight className="h-4 w-4" />
               )}
             </div>
             
-            {transactionsOpen && (
+            {walletOpen && (
               <div className="ml-6 space-y-1 mt-1">
                 <SidebarItem 
-                  icon={<Clock className="h-4 w-4" />} 
-                  label="History" 
-                  href="/transactions/history"
-                  active={activePath === '/transactions/history'}
+                  icon={<div className="w-1 h-1 rounded-full bg-current" />} 
+                  label="Send" 
+                  href="/wallet/send"
+                  active={activePath === '/wallet/send'}
                 />
                 <SidebarItem 
-                  icon={<CreditCard className="h-4 w-4" />} 
+                  icon={<div className="w-1 h-1 rounded-full bg-current" />} 
+                  label="Receive" 
+                  href="/wallet/receive"
+                  active={activePath === '/wallet/receive'}
+                />
+                <SidebarItem 
+                  icon={<div className="w-1 h-1 rounded-full bg-current" />} 
                   label="Buy" 
-                  href="/transactions/buy"
-                  active={activePath === '/transactions/buy'}
-                />
-                <SidebarItem 
-                  icon={<Wallet className="h-4 w-4" />} 
-                  label="Sell" 
-                  href="/transactions/sell"
-                  active={activePath === '/transactions/sell'}
-                />
-                <SidebarItem 
-                  icon={<ArrowUpDown className="h-4 w-4" />} 
-                  label="Swap Crypto" 
-                  href="/transactions/swap"
-                  active={activePath === '/transactions/swap'}
+                  href="/wallet/buy"
+                  active={activePath === '/wallet/buy'}
                 />
               </div>
             )}
           </div>
-          
+        </SidebarSection>
+        
+        {/* DeFi section with collapsible submenu */}
+        <SidebarSection title="DeFi">
+          <div>
+            <div
+              className={cn(
+                "flex items-center justify-between py-2 px-3 rounded-md text-sm transition-colors cursor-pointer",
+                (activePath.startsWith('/defi') || defiOpen) 
+                  ? "bg-primary/10 text-primary font-medium" 
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+              onClick={() => setDefiOpen(!defiOpen)}
+            >
+              <div className="flex items-center gap-3">
+                <BarChart3 className="h-4 w-4" />
+                <span>DeFi</span>
+              </div>
+              {defiOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </div>
+            
+            {defiOpen && (
+              <div className="ml-6 space-y-1 mt-1">
+                <SidebarItem 
+                  icon={<div className="w-1 h-1 rounded-full bg-current" />} 
+                  label="Yield Aggregation" 
+                  href="/defi/yield"
+                  active={activePath === '/defi/yield'}
+                />
+              </div>
+            )}
+          </div>
+        </SidebarSection>
+        
+        <SidebarSection title="Banking">
           <SidebarItem 
-            icon={<ShoppingCart className="h-4 w-4" />} 
-            label="Collectibles" 
-            href="/collectibles"
-            active={activePath === '/collectibles'}
+            icon={<Landmark className="h-4 w-4" />} 
+            label="Accounts" 
+            href="/banking/accounts"
+            active={activePath === '/banking/accounts'}
           />
-          <SidebarItem 
-            icon={<List className="h-4 w-4" />} 
-            label="Watchlist" 
-            href="/watchlist"
-            active={activePath === '/watchlist'}
-          />
+        </SidebarSection>
+        
+        <SidebarSection title="Other">
           <SidebarItem 
             icon={<Settings className="h-4 w-4" />} 
             label="Settings" 
@@ -197,11 +228,8 @@ export function Sidebar() {
         </SidebarSection>
       </div>
       
-      <div className="mt-auto border-t pt-3">
-        <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-xs text-muted-foreground">Theme</span>
-          <ThemeToggle />
-        </div>
+      <div className="mt-auto pt-4 border-t">
+        <ThemeToggle />
       </div>
     </div>
   );

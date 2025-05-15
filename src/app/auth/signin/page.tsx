@@ -13,6 +13,9 @@ import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 
+// Add this import at the top with other imports
+import OnboardingAgentWrapper from '@/components/OnboardingAgentWrapper';
+
 export default function SignInPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -241,5 +244,15 @@ export default function SignInPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+  
+  return (
+    <>
+      {/* Existing signin page content */}
+      {/* ... */}
+      
+      {/* Add the OnboardingAgentWrapper component */}
+      <OnboardingAgentWrapper />
+    </>
   );
 }
