@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { useTheme } from 'next-themes';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
-import ProtectedRoute from '@/components/ProtectedRoute';
+// import ProtectedRoute from '@/components/ProtectedRoute';
 import {
   Card,
   CardContent,
@@ -367,10 +367,12 @@ function DashboardContent() {
   );
 }
 
-export default function DashboardPage() {
-  return (
-    <ProtectedRoute>
-      <DashboardContent />
-    </ProtectedRoute>
-  );
-}
+export const dynamic = 'force-dynamic';
+
+// export default function DashboardPage() {
+//   return (
+//     <ProtectedRoute>
+//       <DashboardContent />
+//     </ProtectedRoute>
+//   );
+// }
