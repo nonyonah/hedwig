@@ -51,7 +51,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowDown, Filter } from "lucide-react";
 
 function DashboardContent() {
-  const [_timeframe, _setTimeframe] = useState('weekly');
+  const [] = useState('weekly');
   useTheme();
 
   // Use the ThirdWeb hook
@@ -96,11 +96,11 @@ function DashboardContent() {
             </div>
           </div>
 
-          {/* Tabs */}
+          
           <Tabs defaultValue="overview" className="w-full">
-            // In the Tabs section, update the TabsList to include History and NFTs
+            {/* In the Tabs section, update the TabsList to include History and NFTs */}
             <TabsList className="grid w-full max-w-md grid-cols-5">
-              // In the Tabs section, update the TabsList to include History and NFTs
+              {/* In the Tabs section, update the TabsList to include History and NFTs */}
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="bank">Bank Assets</TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>

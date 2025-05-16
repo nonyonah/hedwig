@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { 
-  useActiveWallet,
   useActiveAccount,
   useDisconnect,
   useActiveWalletChain,
@@ -11,7 +10,6 @@ import {
   useConnectModal,
 } from "thirdweb/react";
 import { client } from "@/providers/ThirdwebProvider";
-import { createWallet } from "thirdweb/wallets";
 
 
 export type WalletData = {
@@ -34,7 +32,6 @@ export type WalletData = {
 };
 
 export function useWalletConnection() {
-  const activeWallet = useActiveWallet(); 
   const activeAccount = useActiveAccount(); 
   const connectionStatus = useActiveWalletConnectionStatus();
   const { connect } = useConnectModal();
@@ -76,7 +73,6 @@ export function useWalletConnection() {
     setIsLoading(isLoadingBalance);
     if (balance) {
       const nftCount = 0; // Placeholder for actual NFT count
-      const _nativeValueBigInt = balance.value;
       const nativeValue = parseFloat(balance.displayValue); 
       const usdPricePerToken = 0; // Placeholder: USD price for native token needs a separate source
       const usdValue = nativeValue * usdPricePerToken;
