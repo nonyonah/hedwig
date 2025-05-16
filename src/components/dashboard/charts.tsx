@@ -105,7 +105,8 @@ export function DashboardCharts({
   // Update your state initialization to use props if provided
   const [walletData, setWalletData] = useState<WalletData | null>(propWalletData || null);
   const [isLoading, setIsLoading] = useState(propIsLoading || false);
-  const [_error, setError] = useState<string | null>(propError || null);  // Prefix with underscore to indicate intentional non-use
+  // Corrected useState destructuring for error state
+  const [setError] = useState<string | null>(propError || null);
   
   // Get wallet address from ThirdWeb or props
   const account = useActiveAccount();
@@ -135,7 +136,7 @@ export function DashboardCharts({
     
     setWalletConnected(true);
     setIsLoading(true);
-    setError(null);
+    setError(null); // Now correctly calls the setter function
     
     // Fetch wallet data from our API (which uses Alchemy)
     fetch(`/api/wallet?address=${address}`)
@@ -151,7 +152,11 @@ export function DashboardCharts({
       })
       .catch(err => {
         console.error('Error fetching wallet data:', err);
-        setError(err.message);
+        if (err instanceof Error) {
+          setError(err.message); // Now correctly calls the setter function
+        } else {
+          setError('An unknown error occurred');
+        }
       })
       .finally(() => {
         setIsLoading(false);
