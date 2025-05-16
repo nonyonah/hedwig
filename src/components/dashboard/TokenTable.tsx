@@ -6,6 +6,8 @@ import { ArrowDown, TrendingUp, TrendingDown } from 'lucide-react';
 
 // Import Badge component if not already imported
 import { Badge } from "@/components/ui/badge";
+import { ArrowUpDown, ExternalLink } from "lucide-react";
+import Image from 'next/image';
 
 // Define the Token interface
 interface Token {
@@ -245,3 +247,12 @@ export function TokenTable({ tokens, isLoading, walletConnected, chainColors }: 
     );
   }
 }
+
+// Replace the img element with Next.js Image component (around line 187)
+<Image 
+  src={token.metadata.logo || '/placeholder-token.png'} 
+  alt={token.metadata.name || 'Token'} 
+  width={24} 
+  height={24} 
+  className="mr-2 rounded-full"
+/>

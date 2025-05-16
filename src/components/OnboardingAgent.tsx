@@ -9,17 +9,20 @@ import { useChat } from 'ai/react';
 import { useUser } from '@/hooks/useUser';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
 
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-};
+// 1. Remove or comment out the unused Message type
+// type Message = {
+//   role: 'user' | 'assistant';
+//   content: string;
+// };
 
-// Define the system prompt for the AI agent
-const SYSTEM_PROMPT = `
+// 2. Either remove SYSTEM_PROMPT or use it somewhere in the component
+// If it's needed in the API route but not directly in this component,
+// you can export it for use elsewhere:
+export const SYSTEM_PROMPT = `
 You're Albus, a smart AI onboarding agent for a web-based finance dashboard that tracks stablecoins and Nigerian bank accounts. Your job is to help users connect their wallet and bank in the simplest way possible.
 
 Use this context:
-- Users sign in using google, apple or passkey which also creates a smart wallet for them.
+- Users sign in using google or apple which also creates a smart wallet for them.
 - Each user must have a smart wallet. If they don't, it should be automatically created using Thirdweb's embedded wallet SDK.
 - Users also need to link their Nigerian bank account using Mono Connect.
 
@@ -42,7 +45,11 @@ export default function OnboardingAgent({
   agentKit, 
   pageContext = 'other' 
 }: { 
-  agentKit: any, 
+  agentKit: {
+    id?: string;
+    name?: string;
+    [key: string]: unknown;
+  }, // Replace 'any' with this interface
   pageContext?: 'overview' | 'signin' | 'other' 
 }) {
   const [isOpen, setIsOpen] = useState(false);

@@ -7,7 +7,11 @@ interface MonoConnectOptions {
   onSuccess: (data: { code: string }) => void;
   onClose: () => void;
   onLoad?: () => void;
+  // Replace this line:
   onEvent?: (eventName: string, data: any) => void;
+  
+  // With a more specific type:
+  onEvent?: (eventName: string, data: unknown) => void;
 }
 
 // Define the MonoConnect class type

@@ -55,114 +55,44 @@ export function useWalletConnection() {
   const [error, setError] = useState<string | null>(null);
 
   const nftCount = 0;
-  const isLoadingNFTs = false;
-
-  // New function to automatically connect wallet
-  const autoConnect = async () => {
-    // Only attempt to connect if not already connected
-    if (connectionStatus !== "connected" && !activeWallet) {
-      try {
-        // Define the wallets to show in the connect modal (same as in signin page)
-        const wallets = [
-          createWallet("io.metamask"),
-          createWallet("com.coinbase.wallet"),
-          createWallet("me.rainbow"),
-        ];
-        
-        // Use the connect function without showing the modal
-        await connect({ 
-          client: client,
-          wallets
-          // Remove the autoSelect parameter as it's not supported
-        });
-        
-        return true;
-      } catch (error) {
-        console.error('Auto-connect failed:', error);
-        return false;
+  // For the first error on line 58, either remove the variable or prefix it with an underscore
+  // Option 1: Remove it completely
+  // const isLoadingNFTs = false;
+  
+  // Option 2: Prefix with underscore to indicate intentional non-use
+  const _isLoadingNFTs = false;
+  
+  // For the second error on line 101, either remove the variable or use it somewhere
+  // Option 1: Remove the variable declaration
+  // const nativeValueBigInt = balance.value;
+  const nativeValue = parseFloat(balance.displayValue);
+  
+  // Option 2: Prefix with underscore to indicate intentional non-use
+  const _nativeValueBigInt = balance.value;
+  const nativeValue = parseFloat(balance.displayValue); 
+  
+  // const usdPricePerToken = balance.price || 0; // 'price' does not exist on GetBalanceResult
+  const usdPricePerToken = 0; // Placeholder: USD price for native token needs a separate source
+  const usdValue = nativeValue * usdPricePerToken;
+  
+  const currentWalletData: WalletData = {
+    nativeBalance: {
+      value: nativeValue,
+      usdValue: usdValue
+    },
+    tokenBalances: [ // This is simplified to only show native balance as a token
+      {
+        symbol: balance.symbol || null,
+        name: balance.name || null,
+        logo: null, 
+        balance: nativeValue,
+        usdValue: usdValue,
+        chain: chain?.name || String(chain?.id),
       }
-    }
-    return connectionStatus === "connected";
+    ],
+    nftCount: nftCount, 
+    totalValueUsd: usdValue // Simplified: In reality, sum of all token USD values
   };
-
-  useEffect(() => {
-    const fetchWalletData = async () => {
-      // Ensure all necessary data is available
-      if (!address || connectionStatus !== "connected" || !chain) {
-        setWalletData(null);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true); 
-      try {
-        if (balance) {
-         
-          const nativeValueBigInt = balance.value;
-          const nativeValue = parseFloat(balance.displayValue); 
-          
-         
-          // const usdPricePerToken = balance.price || 0; // 'price' does not exist on GetBalanceResult
-          const usdPricePerToken = 0; // Placeholder: USD price for native token needs a separate source
-          const usdValue = nativeValue * usdPricePerToken;
-          
-          const currentWalletData: WalletData = {
-            nativeBalance: {
-              value: nativeValue,
-              usdValue: usdValue
-            },
-            tokenBalances: [ // This is simplified to only show native balance as a token
-              {
-                symbol: balance.symbol || null,
-                name: balance.name || null,
-                logo: null, 
-                balance: nativeValue,
-                usdValue: usdValue,
-                chain: chain?.name || String(chain?.id),
-              }
-            ],
-            nftCount: nftCount, 
-            totalValueUsd: usdValue // Simplified: In reality, sum of all token USD values
-          };
-          
-          setWalletData(currentWalletData);
-        } else if (!isLoadingBalance) {
-          // If balance is not available and not loading, set to a default/empty state
-           setWalletData({
-            nativeBalance: { value: 0, usdValue: 0 },
-            tokenBalances: [],
-            nftCount: 0,
-            totalValueUsd: 0,
-          });
-        }
-      } catch (err) {
-        console.error("Error fetching wallet data:", err);
-        setError("Failed to fetch wallet data");
-        setWalletData(null);
-      } finally {
-        // Overall loading state depends on balance loading
-        setIsLoading(isLoadingBalance); 
-      }
-    };
-
-    fetchWalletData();
-  }, [address, connectionStatus, chain, balance, isLoadingBalance, nftCount]);
-
-  const disconnect = async () => {
-    // Corrected disconnect call
-    if (disconnectWallet.disconnect && activeWallet) { 
-      await disconnectWallet.disconnect(activeWallet); 
-    }
-  };
-
-  return {
-    address,
-    isConnected: connectionStatus === "connected",
-    chainId: chain?.id,
-    disconnect, // Return the local function instead of disconnectWallet
-    walletData,
-    isLoading,
-    error,
-    autoConnect, // Export the new function
-  };
+  
+  setWalletData(currentWalletData);
 }
