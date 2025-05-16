@@ -19,7 +19,7 @@ import {
   Legend
 } from 'recharts';
 import { Skeleton } from "@/components/ui/skeleton";
-// import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";  // Remove unused imports
+import { Alert, AlertDescription } from "@/components/ui/alert";  // Re-added the Alert components
 // import { formatAddress } from '@/lib/utils';  // Remove unused import
 // Import correct ThirdWeb v5 functions
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
@@ -39,17 +39,6 @@ const supportedChains = [
   { key: 'ethereum', name: 'Ethereum', id: 1, isTestnet: false, color: '#627EEA' },
   { key: 'binance', name: 'BNB Chain', id: 56, isTestnet: false, color: '#F3BA2F' },
 ];
-
-// Chart configuration for the line chart
-
-// Comment out or remove unused interface
-// interface PieChartPayload {  // Remove unused interface
-//   name: string;
-//   value: number;
-//   chain: string;
-//   fill: string;
-// }
-
 
 // Define TypeScript interfaces for the component props
 interface WalletData {
@@ -105,8 +94,7 @@ export function DashboardCharts({
   // Update your state initialization to use props if provided
   const [walletData, setWalletData] = useState<WalletData | null>(propWalletData || null);
   const [isLoading, setIsLoading] = useState(propIsLoading || false);
-  // Corrected useState destructuring for error state
-  const [setError] = useState<string | null>(propError || null);
+  const [error, setError] = useState<string | null>(propError || null);
   
   // Get wallet address from ThirdWeb or props
   const account = useActiveAccount();
@@ -136,7 +124,7 @@ export function DashboardCharts({
     
     setWalletConnected(true);
     setIsLoading(true);
-    setError(null); // Now correctly calls the setter function
+    setError(null);
     
     // Fetch wallet data from our API (which uses Alchemy)
     fetch(`/api/wallet?address=${address}`)
@@ -153,7 +141,7 @@ export function DashboardCharts({
       .catch(err => {
         console.error('Error fetching wallet data:', err);
         if (err instanceof Error) {
-          setError(err.message); // Now correctly calls the setter function
+          setError(err.message);
         } else {
           setError('An unknown error occurred');
         }
@@ -341,7 +329,7 @@ export function DashboardCharts({
   const getChartData = () => {
     // Filter data based on timeframe
     const currentMonth = new Date().getMonth();
-    const filteredData = [...historicalData];  // Change let to const
+    const filteredData = [...historicalData];
     
     switch(timeframe) {
       case 'Daily':
@@ -385,10 +373,6 @@ export function DashboardCharts({
     };
   };
 
-  // Get the chart title based on selected metric
-
-  // Get the chart description based on selected metric
-
   // Get metrics data
   const metrics = getMetrics();
 
@@ -397,6 +381,14 @@ export function DashboardCharts({
   
   return (
     <div className="space-y-6">
+      {/* Display error alert if there is an error */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      
       {/* Stats Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card 
