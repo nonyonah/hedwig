@@ -756,9 +756,3 @@ export function DashboardCharts({
     </div>
   );
 }
-
-// Fix the any type on line 718
-// Change from:
-// function someFunction(param: any) { ... }
-// To:
-function someFunction(param: unknown) { ... }  // Or use a more specific type
