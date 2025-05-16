@@ -2,7 +2,7 @@
 
 import { ThirdwebProvider } from "thirdweb/react";
 import { ReactNode } from "react";
-import { ethereum, base, optimism, arbitrum, bsc } from "thirdweb/chains";
+import { base } from "thirdweb/chains";
 import { createThirdwebClient, type ThirdwebClient } from "thirdweb"; 
 
 // Create the client for use in other components
@@ -10,7 +10,7 @@ export const client: ThirdwebClient = createThirdwebClient({
   clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID || "", 
 });
 
-export const defaultSupportedChains = [ethereum, base, optimism, arbitrum, bsc];
+export const defaultSupportedChains = [base];
 export const defaultDAppMeta = {
   name: "Albus",
   description: "Your web3 dashboard",

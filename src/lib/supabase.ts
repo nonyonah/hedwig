@@ -33,8 +33,6 @@ export const signInWithOAuth = async (
       ? `${window.location.origin}/auth/callback`
       : '/auth/callback'; // Fallback for SSR, adjust if needed
 
-    // Replace this line:
-    const { data, error } = await supabase.auth.signInWithOAuth({
     
     // With this (using underscore to indicate intentional non-use):
     const { data: _data, error } = await supabase.auth.signInWithOAuth({

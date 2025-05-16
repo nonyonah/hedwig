@@ -1,4 +1,4 @@
-import { Network, Alchemy } from 'alchemy-sdk';
+import { Network, Alchemy, OwnedNft } from 'alchemy-sdk';
 
 // Define supported chains with their Alchemy network equivalents
 export const supportedChains = [
@@ -62,10 +62,9 @@ export async function getTokenBalances(address: string) {
     
     // Filter successful results
     const successfulResults = results
-      .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
-      .map((result) => result.value);
-    
-    return successfulResults;
+      .filter((result) => result.status === 'fulfilled') as PromiseFulfilledResult<ChainData>[];
+    const values = successfulResults.map((result) => result.value);
+    return values;
   } catch (error) {
     console.error('Error fetching token balances:', error);
     throw error;
@@ -89,23 +88,10 @@ export async function getNFTs(address: string) {
       })
     );
     
+    
     // Filter successful results
-    // Define an interface for NFT data
-    interface NFTData {
-      chain: string;
-      chainId: number;
-      nfts: unknown[];
-      totalCount: number;
-    }
-    
-    // Replace this line:
     const successfulResults = results
-      .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
-      .map((result) => result.value);
-    
-    // With this (using the ChainData interface):
-    const successfulResults = results
-      .filter((result): result is PromiseFulfilledResult<ChainData> => result.status === 'fulfilled')
+      .filter((result): result is PromiseFulfilledResult<NFTData> => result.status === 'fulfilled')
       .map((result) => result.value);
     
     return successfulResults;
@@ -139,9 +125,9 @@ interface ChainData {
 
 // Define the FormattedToken interface
 interface FormattedToken {
-  symbol: string;
-  name: string;
-  logo: string | null;
+  symbol: string | null | undefined;
+  name: string | null | undefined;
+  logo: string | null | undefined;
   balance: number;
   usdValue: number;
   chain: string;
@@ -159,15 +145,12 @@ interface PriceData {
 // Import TokenMetadataResponse type or define it if not available
 interface TokenMetadataResponse {
   decimals?: number;
-  logo?: string;
-  name?: string;
-  symbol?: string;
+  logo?: string | null;
+  name?: string | null;
+  symbol?: string | null;
   usd?: number;
-  // Replace this line in the TokenMetadataResponse interface:
-  [key: string]: any;
   
-  // With this (more specific index signature):
-  [key: string]: string | number | undefined;
+  [key: string]: string | number | null | undefined;
 }
 
 // Update the getTokenPrices function to ensure it returns only PriceData objects
@@ -294,4 +277,12 @@ function getChainColor(chain: string): string {
     case 'polygon': return '#8247E5';
     default: return '#888888';
   }
+}
+
+// Define the NFTData interface
+interface NFTData {
+  chain: string;
+  chainId: number;
+  nfts: OwnedNft[];
+  totalCount: number;
 }

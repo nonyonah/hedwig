@@ -5,9 +5,6 @@ declare module '@mono.co/connect.js' {
     onLoad?: () => void;
     onSuccess: (data: { code: string }) => void;
     reference?: string;
-    // Replace this line:
-    onEvent?: (eventName: string, data: any) => void;
-    
     // With this (using a more specific type):
     onEvent?: (eventName: string, data: unknown) => void;
   }

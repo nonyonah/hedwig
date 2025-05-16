@@ -14,8 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Remove unused Separator import
 // import { Separator } from "@/components/ui/separator";
 
-// Add this import at the top with other imports
-import OnboardingAgentWrapper from '@/components/OnboardingAgentWrapper';
+
 // Add Image import for Next.js optimization
 import Image from 'next/image';
 
@@ -230,7 +229,6 @@ export default function SignInPage() {
           </Tabs>
         </CardContent>
         <CardFooter className="flex justify-center pt-0">
-          <OnboardingAgentWrapper />
         </CardFooter>
       </Card>
     </div>

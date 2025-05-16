@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
 import { type ThemeProviderProps } from 'next-themes';
-import { ThemeContext } from 'next-themes'; // Add this import at the top
 
 export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
   return (
@@ -22,19 +21,8 @@ export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
   );
 }
 
-export const useTheme = () => {
-  // Replace require() with proper import (already added at the top)
-  const { theme, setTheme } = React.useContext(ThemeContext) as {
-    theme: string | undefined;
-    setTheme: (theme: string) => void;
-  };
-
-  if (theme === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-
-  return { theme, setTheme };
-};
+// Export useTheme directly from next-themes instead of creating a custom hook
+export { useTheme } from 'next-themes';
 
 // Either remove the unused themes variable or export it if you plan to use it later
 // Option 1: Remove it completely

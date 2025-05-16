@@ -54,45 +54,68 @@ export function useWalletConnection() {
   const [isLoading, setIsLoading] = useState<boolean>(true); 
   const [error, setError] = useState<string | null>(null);
 
-  const nftCount = 0;
-  // For the first error on line 58, either remove the variable or prefix it with an underscore
-  // Option 1: Remove it completely
-  // const isLoadingNFTs = false;
-  
-  // Option 2: Prefix with underscore to indicate intentional non-use
-  const _isLoadingNFTs = false;
-  
-  // For the second error on line 101, either remove the variable or use it somewhere
-  // Option 1: Remove the variable declaration
-  // const nativeValueBigInt = balance.value;
-  const nativeValue = parseFloat(balance.displayValue);
-  
-  // Option 2: Prefix with underscore to indicate intentional non-use
-  const _nativeValueBigInt = balance.value;
-  const nativeValue = parseFloat(balance.displayValue); 
-  
-  // const usdPricePerToken = balance.price || 0; // 'price' does not exist on GetBalanceResult
-  const usdPricePerToken = 0; // Placeholder: USD price for native token needs a separate source
-  const usdValue = nativeValue * usdPricePerToken;
-  
-  const currentWalletData: WalletData = {
-    nativeBalance: {
-      value: nativeValue,
-      usdValue: usdValue
-    },
-    tokenBalances: [ // This is simplified to only show native balance as a token
-      {
-        symbol: balance.symbol || null,
-        name: balance.name || null,
-        logo: null, 
-        balance: nativeValue,
-        usdValue: usdValue,
-        chain: chain?.name || String(chain?.id),
-      }
-    ],
-    nftCount: nftCount, 
-    totalValueUsd: usdValue // Simplified: In reality, sum of all token USD values
+  // Define autoConnect function (example)
+  const autoConnect = async () => {
+    // Implement your auto-connection logic here
+    // For example, try to connect to a previously used wallet
+    try {
+      // This is a placeholder. Replace with actual auto-connect logic.
+      // const previouslyConnectedWallet = localStorage.getItem('previouslyConnectedWallet');
+      // if (previouslyConnectedWallet) {
+      //   const wallet = createWallet(previouslyConnectedWallet);
+      //   await connect({ client, wallet });
+      // }
+      console.log("Attempting to auto-connect...");
+    } catch (e) {
+      console.error("Auto-connect failed", e);
+      setError("Auto-connect failed");
+    }
   };
-  
-  setWalletData(currentWalletData);
+
+  useEffect(() => {
+    setIsLoading(isLoadingBalance);
+    if (balance) {
+      const nftCount = 0; // Placeholder for actual NFT count
+      const _nativeValueBigInt = balance.value;
+      const nativeValue = parseFloat(balance.displayValue); 
+      const usdPricePerToken = 0; // Placeholder: USD price for native token needs a separate source
+      const usdValue = nativeValue * usdPricePerToken;
+      
+      const currentWalletData: WalletData = {
+        nativeBalance: {
+          value: nativeValue,
+          usdValue: usdValue
+        },
+        tokenBalances: [ 
+          {
+            symbol: balance.symbol || null,
+            name: balance.name || null,
+            logo: null, 
+            balance: nativeValue,
+            usdValue: usdValue,
+            chain: chain?.name || String(chain?.id),
+          }
+        ],
+        nftCount: nftCount, 
+        totalValueUsd: usdValue 
+      };
+      setWalletData(currentWalletData);
+    } else if (!isLoadingBalance) {
+      setWalletData(null); // Clear data if balance is not available and not loading
+    }
+  }, [balance, isLoadingBalance, chain]);
+
+  // Return the state and functions
+  return {
+    address,
+    isConnected: connectionStatus === 'connected',
+    chainId: chain?.id,
+    disconnect: disconnectWallet,
+    walletData,
+    isLoading,
+    error,
+    autoConnect, // Make sure to define this function
+    connect, // Expose the connect function from useConnectModal
+    connectionStatus
+  };
 }
