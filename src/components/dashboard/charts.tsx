@@ -1,10 +1,9 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ArrowDown, TrendingUp, AlertCircle } from 'lucide-react';
+import { ChevronDown, ArrowDown, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import {
   LineChart,
@@ -19,14 +18,6 @@ import {
   Cell,
   Legend
 } from 'recharts';
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  // ChartTooltip,            // Remove unused import
-  // ChartTooltipContent,     // Remove unused import
-} from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 // import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";  // Remove unused imports
 // import { formatAddress } from '@/lib/utils';  // Remove unused import

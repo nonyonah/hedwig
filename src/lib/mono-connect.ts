@@ -42,8 +42,14 @@ export const initMonoConnect = (
       onSuccess: ({ code }) => onSuccess(code),
       onClose,
       onLoad: () => console.log('Mono Connect loaded successfully'),
-      onEvent: (eventName: string, data: any) => {
+      onEvent: (eventName: string, data: unknown) => {
         console.log(`Mono Connect event: ${eventName}`, data);
+        // If you need to access specific properties of data,
+        // you'll need to perform type checking or casting here.
+        // For example:
+        // if (eventName === 'some_event' && typeof (data as YourSpecificType).property === 'string') {
+        //   console.log((data as YourSpecificType).property);
+        // }
       }
     });
     
