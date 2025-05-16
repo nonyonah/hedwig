@@ -4,9 +4,26 @@ import { useState, useEffect } from 'react';
 import { DashboardCharts } from '@/components/dashboard/charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from "@/components/ui/button";
+
+
+// Remove these unused imports:
+// - Input from "@/components/ui/input"
+// - formatAddress from '@/lib/utils'
+// - Chain from 'viem/chains'
+// - CreditCard from 'lucide-react'
+// - CardFooter from "@/components/ui/card"
+// - TableCaption from "@/components/ui/table"
+
+// Remove or comment out these unused variables:
+// - timeframe, setTimeframe
+// - theme, setTheme
+// - isConnected
+// - handleDisconnectWallet
+// - copyAddressToClipboard
 import { useTheme } from 'next-themes';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import {
   Card,
   CardContent,
@@ -33,20 +50,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ArrowDown, Filter } from "lucide-react";
 
-// Prevent static generation at build time
-export const dynamic = 'force-dynamic';
-
-// Solution 1: Export DashboardContent directly to fix the TS warning
-// export default function DashboardPage() {
-//   return (
-//     // <ProtectedRoute>
-//     //   <InternalDashboardContent />
-//     // </ProtectedRoute>
-//   );
-// }
-
-// Rename to InternalDashboardContent to avoid the warning
-function InternalDashboardContent() {
+function DashboardContent() {
   const [] = useState('weekly');
   useTheme();
 
@@ -63,18 +67,18 @@ function InternalDashboardContent() {
   // Auto-connect wallet when page loads
   useEffect(() => {
     const connectWallet = async () => {
-      try {
-        await autoConnect();
-      } catch (error) {
-        console.error("Failed to auto-connect wallet:", error);
-      }
+      await autoConnect();
     };
     
     connectWallet();
   }, [autoConnect]);
 
   return (
+    // Remove the flex container since we're using the layout's container
     <div className="bg-background">
+      {/* Remove the sidebar */}
+      
+      {/* Main Content */}
       <div className="overflow-auto">
         <div className="container mx-auto p-6">
           {/* Header */}
@@ -88,12 +92,15 @@ function InternalDashboardContent() {
             </div>
             <div className="flex items-center gap-2">
               <ConnectWalletButton />
+              {/* Connect Bank button removed */}
             </div>
           </div>
 
           
           <Tabs defaultValue="overview" className="w-full">
+            {/* In the Tabs section, update the TabsList to include History and NFTs */}
             <TabsList className="grid w-full max-w-md grid-cols-5">
+              {/* In the Tabs section, update the TabsList to include History and NFTs */}
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="bank">Bank Assets</TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>
@@ -101,6 +108,7 @@ function InternalDashboardContent() {
               <TabsTrigger value="pnl">PnL</TabsTrigger>
             </TabsList>
             
+            {/* Add new TabsContent sections for History and NFTs */}
             <TabsContent value="history" className="mt-6">
               <Card>
                 <CardHeader>
@@ -192,7 +200,7 @@ function InternalDashboardContent() {
                 </CardContent>
               </Card>
             </TabsContent>
-            
+            {/* Content Sections */}
             <TabsContent value="overview" className="mt-6">
               {/* Pass fetched data, loading state, and error state to DashboardCharts */}
               <DashboardCharts
@@ -203,7 +211,6 @@ function InternalDashboardContent() {
                 chainId={chainId as number | undefined}
               />
             </TabsContent>
-            
             <TabsContent value="bank" className="mt-6">
               <div className="space-y-6">
                 {/* Stats Cards Row */}
@@ -349,7 +356,6 @@ function InternalDashboardContent() {
                 </Card>
               </div>
             </TabsContent>
-            
             <TabsContent value="pnl" className="mt-6">
               {/* PnL content will be added here */}
               <p>PnL Content Placeholder</p>
@@ -358,5 +364,13 @@ function InternalDashboardContent() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <ProtectedRoute>
+      <DashboardContent />
+    </ProtectedRoute>
   );
 }
