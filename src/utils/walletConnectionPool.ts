@@ -1,8 +1,15 @@
 // Simple connection pool to reuse wallet connections
 class WalletConnectionPool {
   private static instance: WalletConnectionPool;
-  private connections: Map<string, any> = new Map();
-  private maxConnections: number = 3;
+
+  // With this (using a more specific type):
+  private connections: Map<string, unknown> = new Map();
+  
+
+  
+  // With this (using a more specific type):
+  public setConnection(key: string, connection: unknown): void {
+    private maxConnections: number = 3;
   
   private constructor() {}
   

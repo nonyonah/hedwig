@@ -5,7 +5,13 @@ import { getTokenBalances, getNFTs, getTokenPrices, formatWalletData } from '@/l
 interface TokenData {
   contractAddress: string;
   tokenBalance: string;
-  metadata: any;
+  metadata: {
+    name?: string;
+    symbol?: string;
+    decimals?: number;
+    logo?: string;
+    [key: string]: unknown; // For any additional properties
+  };
   chain?: string;
 }
 
@@ -13,7 +19,11 @@ interface TokenData {
 interface ChainData {
   chain: string;
   chainId: number;
-  nativeBalance: any;
+  nativeBalance: {
+    balance: string;
+    formatted?: string;
+    [key: string]: unknown; // For any additional properties
+  };
   tokens: TokenData[];
 }
 

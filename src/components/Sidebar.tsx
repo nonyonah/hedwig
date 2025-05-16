@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from "@/components/ui/button";
+// Remove Button import since it's not used
+// import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from "@/lib/utils";
@@ -12,10 +13,12 @@ import {
   ChevronDown,
   ChevronRight,
   Wallet,
-  LineChart,
+  // Remove LineChart import since it's not used
+  // LineChart,
   Landmark,
   BarChart3,
-  Layers
+  // Remove Layers import since it's not used
+  // Layers
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -92,7 +95,8 @@ const SidebarSection = ({ title, children, collapsible = false, defaultOpen = tr
 };
 
 export function Sidebar() {
-  const [activePath, setActivePath] = useState('/overview');
+  // Either use setActivePath or mark it with underscore to indicate it's intentionally unused
+  const [activePath, _setActivePath] = useState('/overview');
   const [walletOpen, setWalletOpen] = useState(false);
   const [defiOpen, setDefiOpen] = useState(false);
   

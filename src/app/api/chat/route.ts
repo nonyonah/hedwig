@@ -33,10 +33,17 @@ export async function POST(req: NextRequest) {
   // Add user context to the system prompt
   const enhancedSystemPrompt = `${SYSTEM_PROMPT}\n\nCurrent user state:\n- User is ${userContext.isLoggedIn ? 'logged in' : 'not logged in'}.\n- User ${userContext.hasWallet ? 'has a connected wallet' : 'does not have a connected wallet'}.${userContext.walletAddress ? `\n- Wallet address: ${userContext.walletAddress}` : ''}\n- User ${userContext.hasBankConnected ? 'has connected their bank account' : 'has not connected their bank account yet'}.`;
   
+  // Define a proper interface for chat messages
+  interface ChatMessage {
+    role: string;
+    content: string;
+    [key: string]: unknown; // For any additional properties
+  }
+
   // Format messages for the model
   const formattedMessages = [
     { role: 'system', content: enhancedSystemPrompt },
-    ...messages.map((message: any) => ({
+    ...messages.map((message: ChatMessage) => ({
       role: message.role,
       content: message.content,
     })),

@@ -2,7 +2,6 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from 'sonner';
 import './globals.css';
 import { ThirdwebProviderWrapper } from '@/providers/ThirdwebProvider';
-import { Sidebar } from '@/components/Sidebar';
 import { SidebarWrapper } from '@/components/SidebarWrapper';
 
 export default function RootLayout({

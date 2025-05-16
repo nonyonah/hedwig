@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
 import { type ThemeProviderProps } from 'next-themes';
+import { ThemeContext } from 'next-themes'; // Add this import at the top
 
 export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
   return (
@@ -22,7 +23,8 @@ export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
 }
 
 export const useTheme = () => {
-  const { theme, setTheme } = React.useContext(require('next-themes').ThemeContext) as {
+  // Replace require() with proper import (already added at the top)
+  const { theme, setTheme } = React.useContext(ThemeContext) as {
     theme: string | undefined;
     setTheme: (theme: string) => void;
   };
@@ -34,11 +36,23 @@ export const useTheme = () => {
   return { theme, setTheme };
 };
 
-const themes = {
+// Either remove the unused themes variable or export it if you plan to use it later
+// Option 1: Remove it completely
+// const themes = {
+//   light: {
+//     primary: '#240046',
+//   },
+//   dark: {
+//     primary: '#240046',
+//   },
+// }
+
+// Option 2: Export it for use elsewhere
+export const themes = {
   light: {
     primary: '#240046',
   },
   dark: {
     primary: '#240046',
   },
-}
+};

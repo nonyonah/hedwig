@@ -4,8 +4,23 @@ import { useState, useEffect } from 'react';
 import { DashboardCharts } from '@/components/dashboard/charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from "@/components/ui/button";
-import { base, optimism, arbitrum, mainnet, bsc } from 'viem/chains';
-import { Input } from "@/components/ui/input";
+// Change to just:
+import { base } from 'viem/chains';
+
+// Remove these unused imports:
+// - Input from "@/components/ui/input"
+// - formatAddress from '@/lib/utils'
+// - Chain from 'viem/chains'
+// - CreditCard from 'lucide-react'
+// - CardFooter from "@/components/ui/card"
+// - TableCaption from "@/components/ui/table"
+
+// Remove or comment out these unused variables:
+// - timeframe, setTimeframe
+// - theme, setTheme
+// - isConnected
+// - handleDisconnectWallet
+// - copyAddressToClipboard
 import { useTheme } from 'next-themes';
 import { formatAddress } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -99,7 +114,8 @@ function DashboardContent() {
               <h1 className="text-2xl font-bold">
                 Welcome
               </h1>
-              <p className="text-muted-foreground">Here's a comprehensive view of your accounts and wallets</p>
+
+              <p className="text-muted-foreground">Here&apos;s a comprehensive view of your accounts and wallets</p>
             </div>
             <div className="flex items-center gap-2">
               <ConnectWalletButton />
@@ -111,6 +127,7 @@ function DashboardContent() {
           <Tabs defaultValue="overview" className="w-full">
             // In the Tabs section, update the TabsList to include History and NFTs
             <TabsList className="grid w-full max-w-md grid-cols-5">
+              // In the Tabs section, update the TabsList to include History and NFTs
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="bank">Bank Assets</TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>

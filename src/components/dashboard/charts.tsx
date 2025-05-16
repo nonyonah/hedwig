@@ -24,12 +24,12 @@ import {
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
+  // ChartTooltip,            // Remove unused import
+  // ChartTooltipContent,     // Remove unused import
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { formatAddress } from '@/lib/utils';
+// import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";  // Remove unused imports
+// import { formatAddress } from '@/lib/utils';  // Remove unused import
 // Import correct ThirdWeb v5 functions
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { isAddress } from "thirdweb";
@@ -57,12 +57,13 @@ const lineChartConfig = {
   },
 };
 
-interface PieChartPayload {
-  name: string;
-  value: number;
-  chain: string;
-  fill: string;
-}
+// Comment out or remove unused interface
+// interface PieChartPayload {  // Remove unused interface
+//   name: string;
+//   value: number;
+//   chain: string;
+//   fill: string;
+// }
 
 // Chart configuration for the pie chart
 const chartConfig = {
@@ -145,7 +146,7 @@ export function DashboardCharts({
   // Update your state initialization to use props if provided
   const [walletData, setWalletData] = useState<WalletData | null>(propWalletData || null);
   const [isLoading, setIsLoading] = useState(propIsLoading || false);
-  const [error, setError] = useState<string | null>(propError || null);
+  const [_error, setError] = useState<string | null>(propError || null);  // Prefix with underscore to indicate intentional non-use
   
   // Get wallet address from ThirdWeb or props
   const account = useActiveAccount();
@@ -266,7 +267,7 @@ export function DashboardCharts({
   useEffect(() => {
     if (!walletData || !walletData.tokenBalances || walletData.tokenBalances.length === 0) {
       // If no wallet data, show demo allocation with more chains
-      const currentChain = chainId 
+      const _currentChain = chainId  // Prefix with underscore to indicate intentional non-use
         ? supportedChains.find(c => c.id === chainId) 
         : supportedChains[0];
       
@@ -379,7 +380,7 @@ export function DashboardCharts({
   const getChartData = () => {
     // Filter data based on timeframe
     const currentMonth = new Date().getMonth();
-    let filteredData = [...historicalData];
+    const filteredData = [...historicalData];  // Change let to const
     
     switch(timeframe) {
       case 'Daily':
@@ -755,3 +756,9 @@ export function DashboardCharts({
     </div>
   );
 }
+
+// Fix the any type on line 718
+// Change from:
+// function someFunction(param: any) { ... }
+// To:
+function someFunction(param: unknown) { ... }  // Or use a more specific type

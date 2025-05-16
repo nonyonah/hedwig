@@ -1,25 +1,29 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+// Remove unused CardFooter import
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import OnboardingAgent from '@/components/OnboardingAgent';
 import { loadAndInitMonoConnect, saveBankConnection, hasBankAccount } from '@/lib/mono-connect';
-// In the imports section
 import AuthenticatedConnectButton from '@/components/AuthenticatedConnectButton';
-
-<AuthenticatedConnectButton />
+// Remove this stray component render
+// <AuthenticatedConnectButton />
 import { useWalletConnection } from '@/hooks/useWalletConnection';
+// Add Image import for Next.js optimization
+import Image from 'next/image';
 
 export default function AccountConnectionPage() {
   const router = useRouter();
   const { user, isAuthenticated } = useUser();
-  const { isConnected, address } = useWalletConnection(); // Only get connection status, not autoConnect
+  // Remove unused variables or use _ prefix to indicate they're intentionally unused
+  const { /* isConnected, address */ } = useWalletConnection(); // Only get connection status, not autoConnect
   const [bankConnected, setBankConnected] = useState(false);
-  const [isWalletOnlySignIn, setIsWalletOnlySignIn] = useState(false);
-
+  // Remove unused state or use it somewhere
+  // const [isWalletOnlySignIn, setIsWalletOnlySignIn] = useState(false);
+  
   // Check if user is authenticated and redirect if not
   useEffect(() => {
     // If not authenticated, redirect to sign in page
@@ -38,7 +42,7 @@ export default function AccountConnectionPage() {
         
         // Check if this is a wallet-only sign in
         const walletParam = new URLSearchParams(window.location.search).get('wallet_only');
-        setIsWalletOnlySignIn(walletParam === 'true');
+        // setIsWalletOnlySignIn(walletParam === 'true'); // Remove if not used
         
         // If user has a bank account, redirect to dashboard
         if (hasBank) {
@@ -78,9 +82,10 @@ export default function AccountConnectionPage() {
     }
   }, [user, router]);
 
-  const handleContinue = () => {
-    router.push('/overview');
-  };
+  // Remove unused function
+  // const handleContinue = () => {
+  //   router.push('/overview');
+  // };
 
   const handleSkipBankConnection = () => {
     router.push('/overview');
@@ -107,7 +112,7 @@ export default function AccountConnectionPage() {
       <div className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold">Let's link your account</CardTitle>
+            <CardTitle className="text-2xl font-bold">Let&apos;s link your account</CardTitle>
             <CardDescription>
               Get a complete picture of your finances with your accounts and wallets in one place
             </CardDescription>
@@ -127,11 +132,11 @@ export default function AccountConnectionPage() {
                   
                   <div className="flex items-center justify-center text-xs text-gray-500 mt-1">
                     <span>powered by</span>
-                    <img 
+                    <Image 
                       src="/mono (2).svg" 
                       alt="Mono" 
-                      width="16" 
-                      height="16" 
+                      width={16} 
+                      height={16} 
                       className="ml-1" 
                     />
                   </div>
@@ -150,10 +155,8 @@ export default function AccountConnectionPage() {
               )}
             </div>
           </CardContent>
-          {/* CardFooter with Continue button removed */}
         </Card>
       </div>
-      <OnboardingAgent />
     </div>
   );
 }

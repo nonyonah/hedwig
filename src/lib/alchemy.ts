@@ -90,8 +90,22 @@ export async function getNFTs(address: string) {
     );
     
     // Filter successful results
+    // Define an interface for NFT data
+    interface NFTData {
+      chain: string;
+      chainId: number;
+      nfts: unknown[];
+      totalCount: number;
+    }
+    
+    // Replace this line:
     const successfulResults = results
       .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
+      .map((result) => result.value);
+    
+    // With this (using the ChainData interface):
+    const successfulResults = results
+      .filter((result): result is PromiseFulfilledResult<ChainData> => result.status === 'fulfilled')
       .map((result) => result.value);
     
     return successfulResults;
@@ -106,7 +120,9 @@ export async function getNFTs(address: string) {
 interface TokenData {
   contractAddress: string;
   tokenBalance: string;
-  metadata: any;
+  
+  // With this (using the TokenMetadataResponse interface):
+  metadata: TokenMetadataResponse;
   chain?: string;
 }
 
@@ -147,7 +163,11 @@ interface TokenMetadataResponse {
   name?: string;
   symbol?: string;
   usd?: number;
+  // Replace this line in the TokenMetadataResponse interface:
   [key: string]: any;
+  
+  // With this (more specific index signature):
+  [key: string]: string | number | undefined;
 }
 
 // Update the getTokenPrices function to ensure it returns only PriceData objects
@@ -181,7 +201,9 @@ export async function getTokenPrices(tokens: { contractAddress: string, chain: s
 }
 
 // Update the formatWalletData function to accept the correct type
-export function formatWalletData(tokenData: ChainData[], nftData: any[], prices: PriceData[]) {
+
+// With this (using the NFTData interface):
+export function formatWalletData(tokenData: ChainData[], nftData: NFTData[], prices: PriceData[]) {
   // Calculate total value
   let totalValueUsd = 0;
   
