@@ -41,12 +41,6 @@ const supportedChains = [
 ];
 
 // Chart configuration for the line chart
-const lineChartConfig = {
-  value: {
-    label: "Value",
-    color: PRIMARY_COLOR,
-  },
-};
 
 // Comment out or remove unused interface
 // interface PieChartPayload {  // Remove unused interface
@@ -56,32 +50,6 @@ const lineChartConfig = {
 //   fill: string;
 // }
 
-// Chart configuration for the pie chart
-const chartConfig = {
-  value: {
-    label: "Value",
-  },
-  base: {
-    label: "Base",
-    color: PRIMARY_COLOR,
-  },
-  optimism: {
-    label: "Optimism",
-    color: "#FF0420",
-  },
-  arbitrum: {
-    label: "Arbitrum",
-    color: "#28A0F0",
-  },
-  ethereum: {
-    label: "Ethereum",
-    color: "#627EEA",
-  },
-  binance: {
-    label: "BNB Chain",
-    color: "#F3BA2F",
-  },
-};
 
 // Define TypeScript interfaces for the component props
 interface WalletData {
@@ -258,9 +226,6 @@ export function DashboardCharts({
   useEffect(() => {
     if (!walletData || !walletData.tokenBalances || walletData.tokenBalances.length === 0) {
       // If no wallet data, show demo allocation with more chains
-      const _currentChain = chainId  // Prefix with underscore to indicate intentional non-use
-        ? supportedChains.find(c => c.id === chainId) 
-        : supportedChains[0];
       
       // Enhanced mock data with all supported chains
       const allocation = [
@@ -416,24 +381,8 @@ export function DashboardCharts({
   };
 
   // Get the chart title based on selected metric
-  const getChartTitle = () => {
-    switch(selectedMetric) {
-      case 'netWorth': return 'Total Net Worth';
-      case 'tokenWorth': return 'Token Worth';
-      case 'transactions': return 'Transactions';
-      default: return 'Total Net Worth';
-    }
-  };
 
   // Get the chart description based on selected metric
-  const getChartDescription = () => {
-    switch(selectedMetric) {
-      case 'netWorth': return 'Shows your total net worth on and off-chain';
-      case 'tokenWorth': return 'Shows your token value over time';
-      case 'transactions': return 'Shows your transaction count over time';
-      default: return 'Shows your total net worth on and off-chain';
-    }
-  };
 
   // Get metrics data
   const metrics = getMetrics();
@@ -706,13 +655,15 @@ export function DashboardCharts({
                         align="right"
                         iconType="circle"
                         iconSize={8}
-                        formatter={(value, entry) => {
-                          const { payload } = entry as any;
-                          return (
-                            <span style={{ fontSize: '12px', color: '#666' }}>
-                              {payload.name}
-                            </span>
-                          );
+                        formatter={(entry: LegendEntry) => {
+                          if (entry.payload) {
+                            return (
+                              <span style={{ fontSize: '12px', color: '#666' }}>
+                                {entry.payload.name}
+                              </span>
+                            );
+                          }
+                          return null; // Or some default rendering
                         }}
                       />
                       <Tooltip 
@@ -746,4 +697,15 @@ export function DashboardCharts({
       </Card>
     </div>
   );
+}
+
+// Define an interface for the legend payload based on your chainAllocation data
+interface LegendPayloadEntry {
+  name: string;
+  value: number;
+  fill: string;
+}
+
+interface LegendEntry {
+  payload?: LegendPayloadEntry;
 }
