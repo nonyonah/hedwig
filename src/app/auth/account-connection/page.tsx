@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
-import OnboardingAgent from '@/components/OnboardingAgent';
 import { loadAndInitMonoConnect, saveBankConnection, hasBankAccount } from '@/lib/mono-connect';
 import AuthenticatedConnectButton from '@/components/AuthenticatedConnectButton';
 // Remove this stray component render
@@ -41,7 +40,6 @@ export default function AccountConnectionPage() {
         setBankConnected(hasBank);
         
         // Check if this is a wallet-only sign in
-        const walletParam = new URLSearchParams(window.location.search).get('wallet_only');
         // setIsWalletOnlySignIn(walletParam === 'true'); // Remove if not used
         
         // If user has a bank account, redirect to dashboard

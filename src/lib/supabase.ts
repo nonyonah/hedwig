@@ -35,7 +35,7 @@ export const signInWithOAuth = async (
 
     
     // With this (using underscore to indicate intentional non-use):
-    const { data: _data, error } = await supabase.auth.signInWithOAuth({
+    const { data: data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
         redirectTo,

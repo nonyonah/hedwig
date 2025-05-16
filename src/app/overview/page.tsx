@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { DashboardCharts } from '@/components/dashboard/charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from "@/components/ui/button";
-// Change to just:
-import { base } from 'viem/chains';
+
 
 // Remove these unused imports:
 // - Input from "@/components/ui/input"
@@ -22,25 +21,19 @@ import { base } from 'viem/chains';
 // - handleDisconnectWallet
 // - copyAddressToClipboard
 import { useTheme } from 'next-themes';
-import { formatAddress } from '@/lib/utils';
-import { toast } from 'sonner';
-import type { Chain } from 'viem/chains';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
-import { CreditCard } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -58,15 +51,13 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowDown, Filter } from "lucide-react";
 
 function DashboardContent() {
-  const [timeframe, setTimeframe] = useState('weekly');
+  const [_timeframe, _setTimeframe] = useState('weekly');
   useTheme();
 
   // Use the ThirdWeb hook
   const { 
     address,
-    isConnected,
     chainId,
-    disconnect,
     walletData, 
     isLoading: isLoadingData, 
     error: dataError,
