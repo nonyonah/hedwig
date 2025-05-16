@@ -96,7 +96,7 @@ const SidebarSection = ({ title, children, collapsible = false, defaultOpen = tr
 
 export function Sidebar() {
   // Either use setActivePath or mark it with underscore to indicate it's intentionally unused
-  const [activePath, _setActivePath] = useState('/overview');
+  const [activePath] = useState('/overview');
   const [walletOpen, setWalletOpen] = useState(false);
   const [defiOpen, setDefiOpen] = useState(false);
   
