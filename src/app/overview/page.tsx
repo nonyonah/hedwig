@@ -56,11 +56,10 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ArrowDown, Filter } from "lucide-react";
-import OnboardingAgentWrapper from '@/components/OnboardingAgentWrapper';
 
 function DashboardContent() {
   const [timeframe, setTimeframe] = useState('weekly');
-  const { theme, setTheme } = useTheme();
+  useTheme();
 
   // Use the ThirdWeb hook
   const { 
@@ -82,23 +81,6 @@ function DashboardContent() {
     
     connectWallet();
   }, [autoConnect]);
-
-  const handleDisconnectWallet = async () => {
-    try {
-      await disconnect();
-      toast.success("Wallet disconnected successfully");
-    } catch (error) {
-      console.error("Error disconnecting wallet:", error);
-      toast.error("Failed to disconnect wallet");
-    }
-  };
-
-  const copyAddressToClipboard = () => {
-    if (address) {
-      navigator.clipboard.writeText(address);
-      toast.success("Address copied to clipboard");
-    }
-  };
 
   return (
     // Remove the flex container since we're using the layout's container
@@ -398,8 +380,6 @@ export default function DashboardPage() {
   return (
     <ProtectedRoute>
       <DashboardContent />
-      {/* Add the OnboardingAgentWrapper here instead */}
-      <OnboardingAgentWrapper />
     </ProtectedRoute>
   );
 }
