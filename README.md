@@ -1,5 +1,7 @@
 # Albus
 
+Prood of Deployment on Base Mainnet: https://base.blockscout.com/address/0xd08867B621C98D5e011e48e8E4E5295c0AdD17fb
+
 ## Your All-in-One Financial Tracker
 
 Albus is a comprehensive financial tracking platform that bridges the gap between traditional banking and blockchain technology, allowing users to monitor and manage their finances both on and off chain.
@@ -51,5 +53,3 @@ For questions or assistance, reach out to our support team at support@albus.fina
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-Prood of Deployment on Base Mainnet: https://base.blockscout.com/address/0xd08867B621C98D5e011e48e8E4E5295c0AdD17fb
