@@ -11,7 +11,6 @@ export default function ConnectWalletButton() {
       appMetadata={defaultDAppMeta}
       theme="dark"
       connectButton={{
-        // Button styling properties
         style: {
           height: "40px",
           padding: "0 16px",
@@ -19,7 +18,8 @@ export default function ConnectWalletButton() {
           fontSize: "0.875rem",
           fontWeight: "500",
           lineHeight: "1.25rem",
-          backgroundColor: "#0b5351",
+          backgroundColor: "#344e41",
+          color: "#fff",
         },
       }}
       connectModal={{
@@ -28,7 +28,6 @@ export default function ConnectWalletButton() {
         showThirdwebBranding: false,
       }}
       detailsButton={{
-        // Style the connected button to match the connect button
         style: {
           height: "40px",
           padding: "0 16px",
@@ -36,7 +35,8 @@ export default function ConnectWalletButton() {
           fontSize: "0.875rem",
           fontWeight: "500",
           lineHeight: "1.25rem",
-          backgroundColor: "#0b5351",
+          backgroundColor: "#344e41",
+          color: "#fff",
         },
       }}
     />
