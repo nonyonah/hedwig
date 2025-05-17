@@ -39,7 +39,7 @@ export default function MonoConnectButton() {
     <Button 
       onClick={handleConnectBank} 
       disabled={isConnecting}
-      className="bg-[#0b5351] hover:bg-[#0b5351]/90 text-white h-10 px-4 py-2 text-sm font-medium"
+      className="bg-primary hover:bg-[#3a4632] text-primary-foreground h-10 px-4 py-2 text-sm font-medium"
     >
       {isConnecting ? 'Connecting...' : 'Connect Bank'}
     </Button>
