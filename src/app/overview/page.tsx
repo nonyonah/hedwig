@@ -4,26 +4,10 @@ import { useState, useEffect } from 'react';
 import { DashboardCharts } from '@/components/dashboard/charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from "@/components/ui/button";
-
-
-// Remove these unused imports:
-// - Input from "@/components/ui/input"
-// - formatAddress from '@/lib/utils'
-// - Chain from 'viem/chains'
-// - CreditCard from 'lucide-react'
-// - CardFooter from "@/components/ui/card"
-// - TableCaption from "@/components/ui/table"
-
-// Remove or comment out these unused variables:
-// - timeframe, setTimeframe
-// - theme, setTheme
-// - isConnected
-// - handleDisconnectWallet
-// - copyAddressToClipboard
 import { useTheme } from 'next-themes';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import MonoConnectButton from '@/components/MonoConnectButton';
 import {
   Card,
   CardContent,
@@ -50,7 +34,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ArrowDown, Filter } from "lucide-react";
 
-function DashboardContent() {
+export default function DashboardPage() {
   const [] = useState('weekly');
   useTheme();
 
@@ -63,7 +47,7 @@ function DashboardContent() {
     error: dataError,
     autoConnect
   } = useWalletConnection();
-
+  
   // Auto-connect wallet when page loads
   useEffect(() => {
     const connectWallet = async () => {
@@ -90,9 +74,10 @@ function DashboardContent() {
 
               <p className="text-muted-foreground">Here&apos;s a comprehensive view of your accounts and wallets</p>
             </div>
+            
             <div className="flex items-center gap-2">
               <ConnectWalletButton />
-              {/* Connect Bank button removed */}
+              <MonoConnectButton />
             </div>
           </div>
 
@@ -100,12 +85,11 @@ function DashboardContent() {
           <Tabs defaultValue="overview" className="w-full">
             {/* In the Tabs section, update the TabsList to include History and NFTs */}
             <TabsList className="grid w-full max-w-md grid-cols-5">
-              {/* In the Tabs section, update the TabsList to include History and NFTs */}
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="bank">Bank Assets</TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
-              <TabsTrigger value="nfts">NFTs</TabsTrigger>
-              <TabsTrigger value="pnl">PnL</TabsTrigger>
+              <TabsTrigger className="font-medium" value="overview">Overview</TabsTrigger>
+              <TabsTrigger className="font-medium" value="bank">Bank Assets</TabsTrigger>
+              <TabsTrigger className="font-medium" value="history">History</TabsTrigger>
+              <TabsTrigger className="font-medium" value="nfts">NFTs</TabsTrigger>
+              <TabsTrigger className="font-medium" value="pnl">PnL</TabsTrigger>
             </TabsList>
             
             {/* Add new TabsContent sections for History and NFTs */}
@@ -364,13 +348,5 @@ function DashboardContent() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function DashboardPage() {
-  return (
-    <ProtectedRoute>
-      <DashboardContent />
-    </ProtectedRoute>
   );
 }
