@@ -14,8 +14,8 @@ export default function MonoConnectButton() {
     const monoInstance = initMonoConnect(
       async (code) => {
         try {
-          // Connect bank account without userId
-          await connectBankAccount('', code);
+          // Connect bank account with just the code
+          await connectBankAccount(code);
           console.log('Bank connected successfully');
         } catch (error) {
           console.error('Error connecting bank:', error);
