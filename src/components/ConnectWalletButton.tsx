@@ -27,6 +27,18 @@ export default function ConnectWalletButton() {
         title: "Connect to Albus",
         showThirdwebBranding: false,
       }}
+      detailsButton={{
+        // Style the connected button to match the connect button
+        style: {
+          height: "40px",
+          padding: "0 16px",
+          borderRadius: "0.375rem",
+          fontSize: "0.875rem",
+          fontWeight: "500",
+          lineHeight: "1.25rem",
+          backgroundColor: "#0b5351",
+        },
+      }}
     />
   );
 }
