@@ -45,7 +45,7 @@ const SidebarItem = ({ icon, label, count, active, href, onClick }: SidebarItemP
         "flex items-center justify-between py-2 px-3 rounded-md text-sm transition-colors",
         active 
           ? "bg-primary/10 text-primary font-medium" 
-          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          : "text-black hover:bg-muted hover:text-foreground"
       )}
       onClick={onClick}
     >

@@ -5,6 +5,6 @@ export async function checkExistingBankConnection(): Promise<boolean> { // _user
   return hasBankAccount();
 }
 
-export async function connectBankAccount(_userId: string, monoCode: string): Promise<boolean> {
+export async function connectBankAccount(monoCode: string, code: string): Promise<boolean> {
   return saveBankConnection(monoCode);
 }
