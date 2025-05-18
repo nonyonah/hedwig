@@ -1,9 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Network, Alchemy, AssetTransfersCategory, TokenMetadataResponse } from 'alchemy-sdk';
+// Removed TokenMetadataResponse from this import
+import { Network, Alchemy, AssetTransfersCategory } from 'alchemy-sdk';
 
-import { supportedChains /*, ChainConfig */ } from '@/lib/alchemy';
+import { supportedChains } from '@/lib/alchemy';
 
-// Initialize Alchemy SDK for different networks
+// Define an interface for the resolved chain data
+// Update the ChainData interface to match your actual return type from chainDataPromises
+interface ChainData {
+  chain: string;
+  chainId: number;
+  nativeBalance?: { 
+    value: number; 
+    symbol: string;
+    usdValue?: number 
+  };
+  tokenBalances: Array<{ 
+    contractAddress: string; 
+    tokenBalance?: string | null; 
+    symbol?: string; 
+    logo?: string; 
+    decimals?: number; 
+    name?: string; 
+    usdValue?: number; 
+    chain?: string; 
+    balance?: number;
+  }>;
+  nftCount: number;
+  nftContracts?: any; // You might want to type this more strictly
+  transactions?: any[]; // You might want to type this more strictly
+}
+
 const createAlchemyInstance = (network: Network) => {
   const settings = {
     apiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY,
@@ -13,27 +39,22 @@ const createAlchemyInstance = (network: Network) => {
   return new Alchemy(settings);
 };
 
-// Helper function to fetch token prices (replace with your actual price API call)
-async function fetchTokenPrices(tokenContractAddresses: string[], chainKey: string): Promise<Record<string, number>> { // Removed 'alchemy: Alchemy'
+
+async function fetchTokenPrices(tokenContractAddresses: string[], chainKey: string): Promise<Record<string, number>> {
   console.log(`Fetching prices for ${tokenContractAddresses.length} tokens on ${chainKey}`); 
   const prices: Record<string, number> = {};
   for (const address of tokenContractAddresses) {
-    // Placeholder: In a real scenario, you would call your price API here
-    // using tokenContractAddress and potentially chainKey
-    prices[address] = Math.random() * 100; // Example: Fetch price for address
+    prices[address] = Math.random() * 100;
   }
   return prices;
 }
 
 async function fetchNativeTokenPrice(chainKey: string): Promise<number> {
-  // Placeholder for fetching native token price (e.g., ETH, MATIC)
-  // Replace with actual API call to a price oracle or service
+
   console.log(`Fetching native token price for ${chainKey}`);
-  // Example: const response = await fetch(`YOUR_PRICE_API_ENDPOINT?symbol=ETH`);
-  // const data = await response.json();
-  // return data.usdPrice;
-  if (chainKey === 'polygon') return 1; // Placeholder for MATIC
-  return 2000; // Placeholder for ETH
+  
+  if (chainKey === 'polygon') return 1; 
+  return 2000; 
 }
 
 export async function GET(request: NextRequest) {
@@ -47,7 +68,7 @@ export async function GET(request: NextRequest) {
   try {
     // Fetch data from all supported chains in parallel
     const chainDataPromises = supportedChains.map(async (chain) => {
-      const alchemy = createAlchemyInstance(chain.network); // alchemy instance is created and used here
+      const alchemy = createAlchemyInstance(chain.network);
       
       // Fetch native balance
       const [tokenBalancesResponse, nfts, nftContracts, transactions] = await Promise.all([
@@ -116,9 +137,10 @@ export async function GET(request: NextRequest) {
     
     const chainDataResults = await Promise.allSettled(chainDataPromises);
     
+    // Then use the ChainData interface here
     const successfulResults = chainDataResults
       .filter((result) => result.status === 'fulfilled')
-      .map((result) => (result as PromiseFulfilledResult<any>).value);
+      .map((result) => (result as PromiseFulfilledResult<ChainData>).value);
     
     const tokenBalances = successfulResults.flatMap(result => result.tokenBalances || []);
     const nftCount = successfulResults.reduce((sum, result) => sum + (result.nftCount || 0), 0);
@@ -130,7 +152,8 @@ export async function GET(request: NextRequest) {
     );
     
     const chainValues: Record<string, number> = {};
-    let totalValue = totalNativeValue + totalTokenValue;
+    // Changed 'let' to 'const' for totalValue
+    const totalValue = totalNativeValue + totalTokenValue;
     
     successfulResults.forEach(result => {
       if (result.nativeBalance?.usdValue) {
