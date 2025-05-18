@@ -9,7 +9,7 @@ export default function ConnectWalletButton() {
       client={client}
       chains={defaultSupportedChains}
       appMetadata={defaultDAppMeta}
-      theme="light" // Changed from "dark" to "light" for better text contrast
+      theme="light" // Light theme for better text contrast
       connectButton={{
         style: {
           height: "40px",
@@ -18,8 +18,8 @@ export default function ConnectWalletButton() {
           fontSize: "0.875rem",
           fontWeight: "500",
           lineHeight: "1.25rem",
-          backgroundColor: "#344e41",
-          color: "#ffffff", // Explicitly set to white
+          backgroundColor: "#403d39", // Updated to new primary color
+          color: "#ffffff", // White text for contrast
         },
       }}
       connectModal={{
@@ -36,8 +36,8 @@ export default function ConnectWalletButton() {
           fontSize: "0.875rem",
           fontWeight: "500",
           lineHeight: "1.25rem",
-          backgroundColor: "#344e41",
-          color: "#ffffff", // Explicitly set to white
+          backgroundColor: "#403d39", // Updated to new primary color
+          color: "#ffffff", // White text for contrast
         },
       }}
     />

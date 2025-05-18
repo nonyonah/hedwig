@@ -212,6 +212,7 @@ body {
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* In :root section (light mode) */
 :root {
   --radius: 0.625rem;
   --background: #FAFAFA;
@@ -247,6 +248,7 @@ body {
   --sidebar-ring: #6366f1;
 }
 
+/* In dark mode section */
 .dark {
   --background: #1a1a1a;
   --foreground: #ffffff;

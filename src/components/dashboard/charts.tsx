@@ -29,15 +29,15 @@ import { isAddress } from "thirdweb";
 import { TokenTable } from "@/components/dashboard/TokenTable";
 
 // Define the primary color
-const PRIMARY_COLOR = '#8d99ae';
+const PRIMARY_COLOR = '#403d39';
 
 // Define supported chains with their colors and IDs
 const supportedChains = [
   { key: 'base', name: 'Base', id: 8453, isTestnet: false, color: PRIMARY_COLOR },
-  { key: 'optimism', name: 'Optimism', id: 10, isTestnet: false, color: '#FF0420' },
-  { key: 'arbitrum', name: 'Arbitrum', id: 42161, isTestnet: false, color: '#28A0F0' },
-  { key: 'ethereum', name: 'Ethereum', id: 1, isTestnet: false, color: '#627EEA' },
-  { key: 'binance', name: 'BNB Chain', id: 56, isTestnet: false, color: '#F3BA2F' },
+  { key: 'optimism', name: 'Optimism', id: 10, isTestnet: false, color: '#6b6b6b' },
+  { key: 'arbitrum', name: 'Arbitrum', id: 42161, isTestnet: false, color: '#8a8a8a' },
+  { key: 'ethereum', name: 'Ethereum', id: 1, isTestnet: false, color: '#a9a9a9' },
+  { key: 'binance', name: 'BNB Chain', id: 56, isTestnet: false, color: '#c4c4c4' },
 ];
 
 // Define TypeScript interfaces for the component props
@@ -600,7 +600,7 @@ export function DashboardCharts({
                       <Line 
                         type="monotone" 
                         dataKey="value" 
-                        stroke="#7c3aed" 
+                        stroke="#403d39" 
                         strokeWidth={2}
                         dot={{ r: 0 }}
                         activeDot={{ r: 6, strokeWidth: 0 }}
@@ -655,12 +655,12 @@ export function DashboardCharts({
                         formatter={(entry: LegendEntry) => {
                           if (entry.payload) {
                             return (
-                              <span style={{ fontSize: '12px', color: '#666' }}>
-                                {entry.payload.name}
+                              <span style={{ fontSize: '12px', color: 'var(--foreground)' }}>
+                                {entry.payload.name} ({entry.payload.value}%)
                               </span>
                             );
                           }
-                          return null; // Or some default rendering
+                          return null;
                         }}
                       />
                       <Tooltip 
