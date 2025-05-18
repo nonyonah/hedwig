@@ -9,7 +9,7 @@ export default function ConnectWalletButton() {
       client={client}
       chains={defaultSupportedChains}
       appMetadata={defaultDAppMeta}
-      theme="dark"
+      theme="light" // Changed from "dark" to "light" for better text contrast
       connectButton={{
         style: {
           height: "40px",
@@ -19,7 +19,7 @@ export default function ConnectWalletButton() {
           fontWeight: "500",
           lineHeight: "1.25rem",
           backgroundColor: "#344e41",
-          color: "#fff",
+          color: "#ffffff", // Explicitly set to white
         },
       }}
       connectModal={{
@@ -28,6 +28,7 @@ export default function ConnectWalletButton() {
         showThirdwebBranding: false,
       }}
       detailsButton={{
+        connectedAccountAvatarUrl: "", // Empty string to remove the avatar
         style: {
           height: "40px",
           padding: "0 16px",
@@ -36,7 +37,7 @@ export default function ConnectWalletButton() {
           fontWeight: "500",
           lineHeight: "1.25rem",
           backgroundColor: "#344e41",
-          color: "#fff",
+          color: "#ffffff", // Explicitly set to white
         },
       }}
     />

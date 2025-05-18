@@ -9,11 +9,7 @@ export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
     <NextThemesProvider
       attribute="class"
       defaultTheme="light"
-      enableSystem={false}
-      value={{
-        light: 'light'
-      }}
-      forcedTheme="light"
+      enableSystem={true}
       {...props}
     >
       {children}
@@ -24,23 +20,12 @@ export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
 // Export useTheme directly from next-themes instead of creating a custom hook
 export { useTheme } from 'next-themes';
 
-// Either remove the unused themes variable or export it if you plan to use it later
-// Option 1: Remove it completely
-// const themes = {
-//   light: {
-//     primary: '#240046',
-//   },
-//   dark: {
-//     primary: '#240046',
-//   },
-// }
-
-// Option 2: Export it for use elsewhere
+// Export themes for use elsewhere
 export const themes = {
   light: {
-    primary: '#240046',
+    primary: '#344e41',
   },
   dark: {
-    primary: '#240046',
+    primary: '#344e41',
   },
 };
