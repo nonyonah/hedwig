@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Network, Alchemy, AssetTransfersCategory, TokenMetadataResponse } from 'alchemy-sdk';
-// Assuming ChainConfig is defined in @/lib/alchemy like this:
-// export interface ChainConfig {
-//   key: string;
-//   name: string;
-//   id: number;
-//   network: Network;
-//   color?: string; // Make color optional or ensure it's always present
-// }
-import { supportedChains /*, ChainConfig */ } from '@/lib/alchemy'; // Adjust if ChainConfig is differently named/located
+
+import { supportedChains /*, ChainConfig */ } from '@/lib/alchemy';
 
 // Initialize Alchemy SDK for different networks
 const createAlchemyInstance = (network: Network) => {
@@ -21,19 +14,13 @@ const createAlchemyInstance = (network: Network) => {
 };
 
 // Helper function to fetch token prices (replace with your actual price API call)
-async function fetchTokenPrices(alchemy: Alchemy, tokenContractAddresses: string[], chainKey: string): Promise<Record<string, number>> {
-  // This is a placeholder. You'll need to implement actual price fetching.
-  // The Alchemy SDK's getTokenMetadata does not return USD prices directly.
-  // You might use a third-party price API or Alchemy's Price API if available for your plan.
-  // For demonstration, let's assume a function that fetches prices.
+async function fetchTokenPrices(tokenContractAddresses: string[], chainKey: string): Promise<Record<string, number>> { // Removed 'alchemy: Alchemy'
   console.log(`Fetching prices for ${tokenContractAddresses.length} tokens on ${chainKey}`); 
   const prices: Record<string, number> = {};
   for (const address of tokenContractAddresses) {
-    // Simulate fetching price, replace with actual API call
-    // Example: const response = await fetch(`YOUR_PRICE_API_ENDPOINT?contractAddress=${address}&chain=${chainKey}`);
-    // const data = await response.json();
-    // prices[address] = data.usdPrice;
-    prices[address] = Math.random() * 100; // Placeholder random price
+    // Placeholder: In a real scenario, you would call your price API here
+    // using tokenContractAddress and potentially chainKey
+    prices[address] = Math.random() * 100; // Example: Fetch price for address
   }
   return prices;
 }
@@ -60,8 +47,9 @@ export async function GET(request: NextRequest) {
   try {
     // Fetch data from all supported chains in parallel
     const chainDataPromises = supportedChains.map(async (chain) => {
-      const alchemy = createAlchemyInstance(chain.network);
+      const alchemy = createAlchemyInstance(chain.network); // alchemy instance is created and used here
       
+      // Fetch native balance
       const [tokenBalancesResponse, nfts, nftContracts, transactions] = await Promise.all([
         alchemy.core.getTokenBalances(address),
         alchemy.nft.getNftsForOwner(address),
@@ -86,7 +74,8 @@ export async function GET(request: NextRequest) {
       const nativeTokenPrice = await fetchNativeTokenPrice(chain.key);
 
       const tokenContractAddresses = tokenBalancesResponse.tokenBalances.map(tb => tb.contractAddress);
-      const tokenPrices = await fetchTokenPrices(alchemy, tokenContractAddresses, chain.key);
+      // Call fetchTokenPrices without the alchemy argument
+      const tokenPrices = await fetchTokenPrices(tokenContractAddresses, chain.key);
       
       const tokenDataPromises = tokenBalancesResponse.tokenBalances.map(async (token) => {
         const metadata = await alchemy.core.getTokenMetadata(token.contractAddress);
