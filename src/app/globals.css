@@ -425,130 +425,51 @@ input, select, textarea {
   --card-foreground: #ffffff;
   --popover: #222222;
   --popover-foreground: #ffffff;
-  --primary: #344e41; /* Keeping your primary color */
-  --primary-foreground: #ffffff;
-  --secondary: #222222;
-  --secondary-foreground: #ffffff;
-  --muted: #333333;
-  --muted-foreground: #a1a1a1;
-  --accent: #454545; /* Button color for dark mode */
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
-  --border: #333333;
-  --input: #333333;
-  --ring: #344e41;
-  --sidebar: #222222; /* Matching sidebar with card color */
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #344e41;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #454545;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #333333;
-  --sidebar-ring: #344e41;
-}
-
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    
-    --primary: 174 76% 19%; /* Updated to match #0b5351 */
-    --primary-foreground: 210 40% 98%;
-    
-    --primary-foreground: #fff;
-    --secondary: #f3f4f6;
-    --secondary-foreground: #111827;
-    --muted: #f3f4f6;
-    --muted-foreground: #6b7280;
-    --accent: #48cae4; /* Updated accent color to match primary */
-    --accent-foreground: #111827;
-    --destructive: #ef4444;
-    --border: #E9EAEB;
-    --input: #E9EAEB;
-    --ring: #48cae4; /* Updated ring color for button outlines */
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
-    --sidebar: #f3f4f6;
-    --sidebar-foreground: #1a1a1a;
-    --sidebar-primary: #000000;
-    --sidebar-primary-foreground: #fff;
-    --sidebar-accent: #e5e7eb;
-    --sidebar-accent-foreground: #111827;
-    --sidebar-border: #E9EAEB;
-    --sidebar-ring: #6366f1;
-  }
-}
-
-.dark {
-  --background: #1a1a1a;
-  --foreground: #ffffff;
-  --card: #2d2d2d;
-  --card-foreground: #ffffff;
-  --popover: #2d2d2d;
-  --popover-foreground: #ffffff;
-  --primary: #48cae4; /* Updated primary color */
+  --primary: #344e41;
   --primary-foreground: #ffffff;
   --secondary: #333333;
   --secondary-foreground: #ffffff;
   --muted: #333333;
   --muted-foreground: #a1a1a1;
-  --accent: #48cae4; /* Updated accent color to match primary */
+  --accent: #454545;
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
-  --border: #E9EAEB;
-  --input: #E9EAEB;
-  --ring: #48cae4; /* Updated ring color for button outlines */
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #2d2d2d;
+  --border: #333333; /* Softer border color that blends with dark backgrounds */
+  --input: #333333;
+  --ring: #344e41;
+  --sidebar: #222222;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #000000;
+  --sidebar-primary: #344e41;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e5e7eb;
+  --sidebar-accent: #454545;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #E9EAEB;
-  --sidebar-ring: #6366f1;
+  --sidebar-border: #333333; /* Softer sidebar border */
+  --sidebar-ring: #344e41;
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+/* Add these styles to soften borders and separators in dark mode */
+.dark .sidebar,
+.dark [class*="sidebar"],
+.dark .card,
+.dark [class*="card"] {
+  border-color: rgba(51, 51, 51, 0.6) !important; /* More transparent borders */
+  box-shadow: none !important;
 }
 
-/* Add these to your globals.css file */
-button, .button, [class*="btn"] {
-  border-color: transparent !important;
+.dark table,
+.dark th,
+.dark td,
+.dark tr {
+  border-color: rgba(51, 51, 51, 0.6) !important; /* Softer table borders */
 }
 
-/* Soften input fields */
-input, select, textarea {
-  border-color: var(--border) !important;
-  border-width: 1px !important;
+.dark .border,
+.dark [class*="border"] {
+  border-color: rgba(51, 51, 51, 0.6) !important;
 }
 
-/* Soften sidebar */
-.sidebar, [class*="sidebar"] {
-  border-color: var(--sidebar-border) !important;
-}
-
-.no-borders {
+/* Remove borders completely from certain elements if needed */
+.dark .no-dark-borders {
   border: none !important;
-  outline: none !important;
   box-shadow: none !important;
 }
