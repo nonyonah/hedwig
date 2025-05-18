@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useTheme } from 'next-themes';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
-import MonoConnectButton from '@/components/MonoConnectButton';
+// Remove MonoConnectButton import
 import {
   Card,
   CardContent,
@@ -77,7 +77,7 @@ export default function DashboardPage() {
             
             <div className="flex items-center gap-2">
               <ConnectWalletButton />
-              <MonoConnectButton />
+              {/* MonoConnectButton removed */}
             </div>
           </div>
 
