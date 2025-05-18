@@ -4,8 +4,46 @@ import { Network, Alchemy, AssetTransfersCategory } from 'alchemy-sdk';
 
 import { supportedChains } from '@/lib/alchemy';
 
-// Define an interface for the resolved chain data
-// Update the ChainData interface to match your actual return type from chainDataPromises
+// Define interfaces for NFT contracts and transactions
+interface NftContract {
+  address: string;
+  name?: string;
+  symbol?: string;
+  totalSupply?: string;
+  tokenType?: string;
+  contractDeployer?: string;
+  deployedBlockNumber?: number;
+  openSeaMetadata?: {
+    floorPrice?: number;
+    collectionName?: string;
+    imageUrl?: string;
+    description?: string;
+  };
+  // Add any other properties that might be in the contracts
+}
+
+interface AssetTransfer {
+  blockNum: string;
+  hash: string;
+  from: string;
+  to: string;
+  value: number | null;
+  erc721TokenId: string | null;
+  erc1155Metadata: Array<{ tokenId: string; value: string }> | null;
+  tokenId: string | null;
+  asset: string;
+  category: string;
+  rawContract: {
+    address: string;
+    decimal?: string;
+  };
+  metadata?: {
+    blockTimestamp: string;
+  };
+  // Add any other properties that might be in the transfers
+}
+
+// Update the ChainData interface
 interface ChainData {
   chain: string;
   chainId: number;
@@ -16,7 +54,7 @@ interface ChainData {
   };
   tokenBalances: Array<{ 
     contractAddress: string; 
-    tokenBalance?: string | null; 
+    tokenBalance: string | null; 
     symbol?: string; 
     logo?: string; 
     decimals?: number; 
@@ -26,8 +64,8 @@ interface ChainData {
     balance?: number;
   }>;
   nftCount: number;
-  nftContracts?: any; // You might want to type this more strictly
-  transactions?: any[]; // You might want to type this more strictly
+  nftContracts?: { contracts: NftContract[] }; // Replace 'any' with a specific type
+  transactions?: { transfers: AssetTransfer[] }; // Replace 'any[]' with a specific type
 }
 
 const createAlchemyInstance = (network: Network) => {
@@ -140,7 +178,7 @@ export async function GET(request: NextRequest) {
     // Then use the ChainData interface here
     const successfulResults = chainDataResults
       .filter((result) => result.status === 'fulfilled')
-      .map((result) => (result as PromiseFulfilledResult<ChainData>).value);
+      .map((result) => (result as unknown as PromiseFulfilledResult<ChainData>).value);
     
     const tokenBalances = successfulResults.flatMap(result => result.tokenBalances || []);
     const nftCount = successfulResults.reduce((sum, result) => sum + (result.nftCount || 0), 0);
