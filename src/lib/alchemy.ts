@@ -1,12 +1,11 @@
 import { Network, Alchemy, OwnedNft } from 'alchemy-sdk';
 
-// Define supported chains with their Alchemy network equivalents
+// Define supported chains with their Alchemy network equivalents and UI properties
 export const supportedChains = [
-  { key: 'ethereum', name: 'Ethereum', id: 1, network: Network.ETH_MAINNET },
-  { key: 'optimism', name: 'Optimism', id: 10, network: Network.OPT_MAINNET },
-  { key: 'arbitrum', name: 'Arbitrum', id: 42161, network: Network.ARB_MAINNET },
-  { key: 'base', name: 'Base', id: 8453, network: Network.BASE_MAINNET },
-  { key: 'polygon', name: 'Polygon', id: 137, network: Network.MATIC_MAINNET },
+  { key: 'ethereum', name: 'Ethereum', id: 1, network: Network.ETH_MAINNET, color: '#627EEA' },
+  { key: 'optimism', name: 'Optimism', id: 10, network: Network.OPT_MAINNET, color: '#FF0420' },
+  { key: 'arbitrum', name: 'Arbitrum', id: 42161, network: Network.ARB_MAINNET, color: '#28A0F0' },
+  { key: 'base', name: 'Base', id: 8453, network: Network.BASE_MAINNET, color: '#0052FF' },
 ];
 
 // Initialize Alchemy SDK for different networks

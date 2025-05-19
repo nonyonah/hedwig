@@ -24,21 +24,21 @@ import { Alert, AlertDescription } from "@/components/ui/alert";  // Re-added th
 // Import correct ThirdWeb v5 functions
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { isAddress } from "thirdweb";
-
-// Import the TokenTable component
+import { supportedChains } from '@/lib/alchemy';
 import { TokenTable } from "@/components/dashboard/TokenTable";
 
 // Define the primary color
 const PRIMARY_COLOR = '#403d39';
 
 // Define supported chains with their colors and IDs
-const supportedChains = [
-  { key: 'base', name: 'Base', id: 8453, isTestnet: false, color: PRIMARY_COLOR },
-  { key: 'optimism', name: 'Optimism', id: 10, isTestnet: false, color: '#6b6b6b' },
-  { key: 'arbitrum', name: 'Arbitrum', id: 42161, isTestnet: false, color: '#8a8a8a' },
-  { key: 'ethereum', name: 'Ethereum', id: 1, isTestnet: false, color: '#a9a9a9' },
-  { key: 'binance', name: 'BNB Chain', id: 56, isTestnet: false, color: '#c4c4c4' },
-];
+// const supportedChains = [
+//   { key: 'base', name: 'Base', id: 8453, isTestnet: false, color: PRIMARY_COLOR },
+//   { key: 'optimism', name: 'Optimism', id: 10, isTestnet: false, color: '#6b6b6b' },
+//   { key: 'arbitrum', name: 'Arbitrum', id: 42161, isTestnet: false, color: '#8a8a8a' },
+//   { key: 'ethereum', name: 'Ethereum', id: 1, isTestnet: false, color: '#a9a9a9' },
+//   { key: 'binance', name: 'BNB Chain', id: 56, isTestnet: false, color: '#c4c4c4' },
+// ];
+
 
 // Define TypeScript interfaces for the component props
 interface WalletData {
@@ -115,6 +115,7 @@ export function DashboardCharts({
   };
   
   // Fetch wallet data when address changes - using Alchemy via API
+  // Inside your useEffect for fetching data
   useEffect(() => {
     if (!address || !isAddress(address)) {
       setWalletConnected(false);
@@ -126,7 +127,7 @@ export function DashboardCharts({
     setIsLoading(true);
     setError(null);
     
-    // Fetch wallet data from our API (which uses Alchemy)
+    
     fetch(`/api/wallet?address=${address}`)
       .then(response => {
         if (!response.ok) {
@@ -135,8 +136,16 @@ export function DashboardCharts({
         return response.json();
       })
       .then(data => {
+        console.log('Received API data:', data);
         setWalletData(data);
-        setChainAllocation(data.chainAllocation || []);
+        
+        
+        if (data.chainAllocation && data.chainAllocation.length > 0) {
+          console.log('Setting chain allocation:', data.chainAllocation);
+          setChainAllocation(data.chainAllocation);
+        } else {
+          console.log('No chain allocation data received');
+        }
       })
       .catch(err => {
         console.error('Error fetching wallet data:', err);
