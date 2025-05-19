@@ -5,11 +5,9 @@ import {
   useActiveAccount,
   useDisconnect,
   useActiveWalletChain,
-  useWalletBalance,
   useActiveWalletConnectionStatus,
   useConnectModal,
 } from "thirdweb/react";
-import { client } from "@/providers/ThirdwebProvider";
 
 
 export type WalletData = {
@@ -29,6 +27,12 @@ export type WalletData = {
   }>;
   nftCount: number;
   totalValueUsd?: number;
+  chainAllocation?: Array<{
+    chain: string;
+    name: string;
+    value: number;
+    fill: string;
+  }>;
 };
 
 export function useWalletConnection() {
@@ -41,65 +45,66 @@ export function useWalletConnection() {
   const disconnectWallet = useDisconnect();
   const chain = useActiveWalletChain();
   
-  const { data: balance, isLoading: isLoadingBalance } = useWalletBalance({ 
-    client: client, 
-    chain: chain,
-    address: address, 
-  }); 
+  // Remove the ThirdWeb balance hook - we don't need it
+  // const { data: balance, isLoading: isLoadingBalance } = useWalletBalance({ ... });
   
   const [walletData, setWalletData] = useState<WalletData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true); 
+  const [isLoading, setIsLoading] = useState<boolean>(false); 
   const [error, setError] = useState<string | null>(null);
 
   // Define autoConnect function (example)
   const autoConnect = async () => {
-    // Implement your auto-connection logic here
-    // For example, try to connect to a previously used wallet
     try {
-      // This is a placeholder. Replace with actual auto-connect logic.
-      // const previouslyConnectedWallet = localStorage.getItem('previouslyConnectedWallet');
-      // if (previouslyConnectedWallet) {
-      //   const wallet = createWallet(previouslyConnectedWallet);
-      //   await connect({ client, wallet });
-      // }
       console.log("Attempting to auto-connect...");
+      // Your auto-connect logic here
     } catch (e) {
       console.error("Auto-connect failed", e);
       setError("Auto-connect failed");
     }
   };
 
+  // Simplified useEffect that only depends on address and chain
   useEffect(() => {
-    setIsLoading(isLoadingBalance);
-    if (balance) {
-      const nftCount = 0; // Placeholder for actual NFT count
-      const nativeValue = parseFloat(balance.displayValue); 
-      const usdPricePerToken = 0; // Placeholder: USD price for native token needs a separate source
-      const usdValue = nativeValue * usdPricePerToken;
-      
-      const currentWalletData: WalletData = {
-        nativeBalance: {
-          value: nativeValue,
-          usdValue: usdValue
-        },
-        tokenBalances: [ 
-          {
-            symbol: balance.symbol || null,
-            name: balance.name || null,
-            logo: null, 
-            balance: nativeValue,
-            usdValue: usdValue,
-            chain: chain?.name || String(chain?.id),
-          }
-        ],
-        nftCount: nftCount, 
-        totalValueUsd: usdValue 
-      };
-      setWalletData(currentWalletData);
-    } else if (!isLoadingBalance) {
-      setWalletData(null); // Clear data if balance is not available and not loading
+    // Only fetch data if we have an address
+    if (!address) {
+      setWalletData(null);
+      setIsLoading(false);
+      return;
     }
-  }, [balance, isLoadingBalance, chain]);
+    
+    // Set loading state
+    setIsLoading(true);
+    setError(null);
+    
+    console.log("Fetching data from API for address:", address);
+    fetch(`/api/wallet?address=${address}`)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log("API data received:", data);
+        // Add debug logging for chain allocation
+        if (data.chainAllocation) {
+          console.log("Chain allocation data:", data.chainAllocation);
+        } else {
+          console.log("No chain allocation data received");
+        }
+        setWalletData(data);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        console.error("API fetch error:", err);
+        setError(err.message);
+        setIsLoading(false);
+        
+        // Don't set fallback data from ThirdWeb - let the UI handle the error state
+        // This ensures we're not mixing data sources
+        setWalletData(null);
+      });
+  }, [address, chain?.id]); // Only depend on address and chain ID
 
   // Return the state and functions
   return {
@@ -110,8 +115,8 @@ export function useWalletConnection() {
     walletData,
     isLoading,
     error,
-    autoConnect, // Make sure to define this function
-    connect, // Expose the connect function from useConnectModal
+    autoConnect,
+    connect,
     connectionStatus
   };
 }
