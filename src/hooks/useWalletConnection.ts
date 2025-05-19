@@ -8,7 +8,6 @@ import {
   useActiveWalletConnectionStatus,
   useConnectModal,
 } from "thirdweb/react";
-import { client } from "@/providers/ThirdwebProvider";
 
 
 export type WalletData = {

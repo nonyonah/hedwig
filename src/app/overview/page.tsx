@@ -3,36 +3,10 @@
 import { useState, useEffect } from 'react';
 import { DashboardCharts } from '@/components/dashboard/charts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from "@/components/ui/button";
 import { useTheme } from 'next-themes';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 import { useWalletConnection } from '@/hooks/useWalletConnection';
 // Remove MonoConnectButton import
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { ArrowDown, Filter } from "lucide-react";
 
 export default function DashboardPage() {
   const [] = useState('weekly');
