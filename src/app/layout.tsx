@@ -20,7 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}> {/* Apply Inter font class to body */}
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem> {/* Changed to light by default */}
           <PrivyProvider>
             {children}
           </PrivyProvider>
