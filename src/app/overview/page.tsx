@@ -21,7 +21,14 @@ export default function DashboardPage() {
   ];
 
   // Mock client data
-  const clients = [
+  const clients: {
+    name: string;
+    lastInvoice: string;
+    amountDue: string;
+    status: "Paid" | "Unpaid" | "Overdue"; // Ensure this line matches the expected type
+    lastPayment: string;
+    id: string;
+  }[] = [
     { name: 'Olivia Rhye', lastInvoice: 'May 15, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'Apr 10, 2025', id: '0x1480...9037' },
     { name: 'Phoenix Baker', lastInvoice: 'May 10, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'May 12, 2025', id: '0xe880...0683' },
     { name: 'Lana Steiner', lastInvoice: 'Apr 28, 2025', amountDue: '$150', status: 'Unpaid', lastPayment: 'May 12, 2025', id: '0x8f47...8909' },

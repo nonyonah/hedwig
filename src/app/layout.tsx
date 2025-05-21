@@ -1,7 +1,16 @@
-import { ThemeProvider } from '@/components/theme-provider';
-import { Toaster } from 'sonner';
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google'; // Import Inter font
 import './globals.css';
-import { HeaderWrapper } from '@/components/HeaderWrapper';
+import { ThemeProvider } from '@/components/theme-provider'; // Assuming this path is correct
+import { PrivyProvider } from '@/providers/PrivyProvider'; // Assuming this path is correct
+
+// Initialize Inter font with desired subsets
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
+  title: 'Your App Name',
+  description: 'Your app description',
+};
 
 export default function RootLayout({
   children,
@@ -10,12 +19,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen bg-gray-50">
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-          <HeaderWrapper>
+      <body className={inter.className}> {/* Apply Inter font class to body */}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <PrivyProvider>
             {children}
-          </HeaderWrapper>
-          <Toaster />
+          </PrivyProvider>
         </ThemeProvider>
       </body>
     </html>
