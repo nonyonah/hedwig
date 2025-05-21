@@ -1,0 +1,158 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { CircleDollarSign, Wallet } from "lucide-react";
+import React from "react";
+
+// Define client data structure
+const clients = [
+    {
+        name: "Olivia Rhye",
+        lastInvoice: "May 15, 2025",
+        amountDue: "$420",
+        status: "Paid",
+        lastPayment: "Apr 10, 2025",
+        walletAddress: "0x1480...9037",
+    },
+    {
+        name: "Phoenix Baker",
+        lastInvoice: "May 10, 2025",
+        amountDue: "$420",
+        status: "Paid",
+        lastPayment: "May 12, 2025",
+        walletAddress: "0xee80...0683",
+    },
+    {
+        name: "Lana Steiner",
+        lastInvoice: "Apr 28, 2025",
+        amountDue: "$150",
+        status: "Unpaid",
+        lastPayment: "May 12, 2025",
+        walletAddress: "0x8f47...8909",
+    },
+    {
+        name: "Demi Wilkinson",
+        lastInvoice: "Apr 28, 2025",
+        amountDue: "$150",
+        status: "Overdue",
+        lastPayment: "Mar 30, 2025",
+        walletAddress: "0x1c42...f589",
+    },
+];
+
+// Helper function to determine badge styling based on status
+const getStatusBadge = (status) => {
+    switch (status) {
+        case "Paid":
+            return (
+                <Badge className="bg-success-50 text-success-700 hover:bg-success-50">
+                    Paid
+                </Badge>
+            );
+        case "Unpaid":
+            return (
+                <Badge className="bg-orange-50 text-orange-700 hover:bg-orange-50">
+                    Unpaid
+                </Badge>
+            );
+        case "Overdue":
+            return (
+                <Badge className="bg-error-50 text-error-700 hover:bg-error-50">
+                    Overdue
+                </Badge>
+            );
+        default:
+            return <Badge>{status}</Badge>;
+    }
+};
+
+export default function ClientsTable() {
+    return (
+        <Card className="w-[1224px] border border-gray-200 rounded-xl overflow-hidden">
+            <CardHeader className="pt-5 pb-[19px] px-6">
+                <div className="font-text-lg-medium text-gray-900">Clients</div>
+            </CardHeader>
+            <CardContent className="p-0">
+                <Table>
+                    <TableHeader className="bg-gray-50">
+                        <TableRow>
+                            <TableHead className="h-11 px-6 py-3 text-xs font-text-xs-medium text-gray-600">
+                                Name
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3 text-xs font-text-xs-medium text-gray-600 w-[120px]">
+                                Last Invoice
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3 text-xs font-text-xs-medium text-gray-600 w-44">
+                                Amount Due
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3 text-xs font-text-xs-medium text-gray-600 w-[181px]">
+                                Status
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3 text-xs font-text-xs-medium text-gray-600 w-[196px]">
+                                Last Payment
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3 text-xs font-text-xs-medium text-gray-600">
+                                Payment Method
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3 text-xs font-text-xs-medium text-gray-600 text-center w-[138px]">
+                                Action
+                            </TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {clients.map((client, index) => (
+                            <TableRow key={index} className="h-[72px]">
+                                <TableCell className="px-6 py-4 font-text-sm-medium text-gray-900">
+                                    {client.name}
+                                </TableCell>
+                                <TableCell className="px-6 py-4 font-text-sm-regular text-gray-600 w-[120px]">
+                                    {client.lastInvoice}
+                                </TableCell>
+                                <TableCell className="px-6 py-4 w-44">
+                                    <div className="flex items-center gap-3">
+                                        <CircleDollarSign className="w-10 h-10 text-blue-500" />
+                                        <span className="font-text-sm-medium text-gray-900">
+                                            {client.amountDue}
+                                        </span>
+                                    </div>
+                                </TableCell>
+                                <TableCell className="px-6 py-4 w-[181px]">
+                                    <div className="mix-blend-multiply">
+                                        {getStatusBadge(client.status)}
+                                    </div>
+                                </TableCell>
+                                <TableCell className="px-6 py-4 font-text-sm-regular text-gray-600 w-[196px]">
+                                    {client.lastPayment}
+                                </TableCell>
+                                <TableCell className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <Wallet className="w-[46px] h-8 text-blue-500" />
+                                        <span className="font-text-sm-regular text-gray-600">
+                                            {client.walletAddress}
+                                        </span>
+                                    </div>
+                                </TableCell>
+                                <TableCell className="px-6 py-4 text-center w-[138px]">
+                                    <Button
+                                        variant="link"
+                                        className="text-brand-700 font-text-sm-semibold h-auto"
+                                    >
+                                        View
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+    );
+}
