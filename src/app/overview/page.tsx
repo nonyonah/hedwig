@@ -6,6 +6,9 @@ import { Search, Plus } from 'lucide-react';
 import LineChart from '@/components/dashboard/LineChart';
 import ClientsTable from '@/components/dashboard/ClientsTable';
 import MetricItem from '@/components/dashboard/MetricItem'; // Added import for MetricItem
+import Header from '@/components/Header';
+// PrivyWalletButton is already imported and used within Header.tsx
+// import {PrivyWalletButton} from '@/components/PrivyWalletButton'; 
 
 export default function DashboardPage() {
   // Mock data for the line chart
@@ -35,7 +38,9 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="bg-gray-50">
+    <div className="bg-white min-h-screen">
+      {/* Top Header */}
+      <Header /> {/* Remove children from here */}
       {/* Secondary Navigation */}
       <div className="border-b bg-white">
         <div className="container mx-auto px-6 flex justify-between items-center">

@@ -44,7 +44,7 @@
 
 :root {
   --radius: 0.5rem;
-  --background: #FAFAFA;
+  --background: #FFFFFF; /* Changed from #FAFAFA to #FFFFFF */
   --foreground: #1a1a1a;
   --card: #fff;
   --card-foreground: #1a1a1a;
@@ -250,7 +250,7 @@ body {
 
 /* In dark mode section */
 .dark {
-  --background: #1a1a1a;
+  --background: #000000; /* Ensure dark mode background is explicitly black or dark gray */
   --foreground: #ffffff;
   --card: #2d2d2d;
   --card-foreground: #ffffff;
