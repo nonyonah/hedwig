@@ -1,8 +1,7 @@
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from 'sonner';
 import './globals.css';
-import { ThirdwebProviderWrapper } from '@/providers/ThirdwebProvider';
-import { SidebarWrapper } from '@/components/SidebarWrapper';
+import { HeaderWrapper } from '@/components/HeaderWrapper';
 
 export default function RootLayout({
   children,
@@ -11,15 +10,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen bg-background">
-        <ThirdwebProviderWrapper>
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <SidebarWrapper>
-              {children}
-            </SidebarWrapper>
-            <Toaster />
-          </ThemeProvider>
-        </ThirdwebProviderWrapper>
+      <body className="min-h-screen bg-gray-50">
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <HeaderWrapper>
+            {children}
+          </HeaderWrapper>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
