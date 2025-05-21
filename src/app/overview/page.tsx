@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Search, Plus } from 'lucide-react';
 import LineChart from '@/components/dashboard/LineChart';
 import ClientsTable from '@/components/dashboard/ClientsTable';
+import MetricItem from '@/components/dashboard/MetricItem'; // Added import for MetricItem
 
 export default function DashboardPage() {
   // Mock data for the line chart
@@ -24,14 +24,14 @@ export default function DashboardPage() {
     name: string;
     lastInvoice: string;
     amountDue: string;
-    status: "Paid" | "Unpaid" | "Overdue"; // Ensure this line matches the expected type
+    status: "Paid" | "Unpaid" | "Overdue";
     lastPayment: string;
-    id: string;
+    walletAddress: string; // Changed 'id' to 'walletAddress' to match Client interface
   }[] = [
-    { name: 'Olivia Rhye', lastInvoice: 'May 15, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'Apr 10, 2025', id: '0x1480...9037' },
-    { name: 'Phoenix Baker', lastInvoice: 'May 10, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'May 12, 2025', id: '0xe880...0683' },
-    { name: 'Lana Steiner', lastInvoice: 'Apr 28, 2025', amountDue: '$150', status: 'Unpaid', lastPayment: 'May 12, 2025', id: '0x8f47...8909' },
-    { name: 'Demi Wilkinson', lastInvoice: 'Apr 28, 2025', amountDue: '$150', status: 'Overdue', lastPayment: 'Mar 30, 2025', id: '0x1c42...f589' },
+    { name: 'Olivia Rhye', lastInvoice: 'May 15, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'Apr 10, 2025', walletAddress: '0x1480...9037' },
+    { name: 'Phoenix Baker', lastInvoice: 'May 10, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'May 12, 2025', walletAddress: '0xe880...0683' },
+    { name: 'Lana Steiner', lastInvoice: 'Apr 28, 2025', amountDue: '$150', status: 'Unpaid', lastPayment: 'May 12, 2025', walletAddress: '0x8f47...8909' },
+    { name: 'Demi Wilkinson', lastInvoice: 'Apr 28, 2025', amountDue: '$150', status: 'Overdue', lastPayment: 'Mar 30, 2025', walletAddress: '0x1c42...f589' },
   ];
 
   return (
@@ -83,101 +83,30 @@ export default function DashboardPage() {
         
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Total Earned Card */}
-          <Card className="bg-white border-gray-200 overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Total Earned This Month</h3>
-                  <p className="text-3xl font-bold mt-1">2,420</p>
-                  <div className="flex items-center mt-1">
-                    <span className="flex items-center text-green-500 text-sm">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-1">
-                        <path d="M6 2.5V9.5M6 2.5L9 5.5M6 2.5L3 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      40%
-                    </span>
-                    <span className="text-gray-500 text-sm ml-1">vs last month</span>
-                  </div>
-                </div>
-                <button className="text-gray-400 hover:text-gray-500">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 3V3.01M8 8V8.01M8 13V13.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              </div>
-              <div className="h-10">
-                <svg width="100%" height="100%" viewBox="0 0 100 30" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M0 30 C10 15, 20 10, 30 20 S50 25, 60 15 S80 0, 100 10 L100 30 Z" fill="rgba(34, 197, 94, 0.1)"/>
-                  <path d="M0 30 C10 15, 20 10, 30 20 S50 25, 60 15 S80 0, 100 10" fill="none" stroke="#22c55e" strokeWidth="2"/>
-                </svg>
-              </div>
-            </CardContent>
-          </Card>
-          
-          {/* Pending Invoices Card */}
-          <Card className="bg-white border-gray-200 overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Pending Invoices</h3>
-                  <p className="text-3xl font-bold mt-1">1,210</p>
-                  <div className="flex items-center mt-1">
-                    <span className="flex items-center text-red-500 text-sm">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-1">
-                        <path d="M6 9.5V2.5M6 9.5L3 6.5M6 9.5L9 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      10%
-                    </span>
-                    <span className="text-gray-500 text-sm ml-1">vs last month</span>
-                  </div>
-                </div>
-                <button className="text-gray-400 hover:text-gray-500">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 3V3.01M8 8V8.01M8 13V13.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              </div>
-              <div className="h-10">
-                <svg width="100%" height="100%" viewBox="0 0 100 30" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M0 10 C20 20, 40 30, 60 20 S80 0, 100 10 L100 30 L0 30 Z" fill="rgba(239, 68, 68, 0.1)"/>
-                  <path d="M0 10 C20 20, 40 30, 60 20 S80 0, 100 10" fill="none" stroke="#ef4444" strokeWidth="2"/>
-                </svg>
-              </div>
-            </CardContent>
-          </Card>
-          
-          {/* Expenses Card */}
-          <Card className="bg-white border-gray-200 overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Expenses This Month</h3>
-                  <p className="text-3xl font-bold mt-1">316</p>
-                  <div className="flex items-center mt-1">
-                    <span className="flex items-center text-green-500 text-sm">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="mr-1">
-                        <path d="M6 2.5V9.5M6 2.5L9 5.5M6 2.5L3 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      20%
-                    </span>
-                    <span className="text-gray-500 text-sm ml-1">vs last month</span>
-                  </div>
-                </div>
-                <button className="text-gray-400 hover:text-gray-500">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 3V3.01M8 8V8.01M8 13V13.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              </div>
-              <div className="h-10">
-                <svg width="100%" height="100%" viewBox="0 0 100 30" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M0 30 C10 15, 20 10, 30 20 S50 25, 60 15 S80 0, 100 10 L100 30 Z" fill="rgba(34, 197, 94, 0.1)"/>
-                  <path d="M0 30 C10 15, 20 10, 30 20 S50 25, 60 15 S80 0, 100 10" fill="none" stroke="#22c55e" strokeWidth="2"/>
-                </svg>
-              </div>
-            </CardContent>
-          </Card>
+          <MetricItem 
+            title="Total Earned This Month"
+            value="2,420"
+            percentageChange={40} // Corrected to number
+            isPositiveChange={true}
+            comparisonPeriod="vs last month"
+            // chartSrc="/path/to/your/chart-image.svg" // Optional: replace with actual chart image path
+          />
+          <MetricItem 
+            title="Pending Invoices"
+            value="1,210"
+            percentageChange={10} // Corrected to number
+            isPositiveChange={false}
+            comparisonPeriod="vs last month"
+            // chartSrc="/path/to/your/chart-image.svg" // Optional: replace with actual chart image path
+          />
+          <MetricItem 
+            title="Expenses This Month"
+            value="316"
+            percentageChange={20} // Corrected to number
+            isPositiveChange={true}
+            comparisonPeriod="vs last month"
+            // chartSrc="/path/to/your/chart-image.svg" // Optional: replace with actual chart image path
+          />
         </div>
         
         {/* Line Chart Component */}
