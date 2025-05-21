@@ -16,7 +16,6 @@ export function PrivyProvider({ children }: { children: React.ReactNode }) {
         // Configure embedded wallets
         embeddedWallets: {
           createOnLogin: 'users-without-wallets', // or 'all-users'
-          noPromptOnSignature: true, // Users will not be prompted to confirm transactions
         },
       }}
     >
