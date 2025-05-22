@@ -1,8 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Search, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import LineChart from '@/components/dashboard/LineChart';
 import ClientsTable from '@/components/dashboard/ClientsTable';
 import MetricItem from '@/components/dashboard/MetricItem'; // Added import for MetricItem
