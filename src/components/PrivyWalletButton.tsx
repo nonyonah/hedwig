@@ -34,7 +34,7 @@ export function PrivyWalletButton() {
 
   if (!ready) {
     return (
-      <Button variant="outline" className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50" disabled>
+      <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50 dark:bg-[#454545] dark:text-white dark:border-gray-700 dark:hover:bg-opacity-90" disabled>
         <span className="flex items-center">
           <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -50,14 +50,14 @@ export function PrivyWalletButton() {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
+          <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50 dark:bg-[#454545] dark:text-white dark:border-gray-700 dark:hover:bg-opacity-90">
             <span className="flex items-center">
               {user.wallet.address ? `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}` : 'Wallet Connected'}
               <ChevronDown className="ml-2 h-4 w-4" />
             </span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+        <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-[#222222] border-gray-200 dark:border-gray-700">
           <DropdownMenuLabel className="text-gray-700 dark:text-gray-300">My Wallet</DropdownMenuLabel>
           <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700"/>
           <DropdownMenuItem 
@@ -96,7 +96,7 @@ export function PrivyWalletButton() {
   }
 
   return (
-    <Button variant="outline" className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50" onClick={login}>
+    <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50 dark:bg-[#454545] dark:text-white dark:border-gray-700 dark:hover:bg-opacity-90" onClick={login}>
       <span className="flex items-center">
         <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2"/>

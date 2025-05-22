@@ -65,7 +65,7 @@ export default function DashboardPage() {
       </div>
       */}
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-[32px] py-8">
         {/* Header with welcome and actions */}
         <div className="mb-8 flex items-center justify-between">
           <div>
