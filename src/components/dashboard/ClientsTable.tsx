@@ -57,7 +57,7 @@ const getStatusBadge = (status: Client['status']) => { // Added type for status
 
 export default function ClientsTable({ clients }: ClientsTableProps) {
     return (
-        <Card className="w-full border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+        <Card className="w-[1224px] h-[399px] border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white">
             <CardHeader className="pt-5 pb-[19px] px-6">
                 {/* Using CardTitle for consistency with shadcn */}
                 <CardTitle className="text-lg font-medium text-gray-900 dark:text-gray-100">Clients</CardTitle>
@@ -66,25 +66,25 @@ export default function ClientsTable({ clients }: ClientsTableProps) {
                 <Table>
                     <TableHeader className="bg-gray-50 dark:bg-gray-800">
                         <TableRow>
-                            <TableHead className="h-11 px-6 py-3 text-xs font-medium text-gray-600 dark:text-gray-400">
+                            <TableHead className="h-11 px-6 py-4 text-xs font-medium text-gray-600 dark:text-gray-400">
                                 Name
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3 text-xs font-medium text-gray-600 dark:text-gray-400 w-[120px]">
+                            <TableHead className="h-11 px-6 py-4 text-xs font-medium text-gray-600 dark:text-gray-400 w-[120px]">
                                 Last Invoice
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3 text-xs font-medium text-gray-600 dark:text-gray-400 w-44">
+                            <TableHead className="h-11 px-6 py-4 text-xs font-medium text-gray-600 dark:text-gray-400 w-44">
                                 Amount Due
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3 text-xs font-medium text-gray-600 dark:text-gray-400 w-[181px]">
+                            <TableHead className="h-11 px-6 py-4 text-xs font-medium text-gray-600 dark:text-gray-400 w-[181px]">
                                 Status
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3 text-xs font-medium text-gray-600 dark:text-gray-400 w-[196px]">
+                            <TableHead className="h-11 px-6 py-4 text-xs font-medium text-gray-600 dark:text-gray-400 w-[196px]">
                                 Last Payment
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3 text-xs font-medium text-gray-600 dark:text-gray-400">
+                            <TableHead className="h-11 px-6 py-4 text-xs font-medium text-gray-600 dark:text-gray-400">
                                 Payment Method
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3 text-xs font-medium text-gray-600 dark:text-gray-400 text-center w-[138px]">
+                            <TableHead className="h-11 px-6 py-4 text-xs font-medium text-gray-600 dark:text-gray-400 text-center w-[138px]">
                                 Action
                             </TableHead>
                         </TableRow>

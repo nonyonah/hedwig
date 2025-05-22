@@ -34,8 +34,8 @@ export default function MetricItem({
     // e.g., success-700, destructive-700
 
     return (
-        <Card className="border border-gray-200 dark:border-gray-700 w-full">
-            <CardContent className="flex flex-col gap-6 p-6">
+        <Card className="border border-gray-200 dark:border-gray-700 w-[390px] h-[176px]">
+            <CardContent className="flex flex-col gap-6 p-[24px]">
                 <div className="flex items-start justify-between w-full">
                     <h3 className="text-gray-900 dark:text-gray-100 font-semibold text-md">
                         {title}

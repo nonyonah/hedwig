@@ -25,8 +25,8 @@ export default function LineChart({ data, title, description }: LineChartProps):
     // For dynamic XAxis based on data, Recharts XAxis dataKey will use 'day' from the data prop
 
     return (
-        <Card className="w-full mb-8 rounded-md border border-gray-200 dark:border-gray-700">
-            <CardContent className="p-5 h-full">
+        <Card className="w-[1224px] h-[353px] mb-8 rounded-md border border-gray-200 dark:border-gray-700 bg-white">
+            <CardContent className="p-[22px] h-full">
                 <div className="h-full flex flex-col gap-[30px]">
                     <header className="flex items-center justify-between">
                         <div className="flex flex-col gap-[5px]">

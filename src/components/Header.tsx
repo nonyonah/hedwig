@@ -31,7 +31,7 @@ export default function Header(): JSX.Element {
     return (
         <header className="flex flex-col items-center w-full bg-white shadow-sm">
             {/* Main navigation */}
-            <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between px-8">
+            <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between px-[32px]">
                 <div className="flex items-center gap-x-8">
                     <nav className="flex items-center gap-1">
                         {mainNavItems.map((item) => (
@@ -67,7 +67,7 @@ export default function Header(): JSX.Element {
 
             {/* Conditional Sub navigation */}
             {showSubNav && (
-                <div className="flex w-full max-w-[1280px] h-16 items-center justify-between px-8">
+                <div className="flex w-full max-w-[1280px] h-16 items-center justify-between px-[32px]">
                     <nav className="flex items-center gap-1">
                         {subNavItems.map((item) => (
                             <Link
