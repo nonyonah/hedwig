@@ -6,8 +6,7 @@ import LineChart from '@/components/dashboard/LineChart';
 import ClientsTable from '@/components/dashboard/ClientsTable';
 import MetricItem from '@/components/dashboard/MetricItem'; // Added import for MetricItem
 import Header from '@/components/Header';
-// PrivyWalletButton is already imported and used within Header.tsx
-// import {PrivyWalletButton} from '@/components/PrivyWalletButton'; 
+
 
 export default function DashboardPage() {
   // Mock data for the line chart
@@ -65,7 +64,7 @@ export default function DashboardPage() {
       </div>
       */}
 
-      <div className="container mx-auto px-[32px] py-8">
+      <div className="container mx-auto px-[108px] py-8">
         {/* Header with welcome and actions */}
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -91,7 +90,7 @@ export default function DashboardPage() {
         </div>
         
         {/* Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           <MetricItem 
             title="Total Earned This Month"
             value="2,420"
