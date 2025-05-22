@@ -39,9 +39,11 @@ export default function DashboardPage() {
 
   return (
     <div className="bg-white min-h-screen">
-      {/* Top Header */}
-      <Header /> {/* Remove children from here */}
-      {/* Secondary Navigation */}
+      {/* Top Header - Already includes conditional sub-navigation from previous changes */}
+      <Header />
+      
+      {/* REMOVE Old Secondary Navigation - This section will be deleted */}
+      {/* 
       <div className="border-b bg-white">
         <div className="container mx-auto px-6 flex justify-between items-center">
           <nav className="flex space-x-6">
@@ -62,6 +64,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      */}
 
       <div className="container mx-auto px-6 py-8">
         {/* Header with welcome and actions */}
@@ -72,11 +75,13 @@ export default function DashboardPage() {
           </div>
           
           <div className="flex items-center gap-3">
+            {/* REMOVE "Add Expense" Button - This button will be deleted 
             <Button variant="outline" className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
               <span className="flex items-center">
                 Add Expense
               </span>
             </Button>
+            */}
             <Button className="bg-purple-600 hover:bg-purple-700 text-white">
               <span className="flex items-center">
                 <Plus className="mr-2 h-4 w-4" />

@@ -2,9 +2,35 @@
 
 import { usePrivy } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
+import { useTheme } from 'next-themes'; // Import useTheme
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, LogOut, Copy, Sun, Moon, Laptop } from 'lucide-react'; // Import icons
+import React from 'react'; // Import React for types if needed
 
 export function PrivyWalletButton() {
   const { login, logout, authenticated, user, ready } = usePrivy();
+  const { theme, setTheme } = useTheme();
+
+  const copyAddress = async () => {
+    if (user?.wallet?.address) {
+      try {
+        await navigator.clipboard.writeText(user.wallet.address);
+        alert('Address copied to clipboard!'); // Or use a toast notification
+      } catch (err) {
+        console.error('Failed to copy address: ', err);
+        alert('Failed to copy address.');
+      }
+    }
+  };
 
   if (!ready) {
     return (
@@ -20,18 +46,52 @@ export function PrivyWalletButton() {
     );
   }
 
-  if (authenticated) {
+  if (authenticated && user?.wallet) {
     return (
-      <Button variant="outline" className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50" onClick={logout}>
-        <span className="flex items-center">
-          <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M8 12L16 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M12 8L16 12L12 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          {user?.wallet?.address ? `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}` : 'Disconnect'}
-        </span>
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
+            <span className="flex items-center">
+              {user.wallet.address ? `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}` : 'Wallet Connected'}
+              <ChevronDown className="ml-2 h-4 w-4" />
+            </span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+          <DropdownMenuLabel className="text-gray-700 dark:text-gray-300">My Wallet</DropdownMenuLabel>
+          <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700"/>
+          <DropdownMenuItem 
+            onClick={copyAddress} 
+            className="cursor-pointer text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            <span>Copy Address</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem 
+            onClick={() => logout()} 
+            className="cursor-pointer text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-700/20"
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            <span>Disconnect</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700"/>
+          <DropdownMenuLabel className="text-gray-700 dark:text-gray-300">Theme</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+            <DropdownMenuRadioItem value="light" className="cursor-pointer text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <Sun className="mr-2 h-4 w-4" />
+              <span>Light</span>
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark" className="cursor-pointer text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <Moon className="mr-2 h-4 w-4" />
+              <span>Dark</span>
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="system" className="cursor-pointer text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+              <Laptop className="mr-2 h-4 w-4" />
+              <span>System</span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   }
 
