@@ -76,7 +76,7 @@ export default function DashboardPage() {
                    background: 'var(--White, #FFF)',
                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
                  }}>
-              <p>Building an AI agent involves several key components and decisions. Here's a practical breakdown:</p>
+              <p>Building an AI agent involves several key components and decisions. Here&apos;s a practical breakdown:</p>
               <p className="mt-2">Core Architecture</p>
               <p className="mt-2">Agent Framework: Start with the basic loop - perception, reasoning, and action. Your agent needs to:</p>
               <ul className="list-disc pl-6 mt-2">
