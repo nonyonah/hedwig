@@ -3,8 +3,30 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PrivyWalletButton } from '@/components/PrivyWalletButton';
+import { CircleArrowUp, CircleStop } from 'lucide-react';
+import { useState } from 'react';
 
 export default function DashboardPage() {
+  const [inputValue, setInputValue] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+  };
+
+  const handleSubmit = () => {
+    if (inputValue.trim()) {
+      setIsSubmitting(true);
+      // Here you would handle the actual submission logic
+      // For now, we're just toggling the icon state
+    }
+  };
+
+  const handleStop = () => {
+    setIsSubmitting(false);
+    // Here you would handle stopping the submission
+  };
+
   return (
     <div className="bg-white min-h-screen">
       {/* Simple header with logo and wallet button */}
@@ -32,33 +54,45 @@ export default function DashboardPage() {
              flexShrink: 0,
              alignSelf: 'stretch'
            }}>
-        <div className="text-center max-w-[600px] mb-4">
+        <div className="text-center max-w-[600px]">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Good evening, Nonso</h1>
           <p className="text-gray-600">How can I help you today?</p>
         </div>
         
-        {/* Chat input box with soft borders and shadows */}
+        {/* Chat input box with soft borders and shadows - 32px gap from text above is handled by parent container */}
         <div className="w-full max-w-[600px] relative">
           <Input 
             type="text" 
             placeholder="Ask anything..." 
-            className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px]"
             style={{ boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)' }}
+            value={inputValue}
+            onChange={handleInputChange}
           />
           <Button 
             size="icon" 
             className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
+            onClick={isSubmitting ? handleStop : handleSubmit}
+            disabled={!inputValue.trim() && !isSubmitting}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10 18.3333C14.6024 18.3333 18.3334 14.6024 18.3334 10C18.3334 5.39763 14.6024 1.66667 10 1.66667C5.39765 1.66667 1.66669 5.39763 1.66669 10C1.66669 14.6024 5.39765 18.3333 10 18.3333Z" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M10 13.3333V10" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M10 6.66667H10.0083" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            {isSubmitting ? (
+              <CircleStop 
+                className="h-5 w-5" 
+                fill="currentColor" 
+                strokeWidth={0.5} 
+              />
+            ) : (
+              <CircleArrowUp 
+                className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`} 
+                fill="currentColor" 
+                strokeWidth={0.5} 
+              />
+            )}
           </Button>
         </div>
         
-        {/* Action buttons */}
-        <div className="flex flex-wrap justify-center gap-2 mt-4">
+        {/* Action buttons - 21px gap from chatbox */}
+        <div className="flex flex-wrap justify-center gap-x-[21px] mt-[21px]">
           <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
             Create Invoice
           </Button>

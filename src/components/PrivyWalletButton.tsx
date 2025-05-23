@@ -13,7 +13,7 @@ import {
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, LogOut, Copy, Sun, Moon, Laptop } from 'lucide-react'; // Import icons
+import { ChevronDown, LogOut, Copy, Sun, Moon, Laptop, Wallet } from 'lucide-react'; // Added Wallet icon
 import React from 'react'; // Import React for types if needed
 
 export function PrivyWalletButton() {
@@ -98,11 +98,7 @@ export function PrivyWalletButton() {
   return (
     <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50 dark:bg-[#454545] dark:text-white dark:border-gray-700 dark:hover:bg-opacity-90" onClick={login}>
       <span className="flex items-center">
-        <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2"/>
-          <path d="M12 8V16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          <path d="M8 12H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
+        <Wallet className="mr-2 h-4 w-4" fill="currentColor" strokeWidth={0.5} />
         Connect Wallet
       </span>
     </Button>
