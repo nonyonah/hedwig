@@ -27,7 +27,13 @@ export default function DashboardPage() {
       setIsTyping(true);
       // Reset displayed response for new typing animation
       setDisplayedResponse('');
+      
       // Here you would handle the actual submission logic
+      // For example, when you get a response from your API:
+      // setFullResponse(responseFromAPI);
+      
+      // For testing, you could set a mock response:
+      setFullResponse("This is a new response based on your input: " + inputValue);
     }
   };
 
