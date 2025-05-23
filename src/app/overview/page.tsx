@@ -1,131 +1,77 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
-import LineChart from '@/components/dashboard/LineChart';
-import ClientsTable from '@/components/dashboard/ClientsTable';
-import MetricItem from '@/components/dashboard/MetricItem'; // Added import for MetricItem
-import Header from '@/components/Header';
-
+import { Input } from '@/components/ui/input';
+import { PrivyWalletButton } from '@/components/PrivyWalletButton';
 
 export default function DashboardPage() {
-  // Mock data for the line chart
-  const weeklyData = [
-    { day: 'Mon', value: 1200 },
-    { day: 'Tue', value: 1300 },
-    { day: 'Wed', value: 1400 },
-    { day: 'Thu', value: 1200 },
-    { day: 'Fri', value: 1500 },
-    { day: 'Sat', value: 1800 },
-    { day: 'Sun', value: 2000 },
-  ];
-
-  // Mock client data
-  const clients: {
-    name: string;
-    lastInvoice: string;
-    amountDue: string;
-    status: "Paid" | "Unpaid" | "Overdue";
-    lastPayment: string;
-    walletAddress: string; // Changed 'id' to 'walletAddress' to match Client interface
-  }[] = [
-    { name: 'Olivia Rhye', lastInvoice: 'May 15, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'Apr 10, 2025', walletAddress: '0x1480...9037' },
-    { name: 'Phoenix Baker', lastInvoice: 'May 10, 2025', amountDue: '$420', status: 'Paid', lastPayment: 'May 12, 2025', walletAddress: '0xe880...0683' },
-    { name: 'Lana Steiner', lastInvoice: 'Apr 28, 2025', amountDue: '$150', status: 'Unpaid', lastPayment: 'May 12, 2025', walletAddress: '0x8f47...8909' },
-    { name: 'Demi Wilkinson', lastInvoice: 'Apr 28, 2025', amountDue: '$150', status: 'Overdue', lastPayment: 'Mar 30, 2025', walletAddress: '0x1c42...f589' },
-  ];
-
   return (
     <div className="bg-white min-h-screen">
-      {/* Top Header - Already includes conditional sub-navigation from previous changes */}
-      <Header />
-      
-      {/* REMOVE Old Secondary Navigation - This section will be deleted */}
-      {/* 
-      <div className="border-b bg-white">
-        <div className="container mx-auto px-6 flex justify-between items-center">
-          <nav className="flex space-x-6">
-            <Link href="/overview" className="py-4 border-b-2 border-purple-600 font-medium text-gray-900">
-              Overview
-            </Link>
-            <Link href="/clients" className="py-4 border-b-2 border-transparent font-medium text-gray-600 hover:text-gray-900">
-              Clients
-            </Link>
-          </nav>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input 
-              type="search" 
-              placeholder="Search" 
-              className="h-10 w-64 rounded-md border border-gray-300 bg-white pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-            />
+      {/* Simple header with logo and wallet button */}
+      <header className="flex flex-col items-center w-full bg-white px-[108px]">
+        <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
+          <div className="flex items-center gap-x-8">
+            <div className="font-bold text-xl">albus</div>
           </div>
-        </div>
-      </div>
-      */}
 
-      <div className="container mx-auto px-[108px] py-8">
-        {/* Header with welcome and actions */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Welcome back, Nonso</h1>
-            <p className="text-gray-600">Track and manage your clients and invoices.</p>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            {/* REMOVE "Add Expense" Button - This button will be deleted 
-            <Button variant="outline" className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
-              <span className="flex items-center">
-                Add Expense
-              </span>
-            </Button>
-            */}
-            <Button className="bg-purple-600 hover:bg-purple-700 text-white">
-              <span className="flex items-center">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Invoice
-              </span>
-            </Button>
+          <div className="flex items-center gap-4">
+            <PrivyWalletButton />
           </div>
         </div>
-        
-        {/* Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-          <MetricItem 
-            title="Total Earned This Month"
-            value="2,420"
-            percentageChange={40} // Corrected to number
-            isPositiveChange={true}
-            comparisonPeriod="vs last month"
-            // chartSrc="/path/to/your/chart-image.svg" // Optional: replace with actual chart image path
-          />
-          <MetricItem 
-            title="Pending Invoices"
-            value="1,210"
-            percentageChange={10} // Corrected to number
-            isPositiveChange={false}
-            comparisonPeriod="vs last month"
-            // chartSrc="/path/to/your/chart-image.svg" // Optional: replace with actual chart image path
-          />
-          <MetricItem 
-            title="Expenses This Month"
-            value="316"
-            percentageChange={20} // Corrected to number
-            isPositiveChange={true}
-            comparisonPeriod="vs last month"
-            // chartSrc="/path/to/your/chart-image.svg" // Optional: replace with actual chart image path
-          />
+      </header>
+
+      {/* Main content area with chat interface */}
+      <div className="flex flex-col items-center px-[108px]" 
+           style={{
+             display: 'flex',
+             height: '688px',
+             paddingTop: '115px',
+             flexDirection: 'column',
+             alignItems: 'center',
+             gap: '32px',
+             flexShrink: 0,
+             alignSelf: 'stretch'
+           }}>
+        <div className="text-center max-w-[600px] mb-4">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Good evening, Nonso</h1>
+          <p className="text-gray-600">How can I help you today?</p>
         </div>
         
-        {/* Line Chart Component */}
-        <LineChart 
-          data={weeklyData} 
-          title="Total Earned This Month" 
-          description="Shows what you earned this month" 
-        />
+        {/* Chat input box with soft borders and shadows */}
+        <div className="w-full max-w-[600px] relative">
+          <Input 
+            type="text" 
+            placeholder="Ask anything..." 
+            className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            style={{ boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)' }}
+          />
+          <Button 
+            size="icon" 
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 18.3333C14.6024 18.3333 18.3334 14.6024 18.3334 10C18.3334 5.39763 14.6024 1.66667 10 1.66667C5.39765 1.66667 1.66669 5.39763 1.66669 10C1.66669 14.6024 5.39765 18.3333 10 18.3333Z" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M10 13.3333V10" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M10 6.66667H10.0083" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </Button>
+        </div>
         
-        {/* Clients Table Component */}
-        <ClientsTable clients={clients} />
+        {/* Action buttons */}
+        <div className="flex flex-wrap justify-center gap-2 mt-4">
+          <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+            Create Invoice
+          </Button>
+          <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+            View Summary
+          </Button>
+          <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+            Send Reminder
+          </Button>
+          <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+            Swap
+          </Button>
+        </div>
       </div>
     </div>
   );
