@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PrivyWalletButton } from '@/components/PrivyWalletButton';
-import { CircleArrowUp, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { CircleArrowUp, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function DashboardPage() {
@@ -78,27 +78,33 @@ export default function DashboardPage() {
              style={{
                padding: '0 108px',
              }}>
+          {/* Back button to return to homepage */}
+          <div className="w-full max-w-[600px] mt-6 mb-2">
+            <Button 
+              variant="ghost" 
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 p-2"
+              onClick={() => setShowResponse(false)}
+            >
+              <ArrowLeft size={16} />
+              <span>Back to homepage</span>
+            </Button>
+          </div>
+          
           {/* AI Response Content - Takes up most of the screen */}
-          <div className="w-full max-w-[600px] flex-grow overflow-y-auto py-8">
-            {/* User Query Bubble */}
-            <div className="mb-4 p-4 max-w-[80%] ml-auto"
+          <div className="w-full max-w-[600px] flex-grow overflow-y-auto py-4">
+            {/* User Query Bubble - Adaptive width based on content, no shadow */}
+            <div className="mb-4 p-4 inline-block ml-auto"
                  style={{
                    borderRadius: '20px',
                    border: '1px solid var(--Gray-200, #E9EAEB)',
                    background: '#F2F1EF',
-                   boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
+                   // Shadow removed
                  }}>
               <p>{inputValue}</p>
             </div>
             
-            {/* AI Response Bubble */}
-            <div className="p-4 max-w-[80%]"
-                 style={{
-                   borderRadius: '10px',
-                   border: '1px solid var(--Gray-200, #E9EAEB)',
-                   background: 'var(--White, #FFF)',
-                   boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
-                 }}>
+            {/* AI Response - No bubble, directly on white background */}
+            <div className="p-4 max-w-[80%]">
               {displayedResponse.split('\n').map((line, index) => {
                 if (line.startsWith('- ')) {
                   return <li key={index} className="ml-6">{line.substring(2)}</li>;
@@ -111,8 +117,8 @@ export default function DashboardPage() {
               {isTyping && <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>}
             </div>
             
-            {/* Action Icons - 21px gap from AI response, 15px between icons */}
-            <div className="flex items-center gap-[15px] mt-[21px]">
+            {/* Action Icons - 21px gap from AI response, 8px between icons */}
+            <div className="flex items-center gap-[8px] mt-[21px]">
               <Button variant="ghost" size="icon" className="rounded-full p-2">
                 <RefreshCw size={16} className="text-gray-600" />
               </Button>
