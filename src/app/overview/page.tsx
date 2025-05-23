@@ -3,13 +3,18 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PrivyWalletButton } from '@/components/PrivyWalletButton';
-import { CircleArrowUp, CircleStop } from 'lucide-react';
-import { useState } from 'react';
+import { CircleArrowUp, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 export default function DashboardPage() {
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showResponse, setShowResponse] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [displayedResponse, setDisplayedResponse] = useState('');
+  const [fullResponse, setFullResponse] = useState(
+    "Building an AI agent involves several key components and decisions. Here&apos;s a practical breakdown:\n\nCore Architecture\n\nAgent Framework: Start with the basic loop - perception, reasoning, and action. Your agent needs to:\n- Receive inputs (text, data, API responses)\n- Process and reason about those inputs\n- Take actions based on its reasoning\n- Learn from the results"
+  );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
@@ -19,17 +24,35 @@ export default function DashboardPage() {
     if (inputValue.trim()) {
       setIsSubmitting(true);
       setShowResponse(true);
+      setIsTyping(true);
+      // Reset displayed response for new typing animation
+      setDisplayedResponse('');
       // Here you would handle the actual submission logic
     }
   };
 
   const handleStop = () => {
     setIsSubmitting(false);
-    // Here you would handle stopping the submission
+    setIsTyping(false);
+    // Show full response immediately when stopped
+    setDisplayedResponse(fullResponse);
   };
 
+  // Typing animation effect
+  useEffect(() => {
+    if (isTyping && displayedResponse.length < fullResponse.length) {
+      const timer = setTimeout(() => {
+        setDisplayedResponse(fullResponse.substring(0, displayedResponse.length + 1));
+      }, 20); // Adjust speed as needed
+      return () => clearTimeout(timer);
+    } else if (displayedResponse.length >= fullResponse.length) {
+      setIsTyping(false);
+      setIsSubmitting(false);
+    }
+  }, [isTyping, displayedResponse, fullResponse]);
+
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-white min-h-screen flex flex-col">
       {/* Simple header with logo and wallet button */}
       <header className="flex flex-col items-center w-full bg-white px-[108px]">
         <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
@@ -45,18 +68,12 @@ export default function DashboardPage() {
 
       {showResponse ? (
         /* AI Response Screen */
-        <div className="flex flex-col items-center w-full" 
+        <div className="flex flex-col items-center w-full flex-grow relative" 
              style={{
-               display: 'flex',
-               padding: '128px 403px 64px 404px',
-               flexDirection: 'column',
-               justifyContent: 'flex-end',
-               alignItems: 'center',
-               gap: '435px',
-               alignSelf: 'stretch'
+               padding: '0 108px',
              }}>
-          {/* AI Response Content */}
-          <div className="w-full max-w-[600px]">
+          {/* AI Response Content - Takes up most of the screen */}
+          <div className="w-full max-w-[600px] flex-grow overflow-y-auto py-8">
             {/* User Query Bubble */}
             <div className="mb-4 p-4 max-w-[80%] ml-auto"
                  style={{
@@ -76,42 +93,37 @@ export default function DashboardPage() {
                    background: 'var(--White, #FFF)',
                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
                  }}>
-              <p>Building an AI agent involves several key components and decisions. Here&apos;s a practical breakdown:</p>
-              <p className="mt-2">Core Architecture</p>
-              <p className="mt-2">Agent Framework: Start with the basic loop - perception, reasoning, and action. Your agent needs to:</p>
-              <ul className="list-disc pl-6 mt-2">
-                <li>Receive inputs (text, data, API responses)</li>
-                <li>Process and reason about those inputs</li>
-                <li>Take actions based on its reasoning</li>
-                <li>Learn from the results</li>
-              </ul>
+              {displayedResponse.split('\n').map((line, index) => {
+                if (line.startsWith('- ')) {
+                  return <li key={index} className="ml-6">{line.substring(2)}</li>;
+                } else if (line.trim() === '') {
+                  return <br key={index} />;
+                } else {
+                  return <p key={index} className={index > 0 ? "mt-2" : ""}>{line}</p>;
+                }
+              })}
+              {isTyping && <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>}
             </div>
             
-            {/* Action Icons - 16px gap from AI response */}
-            <div className="flex items-center gap-4 mt-4">
+            {/* Action Icons - 21px gap from AI response, 15px between icons */}
+            <div className="flex items-center gap-[15px] mt-[21px]">
               <Button variant="ghost" size="icon" className="rounded-full p-2">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 18.3333C14.6024 18.3333 18.3334 14.6024 18.3334 10C18.3334 5.39763 14.6024 1.66667 10 1.66667C5.39765 1.66667 1.66669 5.39763 1.66669 10C1.66669 14.6024 5.39765 18.3333 10 18.3333Z" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M10 13.3333V10" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M10 6.66667H10.0083" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <RefreshCw size={16} className="text-gray-600" />
               </Button>
               <Button variant="ghost" size="icon" className="rounded-full p-2">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M16.6667 5L7.50002 14.1667L3.33335 10" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <Copy size={16} className="text-gray-600" />
               </Button>
               <Button variant="ghost" size="icon" className="rounded-full p-2">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M15.8333 10H4.16669" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M10 4.16667V15.8333" stroke="#667085" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <ThumbsUp size={16} className="text-gray-600" />
+              </Button>
+              <Button variant="ghost" size="icon" className="rounded-full p-2">
+                <ThumbsDown size={16} className="text-gray-600" />
               </Button>
             </div>
           </div>
           
-          {/* Chat input at the bottom */}
-          <div className="w-full max-w-[600px] relative">
+          {/* Chat input fixed at the bottom */}
+          <div className="w-full max-w-[600px] sticky bottom-8 mb-8">
             <Input 
               type="text" 
               placeholder="Ask anything..." 
@@ -149,7 +161,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         /* Main content area with chat interface */
-        <div className="flex flex-col items-center px-[108px]" 
+        <div className="flex flex-col items-center px-[108px] transition-all duration-500" 
              style={{
                display: 'flex',
                height: '688px',
@@ -170,7 +182,7 @@ export default function DashboardPage() {
             <Input 
               type="text" 
               placeholder="Ask anything..." 
-              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px]"
+              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300"
               style={{ 
                 borderRadius: '10px',
                 border: '1px solid var(--Gray-200, #E9EAEB)',
@@ -194,8 +206,8 @@ export default function DashboardPage() {
             </Button>
           </div>
           
-          {/* Action buttons - 16px gap from chatbox (changed from 21px) */}
-          <div className="flex flex-wrap justify-center gap-x-[21px] mt-[16px]">
+          {/* Action buttons - 16px gap from chatbox */}
+          <div className="flex flex-wrap justify-center gap-x-[16px] mt-[16px]">
             <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
               Create Invoice
             </Button>
