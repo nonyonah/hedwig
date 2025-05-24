@@ -103,7 +103,7 @@ export default function DashboardPage() {
   return (
     <div className="bg-white min-h-screen flex flex-col">
       {/* Simple header with logo and wallet button */}
-      // Only updating the relevant parts
+      {/* Only updating the relevant parts */}
       <header className="flex flex-col items-center w-full bg-white px-[32px]">
         <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
           <div className="flex items-center gap-x-8">
