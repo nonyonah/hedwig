@@ -2,10 +2,11 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// Removed unused PrivyWalletButton import
 import { CircleArrowUp, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { UserAvatar } from '@/components/UserAvatar';
+import { User } from '@supabase/supabase-js';
+import { getSession } from '@/lib/supabase';
 
 export default function DashboardPage() {
   const [inputValue, setInputValue] = useState('');
