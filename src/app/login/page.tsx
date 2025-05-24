@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { signInWithOAuth } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -87,7 +86,7 @@ export default function LoginPage() {
         
         {/* Terms and Privacy */}
         <p className="text-xs text-gray-500 text-center mt-8">
-          By clicking "Sign in with Google" or "Continue with email"
+          By clicking &quot;Sign in with Google&quot; or &quot;Continue with email&quot;
           you agree to our <a href="#" className="underline">Terms of Use</a> and <a href="#" className="underline">Privacy policy</a>
         </p>
       </div>
