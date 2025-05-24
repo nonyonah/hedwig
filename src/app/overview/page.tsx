@@ -121,10 +121,7 @@ export default function DashboardPage() {
 
       {showResponse ? (
         /* AI Response Screen */
-        <div className="flex flex-col items-center w-full flex-grow relative" 
-             style={{
-               padding: '0 108px',
-             }}>
+        <div className="flex flex-col items-center w-full flex-grow relative px-[108px]">
           {/* Back button to return to homepage */}
           <div className="w-full max-w-[600px] mt-6 mb-2">
             <Button 
@@ -186,17 +183,14 @@ export default function DashboardPage() {
             <Input 
               type="text" 
               placeholder="Ask anything..." 
-              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px]"
+              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm"
               style={{ 
                 borderRadius: '10px',
-                border: '1px solid var(--Gray-200, #E9EAEB)',
-                background: 'var(--White, #FFF)',
-                boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)' 
+                border: '1px solid var(--Gray-200, #E9EAEB)'
               }}
               value={inputValue}
               onChange={handleInputChange}
             />
-            // This Button component is outside the main component function and has syntax errors
             <Button 
               size="icon" 
               className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
@@ -204,41 +198,24 @@ export default function DashboardPage() {
               disabled={!inputValue.trim() && !isSubmitting}
             >
               {isSubmitting ? (
-                <CircleStop 
+                <CircleStop                  
                   className="h-5 w-5" 
                   fill="currentColor" 
-                  strokeWidth={0.5} 
+                  strokeWidth="0.5" 
                 />
               ) : (
                 <CircleArrowUp 
                   className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`} 
                   fill="currentColor" 
-                  strokeWidth={0.5} 
+                  strokeWidth="0.5" 
                 />
               )}
-              style={{
-                background: '#22577a',
-                fill="currentColor",  // This is incorrect syntax
-                strokeWidth={0.5},    // This is incorrect syntax
-              }}
-            >
-              <span>Back to homepage</span>
             </Button>
           </div>
         </div>
       ) : (
         /* Main content area with chat interface */
-        <div className="flex flex-col items-center px-[108px] transition-all duration-500" 
-             style={{
-               display: 'flex',
-               height: '688px',
-               paddingTop: '115px',
-               flexDirection: 'column',
-               alignItems: 'center',
-               gap: '32px',
-               flexShrink: 0,
-               alignSelf: 'stretch'
-             }}>
+        <div className="flex flex-col items-center px-[108px] h-[688px] pt-[115px] gap-8 flex-shrink-0 self-stretch transition-all duration-500">
           {/* In the main content area, update the greeting */}
           <div className="text-center max-w-[600px]">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}, {getFirstName()}</h1>
@@ -250,12 +227,10 @@ export default function DashboardPage() {
             <Input 
               type="text" 
               placeholder="Ask anything..." 
-              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300"
+              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm"
               style={{ 
                 borderRadius: '10px',
-                border: '1px solid var(--Gray-200, #E9EAEB)',
-                background: 'var(--White, #FFF)',
-                boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)' 
+                border: '1px solid var(--Gray-200, #E9EAEB)'
               }}
               value={inputValue}
               onChange={handleInputChange}
@@ -269,7 +244,7 @@ export default function DashboardPage() {
               <CircleArrowUp 
                 className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`} 
                 fill="currentColor" 
-                strokeWidth={0.5} 
+                strokeWidth="0.5" 
               />
             </Button>
           </div>
