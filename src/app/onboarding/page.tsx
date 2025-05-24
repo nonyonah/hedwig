@@ -21,7 +21,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
       <div className="w-full max-w-md flex flex-col items-center">
         {/* Logo */}
-        <div className="font-bold text-2xl mb-8 text-purple-600">albus</div>
+        <div className="font-bold text-2xl mb-8" style={{ color: '#ffb5a7' }}>albus</div>
         
         {/* Title and subtitle */}
         <h1 className="text-2xl font-semibold text-center mb-2">Tell us about yourself</h1>
@@ -32,10 +32,18 @@ export default function OnboardingPage() {
             <Input 
               type="text" 
               placeholder="First name" 
-              className="w-full py-6 px-4 border border-gray-200 rounded-lg" 
+              className="w-full px-4" 
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               required
+              style={{
+                width: '448px',
+                height: '36px',
+                borderRadius: '8px',
+                border: '1px solid var(--Gray-300, #D5D7DA)',
+                background: 'var(--Gray-25, #FDFDFD)',
+                boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
+              }}
             />
           </div>
           
@@ -43,27 +51,39 @@ export default function OnboardingPage() {
             <Input 
               type="text" 
               placeholder="Last name" 
-              className="w-full py-6 px-4 border border-gray-200 rounded-lg" 
+              className="w-full px-4" 
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               required
+              style={{
+                width: '448px',
+                height: '36px',
+                borderRadius: '8px',
+                border: '1px solid var(--Gray-300, #D5D7DA)',
+                background: 'var(--Gray-25, #FDFDFD)',
+                boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
+              }}
             />
           </div>
           
           <div className="pt-8">
             <Button 
               type="submit" 
-              className="w-full py-6 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              className="w-full text-white"
+              style={{
+                width: '448px',
+                height: '36px',
+                borderRadius: '8px',
+                background: '#ffb5a7',
+                boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
+              }}
             >
               Continue
             </Button>
           </div>
         </form>
         
-        {/* Progress indicator */}
-        <div className="mt-8 flex justify-center">
-          <div className="h-2 w-2 rounded-full bg-purple-600"></div>
-        </div>
+        {/* Removed the progress indicator dot as requested */}
       </div>
     </div>
   );

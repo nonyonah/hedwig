@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { UserAvatar } from '@/components/UserAvatar';
 import { User } from '@supabase/supabase-js';
 import { getSession } from '@/lib/supabase';
+import Image from 'next/image';
 
 export default function DashboardPage() {
   const [inputValue, setInputValue] = useState('');
@@ -105,7 +106,9 @@ export default function DashboardPage() {
       <header className="flex flex-col items-center w-full bg-white px-[108px]">
         <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
           <div className="flex items-center gap-x-8">
-            <div className="font-bold text-xl">albus</div>
+            <div className="font-bold text-xl">
+              <Image src="/logo.png" alt="Albus Logo" width={80} height={40} priority />
+            </div>
           </div>
 
           {/* Replace this line in the header section: */}

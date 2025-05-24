@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { signInWithOAuth } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -42,7 +43,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
       <div className="w-full max-w-md flex flex-col items-center">
         {/* Logo */}
-        <div className="font-bold text-2xl mb-2">albus</div>
+        <div className="mb-2">
+          <Image src="/logo.png" alt="Albus Logo" width={80} height={40} priority />
+        </div>
         
         {/* Title and subtitle */}
         <h1 className="text-2xl font-semibold text-center mb-2">Log into your account</h1>
@@ -51,10 +54,12 @@ export default function LoginPage() {
         {/* Google Sign-in Button */}
         <Button 
           variant="outline" 
-          className="w-full mb-6 py-6 flex items-center justify-center gap-2"
+          className="w-full mb-6 flex items-center justify-center gap-2"
           onClick={handleGoogleSignIn}
           disabled={loading}
           style={{
+            width: '448px',
+            height: '36px',
             borderRadius: '8px',
             border: '1px solid var(--Gray-300, #D5D7DA)',
             background: 'var(--Gray-25, #FDFDFD)',
@@ -77,15 +82,30 @@ export default function LoginPage() {
             <Input 
               type="email" 
               placeholder="Type your email" 
-              className="w-full mb-4 py-6 px-4 border border-gray-200 rounded-lg" 
+              className="w-full mb-4 px-4" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              style={{
+                width: '448px',
+                height: '36px',
+                borderRadius: '8px',
+                border: '1px solid var(--Gray-300, #D5D7DA)',
+                background: 'var(--Gray-25, #FDFDFD)',
+                boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
+              }}
             />
             <Button 
               type="submit" 
-              className="w-full py-6 bg-black text-white rounded-lg"
+              className="w-full text-white"
               disabled={loading}
+              style={{
+                width: '448px',
+                height: '36px',
+                borderRadius: '8px',
+                background: '#ffb5a7',
+                boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
+              }}
             >
               Continue with email
             </Button>
