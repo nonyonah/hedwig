@@ -196,6 +196,7 @@ export default function DashboardPage() {
               value={inputValue}
               onChange={handleInputChange}
             />
+            // This Button component is outside the main component function and has syntax errors
             <Button 
               size="icon" 
               className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
@@ -215,6 +216,13 @@ export default function DashboardPage() {
                   strokeWidth={0.5} 
                 />
               )}
+              style={{
+                background: '#22577a',
+                fill="currentColor",  // This is incorrect syntax
+                strokeWidth={0.5},    // This is incorrect syntax
+              }}
+            >
+              <span>Back to homepage</span>
             </Button>
           </div>
         </div>
@@ -286,32 +294,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-// Update any buttons with the new color
-<Button 
-  size="icon" 
-  className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
-  onClick={isSubmitting ? handleStop : handleSubmit}
-  disabled={!inputValue.trim() && !isSubmitting}
->
-  {isSubmitting ? (
-    <CircleStop 
-      className="h-5 w-5" 
-      fill="currentColor" 
-      strokeWidth={0.5} 
-    />
-  ) : (
-    <CircleArrowUp 
-      className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`} 
-      fill="currentColor" 
-      strokeWidth={0.5} 
-    />
-  )}
-  style={{
-    background: '#22577a',
-    fill="currentColor",
-    strokeWidth={0.5},
-  }}
->
-  <span>Back to homepage</span>
-</Button>
