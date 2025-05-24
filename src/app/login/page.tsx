@@ -15,9 +15,11 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      // You'll need to implement email sign-in in your supabase.ts file
-      // For now, we'll just redirect to the overview page
-      router.push('/overview');
+      // Here you would implement email sign-in with Supabase
+      // For demonstration, we'll redirect to the onboarding page
+      // In a real implementation, you would check if the user is new
+      // and redirect accordingly
+      router.push('/onboarding');
     } catch (error) {
       console.error('Error signing in with email:', error);
     } finally {
@@ -49,9 +51,15 @@ export default function LoginPage() {
         {/* Google Sign-in Button */}
         <Button 
           variant="outline" 
-          className="w-full mb-6 py-6 flex items-center justify-center gap-2 border border-gray-200 rounded-lg"
+          className="w-full mb-6 py-6 flex items-center justify-center gap-2"
           onClick={handleGoogleSignIn}
           disabled={loading}
+          style={{
+            borderRadius: '8px',
+            border: '1px solid var(--Gray-300, #D5D7DA)',
+            background: 'var(--Gray-25, #FDFDFD)',
+            boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
+          }}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M19.8055 10.2275C19.8055 9.51764 19.7516 8.83471 19.6363 8.17188H10.2002V11.8886H15.6016C15.3787 13.0907 14.6571 14.1046 13.5964 14.7715V17.1813H16.7923C18.6896 15.4613 19.8055 13.0676 19.8055 10.2275Z" fill="#4285F4"/>

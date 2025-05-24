@@ -16,6 +16,46 @@ export default function DashboardPage() {
   const [fullResponse, setFullResponse] = useState(
     "Building an AI agent involves several key components and decisions. Here&apos;s a practical breakdown:\n\nCore Architecture\n\nAgent Framework: Start with the basic loop - perception, reasoning, and action. Your agent needs to:\n- Receive inputs (text, data, API responses)\n- Process and reason about those inputs\n- Take actions based on its reasoning\n- Learn from the results"
   );
+  const [user, setUser] = useState<User | null>(null);
+  const [greeting, setGreeting] = useState('Good day');
+
+  useEffect(() => {
+    // Get time-based greeting
+    const getGreeting = () => {
+      const hour = new Date().getHours();
+      if (hour < 12) return 'Good morning';
+      if (hour < 18) return 'Good afternoon';
+      return 'Good evening';
+    };
+    
+    setGreeting(getGreeting());
+    
+    // Load user data
+    const loadUser = async () => {
+      try {
+        const { data: session } = await getSession();
+        setUser(session?.user || null);
+      } catch (error) {
+        console.error('Error loading user:', error);
+      }
+    };
+    
+    loadUser();
+  }, []);
+  
+  // Get user's first name
+  const getFirstName = () => {
+    if (!user) return '';
+    
+    // Try to get name from user metadata
+    const fullName = user.user_metadata?.full_name || '';
+    if (fullName) {
+      return fullName.split(' ')[0];
+    }
+    
+    // Fallback to email
+    return user.email?.split('@')[0] || '';
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
@@ -186,8 +226,9 @@ export default function DashboardPage() {
                flexShrink: 0,
                alignSelf: 'stretch'
              }}>
+          {/* In the main content area, update the greeting */}
           <div className="text-center max-w-[600px]">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Good evening, Nonso</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}, {getFirstName()}</h1>
             <p className="text-gray-600">How can I help you today?</p>
           </div>
           

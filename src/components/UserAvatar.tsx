@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { User } from '@supabase/supabase-js';
-import { getSession, signOut, signInWithOAuth } from '@/lib/supabase';
+import { getSession, signOut } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ export function UserAvatar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
 
   useEffect(() => {
     async function loadUser() {
@@ -38,8 +40,9 @@ export function UserAvatar() {
     loadUser();
   }, []);
 
-  const handleSignIn = async () => {
-    await signInWithOAuth('google');
+  const handleSignIn = () => {
+    // Redirect to login page instead of directly triggering OAuth
+    router.push('/login');
   };
 
   const handleSignOut = async () => {
