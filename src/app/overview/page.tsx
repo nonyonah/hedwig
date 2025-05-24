@@ -2,9 +2,10 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PrivyWalletButton } from '@/components/PrivyWalletButton';
+// Removed unused PrivyWalletButton import
 import { CircleArrowUp, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { UserAvatar } from '@/components/UserAvatar';
 
 export default function DashboardPage() {
   const [inputValue, setInputValue] = useState('');
@@ -66,8 +67,9 @@ export default function DashboardPage() {
             <div className="font-bold text-xl">albus</div>
           </div>
 
+          {/* Replace this line in the header section: */}
           <div className="flex items-center gap-4">
-            <PrivyWalletButton />
+            <UserAvatar />
           </div>
         </div>
       </header>
