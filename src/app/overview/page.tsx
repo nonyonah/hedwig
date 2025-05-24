@@ -103,14 +103,15 @@ export default function DashboardPage() {
   return (
     <div className="bg-white min-h-screen flex flex-col">
       {/* Simple header with logo and wallet button */}
-      <header className="flex flex-col items-center w-full bg-white px-[108px]">
+      // Only updating the relevant parts
+      <header className="flex flex-col items-center w-full bg-white px-[32px]">
         <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
           <div className="flex items-center gap-x-8">
             <div className="font-bold text-xl">
               <Image src="/logo.png" alt="Albus Logo" width={80} height={40} priority />
             </div>
           </div>
-
+      
           {/* Replace this line in the header section: */}
           <div className="flex items-center gap-4">
             <UserAvatar />
@@ -285,3 +286,32 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+// Update any buttons with the new color
+<Button 
+  size="icon" 
+  className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
+  onClick={isSubmitting ? handleStop : handleSubmit}
+  disabled={!inputValue.trim() && !isSubmitting}
+>
+  {isSubmitting ? (
+    <CircleStop 
+      className="h-5 w-5" 
+      fill="currentColor" 
+      strokeWidth={0.5} 
+    />
+  ) : (
+    <CircleArrowUp 
+      className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`} 
+      fill="currentColor" 
+      strokeWidth={0.5} 
+    />
+  )}
+  style={{
+    background: '#22577a',
+    fill="currentColor",
+    strokeWidth={0.5},
+  }}
+>
+  <span>Back to homepage</span>
+</Button>
