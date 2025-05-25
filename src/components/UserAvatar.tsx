@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTheme } from 'next-themes';
-import { User } from '@supabase/supabase-js';
-import { getSession, signOut } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
+import { useSupabase } from '@/providers/SupabaseProvider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -20,44 +20,37 @@ import { ChevronDown, LogOut, Sun, Moon, Laptop, User as UserIcon } from 'lucide
 import { Button } from '@/components/ui/button';
 
 export function UserAvatar() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
-
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const { data: session } = await getSession();
-        setUser(session?.user || null);
-      } catch (error) {
-        console.error('Error loading user:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    loadUser();
-  }, []);
+  const { session } = useSupabase();
+  const user = session?.user;
 
   const handleSignIn = () => {
-    // Redirect to login page instead of directly triggering OAuth
     router.push('/login');
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    setUser(null);
+    setLoading(true);
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      await supabase.auth.signOut();
+      router.push('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
     return (
-      <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50 dark:bg-[#454545] dark:text-white dark:border-gray-700 dark:hover:bg-opacity-90" disabled>
+      <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50" disabled>
         <span className="flex items-center">
-          <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-900 mr-2"></div>
           Loading...
         </span>
       </Button>
@@ -110,7 +103,7 @@ export function UserAvatar() {
   }
 
   return (
-    <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50 dark:bg-[#454545] dark:text-white dark:border-gray-700 dark:hover:bg-opacity-90" onClick={handleSignIn}>
+    <Button variant="outline" className="bg-white border-[#414651] text-gray-700 hover:bg-gray-50" onClick={handleSignIn}>
       <span className="flex items-center">
         <UserIcon className="mr-2 h-4 w-4" />
         Sign In
