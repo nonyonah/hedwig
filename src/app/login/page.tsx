@@ -19,7 +19,15 @@ export default function LoginPage() {
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       );
       
-      const { data: { session } } = await supabase.auth.getSession();
+      // Ensure Supabase client is initialized before calling getSession
+      // Adding a small delay if needed, or ensuring this runs after full client hydration
+      // For now, let's assume the client initializes quickly enough.
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Error getting session:', error);
+        // Potentially handle error, e.g., by not redirecting or showing a message
+        return;
+      }
       if (session) {
         router.replace('/overview');
       }
@@ -32,7 +40,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signInWithOAuth('google');
-      // The redirect is handled by Supabase OAuth flow
+      // The redirect is handled by Supabase OAuth flow. 
+      // Supabase should redirect to the configured redirect URL (usually back to the app),
+      // at which point the useEffect hook should detect the session and redirect to /overview.
     } catch (error) {
       console.error('Error signing in with Google:', error);
       setLoading(false);
@@ -62,7 +72,7 @@ export default function LoginPage() {
           {/* Google Sign-in Button */}
           <Button 
             variant="outline" 
-            className="w-[448px] h-[36px] mb-6 flex items-center justify-center gap-2"
+            className="w-[448px] h-[36px] mb-6 flex items-center justify-center gap-2 bg-white border border-gray-300 text-black hover:bg-gray-50"
             onClick={handleGoogleSignIn}
             disabled={loading}
           >
