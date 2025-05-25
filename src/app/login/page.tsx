@@ -1,29 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithOAuth } from '@/lib/supabase';
+import { signInWithOAuth, getSession } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  useEffect(() => {
+    // Check if user is already logged in
+    async function checkSession() {
+      try {
+        const { data: session } = await getSession();
+        if (session?.user) {
+          // User is already logged in, redirect to overview
+          router.replace('/overview');
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    checkSession();
+  }, [router]);
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      // Here you would implement email sign-in with Supabase
-      // For demonstration, we'll redirect to the onboarding page
-      // In a real implementation, you would check if the user is new
-      // and redirect accordingly
-      router.push('/onboarding');
+      // Email sign in logic here
+      // After successful sign in, user will be redirected by Supabase
     } catch (error) {
       console.error('Error signing in with email:', error);
-    } finally {
       setLoading(false);
     }
   };
@@ -39,9 +53,18 @@ export default function LoginPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-2">Loading...</h2>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      {/* Header with logo */}
       <header className="flex flex-col items-center w-full bg-white px-[32px]">
         <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
           <div className="flex items-center gap-x-8">
@@ -52,26 +75,23 @@ export default function LoginPage() {
         </div>
       </header>
 
-      {/* Main content */}
       <div className="flex-grow flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md flex flex-col items-center">
-          {/* Title and subtitle */}
           <h1 className="text-2xl font-semibold text-center mb-2">Log into your account</h1>
           <p className="text-gray-500 text-center mb-8">Let Albus handle the numbers while you focus on the work.</p>
-          
-          {/* Google Sign-in Button */}
+
           <Button 
             variant="outline" 
-            className="w-full mb-6 flex items-center justify-center gap-2 text-black"
+            className="w-full mb-6 flex items-center justify-center gap-2 text-[#1F1F1F] hover:bg-gray-50"
             onClick={handleGoogleSignIn}
             disabled={loading}
             style={{
               width: '448px',
               height: '36px',
               borderRadius: '8px',
-              border: '1px solid var(--Gray-300, #D5D7DA)',
+              border: '1px solid #E5E7EB',
               background: 'white',
-              boxShadow: 'none'
+              boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.05)'
             }}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -80,10 +100,9 @@ export default function LoginPage() {
               <path d="M4.55927 11.6C4.36927 11.0073 4.26235 10.3765 4.26235 9.72313C4.26235 9.06979 4.36927 8.43896 4.55927 7.84625V5.35938H1.26172C0.57079 6.67188 0.179688 8.15417 0.179688 9.72313C0.179688 11.2921 0.57079 12.7744 1.26172 14.0869L4.55927 11.6Z" fill="#FBBC05"/>
               <path d="M10.2002 3.74375C11.6804 3.74375 12.9963 4.24167 14.0339 5.22292L16.8964 2.36042C15.1714 0.754167 12.897 -0.03125 10.2002 -0.03125C6.30341 -0.03125 2.87502 2.42562 1.26172 5.88188L4.55927 8.36875C5.34235 6.01354 7.5793 4.29354 10.2002 4.29354V3.74375Z" fill="#EA4335"/>
             </svg>
-            Continue with Google
+            <span className="ml-2">Continue with Google</span>
           </Button>
-          
-          {/* Email form */}
+
           <div className="w-full">
             <p className="text-sm font-medium mb-2">Email</p>
             <form onSubmit={handleEmailSignIn} className="w-full">
@@ -119,8 +138,7 @@ export default function LoginPage() {
               </Button>
             </form>
           </div>
-          
-          {/* Terms and Privacy */}
+
           <p className="text-xs text-gray-500 text-center mt-8">
             By clicking &quot;Sign in with Google&quot; or &quot;Continue with email&quot;
             you agree to our <a href="#" className="underline">Terms of Use</a> and <a href="#" className="underline">Privacy policy</a>

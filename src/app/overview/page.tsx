@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CircleArrowUp, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft } from 'lucide-react';
+import { Send, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { UserAvatar } from '@/components/UserAvatar';
 import { User } from '@supabase/supabase-js';
@@ -183,17 +183,26 @@ export default function DashboardPage() {
             <Input 
               type="text" 
               placeholder="Ask anything..." 
-              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm"
+              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
               style={{ 
                 borderRadius: '10px',
-                border: '1px solid var(--Gray-200, #E9EAEB)'
+                border: '1px solid var(--Gray-200, #E9EAEB)',
+                transition: 'transform 0.3s ease-in-out',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'break-word'
               }}
               value={inputValue}
               onChange={handleInputChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (inputValue.trim()) handleSubmit();
+                }
+              }}
             />
             <Button 
               size="icon" 
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2 transition-all duration-300"
               onClick={isSubmitting ? handleStop : handleSubmit}
               disabled={!inputValue.trim() && !isSubmitting}
             >
@@ -204,10 +213,9 @@ export default function DashboardPage() {
                   strokeWidth="0.5" 
                 />
               ) : (
-                <CircleArrowUp 
-                  className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`} 
-                  fill="currentColor" 
-                  strokeWidth="0.5" 
+                <Send
+                  className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`}
+                  strokeWidth={1.5}
                 />
               )}
             </Button>
@@ -227,24 +235,32 @@ export default function DashboardPage() {
             <Input 
               type="text" 
               placeholder="Ask anything..." 
-              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm"
+              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
               style={{ 
                 borderRadius: '10px',
-                border: '1px solid var(--Gray-200, #E9EAEB)'
+                border: '1px solid var(--Gray-200, #E9EAEB)',
+                transition: 'transform 0.3s ease-in-out',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'break-word'
               }}
               value={inputValue}
               onChange={handleInputChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (inputValue.trim()) handleSubmit();
+                }
+              }}
             />
             <Button 
               size="icon" 
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2 transition-all duration-300"
               onClick={handleSubmit}
               disabled={!inputValue.trim()}
             >
-              <CircleArrowUp 
-                className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`} 
-                fill="currentColor" 
-                strokeWidth="0.5" 
+              <Send
+                className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`}
+                strokeWidth={1.5}
               />
             </Button>
           </div>
