@@ -8,7 +8,7 @@ export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    async function handleAuthCallback() {
+    const handleAuthCallback = async () => {
       try {
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,23 +22,29 @@ export default function AuthCallbackPage() {
 
         if (error) throw error;
 
-        // Always redirect to overview for Google OAuth users
-        router.replace('/overview');
+        // Get the session to confirm authentication
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          // Successful authentication, redirect to overview
+          router.replace('/overview');
+        } else {
+          throw new Error('No session available after authentication');
+        }
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Auth error:', error);
         router.replace('/login');
       }
-    }
+    };
 
     handleAuthCallback();
   }, [router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-900 mx-auto mb-4"></div>
-        <h2 className="text-xl font-semibold mb-2">Signing you in...</h2>
-        <p className="text-gray-500">Please wait while we complete the process.</p>
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <p className="text-gray-600">Completing sign in...</p>
       </div>
     </div>
   );
