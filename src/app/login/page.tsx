@@ -1,46 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithOAuth, getSession } from '@/lib/supabase';
-import { Input } from '@/components/ui/input';
+import { signInWithOAuth } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    // Check if user is already logged in
-    async function checkSession() {
-      try {
-        const { data: session } = await getSession();
-        if (session?.user) {
-          // User is already logged in, redirect to overview
-          router.replace('/overview');
-        }
-      } catch (error) {
-        console.error('Error checking session:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    checkSession();
-  }, [router]);
-
-  const handleEmailSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      // Email sign in logic here
-      // After successful sign in, user will be redirected by Supabase
-    } catch (error) {
-      console.error('Error signing in with email:', error);
-      setLoading(false);
-    }
-  };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -53,18 +21,9 @@ export default function LoginPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold mb-2">Loading...</h2>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex flex-col bg-white">
+      {/* Header with logo */}
       <header className="flex flex-col items-center w-full bg-white px-[32px]">
         <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
           <div className="flex items-center gap-x-8">
@@ -75,23 +34,25 @@ export default function LoginPage() {
         </div>
       </header>
 
+      {/* Main content */}
       <div className="flex-grow flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md flex flex-col items-center">
+          {/* Title and subtitle */}
           <h1 className="text-2xl font-semibold text-center mb-2">Log into your account</h1>
           <p className="text-gray-500 text-center mb-8">Let Albus handle the numbers while you focus on the work.</p>
 
+          {/* Google Sign-in Button */}
           <Button 
             variant="outline" 
-            className="w-full mb-6 flex items-center justify-center gap-2 text-[#1F1F1F] hover:bg-gray-50"
+            className="w-full mb-6 flex items-center justify-center gap-2 text-[#1F1F1F] hover:text-[#1F1F1F] hover:bg-gray-50 transition-colors"
             onClick={handleGoogleSignIn}
             disabled={loading}
             style={{
               width: '448px',
               height: '36px',
               borderRadius: '8px',
-              border: '1px solid #E5E7EB',
-              background: 'white',
-              boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.05)'
+              border: '1px solid #D5D7DA',
+              background: 'white'
             }}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -103,45 +64,11 @@ export default function LoginPage() {
             <span className="ml-2">Continue with Google</span>
           </Button>
 
-          <div className="w-full">
-            <p className="text-sm font-medium mb-2">Email</p>
-            <form onSubmit={handleEmailSignIn} className="w-full">
-              <Input 
-                type="email" 
-                placeholder="Type your email" 
-                className="w-full mb-4 px-4" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                style={{
-                  width: '448px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  border: '1px solid var(--Gray-300, #D5D7DA)',
-                  background: 'var(--Gray-25, #FDFDFD)',
-                  boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
-                }}
-              />
-              <Button 
-                type="submit" 
-                className="w-full text-white"
-                disabled={loading}
-                style={{
-                  width: '448px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  background: '#22577a',
-                  boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'
-                }}
-              >
-                Continue with email
-              </Button>
-            </form>
-          </div>
-
+          {/* Terms and Privacy */}
           <p className="text-xs text-gray-500 text-center mt-8">
-            By clicking &quot;Sign in with Google&quot; or &quot;Continue with email&quot;
-            you agree to our <a href="#" className="underline">Terms of Use</a> and <a href="#" className="underline">Privacy policy</a>
+            By clicking &quot;Continue with Google&quot; you agree to our{' '}
+            <a href="#" className="underline">Terms of Use</a> and{' '}
+            <a href="#" className="underline">Privacy policy</a>
           </p>
         </div>
       </div>
