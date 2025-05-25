@@ -1,14 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { signInWithOAuth } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
