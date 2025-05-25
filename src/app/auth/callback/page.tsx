@@ -8,36 +8,29 @@ export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
-    const handleCallback = async () => {
+    async function handleAuthCallback() {
       try {
-        // Get code from URL
-        const code = new URL(window.location.href).searchParams.get('code');
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
 
-        if (code) {
-          await supabase.auth.exchangeCodeForSession(code);
-          const { data: { session } } = await supabase.auth.getSession();
+        // Exchange code for session
+        const { error } = await supabase.auth.exchangeCodeForSession(
+          window.location.hash.substring(1)
+        );
 
-          // Check if user has completed onboarding
-          const isNewUser = !session?.user?.user_metadata?.onboarded;
-          
-          if (isNewUser) {
-            router.replace('/onboarding');
-          } else {
-            router.replace('/overview');
-          }
-        }
+        if (error) throw error;
+
+        // Always redirect to overview for Google OAuth users
+        router.replace('/overview');
       } catch (error) {
         console.error('Error:', error);
         router.replace('/login');
       }
-    };
+    }
 
-    handleCallback();
+    handleAuthCallback();
   }, [router]);
 
   return (
