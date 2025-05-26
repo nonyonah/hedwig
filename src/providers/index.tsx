@@ -1,26 +1,24 @@
-// 'use client';
+'use client';
 
-// import { ThemeProvider } from '@/components/theme-provider';
-// import { SupabaseProvider } from './SupabaseProvider';
-// import type { Session } from '@supabase/supabase-js';
+import { ThemeProvider } from '@/components/theme-provider';
+import { PrivyProvider } from './PrivyProvider';
 
-// export function Providers({
-//   children,
-//   session,
-// }: {
-//   children: React.ReactNode;
-//   session: Session | null;
-// }) {
-//   return (
-//     <SupabaseProvider session={session}>
-//       <ThemeProvider
-//         attribute="class"
-//         defaultTheme="system"
-//         enableSystem
-//         disableTransitionOnChange
-//       >
-//         {children}
-//       </ThemeProvider>
-//     </SupabaseProvider>
-//   );
-// }
+export function Providers({
+  children, // Keep this parameter
+}: {
+  children: React.ReactNode;
+  session?: any; // Keep it optional
+}) {
+  return (
+    <PrivyProvider>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="light"
+        enableSystem
+        disableTransitionOnChange
+      >
+        {children}
+      </ThemeProvider>
+    </PrivyProvider>
+  );
+}
