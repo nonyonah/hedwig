@@ -7,7 +7,6 @@ export function Providers({
   children, // Keep this parameter
 }: {
   children: React.ReactNode;
-  session?: any; // Keep it optional
 }) {
   return (
     <PrivyProvider>
