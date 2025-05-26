@@ -1,52 +1,37 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { signInWithOAuth } from '@/lib/supabase';
+// import { signInWithOAuth } from '@/lib/supabase'; // Removed
+// import { createBrowserClient } from '@supabase/ssr'; // Removed, Supabase client for auth not needed here
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { createBrowserClient } from '@supabase/ssr';
+import { usePrivy } from '@privy-io/react-auth'; // Import Privy
+import { Wallet } from 'lucide-react'; // Wallet Icon
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { login, authenticated, ready } = usePrivy(); // Get Privy functions and state
 
-  // Check for existing session
   useEffect(() => {
-    const checkSession = async () => {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      
-      // Ensure Supabase client is initialized before calling getSession
-      // Adding a small delay if needed, or ensuring this runs after full client hydration
-      // For now, let's assume the client initializes quickly enough.
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error('Error getting session:', error);
-        // Potentially handle error, e.g., by not redirecting or showing a message
-        return;
-      }
-      if (session) {
-        router.replace('/overview');
-      }
-    };
-    
-    checkSession();
-  }, [router]);
+    if (ready && authenticated) {
+      router.replace('/overview');
+    }
+  }, [ready, authenticated, router]);
 
-  const handleGoogleSignIn = async () => {
+  const handlePrivyLogin = async () => {
     setLoading(true);
     try {
-      await signInWithOAuth('google');
-      // The redirect is handled by Supabase OAuth flow. 
-      // Supabase should redirect to the configured redirect URL (usually back to the app),
-      // at which point the useEffect hook should detect the session and redirect to /overview.
+      login(); // Call Privy's login function
+      // Privy handles the redirect or modal internally.
+      // The useEffect above will redirect upon successful authentication.
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      console.error('Error with Privy login:', error);
       setLoading(false);
     }
+    // setLoading(false) might not be reached if login() causes a page change or modal that doesn't resolve immediately.
+    // Privy's `ready` and `authenticated` state should be primary indicators.
   };
 
   return (
@@ -69,25 +54,20 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold text-center mb-2">Log into your account</h1>
           <p className="text-gray-500 text-center mb-8">Let Albus handle the numbers while you focus on the work.</p>
 
-          {/* Google Sign-in Button */}
+          {/* Privy Sign-in Button */}
           <Button 
             variant="outline" 
             className="w-[448px] h-[36px] mb-6 flex items-center justify-center gap-2 bg-white border border-gray-300 text-black hover:bg-gray-50"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
+            onClick={handlePrivyLogin}
+            disabled={!ready || loading} // Disable if Privy is not ready or already loading
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19.8055 10.2275C19.8055 9.51764 19.7516 8.83471 19.6363 8.17188H10.2002V11.8886H15.6016C15.3787 13.0907 14.6571 14.1046 13.5964 14.7715V17.1813H16.7923C18.6896 15.4613 19.8055 13.0676 19.8055 10.2275Z" fill="#4285F4"/>
-              <path d="M10.2002 20C12.897 20 15.1714 19.1188 16.7923 17.1813L13.5964 14.7715C12.7077 15.3642 11.5534 15.7031 10.2002 15.7031C7.5793 15.7031 5.34235 13.9831 4.55927 11.6H1.26172V14.0868C2.87502 17.5431 6.30341 20 10.2002 20Z" fill="#34A853"/>
-              <path d="M4.55927 11.6C4.36927 11.0073 4.26235 10.3765 4.26235 9.72313C4.26235 9.06979 4.36927 8.43896 4.55927 7.84625V5.35938H1.26172C0.57079 6.67188 0.179688 8.15417 0.179688 9.72313C0.179688 11.2921 0.57079 12.7744 1.26172 14.0869L4.55927 11.6Z" fill="#FBBC05"/>
-              <path d="M10.2002 3.74375C11.6804 3.74375 12.9963 4.24167 14.0339 5.22292L16.8964 2.36042C15.1714 0.754167 12.897 -0.03125 10.2002 -0.03125C6.30341 -0.03125 2.87502 2.42562 1.26172 5.88188L4.55927 8.36875C5.34235 6.01354 7.5793 4.29354 10.2002 4.29354V3.74375Z" fill="#EA4335"/>
-            </svg>
-            <span className="ml-2">Continue with Google</span>
+            <Wallet size={20} className="mr-2" /> {/* Wallet Icon */}
+            <span className="ml-2">Sign in with your wallet</span>
           </Button>
 
-          {/* Terms and Privacy */}
+          {/* Terms and Privacy - Update text if needed */}
           <p className="text-xs text-gray-500 text-center mt-8">
-            By clicking &quot;Continue with Google&quot; you agree to our{' '}
+            By clicking &quot;Sign in with your wallet&quot; you agree to our{' '}
             <a href="#" className="underline">Terms of Use</a> and{' '}
             <a href="#" className="underline">Privacy policy</a>
           </p>

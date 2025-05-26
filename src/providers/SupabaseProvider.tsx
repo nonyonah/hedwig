@@ -1,53 +1,62 @@
-'use client';
+// 'use client';
 
-import { createBrowserClient } from '@supabase/ssr';
-import { useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
+// import { createBrowserClient } from '@supabase/ssr';
+// // import { useRouter } from 'next/navigation'; // No longer needed for auth redirects here
+// import { createContext, useContext, useState, useEffect } from 'react'; // useEffect might not be needed
+// // import type { Session } from '@supabase/supabase-js'; // Session type no longer needed here
 
-const SupabaseContext = createContext<{ session: Session | null }>({ session: null });
+// // Context will now provide the Supabase client instance directly, or can be removed if lib/supabase.ts is always used.
+// // For simplicity, let's assume direct import of `supabase` from `lib/supabase.ts` is preferred in components.
+// // This provider might become redundant if it only holds the client.
+// // However, if you want a context for the client, it would look like this:
 
-export function SupabaseProvider({
-  children,
-  session,
-}: {
-  children: React.ReactNode;
-  session: Session | null;
-}) {
-  const [supabase] = useState(() =>
-    createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-  );
+// interface SupabaseContextType {
+//   supabase: ReturnType<typeof createBrowserClient>;
+// }
 
-  const router = useRouter();
+// const SupabaseContext = createContext<SupabaseContextType | undefined>(undefined);
 
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, newSession) => {
-      if (newSession?.access_token !== session?.access_token) {
-        router.refresh();
-      }
-    });
+// export function SupabaseProvider({
+//   children,
+// }: {
+//   children: React.ReactNode;
+//   // session prop is removed
+// }) {
+//   const [supabaseClient] = useState(() =>
+//     createBrowserClient(
+//       process.env.NEXT_PUBLIC_SUPABASE_URL!,
+//       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+//     )
+//   );
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [supabase, router, session]);
+//   // const router = useRouter(); // Removed
 
-  return (
-    <SupabaseContext.Provider value={{ session }}>
-      {children}
-    </SupabaseContext.Provider>
-  );
-}
+//   // useEffect for onAuthStateChange is removed
+//   // useEffect(() => {
+//   //   const {
+//   //     data: { subscription },
+//   //   } = supabaseClient.auth.onAuthStateChange((event, newSession) => {
+//   //     if (newSession?.access_token !== session?.access_token) {
+//   //       router.refresh();
+//   //     }
+//   //   });
+//   // 
+//   //   return () => {
+//   //     subscription.unsubscribe();
+//   //   };
+//   // }, [supabaseClient, router, session]); // Dependencies changed
 
-export const useSupabase = () => {
-  const context = useContext(SupabaseContext);
-  if (context === undefined) {
-    throw new Error('useSupabase must be used within a SupabaseProvider');
-  }
-  return context;
-};
+//   return (
+//     <SupabaseContext.Provider value={{ supabase: supabaseClient }}>
+//       {children}
+//     </SupabaseContext.Provider>
+//   );
+// }
+
+// export const useSupabaseClient = () => { // Renamed hook for clarity
+//   const context = useContext(SupabaseContext);
+//   if (context === undefined) {
+//     throw new Error('useSupabaseClient must be used within a SupabaseProvider');
+//   }
+//   return context.supabase;
+// };

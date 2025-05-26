@@ -18,6 +18,8 @@ const nextConfig = {
     };
     return config;
   },
+  // Enable Turbopack for development
+  turbopack: {},
 };
 
 export default nextConfig;
