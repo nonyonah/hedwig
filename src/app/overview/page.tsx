@@ -2,12 +2,17 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft } from 'lucide-react';
+import { Send, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft, LogOut, Wallet } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { UserAvatar } from '@/components/UserAvatar';
-import { User } from '@supabase/supabase-js';
-import { getSession } from '@/lib/supabase';
 import Image from 'next/image';
+import { usePrivy } from '@privy-io/react-auth';
+import { useRouter } from 'next/navigation';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function DashboardPage() {
   const [inputValue, setInputValue] = useState('');
@@ -18,7 +23,9 @@ export default function DashboardPage() {
   const [fullResponse, setFullResponse] = useState(
     "Building an AI agent involves several key components and decisions. Here&apos;s a practical breakdown:\n\nCore Architecture\n\nAgent Framework: Start with the basic loop - perception, reasoning, and action. Your agent needs to:\n- Receive inputs (text, data, API responses)\n- Process and reason about those inputs\n- Take actions based on its reasoning\n- Learn from the results"
   );
-  const [user, setUser] = useState<User | null>(null);
+  const { ready, authenticated, user, logout, login } = usePrivy();
+  // Removed wallets const { wallets } = useWallets();
+  const router = useRouter();
   const [greeting, setGreeting] = useState('Good day');
 
   useEffect(() => {
@@ -32,31 +39,52 @@ export default function DashboardPage() {
     
     setGreeting(getGreeting());
     
-    // Load user data
-    const loadUser = async () => {
-      try {
-        const { data: session } = await getSession();
-        setUser(session?.user || null);
-      } catch (error) {
-        console.error('Error loading user:', error);
-      }
-    };
-    
-    loadUser();
+    // No need to load user with Privy, it's handled by the hook
   }, []);
   
-  // Get user's first name
-  const getFirstName = () => {
-    if (!user) return '';
-    
-    // Try to get name from user metadata
-    const fullName = user.user_metadata?.full_name || '';
-    if (fullName) {
-      return fullName.split(' ')[0];
+  // Get user's first name or part of wallet address
+  const getDisplayName = () => {
+    if (user?.wallet) {
+      const address = user.wallet.address;
+      // Ensure address is not undefined before trying to access its properties
+      if (address) {
+        return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+      }
     }
-    
-    // Fallback to email
-    return user.email?.split('@')[0] || '';
+    // Check if there's an email and use the part before @
+    if (user?.email?.address) {
+      return user.email.address.split('@')[0];
+    }
+    // Fallback for other linked accounts like Google, if available
+    if (user?.google?.name) {
+        return user.google.name.split(' ')[0];
+    }
+    return 'User'; // Default display name
+  };
+
+  const handleCopyAddress = () => {
+    if (user?.wallet?.address) {
+      navigator.clipboard.writeText(user.wallet.address);
+      // Optionally, add a toast notification for success
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await logout();
+    router.push('/login');
+  };
+
+  // Function to generate a simple gradient based on the wallet address
+  const generateGradient = (address: string | undefined) => {
+    if (!address) return 'linear-gradient(to right, #e0e0e0, #f5f5f5)'; // Default gradient
+    const hash = address
+      .split('')
+      .reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) & 0xffffff, 0)
+      .toString(16)
+      .padStart(6, '0');
+    const color1 = `#${hash.substring(0, 2)}88${hash.substring(2, 4)}`;
+    const color2 = `#${hash.substring(4, 6)}AA${hash.substring(0, 2)}`;
+    return `linear-gradient(to right, ${color1}, ${color2})`;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,6 +128,34 @@ export default function DashboardPage() {
     }
   }, [isTyping, displayedResponse, fullResponse]);
 
+  // Conditional rendering for the main content based on authentication
+  if (!ready) {
+    // Loading state while Privy is initializing
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <p>Loading...</p> 
+      </div>
+    );
+  }
+
+  if (ready && !authenticated) {
+    // Redirect to login or show a message if not authenticated
+    // router.push('/login'); // Option 1: Redirect
+    // return null; 
+    // Option 2: Show a message and a login button
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+            <Image src="/logo.png" alt="Albus Logo" width={120} height={60} priority className="mb-8" />
+            <p className="text-xl mb-4">Please sign in to access the dashboard.</p>
+            <Button onClick={login} className="flex items-center gap-2">
+                <Wallet size={16} className="mr-1" />
+                Sign In with Wallet
+            </Button>
+        </div>
+    );
+  }
+
+  // Main dashboard content, shown only if authenticated
   return (
     <div className="bg-white min-h-screen flex flex-col">
       {/* Simple header with logo and wallet button */}
@@ -112,9 +168,38 @@ export default function DashboardPage() {
             </div>
           </div>
       
-          {/* Replace this line in the header section: */}
           <div className="flex items-center gap-4">
-            <UserAvatar />
+            {ready && authenticated && user?.wallet ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <div 
+                      className="w-6 h-6 rounded-full mr-2"
+                      style={{ background: generateGradient(user.wallet.address) }}
+                    />
+                    <span>{getDisplayName()}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleCopyAddress} className="cursor-pointer">
+                    <Copy size={14} className="mr-2" />
+                    Copy address
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDisconnect} className="cursor-pointer">
+                    <LogOut size={14} className="mr-2" />
+                    Disconnect wallet
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : ready && !authenticated ? (
+              <Button variant="outline" onClick={login} className="flex items-center gap-2">
+                <Wallet size={16} className="mr-1" />
+                Sign In
+              </Button>
+            ) : (
+              // Optional: Show a loading state or a placeholder
+              <div className="w-24 h-10 bg-gray-200 rounded animate-pulse"></div>
+            )}
           </div>
         </div>
       </header>
@@ -199,86 +284,58 @@ export default function DashboardPage() {
                   if (inputValue.trim()) handleSubmit();
                 }
               }}
+              disabled={isSubmitting}
             />
             <Button 
-              size="icon" 
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2 transition-all duration-300"
+              className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-md transition-colors duration-200 h-[58px] w-[58px] text-white bg-slate-800 hover:bg-slate-700"
               onClick={isSubmitting ? handleStop : handleSubmit}
               disabled={!inputValue.trim() && !isSubmitting}
             >
-              {isSubmitting ? (
-                <CircleStop                  
-                  className="h-5 w-5" 
-                  fill="currentColor" 
-                  strokeWidth="0.5" 
-                />
-              ) : (
-                <Send
-                  className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`}
-                  strokeWidth={1.5}
-                />
-              )}
+              {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
             </Button>
           </div>
         </div>
       ) : (
-        /* Main content area with chat interface */
-        <div className="flex flex-col items-center px-[108px] h-[688px] pt-[115px] gap-8 flex-shrink-0 self-stretch transition-all duration-500">
-          {/* In the main content area, update the greeting */}
-          <div className="text-center max-w-[600px]">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}, {getFirstName()}</h1>
-            <p className="text-gray-600">How can I help you today?</p>
-          </div>
-          
-          {/* Chat input box with soft borders and shadows */}
-          <div className="w-full max-w-[600px] relative">
-            <Input 
-              type="text" 
-              placeholder="Ask anything..." 
-              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
-              style={{ 
-                borderRadius: '10px',
-                border: '1px solid var(--Gray-200, #E9EAEB)',
-                transition: 'transform 0.3s ease-in-out',
-                whiteSpace: 'pre-wrap',
-                overflowWrap: 'break-word'
-              }}
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (inputValue.trim()) handleSubmit();
-                }
-              }}
-            />
-            <Button 
-              size="icon" 
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2 transition-all duration-300"
-              onClick={handleSubmit}
-              disabled={!inputValue.trim()}
-            >
-              <Send
-                className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`}
-                strokeWidth={1.5}
+        /* Initial Screen - Centered Content */
+        <div className="flex flex-col items-center justify-center flex-grow text-center px-4">
+          <div className="max-w-xl w-full">
+            {/* Greeting and User Name */}
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}, {getDisplayName()}</h1>
+            <p className="text-gray-600 mb-12 text-lg">
+              How can I help you today?
+            </p>
+
+            {/* Input field and Send button */}
+            <div className="relative w-full">
+              <Input 
+                type="text" 
+                placeholder="Ask anything..." 
+                className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto pr-[80px]" // Added padding-right for the button
+                style={{ 
+                  borderRadius: '10px',
+                  border: '1px solid var(--Gray-200, #E9EAEB)',
+                  transition: 'transform 0.3s ease-in-out',
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'break-word'
+                }}
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (inputValue.trim()) handleSubmit();
+                  }
+                }}
+                disabled={isSubmitting}
               />
-            </Button>
-          </div>
-          
-          {/* Action buttons - 16px gap from chatbox */}
-          <div className="flex flex-wrap justify-center gap-x-[16px] mt-[16px]">
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              Create Invoice
-            </Button>
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              View Summary
-            </Button>
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              Send Reminder
-            </Button>
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              Swap
-            </Button>
+              <Button 
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-md transition-colors duration-200 h-[58px] w-[58px] text-white bg-slate-800 hover:bg-slate-700"
+                onClick={handleSubmit}
+                disabled={!inputValue.trim() || isSubmitting}
+              >
+                <Send size={24} />
+              </Button>
+            </div>
           </div>
         </div>
       )}
