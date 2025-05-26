@@ -1,6 +1,6 @@
 'use client';
 
-import { PrivyProvider as PrivyWagmiProvider, User, useLogin } from '@privy-io/react-auth';
+import { PrivyProvider as PrivyWagmiProvider, useLogin } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 
 export function PrivyProvider({ children }: { children: React.ReactNode }) {
@@ -31,7 +31,7 @@ function PrivyAuthHandler() {
   
   // Use the useLogin hook to register callbacks
   useLogin({
-    onComplete: ({ user, isNewUser, wasAlreadyAuthenticated, loginMethod, loginAccount }) => {
+    onComplete: ({ user, isNewUser }) => {
       console.log('Privy onSuccess callback, user:', user);
       
       // This replaces the previous onLoginSuccess callback
