@@ -3,11 +3,14 @@
 import { ThemeProvider } from '@/components/theme-provider';
 import { PrivyProvider } from './PrivyProvider';
 
+// Define a type for the session
+type SessionType = null | undefined;
+
 export function Providers({
-  children, // Keep this parameter
+  children, // Keep this parameter for backward compatibility
 }: {
   children: React.ReactNode;
-  session?: any; // Keep it optional
+  session?: SessionType; // Use a specific type instead of 'any'
 }) {
   return (
     <PrivyProvider>
