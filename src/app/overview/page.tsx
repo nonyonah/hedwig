@@ -296,46 +296,63 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        /* Initial Screen - Centered Content */
-        <div className="flex flex-col items-center justify-center flex-grow text-center px-4">
-          <div className="max-w-xl w-full">
-            {/* Greeting and User Name */}
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}, {getDisplayName()}</h1>
-            <p className="text-gray-600 mb-12 text-lg">
-              How can I help you today?
-            </p>
-
-            {/* Input field and Send button */}
-            <div className="relative w-full">
-              <Input 
-                type="text" 
-                placeholder="Ask anything..." 
-                className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto pr-[80px]" // Added padding-right for the button
-                style={{ 
-                  borderRadius: '10px',
-                  border: '1px solid var(--Gray-200, #E9EAEB)',
-                  transition: 'transform 0.3s ease-in-out',
-                  whiteSpace: 'pre-wrap',
-                  overflowWrap: 'break-word'
-                }}
-                value={inputValue}
-                onChange={handleInputChange}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (inputValue.trim()) handleSubmit();
-                  }
-                }}
-                disabled={isSubmitting}
+        /* Main content area with chat interface */
+        <div className="flex flex-col items-center px-[108px] h-[688px] pt-[115px] gap-8 flex-shrink-0 self-stretch transition-all duration-500">
+          {/* In the main content area, update the greeting */}
+          <div className="text-center max-w-[600px]">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}, {getFirstName()}</h1>
+            <p className="text-gray-600">How can I help you today?</p>
+          </div>
+          
+          {/* Chat input box with soft borders and shadows */}
+          <div className="w-full max-w-[600px] relative">
+            <Input 
+              type="text" 
+              placeholder="Ask anything..." 
+              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
+              style={{ 
+                borderRadius: '10px',
+                border: '1px solid var(--Gray-200, #E9EAEB)',
+                transition: 'transform 0.3s ease-in-out',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'break-word'
+              }}
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (inputValue.trim()) handleSubmit();
+                }
+              }}
+            />
+            <Button 
+              size="icon" 
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2 transition-all duration-300"
+              onClick={handleSubmit}
+              disabled={!inputValue.trim()}
+            >
+              <Send
+                className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`}
+                strokeWidth={1.5}
               />
-              <Button 
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-md transition-colors duration-200 h-[58px] w-[58px] text-white bg-slate-800 hover:bg-slate-700"
-                onClick={handleSubmit}
-                disabled={!inputValue.trim() || isSubmitting}
-              >
-                <Send size={24} />
-              </Button>
-            </div>
+            </Button>
+          </div>
+          
+          {/* Action buttons - 16px gap from chatbox */}
+          <div className="flex flex-wrap justify-center gap-x-[14px] mt-[14px]">
+            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+              Create Invoice
+            </Button>
+            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+              View Summary
+            </Button>
+            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+              Send Reminder
+            </Button>
+            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+              Swap
+            </Button>
           </div>
         </div>
       )}
