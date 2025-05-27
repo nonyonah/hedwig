@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
-import { createBrowserClient } from '@supabase/ssr';
-import { useSupabase } from '@/providers/SupabaseProvider';
+import { usePrivy } from '@privy-io/react-auth'; // Import usePrivy
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -23,22 +22,21 @@ export function UserAvatar() {
   const [loading, setLoading] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
-  const { session } = useSupabase();
-  const user = session?.user;
+  // Use Privy's hook for authentication state and user data
+  const { user, authenticated, logout } = usePrivy();
 
   const handleSignIn = () => {
-    router.push('/login');
+    // Redirect to Privy's login flow or your app's login page
+    // This might involve calling a Privy function like `login` or `connectWallet`
+    // For now, let's assume your /login page handles Privy login initiation
+    router.push('/login'); 
   };
 
   const handleSignOut = async () => {
     setLoading(true);
     try {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      await supabase.auth.signOut();
-      router.push('/login');
+      await logout(); // Use Privy's logout function
+      router.push('/login'); // Redirect to login page after logout
     } catch (error) {
       console.error('Error signing out:', error);
     } finally {
@@ -57,21 +55,30 @@ export function UserAvatar() {
     );
   }
 
-  if (user) {
+  // Check if the user is authenticated and user object exists
+  if (authenticated && user) {
+    // Privy user object might have different fields for avatar and email
+    // Adjust these based on the actual structure of Privy's user object
+    // Common fields might be user.email?.address, user.wallet?.address, or user.linked_accounts for details
+    // For avatar, Privy might not directly provide one, or it might be in user.pfp (profile picture)
+    const userEmail = user.email?.address || (user.wallet ? `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}` : 'User');
+    const avatarUrl = undefined; // Replace with actual avatar URL from Privy user object if available e.g. user.pfp
+    const fallbackInitial = userEmail.charAt(0).toUpperCase() || 'U';
+
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <div className="flex items-center gap-2 cursor-pointer">
             <Avatar className="h-8 w-8 border border-gray-200">
-              <AvatarImage src={user.user_metadata?.avatar_url} alt={user.user_metadata?.full_name || 'User'} />
-              <AvatarFallback>{user.email?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
+              <AvatarImage src={avatarUrl} alt={userEmail} />
+              <AvatarFallback>{fallbackInitial}</AvatarFallback>
             </Avatar>
             <ChevronDown className="h-4 w-4 text-gray-600" />
           </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-[#222222] border-gray-200 dark:border-gray-700">
           <DropdownMenuLabel className="text-gray-700 dark:text-gray-300">
-            {user.user_metadata?.full_name || user.email}
+            {userEmail}
           </DropdownMenuLabel>
           <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700"/>
           <DropdownMenuItem 
