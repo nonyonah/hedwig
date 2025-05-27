@@ -300,7 +300,7 @@ export default function DashboardPage() {
         <div className="flex flex-col items-center px-[108px] h-[688px] pt-[115px] gap-8 flex-shrink-0 self-stretch transition-all duration-500">
           {/* In the main content area, update the greeting */}
           <div className="text-center max-w-[600px]">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}, {getFirstName()}</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}</h1>
             <p className="text-gray-600">How can I help you today?</p>
           </div>
           
