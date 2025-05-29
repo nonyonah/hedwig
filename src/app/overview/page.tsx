@@ -180,6 +180,11 @@ export default function DashboardPage() {
     }
     setBalanceLoading(true);
     setBalanceError(null);
+    if (!user?.wallet?.address) {
+      setBalanceError('Wallet not connected');
+      setBalanceLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}&chain=${selectedChain}`);
       const { balance } = await res.json();
