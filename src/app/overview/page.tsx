@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft, LogOut, Wallet } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
@@ -24,9 +24,22 @@ export default function DashboardPage() {
     "Building an AI agent involves several key components and decisions. Here&apos;s a practical breakdown:\n\nCore Architecture\n\nAgent Framework: Start with the basic loop - perception, reasoning, and action. Your agent needs to:\n- Receive inputs (text, data, API responses)\n- Process and reason about those inputs\n- Take actions based on its reasoning\n- Learn from the results"
   );
   const { ready, authenticated, user, logout, login } = usePrivy();
-  // Removed wallets const { wallets } = useWallets();
   const router = useRouter();
   const [greeting, setGreeting] = useState('Good day');
+
+  // New state for wallet, clients, invoice, chain, and agent message
+  const [walletBalance, setWalletBalance] = useState<string | null>(null);
+  const [clients, setClients] = useState<any[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [invoice, setInvoice] = useState<any | null>(null);
+  const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [selectedChain, setSelectedChain] = useState<string>('');
+  const [showChainModal, setShowChainModal] = useState(false);
+  const [agentMessage, setAgentMessage] = useState<string | null>(null);
 
   useEffect(() => {
     // Get time-based greeting
@@ -36,36 +49,47 @@ export default function DashboardPage() {
       if (hour < 18) return 'Good afternoon';
       return 'Good evening';
     };
-    
     setGreeting(getGreeting());
-    
-    // No need to load user with Privy, it's handled by the hook
   }, []);
-  
+
+  // Fetch clients from Supabase
+  useEffect(() => {
+    const fetchClients = async () => {
+      if (!ready || !authenticated || !user?.id) return;
+      setClientsLoading(true);
+      try {
+        const res = await fetch(`/api/clients?userId=${user.id}`);
+        const { clients } = await res.json();
+        setClients(clients);
+      } catch (err) {
+        setClients([]);
+      } finally {
+        setClientsLoading(false);
+      }
+    };
+    fetchClients();
+  }, [ready, authenticated, user]);
+
   // Get user's first name or part of wallet address
   const getDisplayName = () => {
     if (user?.wallet) {
       const address = user.wallet.address;
-      // Ensure address is not undefined before trying to access its properties
       if (address) {
         return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
       }
     }
-    // Check if there's an email and use the part before @
     if (user?.email?.address) {
       return user.email.address.split('@')[0];
     }
-    // Fallback for other linked accounts like Google, if available
     if (user?.google?.name) {
-        return user.google.name.split(' ')[0];
+      return user.google.name.split(' ')[0];
     }
-    return 'User'; // Default display name
+    return 'User';
   };
 
   const handleCopyAddress = () => {
     if (user?.wallet?.address) {
       navigator.clipboard.writeText(user.wallet.address);
-      // Optionally, add a toast notification for success
     }
   };
 
@@ -74,9 +98,8 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
-  // Function to generate a simple gradient based on the wallet address
   const generateGradient = (address: string | undefined) => {
-    if (!address) return 'linear-gradient(to right, #e0e0e0, #f5f5f5)'; // Default gradient
+    if (!address) return 'linear-gradient(to right, #e0e0e0, #f5f5f5)';
     const hash = address
       .split('')
       .reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) & 0xffffff, 0)
@@ -96,14 +119,7 @@ export default function DashboardPage() {
       setIsSubmitting(true);
       setShowResponse(true);
       setIsTyping(true);
-      // Reset displayed response for new typing animation
       setDisplayedResponse('');
-      
-      // Here you would handle the actual submission logic
-      // For example, when you get a response from your API:
-      // setFullResponse(responseFromAPI);
-      
-      // For testing, you could set a mock response:
       setFullResponse("This is a new response based on your input: " + inputValue);
     }
   };
@@ -111,7 +127,6 @@ export default function DashboardPage() {
   const handleStop = () => {
     setIsSubmitting(false);
     setIsTyping(false);
-    // Show full response immediately when stopped
     setDisplayedResponse(fullResponse);
   };
 
@@ -120,7 +135,7 @@ export default function DashboardPage() {
     if (isTyping && displayedResponse.length < fullResponse.length) {
       const timer = setTimeout(() => {
         setDisplayedResponse(fullResponse.substring(0, displayedResponse.length + 1));
-      }, 20); // Adjust speed as needed
+      }, 20);
       return () => clearTimeout(timer);
     } else if (displayedResponse.length >= fullResponse.length) {
       setIsTyping(false);
@@ -128,38 +143,136 @@ export default function DashboardPage() {
     }
   }, [isTyping, displayedResponse, fullResponse]);
 
-  // Conditional rendering for the main content based on authentication
+  // Chain selection modal
+  const ChainModal = () => (
+    showChainModal ? (
+      <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
+        <div className="bg-white p-6 rounded shadow-lg">
+          <h2 className="mb-4 font-bold">Select Chain</h2>
+          <select
+            className="w-full p-2 border rounded"
+            value={selectedChain}
+            onChange={e => setSelectedChain(e.target.value)}
+          >
+            <option value="">Select chain</option>
+            <option value="ethereum">Ethereum</option>
+            <option value="polygon">Polygon</option>
+            <option value="arbitrum">Arbitrum</option>
+            {/* Add more chains as needed */}
+          </select>
+          <Button className="mt-4 w-full" onClick={() => {
+            setShowChainModal(false);
+            setAgentMessage(null);
+          }}>
+            Confirm
+          </Button>
+        </div>
+      </div>
+    ) : null
+  );
+
+  // Handler for checking wallet balance (agent logic)
+  const handleCheckBalance = async () => {
+    if (!selectedChain) {
+      setAgentMessage('Which chain would you like to use?');
+      setShowChainModal(true);
+      return;
+    }
+    setBalanceLoading(true);
+    setBalanceError(null);
+    try {
+      const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}&chain=${selectedChain}`);
+      const { balance } = await res.json();
+      setWalletBalance(balance);
+    } catch (err) {
+      setBalanceError('Failed to fetch balance');
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  // Handler for swap (agent logic, similar to balance)
+  const handleSwap = async () => {
+    if (!selectedChain) {
+      setAgentMessage('Which chain would you like to use for swapping?');
+      setShowChainModal(true);
+      return;
+    }
+    // ...swap logic here...
+  };
+
+  // Invoice generation
+  const handleGenerateInvoice = useCallback(async () => {
+    if (!user?.id || !selectedClientId || !inputValue.trim()) return;
+    setInvoiceLoading(true);
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/generate-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          clientId: selectedClientId,
+          prompt: inputValue
+        })
+      });
+      const { invoice } = await res.json();
+      setInvoice(invoice);
+      setInvoiceStatus(invoice.status);
+      setFullResponse(`Invoice generated: ${invoice.description}`);
+      setShowResponse(true);
+    } catch (err) {
+      setFullResponse('Failed to generate invoice.');
+      setShowResponse(true);
+    } finally {
+      setInvoiceLoading(false);
+      setIsSubmitting(false);
+    }
+  }, [user, selectedClientId, inputValue]);
+
+  // Mark invoice as paid
+  const handleMarkAsPaid = useCallback(async () => {
+    if (!invoice?.id) return;
+    setInvoiceLoading(true);
+    try {
+      const res = await fetch('/api/mark-invoice-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId: invoice.id })
+      });
+      const { invoice: updated } = await res.json();
+      setInvoice(updated);
+      setInvoiceStatus(updated.status);
+    } catch (err) {
+      // Optionally show error
+    } finally {
+      setInvoiceLoading(false);
+    }
+  }, [invoice]);
+
   if (!ready) {
-    // Loading state while Privy is initializing
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
-        <p>Loading...</p> 
+        <p>Loading...</p>
       </div>
     );
   }
 
   if (ready && !authenticated) {
-    // Redirect to login or show a message if not authenticated
-    // router.push('/login'); // Option 1: Redirect
-    // return null; 
-    // Option 2: Show a message and a login button
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-white">
-            <Image src="/logo.png" alt="Albus Logo" width={120} height={60} priority className="mb-8" />
-            <p className="text-xl mb-4">Please sign in to access the dashboard.</p>
-            <Button onClick={login} className="flex items-center gap-2">
-                <Wallet size={16} className="mr-1" />
-                Sign In with Wallet
-            </Button>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+        <Image src="/logo.png" alt="Albus Logo" width={120} height={60} priority className="mb-8" />
+        <p className="text-xl mb-4">Please sign in to access the dashboard.</p>
+        <Button onClick={login} className="flex items-center gap-2">
+          <Wallet size={16} className="mr-1" />
+          Sign In with Wallet
+        </Button>
+      </div>
     );
   }
 
-  // Main dashboard content, shown only if authenticated
   return (
     <div className="bg-white min-h-screen flex flex-col">
-      {/* Simple header with logo and wallet button */}
-      {/* Only updating the relevant parts */}
       <header className="flex flex-col items-center w-full bg-white px-[32px]">
         <div className="flex w-full max-w-[1280px] h-[72px] items-center justify-between">
           <div className="flex items-center gap-x-8">
@@ -167,13 +280,12 @@ export default function DashboardPage() {
               <Image src="/logo.png" alt="Albus Logo" width={80} height={40} priority />
             </div>
           </div>
-      
           <div className="flex items-center gap-4">
             {ready && authenticated && user?.wallet ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="flex items-center gap-2">
-                    <div 
+                    <div
                       className="w-6 h-6 rounded-full mr-2"
                       style={{ background: generateGradient(user.wallet.address) }}
                     />
@@ -181,6 +293,21 @@ export default function DashboardPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <div className="px-4 py-2 text-xs text-gray-500">
+                    {balanceLoading
+                      ? 'Loading balance...'
+                      : balanceError
+                      ? balanceError
+                      : walletBalance
+                      ? `Balance: ${walletBalance}`
+                      : 'No balance'}
+                  </div>
+                  <DropdownMenuItem onClick={handleCheckBalance} className="cursor-pointer">
+                    Check Balance
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleSwap} className="cursor-pointer">
+                    Swap Tokens
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleCopyAddress} className="cursor-pointer">
                     <Copy size={14} className="mr-2" />
                     Copy address
@@ -197,20 +324,23 @@ export default function DashboardPage() {
                 Sign In
               </Button>
             ) : (
-              // Optional: Show a loading state or a placeholder
               <div className="w-24 h-10 bg-gray-200 rounded animate-pulse"></div>
             )}
           </div>
         </div>
       </header>
 
+      {agentMessage && (
+        <div className="text-center text-sm text-purple-700 my-2">{agentMessage}</div>
+      )}
+
+      <ChainModal />
+
       {showResponse ? (
-        /* AI Response Screen */
         <div className="flex flex-col items-center w-full flex-grow relative px-[108px]">
-          {/* Back button to return to homepage */}
           <div className="w-full max-w-[600px] mt-6 mb-2">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 p-2"
               onClick={() => setShowResponse(false)}
             >
@@ -218,23 +348,17 @@ export default function DashboardPage() {
               <span>Back to homepage</span>
             </Button>
           </div>
-          
-          {/* AI Response Content - Takes up most of the screen */}
           <div className="w-full max-w-[600px] flex-grow overflow-y-auto py-4">
-            {/* User Query Bubble - Adaptive width based on content, no shadow */}
             <div className="mb-4 p-4 inline-block ml-auto"
-                 style={{
-                   borderRadius: '20px',
-                   border: '1px solid var(--Gray-200, #E9EAEB)',
-                   background: '#F2F1EF',
-                   // Shadow removed
-                 }}>
+              style={{
+                borderRadius: '20px',
+                border: '1px solid var(--Gray-200, #E9EAEB)',
+                background: '#F2F1EF',
+              }}>
               <p>{inputValue}</p>
             </div>
-            
-            {/* AI Response - No bubble, directly on white background */}
             <div className="p-4 max-w-[80%]">
-              {displayedResponse.split('\n').map((line, index) => {
+              {fullResponse.split('\n').map((line, index) => {
                 if (line.startsWith('- ')) {
                   return <li key={index} className="ml-6">{line.substring(2)}</li>;
                 } else if (line.trim() === '') {
@@ -245,8 +369,6 @@ export default function DashboardPage() {
               })}
               {isTyping && <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>}
             </div>
-            
-            {/* Action Icons - 21px gap from AI response, 8px between icons */}
             <div className="flex items-center gap-[8px] mt-[21px]">
               <Button variant="ghost" size="icon" className="rounded-full p-2">
                 <RefreshCw size={16} className="text-gray-600" />
@@ -261,15 +383,42 @@ export default function DashboardPage() {
                 <ThumbsDown size={16} className="text-gray-600" />
               </Button>
             </div>
+            {/* Invoice status and mark as paid */}
+            {invoice && (
+              <div className="mt-4 p-4 border rounded-lg bg-gray-50">
+                <div><strong>Invoice Status:</strong> {invoiceStatus}</div>
+                {invoiceStatus !== 'paid' && (
+                  <Button
+                    className="mt-2"
+                    onClick={handleMarkAsPaid}
+                    disabled={invoiceLoading}
+                  >
+                    {invoiceLoading ? 'Marking as Paid...' : 'Mark as Paid'}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
-          
-          {/* Chat input fixed at the bottom */}
           <div className="w-full max-w-[600px] sticky bottom-8 mb-8">
-            <Input 
-              type="text" 
-              placeholder="Ask anything..." 
+            {/* Client selection dropdown */}
+            <div className="mb-2">
+              <select
+                className="w-full p-3 border border-gray-200 rounded-lg"
+                value={selectedClientId ?? ''}
+                onChange={e => setSelectedClientId(e.target.value)}
+                disabled={clientsLoading}
+              >
+                <option value="" disabled>Select client</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>{client.name}</option>
+                ))}
+              </select>
+            </div>
+            <Input
+              type="text"
+              placeholder="Ask anything..."
               className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
-              style={{ 
+              style={{
                 borderRadius: '10px',
                 border: '1px solid var(--Gray-200, #E9EAEB)',
                 transition: 'transform 0.3s ease-in-out',
@@ -286,31 +435,47 @@ export default function DashboardPage() {
               }}
               disabled={isSubmitting}
             />
-            <Button 
+            <Button
               className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-md transition-colors duration-200 h-[58px] w-[58px] text-white bg-slate-800 hover:bg-slate-700"
               onClick={isSubmitting ? handleStop : handleSubmit}
               disabled={!inputValue.trim() && !isSubmitting}
             >
               {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
             </Button>
+            <Button
+              className="mt-2 w-full"
+              onClick={handleGenerateInvoice}
+              disabled={invoiceLoading || !inputValue.trim() || !selectedClientId}
+            >
+              {invoiceLoading ? 'Generating Invoice...' : 'Generate Invoice'}
+            </Button>
           </div>
         </div>
       ) : (
-        /* Main content area with chat interface */
         <div className="flex flex-col items-center px-[108px] h-[688px] pt-[115px] gap-8 flex-shrink-0 self-stretch transition-all duration-500">
-          {/* In the main content area, update the greeting */}
           <div className="text-center max-w-[600px]">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}</h1>
             <p className="text-gray-600">How can I help you today?</p>
           </div>
-          
-          {/* Chat input box with soft borders and shadows */}
+          <div className="w-full max-w-[600px] mb-2">
+            <select
+              className="w-full p-3 border border-gray-200 rounded-lg"
+              value={selectedClientId ?? ''}
+              onChange={e => setSelectedClientId(e.target.value)}
+              disabled={clientsLoading}
+            >
+              <option value="" disabled>Select client</option>
+              {clients.map(client => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="w-full max-w-[600px] relative">
-            <Input 
-              type="text" 
-              placeholder="Ask anything..." 
+            <Input
+              type="text"
+              placeholder="Ask anything..."
               className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
-              style={{ 
+              style={{
                 borderRadius: '10px',
                 border: '1px solid var(--Gray-200, #E9EAEB)',
                 transition: 'transform 0.3s ease-in-out',
@@ -326,8 +491,8 @@ export default function DashboardPage() {
                 }
               }}
             />
-            <Button 
-              size="icon" 
+            <Button
+              size="icon"
               className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2 transition-all duration-300"
               onClick={handleSubmit}
               disabled={!inputValue.trim()}
@@ -337,9 +502,14 @@ export default function DashboardPage() {
                 strokeWidth={1.5}
               />
             </Button>
+            <Button
+              className="mt-2 w-full"
+              onClick={handleGenerateInvoice}
+              disabled={invoiceLoading || !inputValue.trim() || !selectedClientId}
+            >
+              {invoiceLoading ? 'Generating Invoice...' : 'Generate Invoice'}
+            </Button>
           </div>
-          
-          {/* Action buttons - 16px gap from chatbox */}
           <div className="flex flex-wrap justify-center gap-x-[14px] mt-[14px]">
             <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
               Create Invoice
