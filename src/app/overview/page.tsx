@@ -27,11 +27,14 @@ export default function DashboardPage() {
   const router = useRouter();
   const [greeting, setGreeting] = useState('Good day');
 
+  type Client = { id: string; name: string; };
+  type Invoice = { id: string; description: string; status: string; };
+
   // New state for wallet, clients, invoice, chain, and agent message
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
-  const [clients, setClients] = useState<any[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [invoice, setInvoice] = useState<any | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(false);
@@ -61,7 +64,7 @@ export default function DashboardPage() {
         const res = await fetch(`/api/clients?userId=${user.id}`);
         const { clients } = await res.json();
         setClients(clients);
-      } catch (err) {
+      } catch {
         setClients([]);
       } finally {
         setClientsLoading(false);
@@ -155,9 +158,7 @@ export default function DashboardPage() {
             onChange={e => setSelectedChain(e.target.value)}
           >
             <option value="">Select chain</option>
-            <option value="ethereum">Ethereum</option>
-            <option value="polygon">Polygon</option>
-            <option value="arbitrum">Arbitrum</option>
+            <option value="base">Base</option>
             {/* Add more chains as needed */}
           </select>
           <Button className="mt-4 w-full" onClick={() => {
@@ -189,7 +190,7 @@ export default function DashboardPage() {
       const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}&chain=${selectedChain}`);
       const { balance } = await res.json();
       setWalletBalance(balance);
-    } catch (err) {
+    } catch {
       setBalanceError('Failed to fetch balance');
     } finally {
       setBalanceLoading(false);
@@ -226,7 +227,7 @@ export default function DashboardPage() {
       setInvoiceStatus(invoice.status);
       setFullResponse(`Invoice generated: ${invoice.description}`);
       setShowResponse(true);
-    } catch (err) {
+    } catch {
       setFullResponse('Failed to generate invoice.');
       setShowResponse(true);
     } finally {
@@ -248,7 +249,7 @@ export default function DashboardPage() {
       const { invoice: updated } = await res.json();
       setInvoice(updated);
       setInvoiceStatus(updated.status);
-    } catch (err) {
+    } catch {
       // Optionally show error
     } finally {
       setInvoiceLoading(false);
