@@ -12,7 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const invoice = await generateInvoiceFromPrompt(userId, clientId, prompt);
     res.status(200).json({ invoice });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to generate invoice' });
   }
 }

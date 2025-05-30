@@ -12,7 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const updated = await markInvoiceAsPaid(invoiceId);
     res.status(200).json({ invoice: updated });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to mark invoice as paid' });
   }
 }

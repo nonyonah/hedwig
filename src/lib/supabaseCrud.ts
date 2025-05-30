@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { User, Client, Invoice } from '../types/supabase';
+import type { Client, Invoice } from '../types/supabase';
 
 // Create a new client
 export async function createClient(client: Omit<Client, 'id' | 'created_at'>) {

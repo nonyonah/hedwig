@@ -12,7 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const balance = await fetchWalletBalance(address, chain as string || 'ethereum');
     res.status(200).json({ balance });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch wallet balance' });
   }
 }
