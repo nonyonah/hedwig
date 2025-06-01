@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { generateInvoiceFromPrompt } from '../../lib/invoiceFromPrompt';
+import { generateInvoiceFromPrompt } from '../../lib/gemini';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -12,7 +12,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const invoice = await generateInvoiceFromPrompt(userId, clientId, prompt);
     res.status(200).json({ invoice });
-  } catch {
+  } catch (error) {
+    console.error('Error generating invoice:', error);
     res.status(500).json({ error: 'Failed to generate invoice' });
   }
 }

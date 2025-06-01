@@ -172,7 +172,7 @@ export default function DashboardPage() {
     ) : null
   );
 
-  // Handler for checking wallet balance (agent logic)
+  // Handler for checking wallet balance (using Gemini)
   const handleCheckBalance = async () => {
     if (!selectedChain) {
       setAgentMessage('Which chain would you like to use?');
@@ -187,17 +187,32 @@ export default function DashboardPage() {
       return;
     }
     try {
+      // First get the raw balance
       const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}&chain=${selectedChain}`);
       const { balance } = await res.json();
       setWalletBalance(balance);
-    } catch {
+      
+      // Then get Gemini's analysis of the balance
+      const analysisRes = await fetch('/api/gemini-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `I have ${balance} on ${selectedChain}. What can you tell me about my balance?`,
+          context: 'You are an AI assistant helping to analyze wallet balances. Provide insights on the following wallet balance.'
+        })
+      });
+      const { result } = await analysisRes.json();
+      setFullResponse(result);
+      setShowResponse(true);
+    } catch (error) {
+      console.error('Error checking balance:', error);
       setBalanceError('Failed to fetch balance');
     } finally {
       setBalanceLoading(false);
     }
   };
 
-  // Handler for swap (agent logic, similar to balance)
+  // Handler for swap (using Gemini)
   const handleSwap = async () => {
     if (!selectedChain) {
       setAgentMessage('Which chain would you like to use for swapping?');
@@ -339,8 +354,6 @@ export default function DashboardPage() {
       {agentMessage && (
         <div className="text-center text-sm text-purple-700 my-2">{agentMessage}</div>
       )}
-
-      <ChainModal />
 
       {showResponse ? (
         <div className="flex flex-col items-center w-full flex-grow relative px-[108px]">
