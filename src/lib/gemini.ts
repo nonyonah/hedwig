@@ -1,20 +1,19 @@
-import { GoogleGenerativeAI } from '@ai-sdk/google';
+import { google } from '@ai-sdk/google';
+import { generateText } from 'ai';
 
-// Initialize the Gemini model with your API key
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-
-// Use Gemini Flash 2.0 model
-const model = genAI.getGenerativeModel({ model: 'gemini-flash-2.0' });
+// Initialize the Google provider
+// The API key is automatically read from the GOOGLE_GENERATIVE_AI_API_KEY environment variable
+// If you want to keep using GEMINI_API_KEY, you'll need to create a custom provider
+const model = google('gemini-2.0-flash');
 
 // Process prompts with Gemini
 export async function processPrompt(prompt: string, context?: string) {
   try {
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: context ? `${context}\n${prompt}` : prompt }] }],
+    const { text } = await generateText({
+      model,
+      prompt: context ? `${context}\n${prompt}` : prompt,
     });
     
-    const response = result.response;
-    const text = response.text();
     return text;
   } catch (error) {
     console.error('Error processing prompt with Gemini:', error);
