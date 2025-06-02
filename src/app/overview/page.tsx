@@ -146,31 +146,6 @@ export default function DashboardPage() {
     }
   }, [isTyping, displayedResponse, fullResponse]);
 
-  // Chain selection modal
-  const ChainModal = () => (
-    showChainModal ? (
-      <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
-        <div className="bg-white p-6 rounded shadow-lg">
-          <h2 className="mb-4 font-bold">Select Chain</h2>
-          <select
-            className="w-full p-2 border rounded"
-            value={selectedChain}
-            onChange={e => setSelectedChain(e.target.value)}
-          >
-            <option value="">Select chain</option>
-            <option value="base">Base</option>
-            {/* Add more chains as needed */}
-          </select>
-          <Button className="mt-4 w-full" onClick={() => {
-            setShowChainModal(false);
-            setAgentMessage(null);
-          }}>
-            Confirm
-          </Button>
-        </div>
-      </div>
-    ) : null
-  );
 
   // Handler for checking wallet balance (using Gemini)
   const handleCheckBalance = async () => {

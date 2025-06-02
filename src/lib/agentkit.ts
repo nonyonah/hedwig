@@ -1,5 +1,4 @@
 import { CdpV2EvmWalletProvider } from '@coinbase/agentkit';
-import { createAI, createStreamableUI } from 'ai/rsc';
 
 // Initialize the AgentKit wallet provider
 export const initializeWalletProvider = async () => {
@@ -18,10 +17,10 @@ export const initializeWalletProvider = async () => {
 };
 
 // Check wallet balance using AgentKit
-export async function checkWalletBalance(address: string) {
+export async function checkWalletBalance() {
   try {
     const walletProvider = await initializeWalletProvider();
-    const balance = await walletProvider.getBalance(address);
+    const balance = await walletProvider.getBalance();
     return balance.toString();
   } catch (error) {
     console.error('Error checking wallet balance with AgentKit:', error);
@@ -30,11 +29,8 @@ export async function checkWalletBalance(address: string) {
 }
 
 // Swap tokens using AgentKit
-export async function swapTokens(fromToken: string, toToken: string, amount: string, walletAddress: string) {
+export async function swapTokens(fromToken: string, toToken: string, amount: string) {
   try {
-    const walletProvider = await initializeWalletProvider();
-    // This is a simplified version - actual implementation would use AgentKit's swap functionality
-    // For example, you might use a DEX like Uniswap through AgentKit
     const result = `Swapped ${amount} ${fromToken} to ${toToken}`;
     return result;
   } catch (error) {
@@ -44,9 +40,8 @@ export async function swapTokens(fromToken: string, toToken: string, amount: str
 }
 
 // Off-ramp crypto to fiat using AgentKit
-export async function offRampCrypto(token: string, amount: string, walletAddress: string) {
+export async function offRampCrypto(token: string, amount: string) {
   try {
-    const walletProvider = await initializeWalletProvider();
     // This is a simplified version - actual implementation would use AgentKit's off-ramp functionality
     const result = `Off-ramped ${amount} ${token} to fiat`;
     return result;
