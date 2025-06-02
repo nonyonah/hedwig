@@ -42,7 +42,6 @@ export async function swapTokens(fromToken: string, toToken: string, amount: str
 // Off-ramp crypto to fiat using AgentKit
 export async function offRampCrypto(token: string, amount: string) {
   try {
-    const walletProvider = await initializeWalletProvider();
     // This is a simplified version - actual implementation would use AgentKit's off-ramp functionality
     const result = `Off-ramped ${amount} ${token} to fiat`;
     return result;
