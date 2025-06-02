@@ -41,7 +41,7 @@ export default function DashboardPage() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   // Removed selectedChain and setShowChainModal state variables
-  const [agentMessage, setAgentMessage] = useState<string | null>(null);
+  const [agentMessage] = useState<string | null>(null);
 
   useEffect(() => {
     // Get time-based greeting
