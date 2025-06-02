@@ -40,8 +40,7 @@ export default function DashboardPage() {
   const [clientsLoading, setClientsLoading] = useState(false);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
-  const [selectedChain, setSelectedChain] = useState<string>('');
-  const [showChainModal, setShowChainModal] = useState(false);
+  // Removed selectedChain and setShowChainModal state variables
   const [agentMessage, setAgentMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -149,11 +148,6 @@ export default function DashboardPage() {
 
   // Handler for checking wallet balance (using Gemini)
   const handleCheckBalance = async () => {
-    if (!selectedChain) {
-      setAgentMessage('Which chain would you like to use?');
-      setShowChainModal(true);
-      return;
-    }
     setBalanceLoading(true);
     setBalanceError(null);
     if (!user?.wallet?.address) {
@@ -163,7 +157,7 @@ export default function DashboardPage() {
     }
     try {
       // First get the raw balance
-      const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}&chain=${selectedChain}`);
+      const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}`);
       const { balance } = await res.json();
       setWalletBalance(balance);
       
@@ -172,7 +166,7 @@ export default function DashboardPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `I have ${balance} on ${selectedChain}. What can you tell me about my balance?`,
+          prompt: `I have ${balance}. What can you tell me about my balance?`,
           context: 'You are an AI assistant helping to analyze wallet balances. Provide insights on the following wallet balance.'
         })
       });
@@ -185,16 +179,6 @@ export default function DashboardPage() {
     } finally {
       setBalanceLoading(false);
     }
-  };
-
-  // Handler for swap (using Gemini)
-  const handleSwap = async () => {
-    if (!selectedChain) {
-      setAgentMessage('Which chain would you like to use for swapping?');
-      setShowChainModal(true);
-      return;
-    }
-    // ...swap logic here...
   };
 
   // Invoice generation
@@ -301,9 +285,7 @@ export default function DashboardPage() {
                   <DropdownMenuItem onClick={handleCheckBalance} className="cursor-pointer">
                     Check Balance
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSwap} className="cursor-pointer">
-                    Swap Tokens
-                  </DropdownMenuItem>
+                  {/* Removed Swap Tokens dropdown menu item */}
                   <DropdownMenuItem onClick={handleCopyAddress} className="cursor-pointer">
                     <Copy size={14} className="mr-2" />
                     Copy address
@@ -514,9 +496,7 @@ export default function DashboardPage() {
             <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
               Send Reminder
             </Button>
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              Swap
-            </Button>
+            {/* Removed Swap button */}
           </div>
         </div>
       )}
