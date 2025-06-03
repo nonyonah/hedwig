@@ -17,7 +17,7 @@ export const initializeWalletProvider = async () => {
 };
 
 // Check wallet balance using AgentKit
-export async function checkWalletBalance() {
+export async function checkWalletBalance(address: string) {
   try {
     const walletProvider = await initializeWalletProvider();
     const balance = await walletProvider.getBalance();
