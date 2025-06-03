@@ -11,7 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const result = await offRampCrypto(token, amount, walletAddress);
+    const result = await offRampCrypto(token, amount);
     res.status(200).json({ result });
   } catch (error) {
     console.error('Error off-ramping crypto:', error);
