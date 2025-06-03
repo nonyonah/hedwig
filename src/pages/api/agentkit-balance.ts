@@ -11,7 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const balance = await checkWalletBalance(address);
+    const balance = await checkWalletBalance();
     res.status(200).json({ balance });
   } catch (error) {
     console.error('Error checking balance:', error);
