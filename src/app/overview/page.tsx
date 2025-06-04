@@ -118,7 +118,7 @@ export default function DashboardPage() {
         }
         
         const data = await response.json();
-        setFullResponse(data.response || "Sorry, I couldn't generate a response.");
+        setFullResponse(data.result || "Sorry, I couldn't generate a response.");
       } catch (error) {
         console.error('Error getting AI response:', error);
         setFullResponse("Sorry, there was an error processing your request.");
