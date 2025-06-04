@@ -1,5 +1,7 @@
 # Albus
 
+Prood of Deployment on Base Mainnet: https://base.blockscout.com/address/0xd08867B621C98D5e011e48e8E4E5295c0AdD17fb
+
 ## Your All-in-One Financial Tracker
 
 Albus is a comprehensive financial tracking platform that bridges the gap between traditional banking and blockchain technology, allowing users to monitor and manage their finances both on and off chain.
