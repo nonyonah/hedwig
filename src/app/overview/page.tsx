@@ -27,15 +27,14 @@ export default function DashboardPage() {
   const router = useRouter();
   const [greeting, setGreeting] = useState('Good day');
 
-  type Client = { id: string; name: string; };
   type Invoice = { id: string; description: string; status: string; };
 
   // New state for wallet, clients, invoice, chain, and agent message
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
 
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null);
-  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [] = useState<Invoice | null>(null);
+  const [] = useState<string | null>(null);
+  const [] = useState(false);
   // Removed clientsLoading state
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -167,24 +166,6 @@ export default function DashboardPage() {
   // Removed handleGenerateInvoice function
 
   // Mark invoice as paid
-  const handleMarkAsPaid = useCallback(async () => {
-    if (!invoice?.id) return;
-    setInvoiceLoading(true);
-    try {
-      const res = await fetch('/api/mark-invoice-paid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: invoice.id })
-      });
-      const { invoice: updated } = await res.json();
-      setInvoice(updated);
-      setInvoiceStatus(updated.status);
-    } catch {
-      // Optionally show error
-    } finally {
-      setInvoiceLoading(false);
-    }
-  }, [invoice]);
 
   if (!ready) {
     return (
