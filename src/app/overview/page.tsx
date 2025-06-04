@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send, CircleStop, RefreshCw, Copy, ThumbsUp, ThumbsDown, ArrowLeft, LogOut, Wallet } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
@@ -27,15 +27,14 @@ export default function DashboardPage() {
   const router = useRouter();
   const [greeting, setGreeting] = useState('Good day');
 
-  type Client = { id: string; name: string; };
   type Invoice = { id: string; description: string; status: string; };
 
   // New state for wallet, clients, invoice, chain, and agent message
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
 
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null);
-  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [] = useState<Invoice | null>(null);
+  const [] = useState<string | null>(null);
+  const [] = useState(false);
   // Removed clientsLoading state
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -99,13 +98,33 @@ export default function DashboardPage() {
     setInputValue(e.target.value);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (inputValue.trim()) {
       setIsSubmitting(true);
       setShowResponse(true);
       setIsTyping(true);
       setDisplayedResponse('');
-      setFullResponse("This is a new response based on your input: " + inputValue);
+      
+      try {
+        // Make API call to get AI response
+        const response = await fetch('/api/gemini-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: inputValue })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to get AI response');
+        }
+        
+        const data = await response.json();
+        setFullResponse(data.response || "Sorry, I couldn't generate a response.");
+      } catch (error) {
+        console.error('Error getting AI response:', error);
+        setFullResponse("Sorry, there was an error processing your request.");
+        setIsTyping(false);
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -167,24 +186,6 @@ export default function DashboardPage() {
   // Removed handleGenerateInvoice function
 
   // Mark invoice as paid
-  const handleMarkAsPaid = useCallback(async () => {
-    if (!invoice?.id) return;
-    setInvoiceLoading(true);
-    try {
-      const res = await fetch('/api/mark-invoice-paid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: invoice.id })
-      });
-      const { invoice: updated } = await res.json();
-      setInvoice(updated);
-      setInvoiceStatus(updated.status);
-    } catch {
-      // Optionally show error
-    } finally {
-      setInvoiceLoading(false);
-    }
-  }, [invoice]);
 
   if (!ready) {
     return (
