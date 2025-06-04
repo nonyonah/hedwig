@@ -32,12 +32,11 @@ export default function DashboardPage() {
 
   // New state for wallet, clients, invoice, chain, and agent message
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
-  const [clientsLoading, setClientsLoading] = useState(false);
+  // Removed clientsLoading state
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   // Removed selectedChain and setShowChainModal state variables
@@ -54,23 +53,7 @@ export default function DashboardPage() {
     setGreeting(getGreeting());
   }, []);
 
-  // Fetch clients from Supabase
-  useEffect(() => {
-    const fetchClients = async () => {
-      if (!ready || !authenticated || !user?.id) return;
-      setClientsLoading(true);
-      try {
-        const res = await fetch(`/api/clients?userId=${user.id}`);
-        const { clients } = await res.json();
-        setClients(clients);
-      } catch {
-        setClients([]);
-      } finally {
-        setClientsLoading(false);
-      }
-    };
-    fetchClients();
-  }, [ready, authenticated, user]);
+  // Removed fetchClients useEffect
 
   // Get user's first name or part of wallet address
   const getDisplayName = () => {
@@ -181,34 +164,7 @@ export default function DashboardPage() {
     }
   };
 
-  // Invoice generation
-  const handleGenerateInvoice = useCallback(async () => {
-    if (!user?.id || !selectedClientId || !inputValue.trim()) return;
-    setInvoiceLoading(true);
-    setIsSubmitting(true);
-    try {
-      const res = await fetch('/api/generate-invoice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          clientId: selectedClientId,
-          prompt: inputValue
-        })
-      });
-      const { invoice } = await res.json();
-      setInvoice(invoice);
-      setInvoiceStatus(invoice.status);
-      setFullResponse(`Invoice generated: ${invoice.description}`);
-      setShowResponse(true);
-    } catch {
-      setFullResponse('Failed to generate invoice.');
-      setShowResponse(true);
-    } finally {
-      setInvoiceLoading(false);
-      setIsSubmitting(false);
-    }
-  }, [user, selectedClientId, inputValue]);
+  // Removed handleGenerateInvoice function
 
   // Mark invoice as paid
   const handleMarkAsPaid = useCallback(async () => {
@@ -360,36 +316,10 @@ export default function DashboardPage() {
               </Button>
             </div>
             {/* Invoice status and mark as paid */}
-            {invoice && (
-              <div className="mt-4 p-4 border rounded-lg bg-gray-50">
-                <div><strong>Invoice Status:</strong> {invoiceStatus}</div>
-                {invoiceStatus !== 'paid' && (
-                  <Button
-                    className="mt-2"
-                    onClick={handleMarkAsPaid}
-                    disabled={invoiceLoading}
-                  >
-                    {invoiceLoading ? 'Marking as Paid...' : 'Mark as Paid'}
-                  </Button>
-                )}
-              </div>
-            )}
+
           </div>
           <div className="w-full max-w-[600px] sticky bottom-8 mb-8">
-            {/* Client selection dropdown */}
-            <div className="mb-2">
-              <select
-                className="w-full p-3 border border-gray-200 rounded-lg"
-                value={selectedClientId ?? ''}
-                onChange={e => setSelectedClientId(e.target.value)}
-                disabled={clientsLoading}
-              >
-                <option value="" disabled>Select client</option>
-                {clients.map(client => (
-                  <option key={client.id} value={client.id}>{client.name}</option>
-                ))}
-              </select>
-            </div>
+            {/* Removed client selection dropdown */}
             <Input
               type="text"
               placeholder="Ask anything..."
@@ -418,13 +348,7 @@ export default function DashboardPage() {
             >
               {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
             </Button>
-            <Button
-              className="mt-2 w-full"
-              onClick={handleGenerateInvoice}
-              disabled={invoiceLoading || !inputValue.trim() || !selectedClientId}
-            >
-              {invoiceLoading ? 'Generating Invoice...' : 'Generate Invoice'}
-            </Button>
+            {/* Removed Generate Invoice button */}
           </div>
         </div>
       ) : (
@@ -433,19 +357,7 @@ export default function DashboardPage() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}</h1>
             <p className="text-gray-600">How can I help you today?</p>
           </div>
-          <div className="w-full max-w-[600px] mb-2">
-            <select
-              className="w-full p-3 border border-gray-200 rounded-lg"
-              value={selectedClientId ?? ''}
-              onChange={e => setSelectedClientId(e.target.value)}
-              disabled={clientsLoading}
-            >
-              <option value="" disabled>Select client</option>
-              {clients.map(client => (
-                <option key={client.id} value={client.id}>{client.name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Removed client selection dropdown */}
           <div className="w-full max-w-[600px] relative">
             <Input
               type="text"
@@ -478,13 +390,7 @@ export default function DashboardPage() {
                 strokeWidth={1.5}
               />
             </Button>
-            <Button
-              className="mt-2 w-full"
-              onClick={handleGenerateInvoice}
-              disabled={invoiceLoading || !inputValue.trim() || !selectedClientId}
-            >
-              {invoiceLoading ? 'Generating Invoice...' : 'Generate Invoice'}
-            </Button>
+            {/* Removed Generate Invoice button */}
           </div>
           <div className="flex flex-wrap justify-center gap-x-[14px] mt-[14px]">
             <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
