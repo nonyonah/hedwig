@@ -98,6 +98,10 @@ export default function DashboardPage() {
     setInputValue(e.target.value);
   };
 
+  // Add this to your state variables at the top of the component
+  const [messages, setMessages] = useState<Array<{type: 'user' | 'ai', content: string}>>([]);
+  
+  // Modify the handleSubmit function
   const handleSubmit = async () => {
     if (inputValue.trim()) {
       setIsSubmitting(true);
@@ -105,12 +109,19 @@ export default function DashboardPage() {
       setIsTyping(true);
       setDisplayedResponse('');
       
+      // Add user message to the chat
+      const userMessage = inputValue;
+      setMessages(prev => [...prev, {type: 'user', content: userMessage}]);
+      
+      // Clear input after sending
+      setInputValue('');
+      
       try {
         // Make API call to get AI response
         const response = await fetch('/api/gemini-prompt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: inputValue })
+          body: JSON.stringify({ prompt: userMessage })
         });
         
         if (!response.ok) {
@@ -118,10 +129,17 @@ export default function DashboardPage() {
         }
         
         const data = await response.json();
-        setFullResponse(data.result || "Sorry, I couldn't generate a response.");
+        const aiResponse = data.result || "Sorry, I couldn't generate a response.";
+        setFullResponse(aiResponse);
+        
+        // Add AI response to the chat
+        setMessages(prev => [...prev, {type: 'ai', content: aiResponse}]);
       } catch (error) {
         console.error('Error getting AI response:', error);
         setFullResponse("Sorry, there was an error processing your request.");
+        
+        // Add error message to the chat
+        setMessages(prev => [...prev, {type: 'ai', content: "Sorry, there was an error processing your request."}]);
         setIsTyping(false);
         setIsSubmitting(false);
       }
@@ -281,46 +299,29 @@ export default function DashboardPage() {
               <span>Back to homepage</span>
             </Button>
           </div>
-          <div className="w-full max-w-[600px] flex-grow overflow-y-auto py-4">
-            <div className="mb-4 p-4 inline-block ml-auto"
-              style={{
-                borderRadius: '20px',
-                border: '1px solid var(--Gray-200, #E9EAEB)',
-                background: '#F2F1EF',
-              }}>
-              <p>{inputValue}</p>
+          <div className="w-full max-w-[600px] flex-grow overflow-y-auto py-4" style={{ minHeight: 200 }}>
+            <div className="flex flex-col gap-4 w-full">
+              {messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`p-4 max-w-[80%] rounded-2xl border border-gray-200 shadow-sm ${msg.type === 'user' ? 'ml-auto bg-[#F2F1EF]' : 'mr-auto bg-[#E9EAEB]'}`}
+                  style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap', background: msg.type === 'ai' ? '#E9EAEB' : '#F2F1EF' }}
+                >
+                  {msg.content.split('\n').map((line, i) =>
+                    line.startsWith('- ') ? (
+                      <li key={i} className="ml-6">{line.substring(2)}</li>
+                    ) : line.trim() === '' ? (
+                      <br key={i} />
+                    ) : (
+                      <p key={i} className={i > 0 ? 'mt-2' : ''}>{line}</p>
+                    )
+                  )}
+                  {isTyping && idx === messages.length - 1 && msg.type === 'ai' && (
+                    <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>
+                  )}
+                </div>
+              ))}
             </div>
-            <div className="p-4 max-w-[80%]">
-              {fullResponse.split('\n').map((line, index) => {
-                if (line.startsWith('- ')) {
-                  return <li key={index} className="ml-6">{line.substring(2)}</li>;
-                } else if (line.trim() === '') {
-                  return <br key={index} />;
-                } else {
-                  return <p key={index} className={index > 0 ? "mt-2" : ""}>{line}</p>;
-                }
-              })}
-              {isTyping && <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>}
-            </div>
-            <div className="flex items-center gap-[8px] mt-[21px]">
-              <Button variant="ghost" size="icon" className="rounded-full p-2">
-                <RefreshCw size={16} className="text-gray-600" />
-              </Button>
-              <Button variant="ghost" size="icon" className="rounded-full p-2">
-                <Copy size={16} className="text-gray-600" />
-              </Button>
-              <Button variant="ghost" size="icon" className="rounded-full p-2">
-                <ThumbsUp size={16} className="text-gray-600" />
-              </Button>
-              <Button variant="ghost" size="icon" className="rounded-full p-2">
-                <ThumbsDown size={16} className="text-gray-600" />
-              </Button>
-            </div>
-            {/* Invoice status and mark as paid */}
-
-          </div>
-          <div className="w-full max-w-[600px] sticky bottom-8 mb-8">
-            {/* Removed client selection dropdown */}
             <Input
               type="text"
               placeholder="Ask anything..."
@@ -333,80 +334,86 @@ export default function DashboardPage() {
                 overflowWrap: 'break-word'
               }}
               value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (inputValue.trim()) handleSubmit();
-                }
-              }}
-              disabled={isSubmitting}
-            />
-            <Button
-              className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-md transition-colors duration-200 h-[58px] w-[58px] text-white bg-slate-800 hover:bg-slate-700"
-              onClick={isSubmitting ? handleStop : handleSubmit}
-              disabled={!inputValue.trim() && !isSubmitting}
-            >
-              {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
-            </Button>
-            {/* Removed Generate Invoice button */}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (inputValue.trim()) handleSubmit();
+              }
+            }}
+            disabled={isSubmitting}
+          />
+          <Button
+            className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-md transition-colors duration-200 h-[58px] w-[58px] text-white bg-slate-800 hover:bg-slate-700"
+            onClick={isSubmitting ? handleStop : handleSubmit}
+            disabled={!inputValue.trim() && !isSubmitting}
+          >
+            {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
+          </Button>
+        </div>
+      </div>
+    ) : (
+      <div className="flex flex-col items-center px-[108px] h-[688px] pt-[115px] gap-8 flex-shrink-0 self-stretch transition-all duration-500">
+        <div className="text-center max-w-[600px]">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}</h1>
+          <p className="text-gray-600">How can I help you today?</p>
+        </div>
+        <div className="w-full max-w-[600px] flex-grow overflow-y-auto py-4" style={{ minHeight: 200 }}>
+          <div className="flex flex-col gap-4 w-full">
+            {messages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`p-4 max-w-[80%] rounded-2xl border border-gray-200 shadow-sm ${msg.type === 'user' ? 'ml-auto bg-[#F2F1EF]' : 'mr-auto bg-[#E9EAEB]'}`}
+                style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
+              >
+                {msg.content.split('\n').map((line, i) =>
+                  line.startsWith('- ') ? (
+                    <li key={i} className="ml-6">{line.substring(2)}</li>
+                  ) : line.trim() === '' ? (
+                    <br key={i} />
+                  ) : (
+                    <p key={i} className={i > 0 ? 'mt-2' : ''}>{line}</p>
+                  )
+                )}
+                {isTyping && idx === messages.length - 1 && msg.type === 'ai' && (
+                  <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
-      ) : (
-        <div className="flex flex-col items-center px-[108px] h-[688px] pt-[115px] gap-8 flex-shrink-0 self-stretch transition-all duration-500">
-          <div className="text-center max-w-[600px]">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}</h1>
-            <p className="text-gray-600">How can I help you today?</p>
-          </div>
-          {/* Removed client selection dropdown */}
-          <div className="w-full max-w-[600px] relative">
-            <Input
-              type="text"
-              placeholder="Ask anything..."
-              className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
-              style={{
-                borderRadius: '10px',
-                border: '1px solid var(--Gray-200, #E9EAEB)',
-                transition: 'transform 0.3s ease-in-out',
-                whiteSpace: 'pre-wrap',
-                overflowWrap: 'break-word'
-              }}
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (inputValue.trim()) handleSubmit();
-                }
-              }}
-            />
-            <Button
-              size="icon"
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent hover:bg-gray-100 rounded-full p-2 transition-all duration-300"
-              onClick={handleSubmit}
-              disabled={!inputValue.trim()}
-            >
-              <Send
-                className={`h-5 w-5 ${!inputValue.trim() ? 'text-gray-300' : 'text-gray-700'}`}
-                strokeWidth={1.5}
-              />
-            </Button>
-            {/* Removed Generate Invoice button */}
-          </div>
-          <div className="flex flex-wrap justify-center gap-x-[14px] mt-[14px]">
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              Create Invoice
-            </Button>
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              View Summary
-            </Button>
-            <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
-              Send Reminder
-            </Button>
-            {/* Removed Swap button */}
-          </div>
+        <div className="w-full max-w-[600px] relative">
+          <Input
+            type="text"
+            placeholder="Ask anything..."
+            className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white shadow-sm break-words overflow-auto"
+            style={{
+              borderRadius: '10px',
+              border: '1px solid var(--Gray-200, #E9EAEB)',
+              transition: 'transform 0.3s ease-in-out',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'break-word'
+            }}
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (inputValue.trim()) handleSubmit();
+              }
+            }}
+            disabled={isSubmitting}
+          />
+          <Button
+            className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-md transition-colors duration-200 h-[58px] w-[58px] text-white bg-slate-800 hover:bg-slate-700"
+            onClick={isSubmitting ? handleStop : handleSubmit}
+            disabled={!inputValue.trim() && !isSubmitting}
+          >
+            {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
+          </Button>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+  </div>
+);
 }
