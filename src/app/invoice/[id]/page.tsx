@@ -1,5 +1,7 @@
+'use client';
+
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Copy } from 'lucide-react';
 
@@ -24,7 +26,9 @@ interface Invoice {
 
 export default function InvoicePage() {
   const router = useRouter();
-  const id = router.query?.id as string;
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+const id = searchParams.get('id') || pathname.split('/').pop() || '';
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
