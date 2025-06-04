@@ -98,13 +98,33 @@ export default function DashboardPage() {
     setInputValue(e.target.value);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (inputValue.trim()) {
       setIsSubmitting(true);
       setShowResponse(true);
       setIsTyping(true);
       setDisplayedResponse('');
-      setFullResponse("This is a new response based on your input: " + inputValue);
+      
+      try {
+        // Make API call to get AI response
+        const response = await fetch('/api/gemini-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: inputValue })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to get AI response');
+        }
+        
+        const data = await response.json();
+        setFullResponse(data.response || "Sorry, I couldn't generate a response.");
+      } catch (error) {
+        console.error('Error getting AI response:', error);
+        setFullResponse("Sorry, there was an error processing your request.");
+        setIsTyping(false);
+        setIsSubmitting(false);
+      }
     }
   };
 
