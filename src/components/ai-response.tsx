@@ -24,8 +24,6 @@ export default function AIResponse({
   setInputValue,
   appPrimaryColor,
 }: AIResponseProps) {
-  const [focused, setFocused] = useState(false);
-
   // SVGs
   const sendIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 33 32" fill="none">
@@ -70,8 +68,6 @@ export default function AIResponse({
           type="text"
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
           className="flex-grow px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-primary focus:border-transparent bg-white outline-none"
           placeholder="Ask anything..."
           disabled={isSubmitting}

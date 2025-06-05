@@ -39,20 +39,15 @@ export default function DashboardPage() {
     setIsSubmitting(false);
   };
 
-  // Clean up unused state and handlers from old chat logic
-
   const { ready, authenticated, user, logout, login } = usePrivy();
   const router = useRouter();
-  const [greeting, setGreeting] = useState('Good day');
+  const [_greeting, setGreeting] = useState('Good day');
 
   type Invoice = { id: string; description: string; status: string; };
 
   // New state for wallet, clients, invoice, chain, and agent message
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
 
-  const [] = useState<Invoice | null>(null);
-  const [] = useState<string | null>(null);
-  const [] = useState(false);
   // Removed clientsLoading state
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -113,7 +108,7 @@ export default function DashboardPage() {
     return `linear-gradient(to right, ${color1}, ${color2})`;
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
   };
 
