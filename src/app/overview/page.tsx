@@ -40,7 +40,7 @@ export default function DashboardPage() {
   const [balanceError, setBalanceError] = useState<string | null>(null);
   // Removed selectedChain and setShowChainModal state variables
   const [agentMessage] = useState<string | null>(null);
-  const [dynamicChips, setDynamicChips] = useState<string[]>(['Create Invoice', 'View Summary', 'Send Reminder']);
+  const [dynamicChips] = useState<string[]>(['Create Invoice', 'View Summary', 'Send Reminder']);
 
   useEffect(() => {
     // Get time-based greeting
