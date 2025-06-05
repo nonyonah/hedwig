@@ -25,14 +25,13 @@ export default function DashboardPage() {
   );
   const { ready, authenticated, user, logout, login } = usePrivy();
   const router = useRouter();
-  const [greeting, setGreeting] = useState('Good day');
+  const [, setGreeting] = useState('Good day');
 
-  type Invoice = { id: string; description: string; status: string; };
 
-  const [walletBalance, setWalletBalance] = useState<string | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [balanceError, setBalanceError] = useState<string | null>(null);
-  const [agentMessage, setAgentMessage] = useState<string | null>(null);
+  // const [walletBalance, setWalletBalance] = useState<string | null>(null);
+  // const [, setBalanceLoading] = useState(false);
+  // const [, setBalanceError] = useState<string | null>(null);
+  // const [agentMessage, setAgentMessage] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Array<{type: 'user' | 'ai', content: string}>>([]);
 
@@ -146,37 +145,6 @@ export default function DashboardPage() {
     }
   }, [isTyping, displayedResponse, fullResponse]);
 
-  const handleCheckBalance = async () => {
-    setBalanceLoading(true);
-    setBalanceError(null);
-    if (!user?.wallet?.address) {
-      setBalanceError('Wallet not connected');
-      setBalanceLoading(false);
-      return;
-    }
-    try {
-      const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}`);
-      const { balance } = await res.json();
-      setWalletBalance(balance);
-      
-      const analysisRes = await fetch('/api/gemini-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `I have ${balance}. What can you tell me about my balance?`,
-          context: 'You are an AI assistant helping to analyze wallet balances. Provide insights on the following wallet balance.'
-        })
-      });
-      const { result } = await analysisRes.json();
-      setFullResponse(result);
-      setShowResponse(true);
-    } catch (error) {
-      console.error('Error checking balance:', error);
-      setBalanceError('Failed to fetch balance');
-    } finally {
-      setBalanceLoading(false);
-    }
-  };
 
   if (!ready) {
     return (
