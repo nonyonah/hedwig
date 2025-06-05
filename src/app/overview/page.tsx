@@ -6,8 +6,6 @@ import { useState } from 'react';
 import Image from 'next/image';
 import AIResponse from '@/components/ai-response';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -150,6 +148,10 @@ export default function DashboardPage() {
         </Button>
       </div>
     );
+  }
+
+  function handleStop(): void {
+    throw new Error('Function not implemented.');
   }
 
   return (
