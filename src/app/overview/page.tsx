@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, CircleStop, Copy, ArrowLeft, LogOut, Wallet } from 'lucide-react';
+import { Send, CircleStop, Copy, ArrowLeft, LogOut, Wallet, RefreshCw, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { usePrivy } from '@privy-io/react-auth';
@@ -25,17 +25,25 @@ export default function DashboardPage() {
   );
   const { ready, authenticated, user, logout, login } = usePrivy();
   const router = useRouter();
-  const [, setGreeting] = useState('Good day');
+  const [greeting, setGreeting] = useState('Good day');
 
+  type Invoice = { id: string; description: string; status: string; };
 
-  // const [walletBalance, setWalletBalance] = useState<string | null>(null);
-  // const [, setBalanceLoading] = useState(false);
-  // const [, setBalanceError] = useState<string | null>(null);
-  // const [agentMessage, setAgentMessage] = useState<string | null>(null);
+  // New state for wallet, clients, invoice, chain, and agent message
+  const [walletBalance, setWalletBalance] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<Array<{type: 'user' | 'ai', content: string}>>([]);
+  const [] = useState<Invoice | null>(null);
+  const [] = useState<string | null>(null);
+  const [] = useState(false);
+  // Removed clientsLoading state
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  // Removed selectedChain and setShowChainModal state variables
+  const [agentMessage] = useState<string | null>(null);
+  const [dynamicChips, setDynamicChips] = useState<string[]>(['Create Invoice', 'View Summary', 'Send Reminder']);
 
   useEffect(() => {
+    // Get time-based greeting
     const getGreeting = () => {
       const hour = new Date().getHours();
       if (hour < 12) return 'Good morning';
@@ -45,6 +53,9 @@ export default function DashboardPage() {
     setGreeting(getGreeting());
   }, []);
 
+  // Removed fetchClients useEffect
+
+  // Get user's first name or part of wallet address
   const getDisplayName = () => {
     if (user?.wallet) {
       const address = user.wallet.address;
@@ -88,6 +99,10 @@ export default function DashboardPage() {
     setInputValue(e.target.value);
   };
 
+  // Add this to your state variables at the top of the component
+  const [messages, setMessages] = useState<Array<{type: 'user' | 'ai', content: string}>>([]);
+  
+  // Modify the handleSubmit function
   const handleSubmit = async () => {
     if (inputValue.trim()) {
       setIsSubmitting(true);
@@ -95,12 +110,15 @@ export default function DashboardPage() {
       setIsTyping(true);
       setDisplayedResponse('');
       
+      // Add user message to the chat
       const userMessage = inputValue;
       setMessages(prev => [...prev, {type: 'user', content: userMessage}]);
       
+      // Clear input after sending
       setInputValue('');
       
       try {
+        // Make API call to get AI response
         const response = await fetch('/api/gemini-prompt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -115,11 +133,13 @@ export default function DashboardPage() {
         const aiResponse = data.result || "Sorry, I couldn't generate a response.";
         setFullResponse(aiResponse);
         
+        // Add AI response to the chat
         setMessages(prev => [...prev, {type: 'ai', content: aiResponse}]);
       } catch (error) {
         console.error('Error getting AI response:', error);
         setFullResponse("Sorry, there was an error processing your request.");
         
+        // Add error message to the chat
         setMessages(prev => [...prev, {type: 'ai', content: "Sorry, there was an error processing your request."}]);
         setIsTyping(false);
         setIsSubmitting(false);
@@ -133,6 +153,7 @@ export default function DashboardPage() {
     setDisplayedResponse(fullResponse);
   };
 
+  // Typing animation effect
   useEffect(() => {
     if (isTyping && displayedResponse.length < fullResponse.length) {
       const timer = setTimeout(() => {
@@ -145,6 +166,45 @@ export default function DashboardPage() {
     }
   }, [isTyping, displayedResponse, fullResponse]);
 
+
+  // Handler for checking wallet balance (using Gemini)
+  const handleCheckBalance = async () => {
+    setBalanceLoading(true);
+    setBalanceError(null);
+    if (!user?.wallet?.address) {
+      setBalanceError('Wallet not connected');
+      setBalanceLoading(false);
+      return;
+    }
+    try {
+      // First get the raw balance
+      const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}`);
+      const { balance } = await res.json();
+      setWalletBalance(balance);
+      
+      // Then get Gemini's analysis of the balance
+      const analysisRes = await fetch('/api/gemini-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `I have ${balance}. What can you tell me about my balance?`,
+          context: 'You are an AI assistant helping to analyze wallet balances. Provide insights on the following wallet balance.'
+        })
+      });
+      const { result } = await analysisRes.json();
+      setFullResponse(result);
+      setShowResponse(true);
+    } catch (error) {
+      console.error('Error checking balance:', error);
+      setBalanceError('Failed to fetch balance');
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  // Removed handleGenerateInvoice function
+
+  // Mark invoice as paid
 
   if (!ready) {
     return (
@@ -189,114 +249,357 @@ export default function DashboardPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
-                    <Button
-                      variant="outline"
-                      style={{
-                        borderRadius: 8,
-                        border: '1px solid var(--Gray-300, #D5D7DA)',
-                        background: 'var(--White, #FFF)',
-                        boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                        padding: '8px 16px',
-                        minWidth: 40,
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}
-                      onClick={() => setShowResponse(false)}
-                    >
-                      <ArrowLeft size={16} className="mr-2" />Back to homepage
-                    </Button>
+                  <div className="px-4 py-2 text-xs text-gray-500">
+                    {balanceLoading
+                      ? 'Loading balance...'
+                      : balanceError
+                      ? balanceError
+                      : walletBalance
+                      ? `Balance: ${walletBalance}`
+                      : 'No balance'}
+                  </div>
+                  <DropdownMenuItem onClick={handleCheckBalance} className="cursor-pointer">
+                    Check Balance
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Button
-                      variant="outline"
-                      style={{
-                        borderRadius: 8,
-                        border: '1px solid var(--Gray-300, #D5D7DA)',
-                        background: 'var(--White, #FFF)',
-                        boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                        padding: '8px 16px',
-                        minWidth: 40,
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}
-                      onClick={handleCopyAddress}
-                    >
-                      <Copy size={16} className="mr-2" />Copy Address
-                    </Button>
+                  {/* Removed Swap Tokens dropdown menu item */}
+                  <DropdownMenuItem onClick={handleCopyAddress} className="cursor-pointer">
+                    <Copy size={14} className="mr-2" />
+                    Copy address
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Button
-                      variant="outline"
-                      style={{
-                        borderRadius: 8,
-                        border: '1px solid var(--Gray-300, #D5D7DA)',
-                        background: 'var(--White, #FFF)',
-                        boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                        padding: '8px 16px',
-                        minWidth: 40,
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}
-                      onClick={handleDisconnect}
-                    >
-                      <LogOut size={16} className="mr-2" />Disconnect
-                    </Button>
+                  <DropdownMenuItem onClick={handleDisconnect} className="cursor-pointer">
+                    <LogOut size={14} className="mr-2" />
+                    Disconnect wallet
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : null}
+            ) : ready && !authenticated ? (
+              <Button variant="outline" onClick={login} className="flex items-center gap-2">
+                <Wallet size={16} className="mr-1" />
+                Sign In
+              </Button>
+            ) : (
+              <div className="w-24 h-10 bg-gray-200 rounded animate-pulse"></div>
+            )}
           </div>
         </div>
       </header>
-      <div className="flex flex-col flex-grow w-full items-center" style={{ background: '#fff', minHeight: '100vh' }}>
-        {showResponse ? (
-          <div className="flex flex-col flex-grow w-full items-center" style={{ background: '#fff', minHeight: '100vh' }}>
-            <div className="w-full flex justify-start pt-12 pb-6 px-[403px]">
+
+      {agentMessage && (
+        <div className="text-center text-sm text-purple-700 my-2">{agentMessage}</div>
+      )}
+
+      {showResponse ? (
+        <div
+          className="flex flex-col justify-end items-center flex-grow w-full"
+          style={{
+            display: 'flex',
+            padding: '128px 403px 64px 404px',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: '435px',
+            alignSelf: 'stretch',
+            minHeight: '100vh',
+            background: '#fff',
+          }}
+        >
+          <div className="w-full max-w-[600px] flex flex-col items-center">
+            <div className="w-full text-left mb-8" style={{ fontSize: 18, color: '#222', fontWeight: 500, whiteSpace: 'pre-wrap', background: 'none', border: 'none', boxShadow: 'none', padding: 0 }}>
+              {messages.filter(m => m.type === 'ai').length > 0 && (
+                <>{messages.filter(m => m.type === 'ai').slice(-1)[0].content}</>
+              )}
+              {isTyping && (
+                <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>
+              )}
+            </div>
+            
+            <div className="flex flex-row gap-4 mt-2">
               <Button
                 variant="outline"
                 style={{
                   borderRadius: 8,
-                  border: '1px solid #7A70FF',
-                  background: '#FFF',
-                  color: '#7A70FF',
+                  border: '1px solid var(--Gray-300, #D5D7DA)',
+                  background: 'var(--White, #FFF)',
                   boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
                   padding: '8px 16px',
                   minWidth: 40,
-                  display: 'flex',
-                  alignItems: 'center',
                 }}
-                onClick={() => setShowResponse(false)}>
-                <ArrowLeft size={16} className="mr-2" />Back to homepage
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+              >
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M12 4v16m8-8H4" />
+                </svg>
               </Button>
-            </div>
-            <div className="w-full max-w-[600px] flex flex-col items-center flex-grow justify-center" style={{ paddingBottom: 32 }}>
-              {/* AI Response Bubble */}
-              <div
-                className="w-full mb-8"
+              <Button
+                variant="outline"
                 style={{
-                  borderRadius: 20,
-                  border: '1px solid var(--Gray-200, #E9EAEB)',
-                  background: '#F2F1EF',
+                  borderRadius: 8,
+                  border: '1px solid var(--Gray-300, #D5D7DA)',
+                  background: 'var(--White, #FFF)',
                   boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                  padding: '24px',
-                  fontSize: 18,
-                  color: '#222',
-                  fontWeight: 500,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  minHeight: 64,
+                  padding: '8px 16px',
+                  minWidth: 40,
+                }}
+                onClick={() => {/* like action */}}
+              >
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41 0.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                </svg>
+              </Button>
+              <Button
+                variant="outline"
+                style={{
+                  borderRadius: 8,
+                  border: '1px solid var(--Gray-300, #D5D7DA)',
+                  background: 'var(--White, #FFF)',
+                  boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+                  padding: '8px 16px',
+                  minWidth: 40,
+                }}
+                onClick={() => {/* dislike action */}}
+              >
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M12 2.65l1.45 1.32C18.6 8.64 22 11.72 22 15.5c0 3.08-2.42 5.5-5.5 5.5-1.74 0-3.41-0.81-4.5-2.09C10.91 20.19 9.24 21 7.5 21 4.42 21 2 18.58 2 15.5c0-3.78 3.4-6.86 8.55-11.54L12 2.65z" />
+                </svg>
+              </Button>
+              <Button
+                variant="outline"
+                style={{
+                  borderRadius: 8,
+                  border: '1px solid var(--Gray-300, #D5D7DA)',
+                  background: 'var(--White, #FFF)',
+                  boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+                  padding: '8px 16px',
+                  minWidth: 40,
+                }}
+              onClick={() => {
+                const aiMessages = messages.filter(m => m.type === 'ai');
+                if (aiMessages.length > 0) {
+                  navigator.clipboard.writeText(aiMessages[aiMessages.length - 1].content);
+                }
+              }}
+            >
+              <Copy size={18} />
+            </Button>
+          </div>
+          
+          <Button
+            variant="outline"
+            style={{
+              marginTop: 32,
+              borderRadius: 8,
+              border: '1px solid var(--Gray-300, #D5D7DA)',
+              background: 'var(--White, #FFF)',
+              boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+              padding: '8px 16px',
+              minWidth: 40,
+            }}
+            onClick={() => setShowResponse(false)}
+          >
+            <ArrowLeft size={16} className="mr-2" />Back to homepage
+          </Button>
+        </div>
+      </div>
+    ) : (
+      <div
+        className="flex flex-col items-center"
+        style={{
+          display: 'flex',
+          height: '688px',
+          paddingTop: '115px',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '32px',
+          flexShrink: 0,
+          alignSelf: 'stretch',
+          background: '#fff',
+        }}
+      >
+        <div className="text-center max-w-[600px]">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}</h1>
+          <p className="text-gray-600">How can I help you today?</p>
+        </div>
+
+        <div className="w-full max-w-[600px] relative mb-2">
+          <Input
+            type="text"
+            placeholder="Ask anything..."
+            className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white break-words overflow-auto"
+            style={{
+              borderRadius: '10px',
+              border: '1px solid var(--Gray-200, #E9EAEB)',
+              background: '#FFF',
+              boxShadow: 'none',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'break-word',
+            }}
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (inputValue.trim()) handleSubmit();
+              }
+            }}
+            disabled={isSubmitting}
+          />
+          <Button
+            variant="outline"
+            style={{
+              borderRadius: 8,
+              border: '1px solid #7A70FF',
+              background: '#7A70FF',
+              color: '#FFF',
+              boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+              position: 'absolute',
+              right: 16,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              height: 58,
+              width: 58,
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onClick={isSubmitting ? handleStop : handleSubmit}
+            disabled={!inputValue.trim() && !isSubmitting}
+          >
+            {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
+          </Button>
+        </div>
+        {/* Chips under chatbox */}
+        <div className="flex flex-row gap-4 mb-6">
+          {dynamicChips.map((label) => (
+            <button
+              key={label}
+              style={{
+                borderRadius: 20,
+                border: '1px solid #7A70FF',
+                background: '#FFF',
+                padding: '8px 16px',
+                fontSize: 14,
+                fontWeight: 500,
+                color: '#7A70FF',
+              }}
+              onClick={() => setInputValue(label) /* Placeholder action */}
+            >{label}</button>
+          ))}
+        </div>
+        {/* AI Response Section: Only show if showResponse is true */}
+        {showResponse && (
+          <div
+            className="flex flex-col w-full min-h-screen"
+            style={{
+              padding: '20px',
+              background: '#fff',
+              justifyContent: 'space-between', // Pushes chat input to bottom
+            }}
+          >
+            <div className="w-full max-w-[700px] mx-auto flex flex-col flex-grow">
+              {/* User's last message bubble */}
+              {messages.filter(m => m.type === 'user').slice(-1).map((msg, idx) => (
+                <div
+                  key={`user-msg-${idx}`}
+                  className="p-3 rounded-lg mb-4 max-w-max ml-auto"
+                  style={{
+                    borderRadius: '20px',
+                    border: '1px solid var(--Gray-200, #E9EAEB)',
+                    background: '#F2F1EF',
+                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+                    padding: '10px 15px',
+                    alignSelf: 'flex-end',
+                    color: '#333',
+                    fontSize: '16px',
+                  }}
+                >
+                  {msg.content}
+                </div>
+              ))}
+
+              {/* AI Response (Plain Text) */}
+              <div 
+                className="w-full text-left mb-4" 
+                style={{ 
+                  fontSize: 16, 
+                  color: '#222', 
+                  whiteSpace: 'pre-wrap', 
+                  lineHeight: '1.6' 
                 }}
               >
-                {messages.filter(m => m.type === 'ai').length > 0 && (
-                  <span>{messages.filter(m => m.type === 'ai').slice(-1)[0].content}</span>
-                )}
+                {messages.filter(m => m.type === 'ai').slice(-1)[0]?.content}
                 {isTyping && (
                   <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>
                 )}
               </div>
-              {/* Chatbox below the AI response bubble */}
-              <div className="w-full relative mb-2">
+
+              {/* Action Buttons (Refresh, ThumbsUp, ThumbsDown, Copy) */}
+              <div className="flex flex-row items-center mt-1 mb-5" style={{ gap: '21px' }}>
+                <Button
+                  variant="outline"
+                  className="p-2 h-auto"
+                  style={{ borderRadius: 8, border: '1px solid var(--Gray-300, #D5D7DA)', background: 'var(--White, #FFF)', boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'}}
+                  onClick={() => handleSubmit()} // Assuming handleSubmit can be used for refresh if inputValue is empty or a specific state is set
+                  aria-label="Refresh"
+                >
+                  <RefreshCw size={18} />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="p-2 h-auto"
+                  style={{ borderRadius: 8, border: '1px solid var(--Gray-300, #D5D7DA)', background: 'var(--White, #FFF)', boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'}}
+                  onClick={() => {/* like action */}}
+                  aria-label="Like"
+                >
+                  <ThumbsUp size={18} />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="p-2 h-auto"
+                  style={{ borderRadius: 8, border: '1px solid var(--Gray-300, #D5D7DA)', background: 'var(--White, #FFF)', boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'}}
+                  onClick={() => {/* dislike action */}}
+                  aria-label="Dislike"
+                >
+                  <ThumbsDown size={18} />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="p-2 h-auto"
+                  style={{ borderRadius: 8, border: '1px solid var(--Gray-300, #D5D7DA)', background: 'var(--White, #FFF)', boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)'}}
+                  onClick={() => {
+                    const aiMsg = messages.filter(m => m.type === 'ai').slice(-1)[0];
+                    if (aiMsg) navigator.clipboard.writeText(aiMsg.content);
+                  }}
+                  aria-label="Copy"
+                >
+                  <Copy size={18} />
+                </Button>
+              </div>
+
+              {/* Dynamic Chips */}
+              <div className="flex flex-row flex-wrap mb-6" style={{ gap: '16px' }}>
+                {dynamicChips.map((label) => (
+                  <button
+                    key={label}
+                    style={{
+                      borderRadius: 20,
+                      border: '1px solid #7A70FF',
+                      background: '#FFF',
+                      padding: '8px 16px',
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: '#7A70FF',
+                    }}
+                    onClick={() => setInputValue(label) /* Placeholder action */}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Chat Input at the bottom */}
+            <div className="w-full max-w-[700px] mx-auto mt-auto pt-4">
+              <div className="w-full relative">
                 <Input
                   type="text"
                   placeholder="Ask anything..."
@@ -323,8 +626,9 @@ export default function DashboardPage() {
                   variant="outline"
                   style={{
                     borderRadius: 8,
-                    border: '1px solid var(--Gray-300, #D5D7DA)',
-                    background: '#FFF',
+                    border: '1px solid #7A70FF',
+                    background: '#7A70FF',
+                    color: '#FFF',
                     boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
                     position: 'absolute',
                     right: 16,
@@ -332,7 +636,6 @@ export default function DashboardPage() {
                     transform: 'translateY(-50%)',
                     height: 58,
                     width: 58,
-                    color: '#222',
                     padding: 0,
                     display: 'flex',
                     alignItems: 'center',
@@ -344,113 +647,11 @@ export default function DashboardPage() {
                   {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
                 </Button>
               </div>
-              {/* Chips under chatbox */}
-              <div className="flex flex-row gap-3 mb-6">
-                {['Create Invoice', 'View Summary', 'Send Reminder'].map((label) => (
-                  <button
-                    key={label}
-                    style={{
-                      borderRadius: 20,
-                      border: '1px solid var(--Gray-200, #E9EAEB)',
-                      background: '#FFF',
-                      padding: '8px 20px',
-                      fontSize: 14,
-                      fontWeight: 500,
-                      color: '#333',
-                    }}
-                  >{label}</button>
-                ))}
-              </div>
-              {/* Action buttons below chatbox */}
-              <div className="flex flex-row mt-2" style={{ gap: 21 }}>
-                <Button
-                  variant="outline"
-                  style={{
-                    borderRadius: 8,
-                    border: '1px solid var(--Gray-300, #D5D7DA)',
-                    background: 'var(--White, #FFF)',
-                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                    padding: '8px 16px',
-                    minWidth: 40,
-                  }}
-                  onClick={handleSubmit}
-                  disabled={isSubmitting}
-                  aria-label="Refresh"
-                >
-                  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M12 4v16m8-8H4" />
-                  </svg>
-                </Button>
-                <Button
-                  variant="outline"
-                  style={{
-                    borderRadius: 8,
-                    border: '1px solid var(--Gray-300, #D5D7DA)',
-                    background: 'var(--White, #FFF)',
-                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                    padding: '8px 16px',
-                    minWidth: 40,
-                  }}
-                  onClick={() => {/* like action */}}
-                  aria-label="Like"
-                >
-                  {/* Thumbs up icon */}
-                  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M7 10V5a5 5 0 0 1 10 0v5" />
-                    <path d="M19 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4" />
-                    <path d="M12 19V9" />
-                  </svg>
-                </Button>
-                <Button
-                  variant="outline"
-                  style={{
-                    borderRadius: 8,
-                    border: '1px solid var(--Gray-300, #D5D7DA)',
-                    background: 'var(--White, #FFF)',
-                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                    padding: '8px 16px',
-                    minWidth: 40,
-                  }}
-                  onClick={() => {/* dislike action */}}
-                  aria-label="Dislike"
-                >
-                  {/* Thumbs down icon */}
-                  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M17 14v5a5 5 0 0 1-10 0v-5" />
-                    <path d="M5 9V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4" />
-                    <path d="M12 5v10" />
-                  </svg>
-                </Button>
-                <Button
-                  variant="outline"
-                  style={{
-                    borderRadius: 8,
-                    border: '1px solid var(--Gray-300, #D5D7DA)',
-                    background: 'var(--White, #FFF)',
-                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                    padding: '8px 16px',
-                    minWidth: 40,
-                  }}
-                  onClick={() => {
-                    const aiMessages = messages.filter(m => m.type === 'ai');
-                    if (aiMessages.length > 0) {
-                      navigator.clipboard.writeText(aiMessages[aiMessages.length - 1].content);
-                    }
-                  }}
-                  aria-label="Copy"
-                >
-                  <Copy size={18} />
-                </Button>
-              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center flex-grow">
-            <h1 className="text-3xl font-bold mb-4">Welcome to Albus</h1>
-            <p className="text-lg text-gray-600 mb-8">How can I help you today?</p>
           </div>
         )}
       </div>
+    )}
     </div>
   );
 }
