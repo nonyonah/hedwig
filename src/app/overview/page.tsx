@@ -1,11 +1,13 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
-import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
+import { usePrivy } from '@privy-io/react-auth';
+import { useState } from 'react';
+import Image from 'next/image';
 import AIResponse from '@/components/ai-response';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,57 +20,15 @@ export default function DashboardPage() {
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [messages, setMessages] = useState<Array<{type: 'user' | 'ai', content: string}>>([]);
+  const [walletBalance, setWalletBalance] = useState<string | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
 
-  // You can set your app's primary color here or import from theme
   const appPrimaryColor = '#7A70FF';
-
-  // Handler for sending a message
-  const handleSend = async (msg: string) => {
-    setIsSubmitting(true);
-    setMessages(prev => [...prev, { type: 'user', content: msg }]);
-    setInputValue('');
-    // Simulate AI response for now
-    setTimeout(() => {
-      setMessages(prev => [...prev, { type: 'ai', content: `Echo: ${msg}` }]);
-      setIsSubmitting(false);
-    }, 1200);
-  };
-
-  // Handler for stopping AI response
-  const handleStop = () => {
-    setIsSubmitting(false);
-  };
 
   const { ready, authenticated, user, logout, login } = usePrivy();
   const router = useRouter();
-  const [_greeting, setGreeting] = useState('Good day');
 
-  type Invoice = { id: string; description: string; status: string; };
-
-  // New state for wallet, clients, invoice, chain, and agent message
-  const [walletBalance, setWalletBalance] = useState<string | null>(null);
-
-  // Removed clientsLoading state
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [balanceError, setBalanceError] = useState<string | null>(null);
-  // Removed selectedChain and setShowChainModal state variables
-  const [agentMessage] = useState<string | null>(null);
-  const [dynamicChips] = useState<string[]>(['Create Invoice', 'View Summary', 'Send Reminder']);
-
-  useEffect(() => {
-    // Get time-based greeting
-    const getGreeting = () => {
-      const hour = new Date().getHours();
-      if (hour < 12) return 'Good morning';
-      if (hour < 18) return 'Good afternoon';
-      return 'Good evening';
-    };
-    setGreeting(getGreeting());
-  }, []);
-
-  // Removed fetchClients useEffect
-
-  // Get user's first name or part of wallet address
   const getDisplayName = () => {
     if (user?.wallet) {
       const address = user.wallet.address;
@@ -108,9 +68,7 @@ export default function DashboardPage() {
     return `linear-gradient(to right, ${color1}, ${color2})`;
   };
 
-  const _handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
-  };
+
 
   // Modify the handleSubmit function
   const handleSubmit = async () => {
@@ -249,10 +207,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </header>
-
-      {agentMessage && (
-        <div className="text-center text-sm text-purple-700 my-2">{agentMessage}</div>
-      )}
 
       <div className="flex flex-col justify-end items-center flex-grow w-full" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <AIResponse
