@@ -27,7 +27,7 @@ interface Invoice {
 export default function InvoicePage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const id = searchParams.get('id') || pathname.split('/').pop() || '';
+  const id = searchParams?.get('id') || pathname.split('/').pop() || '';
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
