@@ -483,7 +483,7 @@ export default function DashboardPage() {
         {/* AI Response Section: Only show if showResponse is true */}
         {showResponse && (
           <div
-            className="flex flex-col justify-end items-center flex-grow w-full"
+            className="flex flex-col flex-grow w-full"
             style={{
               display: 'flex',
               padding: '128px 403px 64px 404px',
@@ -496,8 +496,43 @@ export default function DashboardPage() {
               background: '#fff',
             }}
           >
+            {/* Back to homepage button at the top */}
+            <div className="w-full flex justify-start mb-8">
+              <Button
+                variant="outline"
+                style={{
+                  borderRadius: 8,
+                  border: '1px solid var(--Gray-300, #D5D7DA)',
+                  background: 'var(--White, #FFF)',
+                  boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+                  padding: '8px 16px',
+                  minWidth: 40,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                onClick={() => setShowResponse(false)}
+              >
+                <ArrowLeft size={16} className="mr-2" />Back to homepage
+              </Button>
+            </div>
             <div className="w-full max-w-[600px] flex flex-col items-center">
-              <div className="w-full text-left mb-8" style={{ fontSize: 18, color: '#222', fontWeight: 500, whiteSpace: 'pre-wrap', background: 'none', border: 'none', boxShadow: 'none', padding: 0 }}>
+              {/* AI Response Bubble */}
+              <div
+                className="w-full mb-8"
+                style={{
+                  borderRadius: 20,
+                  border: '1px solid var(--Gray-200, #E9EAEB)',
+                  background: '#F2F1EF',
+                  boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+                  padding: '24px',
+                  fontSize: 18,
+                  color: '#222',
+                  fontWeight: 500,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  minHeight: 64,
+                }}
+              >
                 {messages.filter(m => m.type === 'ai').length > 0 && (
                   <span>{messages.filter(m => m.type === 'ai').slice(-1)[0].content}</span>
                 )}
@@ -505,7 +540,57 @@ export default function DashboardPage() {
                   <span className="inline-block w-2 h-4 bg-gray-500 ml-1 animate-pulse">|</span>
                 )}
               </div>
-              <div className="flex flex-row gap-4 mt-2">
+              {/* Chatbox below the AI response bubble */}
+              <div className="w-full relative mb-6">
+                <Input
+                  type="text"
+                  placeholder="Ask anything..."
+                  className="w-full py-4 px-6 rounded-lg border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent h-[74px] transition-all duration-300 bg-white break-words overflow-auto"
+                  style={{
+                    borderRadius: '10px',
+                    border: '1px solid var(--Gray-200, #E9EAEB)',
+                    background: '#FFF',
+                    boxShadow: 'none',
+                    whiteSpace: 'pre-wrap',
+                    overflowWrap: 'break-word',
+                  }}
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (inputValue.trim()) handleSubmit();
+                    }
+                  }}
+                  disabled={isSubmitting}
+                />
+                <Button
+                  variant="outline"
+                  style={{
+                    borderRadius: 8,
+                    border: '1px solid var(--Gray-300, #D5D7DA)',
+                    background: '#FFF',
+                    boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
+                    position: 'absolute',
+                    right: 16,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    height: 58,
+                    width: 58,
+                    color: '#222',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onClick={isSubmitting ? handleStop : handleSubmit}
+                  disabled={!inputValue.trim() && !isSubmitting}
+                >
+                  {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
+                </Button>
+              </div>
+              {/* Action buttons below chatbox */}
+              <div className="flex flex-row mt-2" style={{ gap: 21 }}>
                 <Button
                   variant="outline"
                   style={{
@@ -518,6 +603,7 @@ export default function DashboardPage() {
                   }}
                   onClick={handleSubmit}
                   disabled={isSubmitting}
+                  aria-label="Refresh"
                 >
                   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path d="M12 4v16m8-8H4" />
@@ -534,9 +620,13 @@ export default function DashboardPage() {
                     minWidth: 40,
                   }}
                   onClick={() => {/* like action */}}
+                  aria-label="Like"
                 >
+                  {/* Thumbs up icon */}
                   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41 0.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                    <path d="M7 10V5a5 5 0 0 1 10 0v5" />
+                    <path d="M19 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4" />
+                    <path d="M12 19V9" />
                   </svg>
                 </Button>
                 <Button
@@ -550,9 +640,13 @@ export default function DashboardPage() {
                     minWidth: 40,
                   }}
                   onClick={() => {/* dislike action */}}
+                  aria-label="Dislike"
                 >
+                  {/* Thumbs down icon */}
                   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M12 2.65l1.45 1.32C18.6 8.64 22 11.72 22 15.5c0 3.08-2.42 5.5-5.5 5.5-1.74 0-3.41-0.81-4.5-2.09C10.91 20.19 9.24 21 7.5 21 4.42 21 2 18.58 2 15.5c0-3.78 3.4-6.86 8.55-11.54L12 2.65z" />
+                    <path d="M17 14v5a5 5 0 0 1-10 0v-5" />
+                    <path d="M5 9V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4" />
+                    <path d="M12 5v10" />
                   </svg>
                 </Button>
                 <Button
@@ -571,25 +665,65 @@ export default function DashboardPage() {
                       navigator.clipboard.writeText(aiMessages[aiMessages.length - 1].content);
                     }
                   }}
+                  aria-label="Copy"
                 >
                   <Copy size={18} />
                 </Button>
               </div>
-              <Button
-                variant="outline"
-                style={{
-                  marginTop: 32,
-                  borderRadius: 8,
-                  border: '1px solid var(--Gray-300, #D5D7DA)',
-                  background: 'var(--White, #FFF)',
-                  boxShadow: '0px 1px 2px 0px rgba(10, 13, 18, 0.05)',
-                  padding: '8px 16px',
-                  minWidth: 40,
-                }}
-                onClick={() => setShowResponse(false)}
-              >
-                <ArrowLeft size={16} className="mr-2" />Back to homepage
-              </Button>
+              {/* Chips below the action buttons */}
+              <div className="w-full mt-8 flex flex-wrap gap-3 justify-center">
+                <button
+                  style={{
+                    borderRadius: '20px',
+                    border: '1px solid var(--Gray-200, #E9EAEB)',
+                    background: 'var(--Shade-White, #FFF)',
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#333',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#F8F8F8'}
+                  onMouseOut={(e) => e.currentTarget.style.background = '#FFF'}
+                >
+                  Create Invoice
+                </button>
+                <button
+                  style={{
+                    borderRadius: '20px',
+                    border: '1px solid var(--Gray-200, #E9EAEB)',
+                    background: 'var(--Shade-White, #FFF)',
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#333',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#F8F8F8'}
+                  onMouseOut={(e) => e.currentTarget.style.background = '#FFF'}
+                >
+                  View Summary
+                </button>
+                <button
+                  style={{
+                    borderRadius: '20px',
+                    border: '1px solid var(--Gray-200, #E9EAEB)',
+                    background: 'var(--Shade-White, #FFF)',
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#333',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#F8F8F8'}
+                  onMouseOut={(e) => e.currentTarget.style.background = '#FFF'}
+                >
+                  Send Reminder
+                </button>
+              </div>
             </div>
           </div>
         )}
