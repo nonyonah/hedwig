@@ -419,20 +419,8 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">{greeting}</h1>
           <p className="text-gray-600">How can I help you today?</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            style={{
-              borderRadius: 20,
-              border: '1px solid var(--Gray-200, #E9EAEB)',
-              background: 'var(--Shade-White, #FFF)',
-              padding: '8px 20px',
-              fontSize: 14,
-              fontWeight: 500,
-              color: '#333',
-            }}
-          >Example Chip</button>
-        </div>
-        <div className="w-full max-w-[600px] relative">
+
+        <div className="w-full max-w-[600px] relative mb-2">
           <Input
             type="text"
             placeholder="Ask anything..."
@@ -479,6 +467,23 @@ export default function DashboardPage() {
           >
             {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
           </Button>
+        </div>
+        {/* Chips under chatbox */}
+        <div className="flex flex-row gap-3 mb-6">
+          {['Create Invoice', 'View Summary', 'Send Reminder'].map((label) => (
+            <button
+              key={label}
+              style={{
+                borderRadius: 20,
+                border: '1px solid var(--Gray-200, #E9EAEB)',
+                background: '#FFF',
+                padding: '8px 20px',
+                fontSize: 14,
+                fontWeight: 500,
+                color: '#333',
+              }}
+            >{label}</button>
+          ))}
         </div>
         {/* AI Response Section: Only show if showResponse is true */}
         {showResponse && (
@@ -541,7 +546,7 @@ export default function DashboardPage() {
                 )}
               </div>
               {/* Chatbox below the AI response bubble */}
-              <div className="w-full relative mb-6">
+              <div className="w-full relative mb-2">
                 <Input
                   type="text"
                   placeholder="Ask anything..."
@@ -588,6 +593,23 @@ export default function DashboardPage() {
                 >
                   {isSubmitting ? <CircleStop size={24} /> : <Send size={24} />}
                 </Button>
+              </div>
+              {/* Chips under chatbox */}
+              <div className="flex flex-row gap-3 mb-6">
+                {['Create Invoice', 'View Summary', 'Send Reminder'].map((label) => (
+                  <button
+                    key={label}
+                    style={{
+                      borderRadius: 20,
+                      border: '1px solid var(--Gray-200, #E9EAEB)',
+                      background: '#FFF',
+                      padding: '8px 20px',
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: '#333',
+                    }}
+                  >{label}</button>
+                ))}
               </div>
               {/* Action buttons below chatbox */}
               <div className="flex flex-row mt-2" style={{ gap: 21 }}>
@@ -669,60 +691,6 @@ export default function DashboardPage() {
                 >
                   <Copy size={18} />
                 </Button>
-              </div>
-              {/* Chips below the action buttons */}
-              <div className="w-full mt-8 flex flex-wrap gap-3 justify-center">
-                <button
-                  style={{
-                    borderRadius: '20px',
-                    border: '1px solid var(--Gray-200, #E9EAEB)',
-                    background: 'var(--Shade-White, #FFF)',
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: '#333',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease-in-out',
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.background = '#F8F8F8'}
-                  onMouseOut={(e) => e.currentTarget.style.background = '#FFF'}
-                >
-                  Create Invoice
-                </button>
-                <button
-                  style={{
-                    borderRadius: '20px',
-                    border: '1px solid var(--Gray-200, #E9EAEB)',
-                    background: 'var(--Shade-White, #FFF)',
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: '#333',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease-in-out',
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.background = '#F8F8F8'}
-                  onMouseOut={(e) => e.currentTarget.style.background = '#FFF'}
-                >
-                  View Summary
-                </button>
-                <button
-                  style={{
-                    borderRadius: '20px',
-                    border: '1px solid var(--Gray-200, #E9EAEB)',
-                    background: 'var(--Shade-White, #FFF)',
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    fontWeight: 500,
-                    color: '#333',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease-in-out',
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.background = '#F8F8F8'}
-                  onMouseOut={(e) => e.currentTarget.style.background = '#FFF'}
-                >
-                  Send Reminder
-                </button>
               </div>
             </div>
           </div>
