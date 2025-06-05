@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Copy } from 'lucide-react';
 
@@ -17,18 +17,17 @@ interface Invoice {
   price: number;
   amount: number;
   is_split_payment: boolean;
-  split_details?: any;
-  milestones?: any;
+  split_details?: Record<string, unknown>;
+  milestones?: Record<string, unknown>;
   wallet_address: string;
   blockchain: string;
   status: string;
 }
 
 export default function InvoicePage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
-const id = searchParams.get('id') || pathname.split('/').pop() || '';
+  const id = searchParams.get('id') || pathname.split('/').pop() || '';
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -37,7 +36,7 @@ const id = searchParams.get('id') || pathname.split('/').pop() || '';
     if (!id) return;
     fetch(`/api/invoice?id=${id}`)
       .then(res => res.json())
-      .then(data => {
+      .then((data: { invoices?: Invoice[] }) => {
         setInvoice(data.invoices?.[0] || null);
         setLoading(false);
       });
