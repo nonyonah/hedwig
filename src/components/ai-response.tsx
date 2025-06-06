@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
+import { useChat } from 'ai/react';
 
 interface Message {
   type: 'user' | 'ai';
@@ -13,6 +14,7 @@ interface AIResponseProps {
   inputValue: string;
   setInputValue: (val: string) => void;
   appPrimaryColor: string;
+  walletAddress?: string;
 }
 
 export default function AIResponse({
@@ -23,11 +25,36 @@ export default function AIResponse({
   inputValue,
   setInputValue,
   appPrimaryColor,
+  walletAddress,
 }: AIResponseProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Use Vercel AI SDK's useChat hook
+  const { messages: aiMessages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
+    api: '/api/chat',
+    body: {
+      walletAddress,
+    },
+    onFinish: () => {
+      // Scroll to bottom when message is complete
+      scrollToBottom();
+    },
+  });
+
+  // Scroll to bottom of messages
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, aiMessages]);
+
   // SVGs
   const sendIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 33 32" fill="none">
-      <path d="M16.5 3C13.9288 3 11.4154 3.76244 9.27759 5.1909C7.13975 6.61935 5.47351 8.64968 4.48957 11.0251C3.50563 13.4006 3.24819 16.0144 3.7498 18.5362C4.25141 21.0579 5.48953 23.3743 7.30762 25.1924C9.1257 27.0105 11.4421 28.2486 13.9638 28.7502C16.4856 29.2518 19.0995 28.9944 21.4749 28.0104C23.8503 27.0265 25.8807 25.3603 27.3091 23.2224C28.7376 21.0846 29.5 18.5712 29.5 16C29.4964 12.5533 28.1256 9.24882 25.6884 6.81163C23.2512 4.37445 19.9467 3.00364 16.5 3ZM21.2075 15.7075C21.1146 15.8005 21.0043 15.8742 20.8829 15.9246C20.7615 15.9749 20.6314 16.0008 20.5 16.0008C20.3686 16.0008 20.2385 15.9749 20.1171 15.9246C19.9957 15.8742 19.8854 15.8005 19.7925 15.7075L17.5 13.4137V21C17.5 21.2652 17.3946 21.5196 17.2071 21.7071C17.0196 21.8946 16.7652 22 16.5 22C16.2348 22 15.9804 21.8946 15.7929 21.7071C15.6054 21.5196 15.5 21.2652 15.5 21V13.4137L13.2075 15.7075C13.0199 15.8951 12.7654 16.0006 12.5 16.0006C12.2346 16.0006 11.9801 15.8951 11.7925 15.7075C11.6049 15.5199 11.4994 15.2654 11.4994 15C11.4994 14.7346 11.6049 14.4801 11.7925 14.2925L15.7925 10.2925C15.8854 10.1995 15.9957 10.1258 16.1171 10.0754C16.2385 10.0251 16.3686 9.99921 16.5 9.99921C16.6314 9.99921 16.7615 10.0251 16.8829 10.0754C17.0043 10.1258 17.1146 10.1995 17.2075 10.2925L21.2075 14.2925C21.3005 14.3854 21.3742 14.4957 21.4246 14.6171C21.4749 14.7385 21.5008 14.8686 21.5008 15C21.5008 15.1314 21.4749 15.2615 21.4246 15.3829C21.3742 15.5043 21.3005 15.6146 21.2075 15.7075Z" fill={inputValue.trim() ? appPrimaryColor : 'gray'} fillOpacity="0.5"/>
+      <path d="M16.5 3C13.9288 3 11.4154 3.76244 9.27759 5.1909C7.13975 6.61935 5.47351 8.64968 4.48957 11.0251C3.50563 13.4006 3.24819 16.0144 3.7498 18.5362C4.25141 21.0579 5.48953 23.3743 7.30762 25.1924C9.1257 27.0105 11.4421 28.2486 13.9638 28.7502C16.4856 29.2518 19.0995 28.9944 21.4749 28.0104C23.8503 27.0265 25.8807 25.3603 27.3091 23.2224C28.7376 21.0846 29.5 18.5712 29.5 16C29.4964 12.5533 28.1256 9.24882 25.6884 6.81163C23.2512 4.37445 19.9467 3.00364 16.5 3ZM21.2075 15.7075C21.1146 15.8005 21.0043 15.8742 20.8829 15.9246C20.7615 15.9749 20.6314 16.0008 20.5 16.0008C20.3686 16.0008 20.2385 15.9749 20.1171 15.9246C19.9957 15.8742 19.8854 15.8005 19.7925 15.7075L17.5 13.4137V21C17.5 21.2652 17.3946 21.5196 17.2071 21.7071C17.0196 21.8946 16.7652 22 16.5 22C16.2348 22 15.9804 21.8946 15.7929 21.7071C15.6054 21.5196 15.5 21.2652 15.5 21V13.4137L13.2075 15.7075C13.0199 15.8951 12.7654 16.0006 12.5 16.0006C12.2346 16.0006 11.9801 15.8951 11.7925 15.7075C11.6049 15.5199 11.4994 15.2654 11.4994 15C11.4994 14.7346 11.6049 14.4801 11.7925 14.2925L15.7925 10.2925C15.8854 10.1995 15.9957 10.1258 16.1171 10.0754C16.2385 10.0251 16.3686 9.99921 16.5 9.99921C16.6314 9.99921 16.7615 10.0251 16.8829 10.0754C17.0043 10.1258 17.1146 10.1995 17.2075 10.2925L21.2075 14.2925C21.3005 14.3854 21.3742 14.4957 21.4246 14.6171C21.4749 14.7385 21.5008 14.8686 21.5008 15C21.5008 15.1314 21.4749 15.2615 21.4246 15.3829C21.3742 15.5043 21.3005 15.6146 21.2075 15.7075Z" fill={input.trim() ? appPrimaryColor : 'gray'} fillOpacity="0.5"/>
     </svg>
   );
 
@@ -41,46 +68,48 @@ export default function AIResponse({
     <div className="flex flex-col h-full">
       {/* Chat bubbles */}
       <div className="flex flex-col flex-grow space-y-4 p-4 overflow-y-auto">
-        {messages.map((msg, idx) => (
+        {aiMessages.map((msg, idx) => (
           <div
             key={idx}
             className={`max-w-[70%] px-4 py-2 rounded-xl text-base ${
-              msg.type === 'user'
+              msg.role === 'user'
                 ? 'bg-primary text-white self-end ml-auto' // User bubble
                 : 'bg-gray-100 text-gray-900 self-start mr-auto' // AI bubble
             }`}
-            style={msg.type === 'user' ? { background: appPrimaryColor, color: 'white' } : {}}
+            style={msg.role === 'user' ? { background: appPrimaryColor, color: 'white' } : {}}
           >
             {msg.content}
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
+      
       {/* Chatbox */}
       <form
         className="flex items-center w-full border-t border-gray-200 px-4 py-2 bg-white"
         style={{ minHeight: 64 }}
-        onSubmit={e => {
+        onSubmit={(e) => {
           e.preventDefault();
-          if (inputValue.trim()) onSend(inputValue);
+          handleSubmit(e);
         }}
       >
         <input
           type="text"
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
+          value={input}
+          onChange={handleInputChange}
           className="flex-grow px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-primary focus:border-transparent bg-white outline-none"
-          placeholder="Ask anything..."
-          disabled={isSubmitting}
+          placeholder="Ask Albus anything about crypto..."
+          disabled={isLoading}
           style={{ fontSize: 16 }}
         />
         <button
           type="button"
-          onClick={isSubmitting ? onStop : () => inputValue.trim() && onSend(inputValue)}
-          disabled={!inputValue.trim() && !isSubmitting}
+          onClick={isLoading ? stop : () => input.trim() && handleSubmit(new Event('submit') as any)}
+          disabled={!input.trim() && !isLoading}
           className="ml-2 flex items-center justify-center rounded-full"
           style={{ width: 32, height: 32, background: 'transparent', border: 'none', padding: 0 }}
         >
-          {isSubmitting ? stopIcon : sendIcon}
+          {isLoading ? stopIcon : sendIcon}
         </button>
       </form>
     </div>

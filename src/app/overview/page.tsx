@@ -15,9 +15,6 @@ import {
 import { Copy, LogOut, Wallet } from 'lucide-react';
 
 export default function DashboardPage() {
-  const [inputValue, setInputValue] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [messages, setMessages] = useState<Array<{type: 'user' | 'ai', content: string}>>([]);
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -66,40 +63,6 @@ export default function DashboardPage() {
     return `linear-gradient(to right, ${color1}, ${color2})`;
   };
 
-
-
-  // Modify the handleSubmit function
-  const handleSubmit = async () => {
-    if (inputValue.trim()) {
-      setIsSubmitting(true);
-      // Add user message to the chat
-      const userMessage = inputValue;
-      setMessages(prev => [...prev, {type: 'user', content: userMessage}]);
-      // Clear input after sending
-      setInputValue('');
-      
-      try {
-        // Make API call to get AI response
-        const response = await fetch('/api/gemini-prompt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: userMessage })
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to get AI response');
-        }
-        const data = await response.json();
-        const aiResponse = data.result || "Sorry, I couldn't generate a response.";
-        setMessages(prev => [...prev, {type: 'ai', content: aiResponse}]);
-      } catch (error) {
-        console.error('Error getting AI response:', error);
-        setMessages(prev => [...prev, {type: 'ai', content: "Sorry, there was an error processing your request."}]);
-        setIsSubmitting(false);
-      }
-    }
-  };
-
   const handleCheckBalance = async () => {
     setBalanceLoading(true);
     setBalanceError(null);
@@ -112,16 +75,6 @@ export default function DashboardPage() {
       const res = await fetch(`/api/wallet-balance?address=${user.wallet.address}`);
       const { balance } = await res.json();
       setWalletBalance(balance);
-      const analysisRes = await fetch('/api/gemini-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `I have ${balance}. What can you tell me about my balance?`,
-          context: 'You are an AI assistant helping to analyze wallet balances. Provide insights on the following wallet balance.'
-        })
-      });
-      const { result } = await analysisRes.json();
-      setMessages(prev => [...prev, {type: 'ai', content: result}]);
     } catch (error) {
       console.error('Error checking balance:', error);
       setBalanceError('Failed to fetch balance');
@@ -151,7 +104,7 @@ export default function DashboardPage() {
   }
 
   function handleStop(): void {
-    throw new Error('Function not implemented.');
+    // This function is handled by the AI component now
   }
 
   return (
@@ -212,13 +165,14 @@ export default function DashboardPage() {
 
       <div className="flex flex-col justify-end items-center flex-grow w-full" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <AIResponse
-          messages={messages}
-          isSubmitting={isSubmitting}
-          onSend={handleSubmit}
+          messages={[]}
+          isSubmitting={false}
+          onSend={() => {}}
           onStop={handleStop}
-          inputValue={inputValue}
-          setInputValue={setInputValue}
+          inputValue=""
+          setInputValue={() => {}}
           appPrimaryColor={appPrimaryColor}
+          walletAddress={user?.wallet?.address}
         />
       </div>
     </div>
