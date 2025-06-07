@@ -8,22 +8,12 @@ interface Message {
 
 interface AIResponseProps {
   messages: Message[];
-  isSubmitting: boolean;
-  onSend: (msg: string) => void;
-  onStop: () => void;
-  inputValue: string;
-  setInputValue: (val: string) => void;
   appPrimaryColor: string;
   walletAddress?: string;
 }
 
 export default function AIResponse({
   messages,
-  isSubmitting,
-  onSend,
-  onStop,
-  inputValue,
-  setInputValue,
   appPrimaryColor,
   walletAddress,
 }: AIResponseProps) {
@@ -104,7 +94,7 @@ export default function AIResponse({
         />
         <button
           type="button"
-          onClick={isLoading ? stop : () => input.trim() && handleSubmit(new Event('submit') as any)}
+          onClick={isLoading ? stop : () => input.trim() && handleSubmit(new Event('submit') as Event)}
           disabled={!input.trim() && !isLoading}
           className="ml-2 flex items-center justify-center rounded-full"
           style={{ width: 32, height: 32, background: 'transparent', border: 'none', padding: 0 }}

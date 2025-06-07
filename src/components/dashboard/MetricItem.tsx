@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, TrendingUp } from "lucide-react";
 import React, { JSX } from "react";
+import Image from "next/image";
 
 // Interface for MetricItem props to make it reusable
 interface MetricItemProps {
@@ -75,7 +76,14 @@ export default function MetricItem({
                     </div>
 
                     {chartSrc && (
-                        <img className="w-24 h-12 object-contain" alt={`${title} chart`} src={chartSrc} />
+                        <div className="w-24 h-12 relative">
+                            <Image 
+                                src={chartSrc} 
+                                alt={`${title} chart`} 
+                                fill
+                                style={{ objectFit: 'contain' }}
+                            />
+                        </div>
                     )}
                 </div>
             </CardContent>

@@ -1,122 +1,110 @@
 import { AgentKit } from '@coinbase/agentkit';
 import { z } from 'zod';
 
-// Configure AgentKit
-export const configureAgentKit = async (walletAddress?: string) => {
-  try {
-    const agentKit = await AgentKit.from({
-      cdpApiKeyName: process.env.CDP_API_KEY_NAME,
-      cdpApiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY,
-      networkId: process.env.NETWORK_ID || 'base-sepolia',
-    });
+// Singleton AgentKit instance
+let agentKitInstance: AgentKit | null = null;
 
-    return agentKit;
-  } catch (error) {
-    console.error('Error configuring AgentKit:', error);
-    throw error;
+// Get or initialize AgentKit using the recommended static method
+export async function getAgentKit(): Promise<AgentKit> {
+  if (agentKitInstance) return agentKitInstance;
+  if (!process.env.CDP_API_KEY_NAME || !process.env.CDP_API_KEY_PRIVATE_KEY) {
+    throw new Error('Missing required environment variables: CDP_API_KEY_NAME and CDP_API_KEY_PRIVATE_KEY');
   }
-};
-
-// Get wallet balance
-export async function getWalletBalance(address: string) {
-  try {
-    const agentKit = await configureAgentKit();
-    const wallet = agentKit.wallet;
-    const balance = await wallet.getBalance();
-    return balance;
-  } catch (error) {
-    console.error('Error getting wallet balance:', error);
-    throw error;
-  }
+  agentKitInstance = await AgentKit.from({
+    cdpApiKeyName: process.env.CDP_API_KEY_NAME!,
+    cdpApiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY!,
+  });
+  return agentKitInstance;
 }
 
-// Get wallet details
-export async function getWalletDetails() {
-  try {
-    const agentKit = await configureAgentKit();
-    const wallet = agentKit.wallet;
-    const address = wallet.address;
-    return { address };
-  } catch (error) {
-    console.error('Error getting wallet details:', error);
-    throw error;
-  }
+// List all available agent actions
+export async function getAvailableActions() {
+  const agentKit = await getAgentKit();
+  return agentKit.getActions();
 }
 
-// Transfer native tokens
+// Execute an agent action by actionName and params
+export async function runAgentAction(actionName: string, params: Record<string, any>) {
+  const agentKit = await getAgentKit();
+  return agentKit.runAction({ actionName, params });
+}
+
+// Utility: Find an action by name
+export async function findActionByName(name: string) {
+  const actions = await getAvailableActions();
+  return actions.find(a => a.actionName === name);
+}
+
+// Example: Get wallet balance (using a matching action)
+export async function getWalletBalance(address?: string) {
+  const action = await findActionByName('get_wallet_balance');
+  if (!action) throw new Error('No get_wallet_balance action found');
+  const params: Record<string, any> = {};
+  if (address) params.address = address;
+  return runAgentAction(action.actionName, params);
+}
+
+// Example: Transfer native tokens (using a matching action)
 export async function transferNativeTokens(to: string, amount: string) {
-  try {
-    const agentKit = await configureAgentKit();
-    const wallet = agentKit.wallet;
-    const tx = await wallet.transfer(to, amount);
-    const receipt = await tx.wait();
-    return { 
-      txHash: receipt.transactionHash,
-      status: receipt.status === 1 ? 'success' : 'failed'
-    };
-  } catch (error) {
-    console.error('Error transferring native tokens:', error);
-    throw error;
-  }
+  const action = await findActionByName('transfer_native_token');
+  if (!action) throw new Error('No transfer_native_token action found');
+  return runAgentAction(action.actionName, { to, amount });
 }
 
-// Get transaction details
+// Example: Get transaction details
 export async function getTransactionDetails(txHash: string) {
-  try {
-    const agentKit = await configureAgentKit();
-    const provider = agentKit.wallet.provider;
-    const tx = await provider.getTransaction(txHash);
-    const receipt = await provider.getTransactionReceipt(txHash);
-    
-    return {
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to,
-      value: tx.value.toString(),
-      gasUsed: receipt?.gasUsed.toString(),
-      status: receipt?.status === 1 ? 'success' : 'failed',
-      blockNumber: tx.blockNumber,
-    };
-  } catch (error) {
-    console.error('Error getting transaction details:', error);
-    throw error;
-  }
+  const action = await findActionByName('get_transaction_details');
+  if (!action) throw new Error('No get_transaction_details action found');
+  return runAgentAction(action.actionName, { txHash });
 }
 
-// Swap tokens
+// Example: Swap tokens
 export async function swapTokens(fromToken: string, toToken: string, amount: string) {
-  try {
-    const agentKit = await configureAgentKit();
-    // This is a placeholder for the actual swap implementation
-    // In a real implementation, you would use the CDP SDK to perform the swap
-    return {
-      status: 'success',
-      fromToken,
-      toToken,
-      amount,
-      txHash: '0x...' // Placeholder
-    };
-  } catch (error) {
-    console.error('Error swapping tokens:', error);
-    throw error;
-  }
+  const action = await findActionByName('swap_token');
+  if (!action) throw new Error('No swap_token action found');
+  return runAgentAction(action.actionName, { fromToken, toToken, amount });
 }
+
+// Example: Create payment link (if supported by agent)
+export async function createPaymentLink(amount: string, currency: string, description?: string) {
+  const action = await findActionByName('create_payment_link');
+  if (!action) throw new Error('No create_payment_link action found');
+  return runAgentAction(action.actionName, { amount, currency, description });
+}
+
 
 // Create payment link
 export async function createPaymentLink(amount: string, currency: string, description?: string) {
   try {
+    const agentKit = await configureAgentKit();
+    const wallet = await getWallet();
+    
     // Generate a unique payment ID
     const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
     
+    // Create a payment request
+    const paymentRequest = await agentKit.createPaymentRequest({
+      amount,
+      currency,
+      description: description || 'Payment request',
+      metadata: {
+        paymentId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+    
     // In a real implementation, you would store this in a database
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pay/${paymentId}?amount=${amount}&currency=${currency}${description ? `&description=${encodeURIComponent(description)}` : ''}`;
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pay/${paymentId}`;
     
     return {
       paymentId,
       paymentLink,
+      paymentRequestId: paymentRequest.id,
       amount,
       currency,
       description: description || '',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
     };
   } catch (error) {
     console.error('Error creating payment link:', error);

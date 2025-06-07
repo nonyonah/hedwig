@@ -6,6 +6,7 @@ import { createReactAgent, createAgentExecutor } from '@langchain/langgraph/preb
 import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { NextResponse } from 'next/server'; // Fallback for streaming responses
+import { Tool } from '@langchain/core/tools';
 
 const model = new ChatGoogleGenerativeAI({
   model: "gemini-2.0-flash",
@@ -51,14 +52,14 @@ const initializeAgent = async () => {
     // 5. Create the agent using LangGraph
     const agent = createReactAgent({
       llm: model,
-      tools: tools as any, // Cast to any to resolve type mismatch
+      tools: tools as Tool[], // Use proper Tool type
       prompt,
     });
 
     // Create the agent executor
     const agentExecutor = await createAgentExecutor({
       agentRunnable: agent,
-      tools: tools as any, // Cast to any to resolve type mismatch
+      tools: tools as Tool[], // Use proper Tool type
       // verbose: true, // Uncomment for debugging
     });
 
