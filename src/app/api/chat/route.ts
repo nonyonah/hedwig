@@ -1,28 +1,26 @@
-import { StreamingTextResponse, Message as VercelMessage } from 'ai';
-import { OpenRouter } from '@ai-sdk/openrouter';
+import { Message as VercelMessage } from 'ai';
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { AgentKit } from '@coinbase/agentkit';
 import { getLangChainTools } from '@coinbase/agentkit-langchain';
-import { ChatOpenAI } from '@langchain/openai';
-import { createReactAgent, createOpenAIFunctionsAgent } from 'langchain/agents';
-import { formatToOpenAIFunction } from 'langchain/tools';
+import { AgentExecutor, createReactAgent } from 'langchain/agents';
 import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
-import { MemorySaver } from '@coinbase/agentkit-langchain';
+import { ChatPromptTemplate } from '@langchain/core/prompts';
+import { NextResponse } from 'next/server'; // Fallback for streaming responses
 
-// Initialize OpenRouter model
-const openRouter = new OpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY || '',
-  model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3-opus',
+const model = new ChatGoogleGenerativeAI({
+  model: "gemini-1.5-flash-001",
+  // Optionally add your API key or config here
 });
 
+
+
 // Configure AgentKit
-const configureAgentKit = async (walletAddress?: string) => {
+const configureAgentKit = async () => {
   try {
     const agentKit = await AgentKit.from({
       cdpApiKeyName: process.env.CDP_API_KEY_NAME,
       cdpApiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY,
-      networkId: process.env.NETWORK_ID || 'base-sepolia',
     });
-
     return agentKit;
   } catch (error) {
     console.error('Error configuring AgentKit:', error);
@@ -31,80 +29,39 @@ const configureAgentKit = async (walletAddress?: string) => {
 };
 
 // Initialize Langchain agent with AgentKit tools
-const initializeAgent = async (walletAddress?: string) => {
+const initializeAgent = async () => {
   try {
-    const agentKit = await configureAgentKit(walletAddress);
-    
-    // Create LangChain model
-    const llm = new ChatOpenAI({
-      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3-opus',
-      openAIApiKey: process.env.OPENROUTER_API_KEY || '',
-      configuration: {
-        baseURL: 'https://openrouter.ai/api/v1',
-        defaultHeaders: {
-          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-          'X-Title': 'Albus',
-        },
-      },
+    // 1. Configure AgentKit
+    const agentKit = await configureAgentKit();
+
+    // 2. Get AgentKit tools for LangChain
+    const agentKitTools = await getLangChainTools(agentKit);
+
+    // Use only the tools from AgentKit
+    const tools = agentKitTools;
+
+    // 4. Create the prompt
+    const prompt = ChatPromptTemplate.fromMessages([
+      ["system", "You are Albus, a helpful crypto assistant that can interact with blockchain networks using AgentKit. You can help users with wallet operations and token swaps. Always be concise and helpful."],
+      ["placeholder", "{chat_history}"],
+      ["human", "{input}"],
+      ["placeholder", "{agent_scratchpad}"],
+    ]);
+
+    // 5. Create the agent using the modern LangChain pattern
+    const runnable = RunnableSequence.from([
+      prompt,
+      model,
+      // Add post-processing steps if needed
+    ]);
+
+    const agentExecutor = new AgentExecutor({
+      agent: runnable,
+      tools,
+      // verbose: true, // Uncomment if supported by AgentExecutor
     });
 
-    // Get AgentKit tools
-    const agentKitTools = await getLangChainTools(agentKit);
-    
-    // Add payment link creation tool
-    const createPaymentLinkTool = {
-      name: 'create_payment_link',
-      description: 'Create a payment link for a specific amount and currency',
-      schema: {
-        type: 'object',
-        properties: {
-          amount: {
-            type: 'string',
-            description: 'The amount to be paid',
-          },
-          currency: {
-            type: 'string',
-            description: 'The currency for the payment (e.g., ETH, USDC)',
-          },
-          description: {
-            type: 'string',
-            description: 'A description for the payment',
-          },
-        },
-        required: ['amount', 'currency'],
-      },
-      func: async ({ amount, currency, description }: { amount: string; currency: string; description?: string }) => {
-        // Generate a unique payment ID
-        const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-        
-        // In a real implementation, you would store this in a database
-        const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pay/${paymentId}?amount=${amount}&currency=${currency}${description ? `&description=${encodeURIComponent(description)}` : ''}`;
-        
-        return {
-          paymentId,
-          paymentLink,
-          amount,
-          currency,
-          description: description || '',
-        };
-      },
-    };
-    
-    // Combine all tools
-    const tools = [...agentKitTools, createPaymentLinkTool];
-    
-    // Store conversation history in memory
-    const memory = new MemorySaver();
-    
-    // Create React Agent
-    const agent = createReactAgent({
-      llm,
-      tools,
-      checkpointSaver: memory,
-      messageModifier: "You are Albus, a helpful crypto assistant that can interact with blockchain networks using AgentKit. You can help users with wallet operations, token swaps, and creating payment links. Always be concise and helpful.",
-    });
-    
-    return { agent, tools };
+    return { agentExecutor };
   } catch (error) {
     console.error('Error initializing agent:', error);
     throw error;
@@ -115,8 +72,8 @@ export async function POST(req: Request) {
   try {
     const { messages, walletAddress } = await req.json();
     
-    // Initialize agent with the user's wallet address
-    const { agent } = await initializeAgent(walletAddress);
+    // Initialize agent executor
+    const { agentExecutor } = await initializeAgent();
     
     // Convert messages to the format expected by LangChain
     const formattedMessages = messages.map((message: VercelMessage) => {
@@ -139,24 +96,41 @@ export async function POST(req: Request) {
       });
     }
     
-    // Create a streaming response using the agent
-    const result = await agent.stream({
-      messages: formattedMessages,
+    // Prepare input for the agent
+    const lastMessageContent = lastMessage.content as string;
+    const chatHistory = formattedMessages.slice(0, -1);
+
+    // Create a streaming response using the agent executor
+    const streamResult = await agentExecutor.stream({
+      input: lastMessageContent,
+      chat_history: chatHistory,
     });
-    
+
     // Convert the stream to a format compatible with Vercel AI SDK
     const stream = new ReadableStream({
       async start(controller) {
-        for await (const chunk of result) {
-          if (chunk.content) {
-            controller.enqueue(new TextEncoder().encode(chunk.content));
+        const encoder = new TextEncoder();
+        for await (const chunk of streamResult) {
+          // The structure of 'chunk' from agentExecutor.stream() can vary.
+          // For OpenAI functions agent, it often yields AIMessageChunk directly or within a structured object.
+          // Assuming chunk is AIMessageChunk or { content: string }
+          if (chunk && typeof chunk.content === 'string') {
+            controller.enqueue(encoder.encode(chunk.content));
+          } else if (chunk && chunk.messages && Array.isArray(chunk.messages) && chunk.messages.length > 0 && typeof chunk.messages[0].content === 'string'){
+            // Handle cases where chunk might be { messages: [AIMessageChunk] }
+             controller.enqueue(encoder.encode(chunk.messages[0].content));
           }
+          // Add more specific chunk handling if needed based on observed stream output
         }
         controller.close();
       },
     });
-    
-    return new StreamingTextResponse(stream);
+
+    // Use StreamingTextResponse if available, otherwise fallback to NextResponse
+    // return new StreamingTextResponse(stream);
+    return new NextResponse(stream, {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
   } catch (error) {
     console.error('Error in chat API:', error);
     return new Response(JSON.stringify({ error: 'Failed to process chat' }), {
