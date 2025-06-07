@@ -1,139 +1,117 @@
-import { AgentKit } from '@coinbase/agentkit';
-import { z } from 'zod';
+import { AgentKit, Action } from '@coinbase/agentkit'; 
+import { z, ZodType, ZodTypeDef } from 'zod';
 
 // Singleton AgentKit instance
 let agentKitInstance: AgentKit | null = null;
 
-// Get or initialize AgentKit using the recommended static method
+/**
+ * Initializes and returns a singleton instance of AgentKit.
+ * Uses environment variables for API key configuration.
+ */
 export async function getAgentKit(): Promise<AgentKit> {
-  if (agentKitInstance) return agentKitInstance;
+  if (agentKitInstance) {
+    return agentKitInstance;
+  }
   if (!process.env.CDP_API_KEY_NAME || !process.env.CDP_API_KEY_PRIVATE_KEY) {
     throw new Error('Missing required environment variables: CDP_API_KEY_NAME and CDP_API_KEY_PRIVATE_KEY');
   }
-  agentKitInstance = await AgentKit.from({
-    cdpApiKeyName: process.env.CDP_API_KEY_NAME!,
-    cdpApiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY!,
-  });
-  return agentKitInstance;
+  try {
+    agentKitInstance = await AgentKit.from({
+      cdpApiKeyName: process.env.CDP_API_KEY_NAME,
+      cdpApiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY,
+    });
+    return agentKitInstance;
+  } catch (error) {
+    console.error('Failed to initialize AgentKit:', error);
+    throw new Error(`AgentKit initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
-// List all available agent actions
-export async function getAvailableActions() {
+/**
+ * Fetches the list of available actions from AgentKit.
+ */
+export async function getAvailableAgentActions(): Promise<Action<ZodType<any, ZodTypeDef, any>>[]> {
   const agentKit = await getAgentKit();
   return agentKit.getActions();
 }
 
-// Execute an agent action by actionName and params
-export async function runAgentAction(actionName: string, params: Record<string, any>) {
-  const agentKit = await getAgentKit();
-  return agentKit.runAction({ actionName, params });
+/**
+ * Finds an action by its human-readable name.
+ * @param name The name of the action to find (e.g., 'get_wallet_balance').
+ */
+async function findAgentActionByName(name: string): Promise<Action<ZodType<any, ZodTypeDef, any>> | undefined> {
+  const actions = await getAvailableAgentActions();
+  return actions.find(a => a.name === name);
 }
 
-// Utility: Find an action by name
-export async function findActionByName(name: string) {
-  const actions = await getAvailableActions();
-  return actions.find(a => a.actionName === name);
-}
+// --- Action Wrapper Functions ---
 
-// Example: Get wallet balance (using a matching action)
 export async function getWalletBalance(address?: string) {
-  const action = await findActionByName('get_wallet_balance');
-  if (!action) throw new Error('No get_wallet_balance action found');
-  const params: Record<string, any> = {};
-  if (address) params.address = address;
-  return runAgentAction(action.actionName, params);
-}
-
-// Example: Transfer native tokens (using a matching action)
-export async function transferNativeTokens(to: string, amount: string) {
-  const action = await findActionByName('transfer_native_token');
-  if (!action) throw new Error('No transfer_native_token action found');
-  return runAgentAction(action.actionName, { to, amount });
-}
-
-// Example: Get transaction details
-export async function getTransactionDetails(txHash: string) {
-  const action = await findActionByName('get_transaction_details');
-  if (!action) throw new Error('No get_transaction_details action found');
-  return runAgentAction(action.actionName, { txHash });
-}
-
-// Example: Swap tokens
-export async function swapTokens(fromToken: string, toToken: string, amount: string) {
-  const action = await findActionByName('swap_token');
-  if (!action) throw new Error('No swap_token action found');
-  return runAgentAction(action.actionName, { fromToken, toToken, amount });
-}
-
-// Example: Create payment link (if supported by agent)
-export async function createPaymentLink(amount: string, currency: string, description?: string) {
-  const action = await findActionByName('create_payment_link');
-  if (!action) throw new Error('No create_payment_link action found');
-  return runAgentAction(action.actionName, { amount, currency, description });
-}
-
-
-// Create payment link
-export async function createPaymentLink(amount: string, currency: string, description?: string) {
-  try {
-    const agentKit = await configureAgentKit();
-    const wallet = await getWallet();
-    
-    // Generate a unique payment ID
-    const paymentId = `payment_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-    
-    // Create a payment request
-    const paymentRequest = await agentKit.createPaymentRequest({
-      amount,
-      currency,
-      description: description || 'Payment request',
-      metadata: {
-        paymentId,
-        timestamp: new Date().toISOString(),
-      },
-    });
-    
-    // In a real implementation, you would store this in a database
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pay/${paymentId}`;
-    
-    return {
-      paymentId,
-      paymentLink,
-      paymentRequestId: paymentRequest.id,
-      amount,
-      currency,
-      description: description || '',
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-  } catch (error) {
-    console.error('Error creating payment link:', error);
-    throw error;
+  const action = await findAgentActionByName('get_wallet_balance');
+  if (!action) {
+    throw new Error('Action "get_wallet_balance" not found. Ensure it is registered in your agent configuration.');
   }
+  const params: Record<string, any> = {};
+  if (address) {
+    params.address = address;
+  }
+  // Optionally validate params: action.schema.parse(params);
+  return await action.invoke(params);
 }
 
-// Define custom action schemas
+export async function transferNativeTokens(to: string, amount: string) {
+  const action = await findAgentActionByName('transfer_native_token');
+  if (!action) {
+    throw new Error('Action "transfer_native_token" not found. Ensure it is registered in your agent configuration.');
+  }
+  // Optionally validate params: action.schema.parse({ to, amount });
+  return await action.invoke({ to, amount });
+}
+
+export async function getTransactionDetails(txHash: string) {
+  const action = await findAgentActionByName('get_transaction_details');
+  if (!action) {
+    throw new Error('Action "get_transaction_details" not found. Ensure it is registered in your agent configuration.');
+  }
+  // Optionally validate params: action.schema.parse({ txHash });
+  return await action.invoke({ txHash });
+}
+
+export async function swapTokens(fromToken: string, toToken: string, amount: string) {
+  const action = await findAgentActionByName('swap_token');
+  if (!action) {
+    throw new Error('Action "swap_token" not found. Ensure it is registered in your agent configuration.');
+  }
+  // Optionally validate params: action.schema.parse({ fromToken, toToken, amount });
+  return await action.invoke({ fromToken, toToken, amount });
+}
+
+/**
+ * Returns a URL to Thirdweb Pay for manual payment input.
+ * This function does NOT interact with AgentKit.
+ */
+export function getThirdwebPayLink(): string {
+  return 'https://thirdweb.com/pay';
+}
+
+// --- Zod Schemas for Action Inputs (as defined in your project) ---
+// These should match the input schemas of your registered agent actions.
+
 export const WalletBalanceSchema = z.object({
-  address: z.string().describe('The wallet address to check balance for')
+  address: z.string().describe('The wallet address to check balance for (optional, defaults to agent wallet)')
 });
 
 export const TransferSchema = z.object({
   to: z.string().describe('The recipient address'),
-  amount: z.string().describe('The amount to transfer')
+  amount: z.string().describe('The amount to transfer (in native token units, e.g., wei for ETH)')
 });
 
 export const SwapSchema = z.object({
-  fromToken: z.string().describe('The token to swap from'),
-  toToken: z.string().describe('The token to swap to'),
-  amount: z.string().describe('The amount to swap')
+  fromToken: z.string().describe('The contract address of the token to swap from'),
+  toToken: z.string().describe('The contract address of the token to swap to'),
+  amount: z.string().describe('The amount of fromToken to swap (in its smallest unit)')
 });
 
 export const TransactionDetailsSchema = z.object({
   txHash: z.string().describe('The transaction hash to get details for')
-});
-
-export const PaymentLinkSchema = z.object({
-  amount: z.string().describe('The amount to be paid'),
-  currency: z.string().describe('The currency for the payment (e.g., ETH, USDC)'),
-  description: z.string().optional().describe('A description for the payment')
 });
