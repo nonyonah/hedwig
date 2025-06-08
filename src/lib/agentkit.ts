@@ -53,22 +53,7 @@ export async function getAgentKit(): Promise<AgentKit> {
         erc721ActionProvider(),
         
         // Basic wallet operations
-        walletActionProvider(),
-        
-        // Farcaster social operations
-        farcasterActionProvider({
-          // Add your Farcaster API key if required
-          // apiKey: process.env.FARCASTER_API_KEY,
-        }),
-        
-        // Twitter API operations
-        twitterActionProvider({
-          // Add your Twitter API credentials
-          // apiKey: process.env.TWITTER_API_KEY,
-          // apiSecret: process.env.TWITTER_API_SECRET,
-          // accessToken: process.env.TWITTER_ACCESS_TOKEN,
-          // accessTokenSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET,
-        })
+        walletActionProvider()
       ],
     });
     
