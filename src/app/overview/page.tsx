@@ -166,11 +166,11 @@ export default function DashboardPage() {
       <div className="flex flex-col justify-end items-center flex-grow w-full" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <AIResponse
           messages={[]}
-          isSubmitting={false}
-          onSend={() => {}}
-          onStop={handleStop}
-          inputValue=""
-          setInputValue={() => {}}
+          // isSubmitting={false}
+          // onSend={() => {}}
+          // onStop={handleStop}
+          // inputValue=""
+          // setInputValue={() => {}}
           appPrimaryColor={appPrimaryColor}
           walletAddress={user?.wallet?.address}
         />

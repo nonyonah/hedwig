@@ -1,8 +1,27 @@
-import { AgentKit, Action } from '@coinbase/agentkit'; 
+import { 
+  AgentKit, 
+  Action, 
+  CdpV2EvmWalletProvider,
+  erc20ActionProvider,
+  erc721ActionProvider,
+  walletActionProvider,
+  farcasterActionProvider,
+  twitterActionProvider
+} from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 
-// Singleton AgentKit instance
+// Singleton instance
 let agentKitInstance: AgentKit | null = null;
+let walletProvider: CdpV2EvmWalletProvider | null = null;
+
+// Environment variable validation
+function getRequiredEnvVar(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
 
 /**
  * Initializes and returns a singleton instance of AgentKit.
@@ -12,20 +31,57 @@ export async function getAgentKit(): Promise<AgentKit> {
   if (agentKitInstance) {
     return agentKitInstance;
   }
-  if (!process.env.CDP_API_KEY_NAME || !process.env.CDP_API_KEY_PRIVATE_KEY) {
-    throw new Error('Missing required environment variables: CDP_API_KEY_NAME and CDP_API_KEY_PRIVATE_KEY');
-  }
+
   try {
+    // Initialize wallet provider first if not already done
+    if (!walletProvider) {
+      walletProvider = await CdpV2EvmWalletProvider.configureWithWallet({
+        apiKeyId: getRequiredEnvVar('CDP_API_KEY_ID'),
+        apiKeySecret: getRequiredEnvVar('CDP_API_KEY_SECRET'),
+        networkId: process.env.NETWORK_ID || 'base-sepolia',
+      });
+    }
+
+    // Initialize AgentKit with the wallet provider and action providers
     agentKitInstance = await AgentKit.from({
-      cdpApiKeyName: process.env.CDP_API_KEY_NAME,
-      cdpApiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY,
+      walletProvider,
+      actionProviders: [
+        // ERC20 token operations
+        erc20ActionProvider(),
+        
+        // ERC721 (NFT) operations
+        erc721ActionProvider(),
+        
+        // Basic wallet operations
+        walletActionProvider(),
+        
+        // Farcaster social operations
+        farcasterActionProvider({
+          // Add your Farcaster API key if required
+          // apiKey: process.env.FARCASTER_API_KEY,
+        }),
+        
+        // Twitter API operations
+        twitterActionProvider({
+          // Add your Twitter API credentials
+          // apiKey: process.env.TWITTER_API_KEY,
+          // apiSecret: process.env.TWITTER_API_SECRET,
+          // accessToken: process.env.TWITTER_ACCESS_TOKEN,
+          // accessTokenSecret: process.env.TWITTER_ACCESS_TOKEN_SECRET,
+        })
+      ],
     });
+    
     return agentKitInstance;
   } catch (error) {
     console.error('Failed to initialize AgentKit:', error);
     throw new Error(`AgentKit initialization failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
+/**
+ * Action Handlers
+ */
 
 /**
  * Fetches the list of available actions from AgentKit.
@@ -44,55 +100,6 @@ async function findAgentActionByName(name: string): Promise<Action<ZodType<any, 
   return actions.find(a => a.name === name);
 }
 
-// --- Action Wrapper Functions ---
-
-export async function getWalletBalance(address?: string) {
-  const action = await findAgentActionByName('get_wallet_balance');
-  if (!action) {
-    throw new Error('Action "get_wallet_balance" not found. Ensure it is registered in your agent configuration.');
-  }
-  const params: Record<string, any> = {};
-  if (address) {
-    params.address = address;
-  }
-  // Optionally validate params: action.schema.parse(params);
-  return await action.invoke(params);
-}
-
-export async function transferNativeTokens(to: string, amount: string) {
-  const action = await findAgentActionByName('transfer_native_token');
-  if (!action) {
-    throw new Error('Action "transfer_native_token" not found. Ensure it is registered in your agent configuration.');
-  }
-  // Optionally validate params: action.schema.parse({ to, amount });
-  return await action.invoke({ to, amount });
-}
-
-export async function getTransactionDetails(txHash: string) {
-  const action = await findAgentActionByName('get_transaction_details');
-  if (!action) {
-    throw new Error('Action "get_transaction_details" not found. Ensure it is registered in your agent configuration.');
-  }
-  // Optionally validate params: action.schema.parse({ txHash });
-  return await action.invoke({ txHash });
-}
-
-export async function swapTokens(fromToken: string, toToken: string, amount: string) {
-  const action = await findAgentActionByName('swap_token');
-  if (!action) {
-    throw new Error('Action "swap_token" not found. Ensure it is registered in your agent configuration.');
-  }
-  // Optionally validate params: action.schema.parse({ fromToken, toToken, amount });
-  return await action.invoke({ fromToken, toToken, amount });
-}
-
-/**
- * Returns a URL to Thirdweb Pay for manual payment input.
- * This function does NOT interact with AgentKit.
- */
-export function getThirdwebPayLink(): string {
-  return 'https://thirdweb.com/pay';
-}
 
 // --- Zod Schemas for Action Inputs (as defined in your project) ---
 // These should match the input schemas of your registered agent actions.
