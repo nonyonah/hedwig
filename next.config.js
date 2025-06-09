@@ -8,12 +8,37 @@ const nextConfig = {
         fs: false,
         net: false,
         tls: false,
+        crypto: require.resolve('crypto-browserify'),
+        stream: require.resolve('stream-browserify'),
+        buffer: require.resolve('buffer/'),
+        util: require.resolve('util/')
+      };
+    } else {
+      // Server-side specific configurations
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
       };
     }
+
+    // Add polyfills for Node.js modules
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'crypto': 'crypto-browserify',
+      'stream': 'stream-browserify',
+      'buffer': 'buffer/'
+    };
+
     return config;
   },
-  // Enable Turbopack for development
-  turbopack: {},
+  // Disable server components external packages
+  experimental: {
+    serverComponentsExternalPackages: ['@coinbase/agentkit']
+  },
+  // Disable Turbopack as it might cause issues with some packages
+  // turbopack: {},
 };
 
 module.exports = nextConfig;
