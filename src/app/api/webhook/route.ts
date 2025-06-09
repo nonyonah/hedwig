@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const mode = request.nextUrl.searchParams.get('hub.mode');
     const token = request.nextUrl.searchParams.get('hub.verify_token');
     const challenge = request.nextUrl.searchParams.get('hub.challenge');
-    const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    const verifyToken = process.env.WA_WEBHOOK_VERIFY_TOKEN;
     
     console.log('Webhook verification attempt:', {
       mode,
