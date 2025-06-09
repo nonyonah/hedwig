@@ -7,9 +7,6 @@ const nextConfig = {
     serverComponentsExternalPackages: [
       '@coinbase/agentkit',
       '@walletconnect/universal-provider',
-      'jose',
-      'jose/*',
-      '@coinbase/cdp-sdk',
       '@reown/appkit'
     ],
   },
