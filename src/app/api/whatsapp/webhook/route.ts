@@ -95,8 +95,11 @@ export async function POST(req: NextRequest) {
                         responseText = lastMsg.content;
                       } else if (Array.isArray(lastMsg.content)) {
                         // Sometimes content is an array of strings/objects
-                        responseText = lastMsg.content
-                          .map((c: any) => typeof c === 'string' ? c : c?.text ?? '')
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        responseText = (lastMsg.content as any[])
+                          .map((c: any) => 
+                            typeof c === 'string' ? c : c?.text ?? ''
+                          )
                           .join(' ')
                           .trim();
                       }

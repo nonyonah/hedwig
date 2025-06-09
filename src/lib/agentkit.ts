@@ -4,9 +4,7 @@ import {
   CdpV2EvmWalletProvider,
   erc20ActionProvider,
   erc721ActionProvider,
-  walletActionProvider,
-  farcasterActionProvider,
-  twitterActionProvider
+  walletActionProvider
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 
@@ -71,6 +69,7 @@ export async function getAgentKit(): Promise<AgentKit> {
 /**
  * Fetches the list of available actions from AgentKit.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getAvailableAgentActions(): Promise<Action<ZodType<any, ZodTypeDef, any>>[]> {
   const agentKit = await getAgentKit();
   return agentKit.getActions();
