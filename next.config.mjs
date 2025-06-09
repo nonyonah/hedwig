@@ -1,4 +1,13 @@
 // @ts-check
+import crypto from 'crypto-browserify';
+import stream from 'stream-browserify';
+import buffer from 'buffer';
+import util from 'util';
+import assert from 'assert';
+import os from 'os-browserify/browser';
+import https from 'https-browserify';
+import http from 'http-browserify';
+import url from 'url';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -30,15 +39,15 @@ const nextConfig = {
         fs: false,
         net: false,
         tls: false,
-        crypto: require.resolve('crypto-browserify'),
-        stream: require.resolve('stream-browserify'),
-        buffer: require.resolve('buffer/'),
-        util: require.resolve('util/'),
-        assert: require.resolve('assert/'),
-        os: require.resolve('os-browserify/browser'),
-        https: require.resolve('https-browserify'),
-        http: require.resolve('http-browserify'),
-        url: require.resolve('url/')
+        crypto: crypto,
+        stream: stream,
+        buffer: buffer,
+        util: util,
+        assert: assert,
+        os: os,
+        https: https,
+        http: http,
+        url: url
       };
     } else {
       config.resolve.fallback = {
