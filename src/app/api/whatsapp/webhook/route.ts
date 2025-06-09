@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     const mode = request.nextUrl.searchParams.get('hub.mode');
     const token = request.nextUrl.searchParams.get('hub.verify_token');
     const challenge = request.nextUrl.searchParams.get('hub.challenge');
-    const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN; 
+    const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    
     console.log('Webhook verification attempt:', {
       mode,
       receivedToken: token,
@@ -18,22 +19,36 @@ export async function GET(request: NextRequest) {
       hasChallenge: !!challenge
     });
 
+    // Verify the webhook
     if (mode === 'subscribe' && token === verifyToken) {
       console.log('Webhook verified successfully');
+      // Return the challenge as plain text
       return new NextResponse(challenge, { 
         status: 200,
-        headers: { 'Content-Type': 'text/plain' }
+        headers: { 
+          'Content-Type': 'text/plain',
+          'Content-Length': challenge?.length?.toString() || '0'
+        }
       });
     }
 
-    console.error('Webhook verification failed:', { mode, token, verifyToken });
+    console.error('Webhook verification failed:', { 
+      mode, 
+      token, 
+      verifyToken,
+      isValid: mode === 'subscribe' && token === verifyToken
+    });
+    
     return new NextResponse('Verification failed: token or mode mismatch', { 
       status: 403,
       headers: { 'Content-Type': 'text/plain' }
     });
   } catch (error) {
     console.error('Error in webhook verification:', error);
-    return new NextResponse('Server error during verification', { status: 500 });
+    return new NextResponse('Server error during verification', { 
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' }
+    });
   }
 }
 
