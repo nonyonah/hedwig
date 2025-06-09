@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@coinbase/cdp-sdk', 'jose'],
   // Enable experimental ESM support
   experimental: {
     esmExternals: 'loose',
@@ -13,6 +14,7 @@ const nextConfig = {
     ],
   },
   
+
   // Configure webpack
   webpack: (config, { isServer, webpack }) => {
     // Handle ESM packages
