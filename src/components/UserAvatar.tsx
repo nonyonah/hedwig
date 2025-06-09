@@ -14,7 +14,6 @@ import { Sun, Moon, Laptop } from 'lucide-react';
 
 export function UserAvatar() {
   const { theme, setTheme } = useTheme();
-  const router = useRouter();
 
   return (
     <div className="flex items-center gap-2">
