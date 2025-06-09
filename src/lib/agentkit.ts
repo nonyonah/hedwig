@@ -76,15 +76,6 @@ export async function getAvailableAgentActions(): Promise<Action<ZodType<any, Zo
   return agentKit.getActions();
 }
 
-/**
- * Finds an action by its human-readable name.
- * @param name The name of the action to find (e.g., 'get_wallet_balance').
- */
-async function findAgentActionByName(name: string): Promise<Action<ZodType<any, ZodTypeDef, any>> | undefined> {
-  const actions = await getAvailableAgentActions();
-  return actions.find(a => a.name === name);
-}
-
 
 // --- Zod Schemas for Action Inputs (as defined in your project) ---
 // These should match the input schemas of your registered agent actions.

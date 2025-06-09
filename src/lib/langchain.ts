@@ -8,6 +8,7 @@ import { createReactAgent } from '@langchain/langgraph/prebuilt';
  * Creates a LangChain agent with AgentKit tools
  * @param agentKit - An initialized AgentKit instance
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getLangChainAgent(agentKit: any) {
   const tools = await getLangChainTools(agentKit);
   const llm = new ChatGoogleGenerativeAI({

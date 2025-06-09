@@ -103,10 +103,6 @@ export default function DashboardPage() {
     );
   }
 
-  function handleStop(): void {
-    // This function is handled by the AI component now
-  }
-
   return (
     <div className="bg-white min-h-screen flex flex-col">
       <header className="flex flex-col items-center w-full bg-white px-[32px]">
