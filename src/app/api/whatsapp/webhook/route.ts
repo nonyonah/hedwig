@@ -5,8 +5,14 @@ import { getOrCreateWallet } from '@/lib/wallet';
 import { getLangChainAgent } from '@/lib/langchain';
 
 // WhatsApp webhook verification
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
+    // Log the full URL and query parameters
+    console.log('Request URL:', request.url);
+    console.log('Query params:', Object.fromEntries(request.nextUrl.searchParams.entries()));
+    
     const mode = request.nextUrl.searchParams.get('hub.mode');
     const token = request.nextUrl.searchParams.get('hub.verify_token');
     const challenge = request.nextUrl.searchParams.get('hub.challenge');
@@ -27,7 +33,10 @@ export async function GET(request: NextRequest) {
         status: 200,
         headers: { 
           'Content-Type': 'text/plain',
-          'Content-Length': challenge?.length?.toString() || '0'
+          'Content-Length': challenge?.length?.toString() || '0',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         }
       });
     }
@@ -36,18 +45,29 @@ export async function GET(request: NextRequest) {
       mode, 
       token, 
       verifyToken,
-      isValid: mode === 'subscribe' && token === verifyToken
+      isValid: mode === 'subscribe' && token === verifyToken,
+      url: request.url
     });
     
     return new NextResponse('Verification failed: token or mode mismatch', { 
       status: 403,
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 
+        'Content-Type': 'text/plain',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
   } catch (error) {
     console.error('Error in webhook verification:', error);
     return new NextResponse('Server error during verification', { 
       status: 500,
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 
+        'Content-Type': 'text/plain',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
   }
 }
