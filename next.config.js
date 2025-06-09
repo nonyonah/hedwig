@@ -1,8 +1,28 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable experimental ESM support
+  experimental: {
+    esmExternals: 'loose',
+    serverComponentsExternalPackages: [
+      '@coinbase/agentkit',
+      '@walletconnect/universal-provider',
+      'jose',
+      'jose/*',
+      '@coinbase/cdp-sdk',
+      '@reown/appkit'
+    ],
+  },
+  
+  // Configure webpack
   webpack: (config, { isServer }) => {
+    // Handle ESM packages
+    config.experiments = {
+      ...config.experiments,
+      topLevelAwait: true,
+    };
+
+    // Add fallbacks for Node.js modules
     if (!isServer) {
-      // Don't resolve 'fs' module on the client to prevent this error
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -19,7 +39,6 @@ const nextConfig = {
         url: require.resolve('url/')
       };
     } else {
-      // Server-side specific configurations
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -42,15 +61,15 @@ const nextConfig = {
       url: 'url/'
     };
 
+    // Add rule to handle jose module
+    config.module.rules.push({
+      test: /\.m?js$/,
+      resolve: {
+        fullySpecified: false
+      }
+    });
+
     return config;
-  },
-  // Disable server components external packages
-  experimental: {
-    serverComponentsExternalPackages: [
-      '@coinbase/agentkit',
-      '@walletconnect/universal-provider',
-      '@reown/appkit'
-    ]
   },
   // Disable Turbopack as it might cause issues with some packages
   // turbopack: {},
