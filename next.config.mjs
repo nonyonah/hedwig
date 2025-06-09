@@ -1,13 +1,13 @@
 // @ts-check
 import crypto from 'crypto-browserify';
 import stream from 'stream-browserify';
-import buffer from 'buffer';
-import util from 'util';
-import assert from 'assert';
-import os from 'os-browserify/browser';
+import buffer from 'buffer/';
+import util from 'util/';
+import assert from 'assert/';
+import os from 'os-browserify/browser.js';
 import https from 'https-browserify';
 import http from 'http-browserify';
-import url from 'url';
+import url from 'url/';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
