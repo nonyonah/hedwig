@@ -1,3 +1,5 @@
+// @ts-check
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Enable experimental ESM support
@@ -75,4 +77,4 @@ const nextConfig = {
   // turbopack: {},
 };
 
-module.exports = nextConfig;
+export default nextConfig;
