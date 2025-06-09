@@ -50,10 +50,13 @@ export async function POST(req: NextRequest) {
           if (typeof lastMsg.content === 'string') {
             responseText = lastMsg.content;
           } else if (Array.isArray(lastMsg.content)) {
+            // Disable ESLint for dynamic content handling
+            /* eslint-disable @typescript-eslint/no-explicit-any */
             responseText = (lastMsg.content as any[])
               .map((c: any) => typeof c === 'string' ? c : c?.text ?? '')
               .join(' ')
               .trim();
+            /* eslint-enable @typescript-eslint/no-explicit-any */
           }
         } else {
           responseText = JSON.stringify(result);
