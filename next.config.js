@@ -122,8 +122,8 @@ const nextConfig = {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@coinbase/cdp-sdk': require.resolve('@coinbase/cdp-sdk/dist/browser/index.js'),
-        // Add alias for the missing module
-        './src/chacha20Poly1305.js': require.resolve('@noble/ciphers/webcrypto/chacha20-poly1305.js'),
+        // Add a more specific alias for the missing module
+        './src/chacha20Poly1305.js': require.resolve('@noble/ciphers/chacha20poly1305'),
         // Add other potential missing modules
         'node:crypto': 'crypto-browserify',
         'node:stream': 'stream-browserify',
