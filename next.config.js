@@ -58,6 +58,8 @@ const nextConfig = {
     config.experiments = {
       ...config.experiments,
       layers: true,
+      asyncWebAssembly: true,
+      topLevelAwait: true,
     };
 
     // Handle ESM dependencies
@@ -69,24 +71,35 @@ const nextConfig = {
     });
 
     // Add fallbacks for Node.js modules
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        crypto: require.resolve('crypto-browserify'),
-        stream: require.resolve('stream-browserify'),
-        buffer: require.resolve('buffer/'),
-      };
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+      crypto: require.resolve('crypto-browserify'),
+      stream: require.resolve('stream-browserify'),
+      buffer: require.resolve('buffer/'),
+      util: require.resolve('util/'),
+      assert: require.resolve('assert/'),
+      path: require.resolve('path-browserify'),
+      process: require.resolve('process/browser'),
+    };
       
-      // Add Buffer polyfill
-      config.plugins.push(
-        new webpack.ProvidePlugin({
-          process: 'process/browser',
-          Buffer: ['buffer', 'Buffer'],
-        })
-      );
+    // Add polyfills
+    config.plugins = [
+      ...config.plugins,
+      new webpack.ProvidePlugin({
+        process: 'process/browser',
+        Buffer: ['buffer', 'Buffer'],
+      }),
+    ];
+
+    // Handle @coinbase/cdp-sdk
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@coinbase/cdp-sdk': require.resolve('@coinbase/cdp-sdk/dist/browser/index.js'),
+      };
     }
 
     return config;
