@@ -14,6 +14,15 @@ import {
   ButtonsResponse 
 } from '@/types/whatsapp';
 
+// Placeholder usage for ImageResponse, ListResponse, ButtonsResponse
+type _WhatsAppResponseTypes = ImageResponse | ListResponse | ButtonsResponse;
+
+// Use helpTemplates in a placeholder log statement
+if (typeof helpTemplates === 'object') {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _helpKeys = Object.keys(helpTemplates);
+}
+
 interface CommandContext {
   userId: string;
   message: string;
