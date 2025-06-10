@@ -25,12 +25,30 @@ export async function GET(request: NextRequest) {
     console.log('Request method:', request.method);
     console.log('Request headers:', Object.fromEntries(request.headers.entries()));
     
-    const queryParams = Object.fromEntries(request.nextUrl.searchParams.entries());
-    console.log('Query parameters:', queryParams);
+    // Get raw query string and log it
+    const rawQuery = request.nextUrl.search;
+    console.log('Raw query string:', rawQuery);
     
-    const mode = request.nextUrl.searchParams.get('hub.mode');
-    const token = request.nextUrl.searchParams.get('hub.verify_token');
-    const challenge = request.nextUrl.searchParams.get('hub.challenge');
+    // Manually parse query parameters to handle URL encoding issues
+    const queryParams: Record<string, string> = {};
+    if (rawQuery) {
+      // Remove the leading '?' and split by '&'
+      const pairs = rawQuery.substring(1).split('&');
+      for (const pair of pairs) {
+        const [key, value] = pair.split('=');
+        // Decode both key and value
+        const decodedKey = decodeURIComponent(key);
+        const decodedValue = value ? decodeURIComponent(value) : '';
+        queryParams[decodedKey] = decodedValue;
+      }
+    }
+    
+    console.log('Parsed query parameters:', queryParams);
+    
+    // Get parameters with fallback to handle both direct and encoded parameter names
+    const mode = queryParams['hub.mode'] || queryParams['amp;hub.mode'];
+    const token = queryParams['hub.verify_token'] || queryParams['amp;hub.verify_token'];
+    const challenge = queryParams['hub.challenge'] || queryParams['amp;hub.challenge'];
     
     // For testing purposes, use hardcoded token
     const verifyToken = 'hedwig_agent';
