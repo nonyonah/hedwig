@@ -99,21 +99,6 @@ interface ProcessedMessage {
   buttonText?: string;
 }
 
-function _useAllWhatsAppResponseTypes(
-  a: ImageResponse,
-  b: ListResponse,
-  c: ButtonsResponse
-): void {
-  // Use b and c to avoid unused var errors
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _bType = typeof b;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _cType = typeof c;
-}
-
-// Use WebhookEntry in a placeholder type
-const _webhookEntryTypeCheck: WebhookEntry | undefined = undefined;
-
 /**
  * Processes a WhatsApp message through the CDP agent
  */
@@ -216,8 +201,9 @@ function extractAndProcessMessage(entry: WhatsAppWebhookEntry): ProcessedMessage
   // Ensure we always have a valid text value
   let text = '';
   // Ensure type is one of the allowed values
-  const type = (['text', 'image', 'button', 'interactive', 'list'] as const).includes(message.type as any)
-    ? message.type as 'text' | 'image' | 'button' | 'interactive' | 'list'
+  const validTypes = ['text', 'image', 'button', 'interactive', 'list'] as const;
+  const type = validTypes.includes(message.type as typeof validTypes[number])
+    ? message.type as typeof validTypes[number]
     : 'text'; // Default to 'text' if type is unexpected
   let mediaId: string | undefined;
   let buttonId: string | undefined;

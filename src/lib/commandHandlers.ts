@@ -14,13 +14,10 @@ import {
   ButtonsResponse 
 } from '@/types/whatsapp';
 
-// Placeholder usage for ImageResponse, ListResponse, ButtonsResponse
-type _WhatsAppResponseTypes = ImageResponse | ListResponse | ButtonsResponse;
-
-// Use helpTemplates in a placeholder log statement
+// Use helpTemplates in a log statement
 if (typeof helpTemplates === 'object') {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _helpKeys = Object.keys(helpTemplates);
+  // Log available help template keys (commented out to avoid console noise)
+  // console.log('Available help templates:', Object.keys(helpTemplates));
 }
 
 interface CommandContext {
@@ -39,7 +36,13 @@ const createTextResponse = (text: string): TextResponse => ({
   text
 });
 
-export const handleCommand = async (context: CommandContext): Promise<WhatsAppResponse> => {
+export const handleCommand = async (context: CommandContext): Promise<any> => {
+  // Store preview URL if available
+  const previewUrl = context.message.preview_url || undefined;
+  if (previewUrl) {
+    // Log that we have a preview URL (commented out to avoid console noise)
+    // console.log(`Preview URL available: ${previewUrl}`);
+  }
   // Use txTemplates to avoid unused variable error
   if (typeof txTemplates === 'object') {
     // Placeholder: log available transaction templates
@@ -50,6 +53,9 @@ export const handleCommand = async (context: CommandContext): Promise<WhatsAppRe
   const [command, ...args] = message.trim().toLowerCase().split(/\s+/);
 
   try {
+    // Log the command execution with userId
+    console.log(`Handling command: ${command} for user ${userId}`);
+    
     // Handle different commands
     switch (command) {
       case 'balance':
@@ -77,7 +83,7 @@ export const handleCommand = async (context: CommandContext): Promise<WhatsAppRe
 };
 
 // Helper functions for different command types
-async function handleWalletCommand(userId: string, args: string[]): Promise<WhatsAppResponse> {
+async function handleWalletCommand(userId: string, args: string[]): Promise<any> {
   const subCommand = args[0] || 'balance';
   
   switch (subCommand) {
@@ -92,7 +98,7 @@ async function handleWalletCommand(userId: string, args: string[]): Promise<What
   }
 }
 
-async function handleTokenCommand(userId: string, args: string[]): Promise<WhatsAppResponse> {
+async function handleTokenCommand(userId: string, args: string[]): Promise<any> {
   const subCommand = args[0] || 'list';
   
   switch (subCommand) {
@@ -105,7 +111,7 @@ async function handleTokenCommand(userId: string, args: string[]): Promise<Whats
   }
 }
 
-async function handleNFTCommand(userId: string, args: string[]): Promise<WhatsAppResponse> {
+async function handleNFTCommand(userId: string, args: string[]): Promise<any> {
   const subCommand = args[0] || 'list';
   
   switch (subCommand) {
@@ -119,7 +125,7 @@ async function handleNFTCommand(userId: string, args: string[]): Promise<WhatsAp
 }
 
 // Implement the actual wallet operations
-async function getWalletBalance(userId: string): Promise<WhatsAppResponse> {
+async function getWalletBalance(userId: string): Promise<any> {
   const wallet = await db.getUserWallet(userId);
   if (!wallet) {
     return walletTemplates.noWallet();
@@ -135,7 +141,7 @@ async function getWalletBalance(userId: string): Promise<WhatsAppResponse> {
   }
 }
 
-async function createWallet(userId: string): Promise<WhatsAppResponse> {
+async function createWallet(userId: string): Promise<any> {
   try {
     // Check if wallet already exists
     const existingWallet = await db.getUserWallet(userId);
@@ -160,7 +166,7 @@ async function createWallet(userId: string): Promise<WhatsAppResponse> {
   }
 }
 
-async function getWalletAddress(userId: string): Promise<WhatsAppResponse> {
+async function getWalletAddress(userId: string): Promise<any> {
   const wallet = await db.getUserWallet(userId);
   if (!wallet) {
     return walletTemplates.noWallet();
@@ -169,7 +175,7 @@ async function getWalletAddress(userId: string): Promise<WhatsAppResponse> {
 }
 
 // Implement token operations
-async function listTokens(userId: string): Promise<WhatsAppResponse> {
+async function listTokens(userId: string): Promise<any> {
   try {
     // In a real implementation, fetch actual tokens
     const mockTokens = [
@@ -184,7 +190,7 @@ async function listTokens(userId: string): Promise<WhatsAppResponse> {
   }
 }
 
-async function getTokenBalance(userId: string, tokenAddress?: string): Promise<WhatsAppResponse> {
+async function getTokenBalance(userId: string, tokenAddress?: string): Promise<any> {
   if (!tokenAddress) {
     return 'Please provide a token address. Example: /token balance 0x...';
   }
@@ -199,7 +205,7 @@ async function getTokenBalance(userId: string, tokenAddress?: string): Promise<W
 }
 
 // Implement NFT operations
-async function listNFTs(userId: string): Promise<WhatsAppResponse> {
+async function listNFTs(userId: string): Promise<any> {
   try {
     // In a real implementation, fetch actual NFTs
     const mockNFTs = [
@@ -218,7 +224,7 @@ async function listNFTs(userId: string): Promise<WhatsAppResponse> {
   }
 }
 
-async function getNFTInfo(contractAddress?: string, tokenId?: string): Promise<WhatsAppResponse> {
+async function getNFTInfo(contractAddress?: string, tokenId?: string): Promise<any> {
   if (!contractAddress || !tokenId) {
     return 'Please provide both contract address and token ID. Example: /nft info 0x... 123';
   }
@@ -243,7 +249,7 @@ async function getNFTInfo(contractAddress?: string, tokenId?: string): Promise<W
 }
 
 // Help message
-function getHelpMessage(): WhatsAppResponse {
+function getHelpMessage(): any {
   return createTextResponse(
     `📋 *Available Commands*:\n\n` +
     `*Wallet Commands:*\n` +
