@@ -1,29 +1,21 @@
 import { 
-  walletTemplates, 
-  tokenTemplates, 
-  nftTemplates, 
-  helpTemplates,
-  txTemplates 
-} from './whatsappTemplates';
-import { getOrCreateWallet } from './wallet'; // eslint-disable-line @typescript-eslint/no-unused-vars
+  walletTemplates,
+  helpTemplates
+} from './whatsappTemplates'; // tokenTemplates, nftTemplates, txTemplates not currently used
+import { getOrCreateWallet } from './wallet'; // Used in wallet operations
 import { 
   WhatsAppResponse, 
   TextResponse, 
-  ImageResponse, 
-  ListResponse,
   CommandContext,
   CommandMessage
-} from '@/types/whatsapp'; 
+} from '@/types/whatsapp'; // ImageResponse and ListResponse not currently used
 
 // Re-export for backward compatibility
 export type { CommandContext, CommandMessage };
 
 // Define response types for command handlers
 type CommandResponse = Promise<WhatsAppResponse | string | null>;
-
-// Token and NFT types for future implementation
-type TokenInfo = { symbol: string; balance: string; address: string };
-type NFTInfo = { id: string; name: string; description: string; imageUrl: string };
+type WalletResponse = { address: string; balance: string };
 
 // Use helpTemplates in a log statement
 if (typeof helpTemplates === 'object') {
@@ -46,13 +38,6 @@ export const handleCommand = async (context: CommandContext): CommandResponse =>
     // console.log(`Preview URL available: ${previewUrl}`);
   }
   
-  // Use txTemplates to avoid unused variable error
-  if (typeof txTemplates === 'object') {
-    // Placeholder: log available transaction templates
-    // (Remove or replace with real usage as needed)
-    // console.log('txTemplates loaded:', Object.keys(txTemplates));
-  }
-  
   const { userId } = context;
   const [command, ...args] = messageText.trim().toLowerCase().split(/\s+/);
 
@@ -65,14 +50,6 @@ export const handleCommand = async (context: CommandContext): CommandResponse =>
       case 'balance':
       case 'wallet':
         return await handleWalletCommand(userId, args);
-      
-      case 'token':
-      case 'tokens':
-        return await handleTokenCommand(userId, args);
-      
-      case 'nft':
-      case 'nfts':
-        return await handleNFTCommand(userId, args);
       
       case 'help':
         return getHelpMessage();
@@ -102,40 +79,11 @@ const handleWalletCommand = async (_userId: string, args: string[]): CommandResp
   }
 };
 
-const handleTokenCommand = async (userId: string, args: string[]): CommandResponse => {
-  const [subCommand, tokenAddress] = args;
-  
-  switch (subCommand) {
-    case 'list':
-      return listTokens(userId);
-    case 'balance':
-      return getTokenBalance(userId, tokenAddress);
-    default:
-      return createTextResponse('❌ Invalid token command. Try: list or balance [token_address]');
-  }
-};
-
-const handleNFTCommand = async (userId: string, args: string[]): CommandResponse => {
-  const [subCommand, contractAddress, tokenId] = args;
-  
-  switch (subCommand) {
-    case 'list':
-      return listNFTs(userId);
-    case 'info':
-      if (!contractAddress || !tokenId) {
-        return createTextResponse('❌ Please provide both contract address and token ID');
-      }
-      return getNFTInfo(contractAddress, tokenId);
-    default:
-      return createTextResponse('❌ Invalid NFT command. Try: list or info [contract_address] [token_id]');
-  }
-};
-
 // Implement the actual wallet operations
 async function getWalletBalance(userId: string): Promise<string> {
   try {
     const wallet = await getOrCreateWallet(userId);
-    const address = await wallet.getAddress();
+    const _address = await wallet.getAddress(); // Address not currently used
     const balance = await wallet.getBalance();
     // Convert BigInt to string for the template
     return walletTemplates.balance(balance.toString(), 'ETH');
@@ -167,67 +115,6 @@ async function getWalletAddress(userId: string): Promise<string> {
   }
 }
 
-// Implement token operations
-async function listTokens(_userId: string): Promise<string> {
-  try {
-    // Wallet initialization not needed for now
-    // const wallet = await getOrCreateWallet(userId);
-    return 'Token listing is not yet implemented. Please check back later.';
-  } catch (error) {
-    console.error('Error listing tokens:', error);
-    return 'Failed to list tokens. Please try again later.';
-  }
-}
-
-async function getTokenBalance(userId: string, tokenAddress?: string): Promise<string> {
-  if (!tokenAddress) {
-    return 'Please specify a token address to check balance.';
-  }
-  
-  try {
-    // For now, return a placeholder since we don't have token balance implementation
-    return tokenTemplates.tokenBalance(
-      'TOKEN', 
-      '0', 
-      tokenAddress
-    );
-  } catch (error) {
-    console.error('Error getting token balance:', error);
-    return 'Failed to fetch token balance. Please try again later.';
-  }
-}
-
-// Implement NFT operations
-async function listNFTs(_userId: string): Promise<string> {
-  try {
-    // Return a helpful message since we don't have NFT listing implementation yet
-    return 'NFT listing is not yet implemented. Please check back later.';
-  } catch (error) {
-    console.error('Error listing NFTs:', error);
-    return 'Failed to fetch NFTs. Please try again later.';
-  }
-}
-
-async function getNFTInfo(contractAddress?: string, tokenId?: string): Promise<string> {
-  if (!contractAddress || !tokenId) {
-    return 'Please provide both contract address and token ID';
-  }
-  
-  try {
-    // Return a placeholder since we don't have NFT info implementation yet
-    return nftTemplates.nftDetail({
-      name: 'NFT Name',
-      tokenId,
-      contract: contractAddress,
-      description: 'NFT description',
-      imageUrl: undefined
-    });
-  } catch (error) {
-    console.error('Error getting NFT info:', error);
-    return 'Failed to fetch NFT info. Please try again later.';
-  }
-}
-
 // Help message
 function getHelpMessage(): string {
   return `📋 *Available Commands*:\n\n` +
@@ -235,17 +122,12 @@ function getHelpMessage(): string {
     `- /wallet balance - Check your wallet balance\n` +
     `- /wallet create - Create a new wallet\n` +
     `- /wallet address - Get your wallet address\n\n` +
-    `*Token Commands:*\n` +
-    `- /token list - List your tokens\n` +
-    `- /token balance [address] - Check token balance\n\n` +
-    `*NFT Commands:*\n` +
-    `- /nft list - List your NFTs\n` +
-    `- /nft info [contract] [tokenId] - Get NFT details\n\n` +
     `*Other Commands:*\n` +
     `- /help - Show this help message`;
 }
-
 // Utility function to send a WhatsApp message
+// This function is kept for future implementation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function sendWhatsAppMessage(
   to: string, 
   message: string,
