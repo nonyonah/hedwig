@@ -10,6 +10,16 @@ const nextConfig = {
       '@reown/appkit'
     ],
   },
+
+  // Expose environment variables to the build process
+  env: {
+    WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN,
+    WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
+    WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    CDP_API_KEY: process.env.CDP_API_KEY,
+    CDP_API_SECRET: process.env.CDP_API_SECRET,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  },
   
 
   // Configure webpack
