@@ -15,7 +15,6 @@ export type { CommandContext, CommandMessage };
 
 // Define response types for command handlers
 type CommandResponse = Promise<WhatsAppResponse | string | null>;
-type WalletResponse = { address: string; balance: string };
 
 // Use helpTemplates in a log statement
 if (typeof helpTemplates === 'object') {
@@ -83,7 +82,7 @@ const handleWalletCommand = async (_userId: string, args: string[]): CommandResp
 async function getWalletBalance(userId: string): Promise<string> {
   try {
     const wallet = await getOrCreateWallet(userId);
-    const _address = await wallet.getAddress(); // Address not currently used
+    // Get balance directly without storing the address since it's not used
     const balance = await wallet.getBalance();
     // Convert BigInt to string for the template
     return walletTemplates.balance(balance.toString(), 'ETH');

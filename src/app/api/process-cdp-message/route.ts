@@ -66,6 +66,8 @@ interface WhatsAppMetadata {
   phone_number_id: string;
 }
 
+// WhatsAppValue interface is kept for type checking webhook payloads
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface WhatsAppValue {
   messaging_product: string;
   metadata: WhatsAppMetadata;
@@ -80,31 +82,29 @@ interface WhatsAppValue {
   }>;
 }
 
+type MessageType = 'text' | 'image' | 'button' | 'interactive' | 'list';
+
 interface ProcessedMessage {
   from: string;
   text: string;  // This must always be a string
   messageId: string;
   timestamp: string;
-  type: string;
+  type: MessageType;
   mediaId?: string;
   buttonId?: string;
   buttonText?: string;
 }
 
+// This function is kept for type checking WhatsApp response types
+// The function body is intentionally empty as it's only used for type checking
+// eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
 function _useAllWhatsAppResponseTypes(
-  a: ImageResponse,
-  b: ListResponse,
-  c: ButtonsResponse
-): void {
-  // Use b and c to avoid unused var errors
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _bType = typeof b;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _cType = typeof c;
-}
+  _a: ImageResponse,
+  _b: ListResponse,
+  _c: ButtonsResponse
+): void {}
 
-// Use WebhookEntry in a placeholder type
-const _webhookEntryTypeCheck: WebhookEntry | undefined = undefined;
+// WebhookEntry type checking is done through the WhatsAppWebhookEntry type
 
 /**
  * Processes a WhatsApp message through the CDP agent
@@ -199,18 +199,24 @@ function extractAndProcessMessage(entry: WhatsAppWebhookEntry): ProcessedMessage
     return null;
   }
 
-  const message = change.value.messages?.[0];
+  // Get the first message
+  const message = entry.changes[0]?.value.messages?.[0];
   if (!message) {
     console.log('No message found in webhook payload');
     return null;
   }
+  
+  // Get contact info if available
+  const contact = entry.changes[0]?.value.contacts?.[0];
+  // Metadata is used for type checking but not directly in this function
+  const _metadata = entry.changes[0]?.value.metadata;
 
   // Ensure we always have a valid text value
   let text = '';
   // Ensure type is one of the allowed values
-  const type = (['text', 'image', 'button', 'interactive', 'list'] as const).includes(message.type as any)
-    ? message.type as 'text' | 'image' | 'button' | 'interactive' | 'list'
-    : 'text'; // Default to 'text' if type is unexpected
+  const messageType: MessageType = (['text', 'image', 'button', 'interactive', 'list'] as const).includes(
+    message.type as MessageType
+  ) ? message.type as MessageType : 'text'; // Default to 'text' if type is unexpected
   let mediaId: string | undefined;
   let buttonId: string | undefined;
   let buttonText: string | undefined;
@@ -245,7 +251,7 @@ function extractAndProcessMessage(entry: WhatsAppWebhookEntry): ProcessedMessage
     messageId: message.id,
     timestamp: message.timestamp,
     text,
-    type,
+    type: messageType,
     ...(mediaId && { mediaId }),
     ...(buttonId && { buttonId }),
     ...(buttonText && { buttonText })
@@ -305,22 +311,27 @@ export async function POST(req: NextRequest) {
       // Try to process with CDP first
       const cdpResponse = messageType === 'text' ? await processWithCDP(messageText, phoneNumber) : null;
       
-      // Try to process with CDP first if it's a text message
+      // Process with CDP if it's a text message and we got a response
       let response: WhatsAppResponse | null = null;
       
-      if (messageType === 'text') {
-        // Use cdpResponse to avoid unused var error
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        if (cdpResponse) { /* placeholder: cdpResponse was returned */ }
-        response = await processWithCDP(messageText, phoneNumber);
+      if (messageType === 'text' && cdpResponse) {
+        // Log the CDP response for debugging
+        console.log('CDP response:', cdpResponse);
+        response = {
+          type: 'text',
+          text: cdpResponse
+        };
       }
       
       // If CDP didn't return a response, use the command handler
       if (!response) {
         const commandContext: CommandContext = {
           userId: phoneNumber,
-          message: messageText,
-messageType: type,
+          message: {
+            text: messageText,
+            preview_url: undefined // Add this if you need to support preview URLs
+          },
+          messageType: messageType,
           phoneNumber,
         };
 
