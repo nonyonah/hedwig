@@ -5,12 +5,14 @@ import {
   sendWhatsAppListMessage, 
   sendWhatsAppReplyButtons,
   validatePhoneNumber} from '@/lib/whatsappUtils';
-import { handleCommand } from '@/lib/commandHandlers';
+import { 
+  handleCommand, 
+  CommandContext 
+} from '@/lib/commandHandlers';
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/lib/database';
 import { 
   WhatsAppResponse, 
-  CommandContext, 
   WebhookEntry as WhatsAppWebhookEntry,
   TextResponse,
   ImageResponse,
@@ -311,11 +313,19 @@ export async function POST(req: NextRequest) {
       
       // If CDP didn't return a response, use the command handler
       if (!response) {
+        // Create command context with the processed message
         const commandContext: CommandContext = {
           userId: phoneNumber,
-          message: messageText,
+          message: {
+            text: messageText,
+            preview_url: messageType === 'image' ? 
+              `https://api.whatsapp.com/v1/media/${messageData.mediaId}` : undefined
+          },
           messageType: messageType as 'text' | 'image' | 'button' | 'interactive' | 'list',
           phoneNumber,
+          mediaUrl: messageData.mediaId ? `https://api.whatsapp.com/v1/media/${messageData.mediaId}` : undefined,
+          mediaType: messageData.mediaId ? 'image' : undefined,
+          buttonPayload: messageData.buttonId,
         };
 
         response = await handleCommand(commandContext);

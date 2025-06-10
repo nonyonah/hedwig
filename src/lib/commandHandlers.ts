@@ -11,8 +11,13 @@ import {
   TextResponse, 
   ImageResponse, 
   ListResponse, 
-  ButtonsResponse 
-} from '@/types/whatsapp';
+  ButtonsResponse,
+  CommandContext,
+  CommandMessage
+} from '@/types/whatsapp'; 
+
+// Re-export for backward compatibility
+export type { CommandContext, CommandMessage };
 
 // Use helpTemplates in a log statement
 if (typeof helpTemplates === 'object') {
@@ -20,16 +25,7 @@ if (typeof helpTemplates === 'object') {
   // console.log('Available help templates:', Object.keys(helpTemplates));
 }
 
-interface CommandContext {
-  userId: string;
-  message: string;
-  messageType: string;
-  phoneNumber: string;
-  mediaUrl?: string;
-  mediaType?: string;
-  buttonPayload?: string;
-  listPayload?: string;
-}
+// CommandContext is now imported from @/types/whatsapp
 
 const createTextResponse = (text: string): TextResponse => ({
   type: 'text',
@@ -37,20 +33,24 @@ const createTextResponse = (text: string): TextResponse => ({
 });
 
 export const handleCommand = async (context: CommandContext): Promise<any> => {
-  // Store preview URL if available
-  const previewUrl = context.message.preview_url || undefined;
+  // Extract message text and preview URL
+  const messageText = context.message.text;
+  const previewUrl = context.message.preview_url;
+  
   if (previewUrl) {
     // Log that we have a preview URL (commented out to avoid console noise)
     // console.log(`Preview URL available: ${previewUrl}`);
   }
+  
   // Use txTemplates to avoid unused variable error
   if (typeof txTemplates === 'object') {
     // Placeholder: log available transaction templates
     // (Remove or replace with real usage as needed)
     // console.log('txTemplates loaded:', Object.keys(txTemplates));
   }
-  const { userId, message } = context;
-  const [command, ...args] = message.trim().toLowerCase().split(/\s+/);
+  
+  const { userId } = context;
+  const [command, ...args] = messageText.trim().toLowerCase().split(/\s+/);
 
   try {
     // Log the command execution with userId

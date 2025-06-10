@@ -36,10 +36,16 @@ export interface ButtonsResponse {
 
 export type WhatsAppResponse = TextResponse | ImageResponse | ListResponse | ButtonsResponse | string;
 
+// Message type for command context
+export interface CommandMessage {
+  text: string;
+  preview_url?: string;
+}
+
 // Command context
 export interface CommandContext {
   userId: string;
-  message: string;
+  message: CommandMessage;
   messageType: 'text' | 'image' | 'button' | 'list' | 'interactive';
   phoneNumber: string;
   mediaUrl?: string;
