@@ -43,19 +43,20 @@ export async function GET(request: NextRequest) {
     console.log('VERCEL_ENV:', process.env.VERCEL_ENV);
     
     // Try to read from .env file directly for debugging
+    // Using dynamic import to handle ESM modules
     try {
-      const fs = require('fs');
-      const path = require('path');
+      const fs = await import('fs/promises');
+      const path = await import('path');
       const envPath = path.join(process.cwd(), '.env');
-      if (fs.existsSync(envPath)) {
+      try {
+        const envContent = await fs.readFile(envPath, 'utf8');
         console.log('.env file exists at:', envPath);
-        const envContent = fs.readFileSync(envPath, 'utf8');
         console.log('.env content:', envContent);
-      } else {
-        console.log('No .env file found at:', envPath);
+      } catch (readError) {
+        console.log('No .env file found or cannot be read at:', envPath);
       }
-    } catch (fsError) {
-      console.error('Error reading .env file:', fsError);
+    } catch (importError) {
+      console.error('Error importing modules for file system access:', importError);
     }
     
     console.log('Webhook verification attempt:', {
