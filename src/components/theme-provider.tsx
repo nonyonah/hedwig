@@ -4,16 +4,10 @@ import * as React from 'react';
 
 interface ThemeProviderProps {
   children: React.ReactNode;
-  defaultTheme?: string;
-  attribute?: string;
-  enableSystem?: boolean;
-  disableTransitionOnChange?: boolean;
 }
 
 export function ThemeProvider({ 
-  children, 
-  defaultTheme = 'light',
-  ...props 
+  children,
 }: ThemeProviderProps) {
   // Simply render children without any theming logic
   return <>{children}</>;
@@ -21,10 +15,12 @@ export function ThemeProvider({
 
 // Create a simple useTheme hook that returns a default theme
 export function useTheme() {
+  const [theme, setTheme] = React.useState('light');
+  
   return {
-    theme: 'light',
-    setTheme: (theme: string) => {},
-    themes: ['light'],
+    theme,
+    setTheme,
+    themes: ['light', 'dark'],
   };
 }
 
