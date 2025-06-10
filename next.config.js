@@ -27,6 +27,9 @@ const nextConfig = {
   
   // Handle ESM packages
   modularizeImports: {
+    '@coinbase/cdp-sdk': {
+      transform: '@coinbase/cdp-sdk/dist/browser/index.js',
+    },
     'jose': {
       transform: 'jose/dist/browser/index.js',
     },
@@ -55,7 +58,40 @@ const nextConfig = {
       layers: true,
     };
 
-    // Handle ESM dependencies
+    // Make sure we have the required polyfills
+    const fallback = config.resolve.fallback || {};
+    
+    // Add fallbacks for Node.js modules
+    Object.assign(fallback, {
+      fs: false,
+      net: false,
+      tls: false,
+      crypto: require.resolve('crypto-browserify'),
+      stream: require.resolve('stream-browserify'),
+      buffer: require.resolve('buffer/'),
+      util: require.resolve('util/'),
+      assert: require.resolve('assert/'),
+      os: require.resolve('os-browserify/browser'),
+      https: require.resolve('https-browserify'),
+      http: require.resolve('stream-http'),
+      url: require.resolve('url/'),
+      path: require.resolve('path-browserify'),
+      zlib: require.resolve('browserify-zlib'),
+      querystring: require.resolve('querystring-es3'),
+      process: require.resolve('process/browser'),
+    });
+
+    config.resolve.fallback = fallback;
+
+    // Add polyfills for Node.js modules
+    config.plugins = (config.plugins || []).concat([
+      new webpack.ProvidePlugin({
+        process: 'process/browser',
+        Buffer: ['buffer', 'Buffer'],
+      }),
+    ]);
+
+    // Add rule to handle ESM modules
     config.module.rules.push({
       test: /\.m?js$/,
       resolve: {
@@ -63,50 +99,24 @@ const nextConfig = {
       },
     });
 
-    // Add fallbacks for Node.js modules
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        crypto: 'crypto-browserify',
-        stream: 'stream-browserify',
-        buffer: 'buffer',
-        util: 'util',
-        assert: 'assert',
-        os: 'os-browserify/browser',
-        https: 'https-browserify',
-        http: 'http-browserify',
-        url: 'url',
-        path: 'path-browserify',
-        zlib: 'browserify-zlib',
-        querystring: 'querystring-es3',
-      };
-    } else {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-      };
-    }
-
-    // Add polyfills for Node.js modules
-    config.plugins.push(
-      new webpack.ProvidePlugin({
-        process: 'process/browser',
-        Buffer: ['buffer', 'Buffer'],
-      })
-    );
-
-    // Add rule to handle jose module
+    // Handle @coinbase/cdp-sdk specific issues
     config.module.rules.push({
-      test: /\.m?js$/,
-      resolve: {
-        fullySpecified: false
-      }
+      test: /\.js$/,
+      include: /node_modules\/@coinbase\/cdp-sdk/,
+      use: {
+        loader: 'babel-loader',
+        options: {
+          presets: ['@babel/preset-env'],
+          plugins: ['@babel/plugin-transform-runtime'],
+        },
+      },
     });
+
+    // Ensure proper resolution of @coinbase/cdp-sdk
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@coinbase/cdp-sdk': require.resolve('@coinbase/cdp-sdk'),
+    };
 
     return config;
   },
