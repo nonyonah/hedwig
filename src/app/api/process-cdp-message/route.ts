@@ -4,7 +4,8 @@ import {
   sendWhatsAppImage, 
   sendWhatsAppListMessage, 
   sendWhatsAppReplyButtons,
-  validatePhoneNumber} from '@/lib/whatsappUtils';
+  validatePhoneNumber
+} from '@/lib/whatsappUtils';
 import { handleCommand } from '@/lib/commandHandlers';
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/lib/database';
@@ -17,6 +18,33 @@ import {
   ListResponse,
   ButtonsResponse
 } from '@/types/whatsapp';
+import type { BaseMessage } from '@langchain/core/messages';
+
+// Define the possible content types in a message
+interface TextContent {
+  type: 'text';
+  text: string;
+}
+
+interface ImageContent {
+  type: 'image_url';
+  image_url: string | { url: string };
+}
+
+interface ToolUseContent {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+interface ToolResultContent {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: string;
+}
+
+type MessageContent = string | TextContent | ImageContent | ToolUseContent | ToolResultContent;
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -128,8 +156,23 @@ async function processWithCDP(message: string, userId: string): Promise<string |
         return lastMsg.content;
       }
       if (Array.isArray(lastMsg.content)) {
-        return lastMsg.content
-          .map((c: any) => (typeof c === 'string' ? c : c?.text ?? ''))
+        return (lastMsg.content as MessageContent[])
+          .map((c) => {
+            if (typeof c === 'string') return c;
+            
+            switch (c.type) {
+              case 'text':
+                return c.text;
+              case 'image_url':
+                return '[Image]';
+              case 'tool_use':
+                return `[Tool: ${c.name || 'unknown'}]`;
+              case 'tool_result':
+                return `[Tool Result: ${c.tool_use_id || 'unknown'}]`;
+              default:
+                return '';
+            }
+          })
           .join(' ')
           .trim();
       }

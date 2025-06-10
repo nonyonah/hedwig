@@ -56,11 +56,17 @@ export const tokenTemplates = {
   tokenApprove: (spender: string, symbol: string, amount: string = 'unlimited'): string =>
     `✅ *Approval Confirmed*\n\nApproved ${amount} ${symbol.toUpperCase()} for:\n\`${spender}\``,
     
-  tokenInfo: (symbol: string, data: any): string =>
+  tokenInfo: (symbol: string, data: {
+    name?: string;
+    symbol?: string;
+    decimals?: number | string;
+    totalSupply?: string;
+    address?: string;
+  }): string =>
     `ℹ️ *${symbol.toUpperCase()} Info*\n\n` +
     `*Name:* ${data.name || 'N/A'}\n` +
     `*Symbol:* ${data.symbol || 'N/A'}\n` +
-    `*Decimals:* ${data.decimals || 'N/A'}\n` +
+    `*Decimals:* ${data.decimals?.toString() || 'N/A'}\n` +
     `*Total Supply:* ${data.totalSupply || 'N/A'}\n` +
     `*Contract:* \`${data.address || 'N/A'}\``,
 };
@@ -68,23 +74,42 @@ export const tokenTemplates = {
 // NFT Templates
 export const nftTemplates = {
   // NFT operations
-  nftList: (nfts: Array<{name: string, contract: string, tokenId: string, imageUrl?: string}>): string =>
+  nftList: (nfts: Array<{
+    name: string;
+    contract: string;
+    tokenId: string;
+    imageUrl?: string;
+  }>): string =>
     `🖼️ *Your NFTs*\n\n` +
     nfts.map(nft => `• *${nft.name}* (${nft.contract.slice(0, 6)}...${nft.contract.slice(-4)} #${nft.tokenId})`).join('\n') +
     '\n\nUse /nft info <contract> <tokenId> to view details',
     
-  nftDetail: (nft: any): string =>
+  nftDetail: (nft: {
+    name?: string;
+    tokenId?: string;
+    contract?: string;
+    description?: string;
+    imageUrl?: string;
+  }): string =>
     `🖼️ *${nft.name || 'NFT'}*\n\n` +
     `*Token ID:* ${nft.tokenId || 'N/A'}\n` +
     `*Contract:* \`${nft.contract || 'N/A'}\`\n` +
     (nft.description ? `*Description:* ${nft.description}\n` : '') +
     (nft.imageUrl ? `\n[View Image](${nft.imageUrl})` : ''),
     
-  nftDetails: (nft: any): string =>
+  nftDetails: (nft: {
+    name?: string;
+    description?: string;
+    attributes?: Array<{
+      trait_type: string;
+      value: string | number;
+    }>;
+    imageUrl?: string;
+  }): string =>
     `🖼️ *${nft.name || 'NFT Details'}*\n\n` +
     (nft.description ? `*Description:* ${nft.description}\n\n` : '') +
     (nft.attributes && nft.attributes.length > 0 
-      ? `*Attributes:*\n` + nft.attributes.map((a: any) => `• *${a.trait_type}:* ${a.value}`).join('\n') + '\n\n'
+      ? `*Attributes:*\n` + nft.attributes.map(a => `• *${a.trait_type}:* ${a.value}`).join('\n') + '\n\n'
       : '') +
     (nft.imageUrl ? `[View Image](${nft.imageUrl})` : ''),
     

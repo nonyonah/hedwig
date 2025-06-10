@@ -12,14 +12,29 @@ interface WhatsAppTemplateMessage {
     language: {
       code: string;
     };
-    components?: any[];
+    components?: Array<{
+      type: string;
+      parameters?: Array<{
+        type: string;
+        text?: string;
+        image?: {
+          link?: string;
+        };
+      }>;
+    }>;
   };
 }
 
 /**
  * Sends a text message via WhatsApp
  */
-export async function sendWhatsAppMessage(to: string, message: string): Promise<any> {
+interface WhatsAppMessageResponse {
+  messaging_product: string;
+  contacts: Array<{ input: string; wa_id: string }>;
+  messages: Array<{ id: string }>;
+}
+
+export async function sendWhatsAppMessage(to: string, message: string): Promise<WhatsAppMessageResponse> {
   try {
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -59,7 +74,7 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
 /**
  * Sends an image via WhatsApp
  */
-export async function sendWhatsAppImage(to: string, imageUrl: string, caption: string = ''): Promise<any> {
+export async function sendWhatsAppImage(to: string, imageUrl: string, caption: string = ''): Promise<WhatsAppMessageResponse> {
   try {
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -97,7 +112,7 @@ export async function sendWhatsAppImage(to: string, imageUrl: string, caption: s
 /**
  * Sends a template message via WhatsApp
  */
-export async function sendWhatsAppTemplateMessage(message: WhatsAppTemplateMessage): Promise<any> {
+export async function sendWhatsAppTemplateMessage(message: WhatsAppTemplateMessage): Promise<WhatsAppMessageResponse> {
   try {
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -132,13 +147,22 @@ export async function sendWhatsAppTemplateMessage(message: WhatsAppTemplateMessa
 /**
  * Sends a list message with interactive buttons
  */
+interface WhatsAppListSection {
+  title: string;
+  rows: Array<{
+    id: string;
+    title: string;
+    description?: string;
+  }>;
+}
+
 export async function sendWhatsAppListMessage(
   to: string, 
   header: string, 
   body: string, 
   buttonText: string, 
-  sections: Array<{title: string, rows: Array<{id: string, title: string, description?: string}>}>
-): Promise<any> {
+  sections: WhatsAppListSection[]
+): Promise<WhatsAppMessageResponse> {
   try {
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -186,11 +210,16 @@ export async function sendWhatsAppListMessage(
 /**
  * Sends a reply button message
  */
+interface WhatsAppButton {
+  id: string;
+  title: string;
+}
+
 export async function sendWhatsAppReplyButtons(
   to: string,
   body: string,
-  buttons: Array<{id: string, title: string}>
-): Promise<any> {
+  buttons: WhatsAppButton[]
+): Promise<WhatsAppMessageResponse> {
   try {
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
