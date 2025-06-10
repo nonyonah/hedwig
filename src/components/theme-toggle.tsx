@@ -2,21 +2,53 @@
 
 import * as React from 'react';
 import { Moon, Sun, Monitor } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
-
 import { Button } from '@/components/ui/button';
 
-export function ThemeToggle({ className }: { className?: string } = {}) {
-  const { theme, setTheme } = useTheme();
+// Simple theme context
+const ThemeContext = React.createContext({
+  theme: 'light',
+  setTheme: (theme: string) => {},
+  themes: ['light'],
+});
 
-  // Check if the className contains flex-col to determine if sidebar is collapsed
-  const isVertical = className?.includes('flex-col');
+export function useTheme() {
+  return React.useContext(ThemeContext);
+}
+
+export function ThemeToggle({ className }: { className?: string } = {}) {
+  // Use a simple state for theme
+  const [theme, setTheme] = React.useState('light');
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <Button
+        variant="outline"
+        size="icon"
+        className={cn(className)}
+      >
+        <Sun className="h-4 w-4" />
+        <span className="sr-only">Toggle theme</span>
+      </Button>
+    );
+  }
+
+  // Simplified theme toggle that just toggles between light and dark
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+  };
 
   return (
     <div className={cn(
       "flex items-center", 
-      isVertical ? "space-y-1" : "space-x-1", 
+      className?.includes('flex-col') ? "space-y-1" : "space-x-1", 
       className
     )}>
       <Button

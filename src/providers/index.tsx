@@ -12,12 +12,7 @@ export function Providers({
   session?: SessionType;
 }) {
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="light"
-      enableSystem
-      disableTransitionOnChange
-    >
+    <ThemeProvider>
       {children}
     </ThemeProvider>
   );
