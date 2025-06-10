@@ -38,6 +38,9 @@ const MAX_REQUESTS_PER_WINDOW = 10;
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
 // Type definitions for WhatsApp webhook payload
+type MessageContent = string | { text?: string } | { type: string; [key: string]: unknown };
+type MessageContentComplex = string | { text?: string } | { type: string; [key: string]: unknown } | MessageContent[];
+
 interface WhatsAppMessage {
   from: string;
   id: string;
@@ -130,8 +133,12 @@ async function processWithCDP(message: string, userId: string): Promise<string |
         return lastMsg.content;
       }
       if (Array.isArray(lastMsg.content)) {
-        return lastMsg.content
-          .map((c: any) => (typeof c === 'string' ? c : c?.text ?? ''))
+        return (lastMsg.content as MessageContentComplex[])
+          .map((c) => {
+            if (typeof c === 'string') return c;
+            if (c && typeof c === 'object' && 'text' in c) return c.text || '';
+            return '';
+          })
           .join(' ')
           .trim();
       }
@@ -306,8 +313,10 @@ export async function POST(req: NextRequest) {
       
       if (messageType === 'text') {
         // Use cdpResponse to avoid unused var error
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        if (cdpResponse) { /* placeholder: cdpResponse was returned */ }
+        // Use cdpResponse to avoid unused var error
+        if (cdpResponse) {
+          console.log('CDP response received:', cdpResponse);
+        }
         response = await processWithCDP(messageText, phoneNumber);
       }
       
