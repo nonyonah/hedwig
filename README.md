@@ -1,54 +1,100 @@
-# Albus
+# Hedwig 🦉
 
-Prood of Deployment on Base Mainnet: https://base.blockscout.com/address/0xd08867B621C98D5e011e48e8E4E5295c0AdD17fb
+> Your Trusted WhatsApp Wallet Assistant
 
-## Your All-in-One Financial Tracker
+Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets to your favorite messaging app. Manage your crypto assets, execute transactions, and interact with DeFi protocols—all through simple WhatsApp messages.
 
-Albus is a comprehensive financial tracking platform that bridges the gap between traditional banking and blockchain technology, allowing users to monitor and manage their finances both on and off chain.
+## 🌟 Key Features
 
-## Key Features
+### 💼 Wallet Management
+- Create and manage non-custodial wallets
+- Check token balances across multiple chains
+- View transaction history and portfolio value
+- Secure private key management
 
-### Unified Financial Tracking
-- Track all your financial assets in one place
-- Monitor bank accounts, cryptocurrencies, and investments
-- Get a holistic view of your net worth across all platforms
+### 💱 Token Operations
+- Check token balances (ERC-20)
+- View token prices and market data
+- Send and receive tokens
+- Track token performance
 
-### Cryptocurrency Trading
-- Buy and sell cryptocurrencies directly within the platform
-- Support for multiple chains including Ethereum, Base, Optimism, Arbitrum, and BNB Chain
-- Real-time price updates and transaction history
+### 🖼️ NFT Support
+- View your NFT collection
+- Check NFT details and metadata
+- Track floor prices and collection stats
 
-### AI-Powered DeFi Trading
-- Intelligent AI agents that assist with DeFi trading strategies
-- Automated market analysis and trading recommendations
-- Risk assessment and portfolio optimization
+### 🤖 AI-Powered Assistance
+- Natural language processing for easy commands
+- Smart transaction suggestions
+- Portfolio insights and analytics
+- Gas fee optimization
 
-### Yield Generation
-- Earn rewards by investing your assets
-- Access to various yield-generating protocols
-- Track and compare yields across different platforms
+## 🚀 Getting Started
 
-### Intuitive Dashboard
-- Clean, modern interface for easy navigation
-- Customizable charts and metrics
-- Mobile-responsive design for on-the-go access
+### Prerequisites
+- WhatsApp account
+- Node.js 16+ and npm/yarn
+- A server with a public URL (for webhooks)
 
-## Getting Started
+### Installation
 
-Visit [albusapp.xyz](https://albusapp.xyz) to create your account and start tracking your financial journey today.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/hedwig.git
+   cd hedwig
+   ```
 
-## Security
+2. Install dependencies:
+   ```bash
+   npm install
+   # or
+   yarn
+   ```
 
-Albus prioritizes the security of your financial data with:
-- End-to-end encryption
-- Non-custodial wallet integration
+3. Set up environment variables:
+   ```bash
+   cp .env.example .env
+   # Update the values in .env with your configuration
+   ```
+
+4. Start the development server:
+   ```bash
+   npm run dev
+   # or
+   yarn dev
+   ```
+
+## 📱 Usage
+
+Send a message to your Hedwig WhatsApp number to get started. Here are some example commands:
+
+- `balance` - Check your wallet balance
+- `send 0.1 ETH to 0x...` - Send cryptocurrency
+- `price BTC` - Get current price of BTC
+- `nft list` - View your NFT collection
+- `help` - Show available commands
+
+## 🔒 Security
+
+- Non-custodial wallet - you own your private keys
+- End-to-end encryption for all messages
+- Rate limiting and spam protection
 - Regular security audits
 
-## Support
+## 🤝 Contributing
 
-For questions or assistance, reach out to our support team at support@albus.finance.
+We welcome contributions! Please read our [Contributing Guidelines](CONTRIBUTING.md) to get started.
 
-## Deploy on Vercel
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 📬 Contact
+
+For questions or support, reach out to us at:
+- Email: support@hedwig.finance
+- Twitter: [@hedwigfinance](https://twitter.com/hedwigfinance)
+- Discord: [Join our community](https://discord.gg/hedwig)
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
