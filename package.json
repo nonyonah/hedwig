@@ -2,6 +2,12 @@
   "name": "hedwig",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "main": "next.config.js",
+  "types": "next-env.d.ts",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -71,9 +77,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "browserify-zlib": "^0.2.0",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
+    "path-browserify": "^1.0.1",
     "pino-pretty": "^13.0.0",
+    "querystring-es3": "^0.2.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
