@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
   transpilePackages: ['@coinbase/cdp-sdk', 'jose'],
+  
   // Enable experimental ESM support
   experimental: {
     esmExternals: 'loose',
@@ -11,7 +13,7 @@ const nextConfig = {
     ],
   },
 
-  // Expose environment variables to the build process
+  // Environment variables
   env: {
     WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN,
     WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
@@ -21,7 +23,6 @@ const nextConfig = {
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   },
   
-
   // Configure webpack
   webpack: (config, { isServer, webpack }) => {
     // Handle ESM packages
