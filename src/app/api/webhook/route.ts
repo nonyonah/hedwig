@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         const envContent = await fs.readFile(envPath, 'utf8');
         console.log('.env file exists at:', envPath);
         console.log('.env content:', envContent);
-      } catch (readError) {
+      } catch (_readError) {
         console.log('No .env file found or cannot be read at:', envPath);
       }
     } catch (importError) {
