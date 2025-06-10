@@ -32,14 +32,31 @@ export async function GET(request: NextRequest) {
     const token = request.nextUrl.searchParams.get('hub.verify_token');
     const challenge = request.nextUrl.searchParams.get('hub.challenge');
     
-    // Try different environment variable names to see what's available
-    const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN || 
-                      process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
-                      process.env.NEXT_PUBLIC_WEBHOOK_VERIFY_TOKEN;
+    // For testing purposes, use hardcoded token
+    const verifyToken = 'hedwig_agent';
     
-    console.log('\n=== Verification Details ===');
-    console.log('verifyToken from env:', verifyToken);
-    console.log('All environment variable names:', Object.keys(process.env).join(', '));
+    // Log all environment variables for debugging
+    console.log('\n=== Environment Debug ===');
+    console.log('process.env keys:', Object.keys(process.env).join(', '));
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('VERCEL:', process.env.VERCEL);
+    console.log('VERCEL_ENV:', process.env.VERCEL_ENV);
+    
+    // Try to read from .env file directly for debugging
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const envPath = path.join(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        console.log('.env file exists at:', envPath);
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        console.log('.env content:', envContent);
+      } else {
+        console.log('No .env file found at:', envPath);
+      }
+    } catch (fsError) {
+      console.error('Error reading .env file:', fsError);
+    }
     
     console.log('Webhook verification attempt:', {
       mode,
