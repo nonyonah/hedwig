@@ -4,14 +4,42 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // Log the full URL and query parameters
+    // Log environment information
+    console.log('=== Environment Information ===');
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('VERCEL_ENV:', process.env.VERCEL_ENV);
+    console.log('VERCEL_REGION:', process.env.VERCEL_REGION);
+    
+    // Log all environment variables that might be relevant (filtered to avoid sensitive data)
+    const envVars = Object.entries(process.env).filter(([key]) => 
+      key.includes('VERCEL') || 
+      key.includes('NEXT_') || 
+      key.includes('WHAT') || 
+      key.includes('WEBHOOK')
+    );
+    console.log('Relevant environment variables:', Object.fromEntries(envVars));
+
+    // Log request details
+    console.log('\n=== Request Information ===');
     console.log('Request URL:', request.url);
-    console.log('Query params:', Object.fromEntries(request.nextUrl.searchParams.entries()));
+    console.log('Request method:', request.method);
+    console.log('Request headers:', Object.fromEntries(request.headers.entries()));
+    
+    const queryParams = Object.fromEntries(request.nextUrl.searchParams.entries());
+    console.log('Query parameters:', queryParams);
     
     const mode = request.nextUrl.searchParams.get('hub.mode');
     const token = request.nextUrl.searchParams.get('hub.verify_token');
     const challenge = request.nextUrl.searchParams.get('hub.challenge');
-    const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
+    
+    // Try different environment variable names to see what's available
+    const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN || 
+                      process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
+                      process.env.NEXT_PUBLIC_WEBHOOK_VERIFY_TOKEN;
+    
+    console.log('\n=== Verification Details ===');
+    console.log('verifyToken from env:', verifyToken);
+    console.log('All environment variable names:', Object.keys(process.env).join(', '));
     
     console.log('Webhook verification attempt:', {
       mode,
