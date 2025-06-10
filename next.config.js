@@ -73,9 +73,13 @@ const nextConfig = {
     // Add fallbacks for Node.js modules
     config.resolve.fallback = {
       ...config.resolve.fallback,
+      // Node.js core modules
       fs: false,
       net: false,
       tls: false,
+      dns: false,
+      child_process: false,
+      // Polyfills
       crypto: require.resolve('crypto-browserify'),
       stream: require.resolve('stream-browserify'),
       buffer: require.resolve('buffer/'),
@@ -83,22 +87,47 @@ const nextConfig = {
       assert: require.resolve('assert/'),
       path: require.resolve('path-browserify'),
       process: require.resolve('process/browser'),
+      // Additional polyfills that might be needed
+      os: require.resolve('os-browserify/browser'),
+      https: require.resolve('https-browserify'),
+      http: require.resolve('stream-http'),
+      zlib: require.resolve('browserify-zlib'),
+      querystring: require.resolve('querystring-es3'),
+      url: require.resolve('url/')
     };
-      
+
     // Add polyfills
     config.plugins = [
       ...config.plugins,
       new webpack.ProvidePlugin({
         process: 'process/browser',
         Buffer: ['buffer', 'Buffer'],
+        // Add global polyfills
+        crypto: 'crypto-browserify',
+        stream: 'stream-browserify',
+        util: 'util/'
       }),
     ];
 
-    // Handle @coinbase/cdp-sdk
+    // Add rules to handle specific modules
+    config.module.rules.push({
+      test: /\.m?js$/,
+      resolve: {
+        fullySpecified: false,
+      },
+    });
+
+    // Handle @coinbase/cdp-sdk and its dependencies
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@coinbase/cdp-sdk': require.resolve('@coinbase/cdp-sdk/dist/browser/index.js'),
+        // Add alias for the missing module
+        './src/chacha20Poly1305.js': require.resolve('@noble/ciphers/webcrypto/chacha20-poly1305.js'),
+        // Add other potential missing modules
+        'node:crypto': 'crypto-browserify',
+        'node:stream': 'stream-browserify',
+        'node:buffer': 'buffer/'
       };
     }
 
