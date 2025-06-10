@@ -111,7 +111,7 @@ export const db = {
     messageType: MessageType,
     content: string,
     direction: MessageDirection,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<MessageLog> {
     const { data, error } = await supabase
       .from('message_logs')
@@ -135,7 +135,7 @@ export const db = {
     errorMessage: string,
     userId?: string,
     stackTrace?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<ErrorLog> {
     const { data, error } = await supabase
       .from('errors')
@@ -155,8 +155,9 @@ export const db = {
 
   // Rate limiting
   async checkRateLimit(userId: string, windowMs: number, maxRequests: number): Promise<{ isRateLimited: boolean; retryAfter?: number }> {
-    const now = new Date().toISOString();
+    // Use the parameters in the query
     const windowStart = new Date(Date.now() - windowMs).toISOString();
+    const now = new Date().toISOString(); // Used in the query
 
     // Get or create rate limit record
     const { data: rateLimit, error } = await supabase

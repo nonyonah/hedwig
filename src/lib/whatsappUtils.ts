@@ -1,10 +1,3 @@
-interface WhatsAppMessage {
-  to: string;
-  body: string;
-  previewUrl?: boolean;
-  mediaUrl?: string;
-}
-
 interface WhatsAppTemplateMessage {
   to: string;
   template: {

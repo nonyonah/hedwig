@@ -138,12 +138,20 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     const { getOrCreateWallet } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
 
-    await getOrCreateWallet(userId);
+    // Ensure wallet exists for the user
+    const wallet = await getOrCreateWallet(userId);
     const agentKit = await getAgentKit();
     const langchainAgent = await getLangChainAgent(agentKit);
 
+    // Get wallet address if wallet exists
+    const walletAddress = wallet ? await wallet.getAddress() : 'none';
+    
+    // Include user context in the message
     const result = await langchainAgent.invoke({
-      messages: [new HumanMessage({ content: message })],
+      messages: [new HumanMessage({ 
+        content: `[User ID: ${userId}, Wallet: ${walletAddress}]
+${message}` 
+      })],
     });
 
     if (typeof result === 'string') {
