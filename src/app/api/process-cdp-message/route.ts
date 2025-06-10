@@ -95,15 +95,7 @@ interface ProcessedMessage {
   buttonText?: string;
 }
 
-// This function is kept for type checking WhatsApp response types
-// The function body is intentionally empty as it's only used for type checking
-// eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
-function _useAllWhatsAppResponseTypes(
-  _a: ImageResponse,
-  _b: ListResponse,
-  _c: ButtonsResponse
-): void {}
-
+// WhatsApp response types are used through their respective interfaces: ImageResponse, ListResponse, ButtonsResponse
 // WebhookEntry type checking is done through the WhatsAppWebhookEntry type
 
 /**
@@ -136,7 +128,11 @@ async function processWithCDP(message: string, userId: string): Promise<string |
       }
       if (Array.isArray(lastMsg.content)) {
         return lastMsg.content
-          .map((c: any) => (typeof c === 'string' ? c : c?.text ?? ''))
+          .map((c: unknown) => {
+            if (typeof c === 'string') return c;
+            if (c && typeof c === 'object' && 'text' in c) return (c as { text: string }).text;
+            return '';
+          })
           .join(' ')
           .trim();
       }
@@ -206,10 +202,8 @@ function extractAndProcessMessage(entry: WhatsAppWebhookEntry): ProcessedMessage
     return null;
   }
   
-  // Get contact info if available
-  const contact = entry.changes[0]?.value.contacts?.[0];
-  // Metadata is used for type checking but not directly in this function
-  const _metadata = entry.changes[0]?.value.metadata;
+  // We don't need to extract contact or metadata for now
+  // as they're not used in the current implementation
 
   // Ensure we always have a valid text value
   let text = '';
