@@ -14,12 +14,6 @@ export function ThemeToggle({ className }: { className?: string } = {}) {
     setMounted(true);
   }, []);
 
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    document.documentElement.classList.toggle('dark', newTheme === 'dark');
-  };
-
   if (!mounted) {
     return (
       <Button
