@@ -50,8 +50,13 @@ export async function GET(request: NextRequest) {
     const token = queryParams['hub.verify_token'] || queryParams['amp;hub.verify_token'];
     const challenge = queryParams['hub.challenge'] || queryParams['amp;hub.challenge'];
     
-    // For testing purposes, use hardcoded token
-    const verifyToken = 'hedwig_agent';
+    // Get the verify token from environment variables
+    const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.WEBHOOK_VERIFY_TOKEN;
+    
+    if (!verifyToken) {
+      console.error('Error: No verification token found in environment variables. Please set WHATSAPP_VERIFY_TOKEN or WEBHOOK_VERIFY_TOKEN.');
+      return new NextResponse('Server configuration error', { status: 500 });
+    }
     
     // Log all environment variables for debugging
     console.log('\n=== Environment Debug ===');
@@ -77,10 +82,11 @@ export async function GET(request: NextRequest) {
       console.error('Error importing modules for file system access:', importError);
     }
     
+    // Log minimal verification details (avoid logging tokens in production)
     console.log('Webhook verification attempt:', {
       mode,
-      receivedToken: token,
-      expectedToken: verifyToken,
+      hasReceivedToken: !!token,
+      hasExpectedToken: !!verifyToken,
       hasChallenge: !!challenge
     });
 
