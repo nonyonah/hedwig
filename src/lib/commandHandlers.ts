@@ -6,12 +6,12 @@ import {
   txTemplates 
 } from './whatsappTemplates';
 import { db } from './supabase';
+import { getOrCreateWallet } from './wallet';
 import { 
   WhatsAppResponse, 
   TextResponse, 
   ImageResponse, 
-  ListResponse, 
-  ButtonsResponse,
+  ListResponse,
   CommandContext,
   CommandMessage
 } from '@/types/whatsapp'; 
@@ -19,26 +19,51 @@ import {
 // Re-export for backward compatibility
 export type { CommandContext, CommandMessage };
 
+// Define response types for command handlers
+type CommandResponse = Promise<WhatsAppResponse>;
+interface WalletResponse { 
+  address: string; 
+  balance: string;
+  tokens?: TokenInfo[];
+  nfts?: NFTInfo[];
+}
+
+interface TokenInfo { 
+  symbol: string; 
+  balance: string; 
+  address: string;
+  name?: string;
+  decimals?: number;
+}
+
+interface NFTInfo { 
+  id: string; 
+  name: string; 
+  description: string; 
+  imageUrl: string;
+  contract: string;
+  tokenId: string;
+  metadata?: Record<string, unknown>;
+}
+
 // Use helpTemplates in a log statement
 if (typeof helpTemplates === 'object') {
   // Log available help template keys (commented out to avoid console noise)
   // console.log('Available help templates:', Object.keys(helpTemplates));
 }
 
-// CommandContext is now imported from @/types/whatsapp
-
 const createTextResponse = (text: string): TextResponse => ({
   type: 'text',
   text
 });
 
-export const handleCommand = async (context: CommandContext): Promise<any> => {
-  // Extract message text and preview URL
+export const handleCommand = async (context: CommandContext): CommandResponse => {
+  // Extract message text
   const messageText = context.message.text;
-  const previewUrl = context.message.preview_url;
   
+  // Log preview URL if it exists (commented out to avoid console noise)
+  const previewUrl = context.message.preview_url;
   if (previewUrl) {
-    // Log that we have a preview URL (commented out to avoid console noise)
     // console.log(`Preview URL available: ${previewUrl}`);
   }
   
@@ -83,213 +108,296 @@ export const handleCommand = async (context: CommandContext): Promise<any> => {
 };
 
 // Helper functions for different command types
-async function handleWalletCommand(userId: string, args: string[]): Promise<any> {
-  const subCommand = args[0] || 'balance';
+const handleWalletCommand = async (_userId: string, args: string[]): CommandResponse => {
+  const [subCommand] = args;
   
   switch (subCommand) {
     case 'balance':
-      return await getWalletBalance(userId);
+      return getWalletBalance(_userId);
     case 'create':
-      return await createWallet(userId);
+      return createWallet(_userId);
     case 'address':
-      return await getWalletAddress(userId);
+      return getWalletAddress(_userId);
     default:
-      return createTextResponse('❌ Invalid wallet command. Try: balance, create, or address');
+      return getHelpMessage();
   }
-}
+};
 
-async function handleTokenCommand(userId: string, args: string[]): Promise<any> {
-  const subCommand = args[0] || 'list';
+const handleTokenCommand = async (userId: string, args: string[]): CommandResponse => {
+  const [subCommand, tokenAddress] = args;
   
   switch (subCommand) {
     case 'list':
-      return await listTokens(userId);
+      return listTokens(userId);
     case 'balance':
-      return await getTokenBalance(userId, args[1]);
+      return getTokenBalance(userId, tokenAddress);
     default:
-      return createTextResponse('❌ Invalid token command. Try: list or balance <token_address>');
+      return createTextResponse('❌ Invalid token command. Try: list or balance [token_address]');
   }
-}
+};
 
-async function handleNFTCommand(userId: string, args: string[]): Promise<any> {
-  const subCommand = args[0] || 'list';
+const handleNFTCommand = async (userId: string, args: string[]): CommandResponse => {
+  const [subCommand, contractAddress, tokenId] = args;
   
   switch (subCommand) {
     case 'list':
-      return await listNFTs(userId);
+      return listNFTs(userId);
     case 'info':
-      return await getNFTInfo(args[1], args[2]);
+      if (!contractAddress || !tokenId) {
+        return createTextResponse('❌ Please provide both contract address and token ID');
+      }
+      return getNFTInfo(contractAddress, tokenId);
     default:
-      return createTextResponse('❌ Invalid NFT command. Try: list or info <contract_address> <token_id>');
+      return createTextResponse('❌ Invalid NFT command. Try: list or info [contract_address] [token_id]');
   }
-}
+};
 
 // Implement the actual wallet operations
-async function getWalletBalance(userId: string): Promise<any> {
-  const wallet = await db.getUserWallet(userId);
-  if (!wallet) {
-    return walletTemplates.noWallet();
-  }
-  
+async function getWalletBalance(userId: string): Promise<TextResponse> {
   try {
-    // In a real implementation, you would fetch the actual balance
-    // For now, we'll return a mock balance
-    return walletTemplates.balance('0.5', 'ETH');
+    const wallet = await getOrCreateWallet(userId);
+    const address = await wallet.getAddress();
+    const balance = await wallet.getBalance();
+    
+    return {
+      type: 'text',
+      text: walletTemplates.balance(balance.toString(), 'ETH')
+    };
   } catch (error) {
     console.error('Error getting wallet balance:', error);
-    return 'Failed to fetch wallet balance. Please try again later.';
+    return {
+      type: 'text',
+      text: walletTemplates.noWallet()
+    };
   }
 }
 
-async function createWallet(userId: string): Promise<any> {
+async function createWallet(userId: string): Promise<TextResponse> {
   try {
-    // Check if wallet already exists
-    const existingWallet = await db.getUserWallet(userId);
-    if (existingWallet) {
-      return walletTemplates.walletExists(existingWallet.address);
-    }
-    
-    // In a real implementation, you would generate a new wallet
-    // For now, we'll return a mock wallet
-    const mockAddress = '0x' + '0'.repeat(40);
-    
-    await db.createWallet({
-      user_id: userId,
-      address: mockAddress,
-      private_key_encrypted: 'encrypted_private_key_here', // In a real app, encrypt this
-    });
-    
-    return walletTemplates.walletCreated(mockAddress);
+    const wallet = await getOrCreateWallet(userId);
+    const address = await wallet.getAddress();
+    return {
+      type: 'text',
+      text: walletTemplates.walletCreated(address)
+    };
   } catch (error) {
     console.error('Error creating wallet:', error);
-    return 'Failed to create wallet. Please try again later.';
+    return {
+      type: 'text',
+      text: 'Failed to create wallet. Please try again later.'
+    };
   }
 }
 
-async function getWalletAddress(userId: string): Promise<any> {
-  const wallet = await db.getUserWallet(userId);
-  if (!wallet) {
-    return walletTemplates.noWallet();
+async function getWalletAddress(userId: string): Promise<TextResponse> {
+  try {
+    const wallet = await getOrCreateWallet(userId);
+    const address = await wallet.getAddress();
+    return {
+      type: 'text',
+      text: walletTemplates.walletAddress(address)
+    };
+  } catch (error) {
+    console.error('Error getting wallet address:', error);
+    return {
+      type: 'text',
+      text: walletTemplates.noWallet()
+    };
   }
-  return walletTemplates.walletAddress(wallet.address);
 }
 
 // Implement token operations
-async function listTokens(userId: string): Promise<any> {
+async function listTokens(userId: string): Promise<ListResponse> {
   try {
-    // In a real implementation, fetch actual tokens
-    const mockTokens = [
-      { symbol: 'USDC', balance: '100.0', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
-      { symbol: 'DAI', balance: '50.0', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F' },
-    ];
+    // This is a placeholder - in a real app, fetch tokens from the wallet
+    const tokens: TokenInfo[] = [];
     
-    return tokenTemplates.tokenList(mockTokens);
+    return {
+      type: 'list',
+      header: 'Your Tokens',
+      body: 'Select a token to view details',
+      buttonText: 'View Tokens',
+      sections: [{
+        title: 'Tokens',
+        rows: tokens.length > 0 
+          ? tokens.map(token => ({
+              id: `token_${token.address}`,
+              title: `${token.symbol}: ${token.balance}`,
+              description: token.address
+            }))
+          : [{
+              id: 'no_tokens',
+              title: 'No tokens found',
+              description: 'You have no tokens in your wallet'
+            }]
+      }]
+    };
   } catch (error) {
     console.error('Error listing tokens:', error);
-    return 'Failed to fetch token list. Please try again later.';
+    return {
+      type: 'text',
+      text: 'Failed to list tokens. Please try again later.'
+    } as TextResponse;
   }
 }
 
-async function getTokenBalance(userId: string, tokenAddress?: string): Promise<any> {
+async function getTokenBalance(userId: string, tokenAddress?: string): Promise<TextResponse> {
   if (!tokenAddress) {
-    return 'Please provide a token address. Example: /token balance 0x...';
+    return {
+      type: 'text',
+      text: 'Please specify a token address to check balance.'
+    };
   }
   
   try {
-    // In a real implementation, fetch actual token balance
-    return tokenTemplates.tokenBalance('USDC', '100.0', tokenAddress);
+    // Placeholder implementation
+    const tokenInfo: TokenInfo = {
+      symbol: 'TOKEN',
+      balance: '0',
+      address: tokenAddress,
+      name: 'Example Token',
+      decimals: 18
+    };
+
+    return {
+      type: 'text',
+      text: tokenTemplates.tokenBalance(
+        tokenInfo.symbol, 
+        tokenInfo.balance, 
+        tokenInfo.address
+      )
+    };
   } catch (error) {
     console.error('Error getting token balance:', error);
-    return 'Failed to fetch token balance. Please check the token address and try again.';
+    return {
+      type: 'text',
+      text: 'Failed to fetch token balance. Please try again later.'
+    };
   }
 }
 
 // Implement NFT operations
-async function listNFTs(userId: string): Promise<any> {
+async function listNFTs(userId: string): Promise<ListResponse> {
   try {
-    // In a real implementation, fetch actual NFTs
-    const mockNFTs = [
-      { 
-        name: 'CryptoPunk #1234', 
-        contract: '0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB',
-        tokenId: '1234',
-        imageUrl: 'https://example.com/punk1234.png'
-      }
-    ];
+    // Placeholder implementation - in a real app, fetch NFTs from the wallet
+    const nfts: NFTInfo[] = [];
     
-    return nftTemplates.nftList(mockNFTs);
+    return {
+      type: 'list',
+      header: 'Your NFTs',
+      body: 'Select an NFT to view details',
+      buttonText: 'View NFTs',
+      sections: [{
+        title: 'NFTs',
+        rows: nfts.length > 0 
+          ? nfts.map(nft => ({
+              id: `nft_${nft.contract}_${nft.tokenId}`,
+              title: nft.name,
+              description: `Contract: ${nft.contract.slice(0, 6)}...${nft.contract.slice(-4)} #${nft.tokenId}`
+            }))
+          : [{
+              id: 'no_nfts',
+              title: 'No NFTs found',
+              description: 'You have no NFTs in your wallet'
+            }]
+      }]
+    };
   } catch (error) {
     console.error('Error listing NFTs:', error);
-    return 'Failed to fetch NFT list. Please try again later.';
+    return {
+      type: 'text',
+      text: 'Failed to fetch NFTs. Please try again later.'
+    } as TextResponse;
   }
 }
 
-async function getNFTInfo(contractAddress?: string, tokenId?: string): Promise<any> {
+async function getNFTInfo(contractAddress?: string, tokenId?: string): Promise<ImageResponse | TextResponse> {
   if (!contractAddress || !tokenId) {
-    return 'Please provide both contract address and token ID. Example: /nft info 0x... 123';
+    return {
+      type: 'text',
+      text: 'Please provide both contract address and token ID'
+    };
   }
   
   try {
-    // In a real implementation, fetch actual NFT info
-    const nftInfo = {
-      name: 'CryptoPunk #1234',
-      description: 'A rare CryptoPunk from the original collection',
-      imageUrl: 'https://example.com/punk1234.png',
-      attributes: [
-        { trait_type: 'Type', value: 'Alien' },
-        { trait_type: 'Accessory', value: 'Cap Forward' },
-      ]
+    // Placeholder implementation
+    const nft: NFTInfo = {
+      id: `${contractAddress}_${tokenId}`,
+      name: 'Example NFT',
+      description: 'This is an example NFT',
+      imageUrl: 'https://example.com/nft-image.jpg',
+      contract: contractAddress,
+      tokenId,
+      metadata: {}
     };
-    
-    return nftTemplates.nftDetails(nftInfo);
+
+    if (nft.imageUrl) {
+      return {
+        type: 'image',
+        url: nft.imageUrl,
+        caption: nftTemplates.nftDetail({
+          name: nft.name,
+          description: nft.description,
+          contract: nft.contract,
+          tokenId: nft.tokenId,
+          imageUrl: nft.imageUrl
+        })
+      };
+    }
+
+    return {
+      type: 'text',
+      text: nftTemplates.nftDetail({
+        name: nft.name,
+        description: nft.description,
+        contract: nft.contract,
+        tokenId: nft.tokenId
+      })
+    };
   } catch (error) {
     console.error('Error getting NFT info:', error);
-    return 'Failed to fetch NFT information. Please check the contract address and token ID.';
+    return {
+      type: 'text',
+      text: 'Failed to fetch NFT info. Please try again later.'
+    };
   }
 }
 
 // Help message
-function getHelpMessage(): any {
-  return createTextResponse(
-    `📋 *Available Commands*:\n\n` +
+function getHelpMessage(): string {
+  return `📋 *Available Commands*:\n\n` +
     `*Wallet Commands:*\n` +
-    `- *balance* - Check your wallet balance\n` +
-    `- *wallet create* - Create a new wallet\n` +
-    `- *wallet address* - Get your wallet address\n\n` +
+    `- /wallet balance - Check your wallet balance\n` +
+    `- /wallet create - Create a new wallet\n` +
+    `- /wallet address - Get your wallet address\n\n` +
     `*Token Commands:*\n` +
-    `- *tokens* - List your tokens\n` +
-    `- *token balance [token_address]* - Check token balance\n\n` +
+    `- /token list - List your tokens\n` +
+    `- /token balance [address] - Check token balance\n\n` +
     `*NFT Commands:*\n` +
-    `- *nfts* - List your NFTs\n` +
-    `- *nft info [contract_address] [token_id]* - Get NFT info\n\n` +
+    `- /nft list - List your NFTs\n` +
+    `- /nft info [contract] [tokenId] - Get NFT details\n\n` +
     `*Other Commands:*\n` +
-    `- *help* - Show this help message`
-  );
+    `- /help - Show this help message`;
 }
 
 // Utility function to send a WhatsApp message
-export const sendWhatsAppMessage = async (
+async function sendWhatsAppMessage(
   to: string, 
   message: string,
   previewUrl: boolean = false
-): Promise<void> => {
-  // Implementation depends on your WhatsApp API client
-  console.log(`Sending to ${to}:`, message);
-  
-  // Example implementation with fetch:
-  /*
-  await fetch('https://graph.facebook.com/v17.0/YOUR_PHONE_NUMBER_ID/messages', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      text: { body: message },
-      preview_url: previewUrl,
-    }),
-  });
-  */
-};
+): Promise<void> {
+  try {
+    // In a real implementation, you would use the WhatsApp API to send the message
+    console.log(`Sending message to ${to}: ${message}${previewUrl ? ' (with preview)' : ''}`);
+    
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    console.log('Message sent successfully');
+  } catch (error) {
+    console.error('Error sending WhatsApp message:', error);
+    throw new Error('Failed to send message');
+  }
+}
+
+// ... (rest of the code remains the same)
