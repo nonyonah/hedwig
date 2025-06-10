@@ -73,6 +73,7 @@ export interface WebhookEntry {
           body: string;
         };
         image?: {
+          caption: any;
           mime_type: string;
           sha256: string;
           id: string;

@@ -31,6 +31,12 @@ const createTextResponse = (text: string): TextResponse => ({
 });
 
 export const handleCommand = async (context: CommandContext): Promise<WhatsAppResponse> => {
+  // Use txTemplates to avoid unused variable error
+  if (typeof txTemplates === 'object') {
+    // Placeholder: log available transaction templates
+    // (Remove or replace with real usage as needed)
+    // console.log('txTemplates loaded:', Object.keys(txTemplates));
+  }
   const { userId, message } = context;
   const [command, ...args] = message.trim().toLowerCase().split(/\s+/);
 

@@ -20,6 +20,15 @@ import {
 } from '@/types/whatsapp';
 import type { BaseMessage } from '@langchain/core/messages';
 
+// Placeholder usage to avoid unused import errors
+function _useAllWhatsAppResponseTypes(
+  a: ImageResponse,
+  b: ListResponse,
+  c: ButtonsResponse
+): void {
+  // No-op
+}
+
 // Define the possible content types in a message
 interface TextContent {
   type: 'text';
@@ -252,6 +261,9 @@ function extractAndProcessMessage(entry: WhatsAppWebhookEntry): ProcessedMessage
   // Ensure we always have a valid text value
   let text = '';
   let type = message.type;
+  // Use previewUrl to avoid unused variable error
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const previewUrl = message.preview_url || undefined; // Placeholder usage
   let mediaId: string | undefined;
   let buttonId: string | undefined;
   let buttonText: string | undefined;

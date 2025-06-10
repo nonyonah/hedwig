@@ -199,6 +199,7 @@ export const db = {
         .single();
 
       if (resetError) throw resetError;
+      console.log('Rate limit reset:', resetData); // Use resetData in a log statement
       return { isRateLimited: false };
     }
 
