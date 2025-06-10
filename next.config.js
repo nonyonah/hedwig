@@ -1,11 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['@coinbase/cdp-sdk', 'jose'],
   
   // Enable experimental ESM support
   experimental: {
     esmExternals: 'loose',
+    // Use serverComponentsExternalPackages instead of transpilePackages
+    // to avoid conflicts with ESM dependencies
     serverComponentsExternalPackages: [
       '@coinbase/agentkit',
       '@walletconnect/universal-provider',
@@ -15,6 +16,10 @@ const nextConfig = {
     ],
     // Enable server actions
     serverActions: true,
+    // Disable server components cache for development
+    serverComponents: {
+      cache: process.env.NODE_ENV === 'production',
+    },
   },
   
   // Enable ESM support
