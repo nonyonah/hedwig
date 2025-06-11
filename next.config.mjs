@@ -1,3 +1,8 @@
+import { createRequire } from 'module';
+import webpack from 'webpack';
+
+const require = createRequire(import.meta.url);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -59,7 +64,7 @@ const nextConfig = {
       // Add polyfills
       config.plugins = [
         ...config.plugins,
-        new (require('webpack').ProvidePlugin)({
+        new webpack.ProvidePlugin({
           process: 'process/browser',
           Buffer: ['buffer', 'Buffer'],
           // Add global polyfills
@@ -72,23 +77,23 @@ const nextConfig = {
       // Handle @coinbase/cdp-sdk and its dependencies
       config.resolve.alias = {
         ...config.resolve.alias,
-        '@coinbase/cdp-sdk': require.resolve('@coinbase/cdp-sdk/dist/browser/index.js'),
-        // Add a more specific alias for the missing module
-        './src/chacha20Poly1305.js': require.resolve('@noble/ciphers/chacha20poly1305'),
+        // Use the default export of @coinbase/cdp-sdk
+        '@coinbase/cdp-sdk': '@coinbase/cdp-sdk',
         // Add other potential missing modules
         'node:crypto': 'crypto-browserify',
         'node:stream': 'stream-browserify',
         'node:buffer': 'buffer/'
       };
+      
+      // Handle chacha20poly1305 if needed by @coinbase/cdp-sdk
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        './src/chacha20Poly1305.js': false
+      };
     }
 
     return config;
-  },
-  
-  // Webpack 5 configuration
-  webpack5: true,
-
-  // Webpack configuration is defined above
+  }
 };
 
 export default nextConfig;
