@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+  functions = ".next/server"
+
+[build.environment]
+  NETLIFY_NEXT_PLUGIN_SKIP = "true"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["@coinbase/cdp-sdk"]
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

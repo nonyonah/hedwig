@@ -3,15 +3,60 @@ import webpack from 'webpack';
 
 const require = createRequire(import.meta.url);
 
+// Load environment variables
+const {
+  NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+  NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
+  NEXT_PUBLIC_CDP_API_KEY_NAME,
+  NEXT_PUBLIC_CDP_API_KEY_SECRET,
+  NEXT_PUBLIC_GOOGLE_API_KEY,
+  NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  GOOGLE_GENERATIVE_AI_API_KEY,
+  WHATSAPP_ACCESS_TOKEN,
+  WHATSAPP_PHONE_NUMBER_ID,
+  WEBHOOK_VERIFY_TOKEN
+} = process.env;
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   
-  // Configure Turbopack
-  turbopack: {
-    resolveAlias: {
-      // Add any necessary aliases here
-    }
+  // Public environment variables
+  publicRuntimeConfig: {
+    walletConnectProjectId: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+    onchainKitApiKey: NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
+    cdpApiKeyName: NEXT_PUBLIC_CDP_API_KEY_NAME,
+    googleApiKey: NEXT_PUBLIC_GOOGLE_API_KEY,
+    supabaseUrl: NEXT_PUBLIC_SUPABASE_URL,
+    supabaseAnonKey: NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  },
+  
+  // Server-side environment variables
+  serverRuntimeConfig: {
+    cdpApiKeySecret: NEXT_PUBLIC_CDP_API_KEY_SECRET,
+    googleGenerativeAiKey: GOOGLE_GENERATIVE_AI_API_KEY,
+    whatsappAccessToken: WHATSAPP_ACCESS_TOKEN,
+    whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+    webhookVerifyToken: WEBHOOK_VERIFY_TOKEN,
+  },
+  
+  // Output directory for Netlify
+  output: 'standalone',
+  
+  // Disable static optimization for Netlify
+  outputFileTracing: true,
+  
+  // Enable server actions
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb',
+    },
+  },
+  
+  // Disable static optimization for Netlify
+  images: {
+    unoptimized: true,
   },
   
   // External packages for server components
