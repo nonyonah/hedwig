@@ -270,8 +270,9 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, {
       status: 204,
       headers: {
+        ...corsHeaders,
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE',
         'Access-Control-Allow-Headers': 'Content-Type, Accept',
       }
     });
@@ -291,8 +292,9 @@ export async function POST(req: NextRequest) {
       return new NextResponse('Status update received', { 
         status: 200, 
         headers: {
+          ...corsHeaders,
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE',
+          'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE',
           'Access-Control-Allow-Headers': 'Content-Type, Accept',
         }
       });
@@ -304,7 +306,10 @@ export async function POST(req: NextRequest) {
     
     if (!messageData) {
       console.log('No processable message found in webhook');
-      return new NextResponse('No processable message', { status: 200 });
+      return new NextResponse('No processable message', { 
+        status: 200,
+        headers: corsHeaders
+      });
     }
 
     const { from: phoneNumber, text: messageText, type: messageType } = messageData;
@@ -312,7 +317,10 @@ export async function POST(req: NextRequest) {
     // Validate phone number format
     if (!validatePhoneNumber(phoneNumber)) {
       console.error(`Invalid phone number format: ${phoneNumber}`);
-      return new NextResponse('Invalid phone number', { status: 400 });
+      return new NextResponse('Invalid phone number', { 
+        status: 400,
+        headers: corsHeaders
+      });
     }
     
     // Apply rate limiting
@@ -323,7 +331,10 @@ export async function POST(req: NextRequest) {
         phoneNumber,
         `⚠️ Too many requests. Please try again in ${retryAfter} seconds.`
       );
-      return new NextResponse('Rate limit exceeded', { status: 429 });
+      return new NextResponse('Rate limit exceeded', { 
+        status: 429,
+        headers: corsHeaders
+      });
     }
 
     console.log(`Processing ${messageType} message from ${phoneNumber}: ${messageText}`);
@@ -397,7 +408,10 @@ export async function POST(req: NextRequest) {
         direction: 'incoming',
       });
       
-      return new NextResponse('Message processed successfully', { status: 200 });
+      return new NextResponse('Message processed successfully', { 
+        status: 200,
+        headers: corsHeaders
+      });
       
     } catch (error) {
       console.error('Error processing message:', error);
