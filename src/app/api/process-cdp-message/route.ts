@@ -4,7 +4,8 @@ import {
   sendWhatsAppImage, 
   sendWhatsAppListMessage, 
   sendWhatsAppReplyButtons,
-  validatePhoneNumber} from '@/lib/whatsappUtils';
+  validatePhoneNumber 
+} from '@/lib/whatsappUtils';
 import { handleCommand } from '@/lib/commandHandlers';
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/lib/database';
@@ -17,6 +18,13 @@ import {
   ListResponse,
   ButtonsResponse
 } from '@/types/whatsapp';
+
+// CORS headers for API responses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -257,6 +265,18 @@ function extractAndProcessMessage(entry: WhatsAppWebhookEntry): ProcessedMessage
  * Handles incoming webhook events from WhatsApp
  */
 export async function POST(req: NextRequest) {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        'Access-Control-Allow-Headers': 'Content-Type, Accept',
+      }
+    });
+  }
+
   try {
     const body = await req.json();
     console.log('Received webhook payload:', JSON.stringify(body, null, 2));
@@ -268,7 +288,14 @@ export async function POST(req: NextRequest) {
       if (statusUpdate.errors) {
         console.error('Message delivery error:', statusUpdate.errors);
       }
-      return new NextResponse('Status update received', { status: 200 });
+      return new NextResponse('Status update received', { 
+        status: 200, 
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE',
+          'Access-Control-Allow-Headers': 'Content-Type, Accept',
+        }
+      });
     }
     
     // Process incoming messages

@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+// CORS headers for API responses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',};
+
 // WhatsApp webhook verification
 export const dynamic = 'force-dynamic';
 
@@ -45,17 +52,19 @@ export async function GET(request: NextRequest) {
     
     console.log('Parsed query parameters:', queryParams);
     
-    // Get parameters with fallback to handle both direct and encoded parameter names
-    const mode = queryParams['hub.mode'] || queryParams['amp;hub.mode'];
-    const token = queryParams['hub.verify_token'] || queryParams['amp;hub.verify_token'];
-    const challenge = queryParams['hub.challenge'] || queryParams['amp;hub.challenge'];
-    
+    const mode = request.nextUrl.searchParams.get('hub.mode');
+    const token = request.nextUrl.searchParams.get('hub.verify_token');
+    const challenge = request.nextUrl.searchParams.get('hub.challenge');
+
     // Get the verify token from environment variables
     const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.WEBHOOK_VERIFY_TOKEN;
     
     if (!verifyToken) {
       console.error('Error: No verification token found in environment variables. Please set WHATSAPP_VERIFY_TOKEN or WEBHOOK_VERIFY_TOKEN.');
-      return new NextResponse('Server configuration error', { status: 500 });
+      return new NextResponse('Server configuration error', { 
+        status: 500,
+        headers: corsHeaders
+      });
     }
     
     // Log all environment variables for debugging
@@ -157,20 +166,36 @@ export async function POST(req: NextRequest) {
                   const messageText = message.text.body;
                   console.log(`Received text message from ${from}: ${messageText}`);
 
-                  // Asynchronously forward to CDP processor
-                  // Use a more robust way to get the base URL in production
-                  const processApiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-cdp-message`;
+                  // Get the base URL from environment variable or use relative URL for same-origin
+                  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                  const processApiUrl = `${baseUrl}/api/process-cdp-message`;
                   
-                  fetch(processApiUrl, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ from, messageText }),
-                  }).catch(fetchError => {
+                  console.log(`Forwarding message to: ${processApiUrl}`);
+                  
+                  try {
+                    const response = await fetch(processApiUrl, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({ 
+                        from, 
+                        messageText,
+                        timestamp: new Date().toISOString()
+                      }),
+                    });
+
+                    if (!response.ok) {
+                      const errorText = await response.text();
+                      console.error(`API Error (${response.status}):`, errorText);
+                    } else {
+                      const result = await response.json();
+                      console.log('Message processed successfully:', result);
+                    }
+                  } catch (fetchError) {
                     console.error('Failed to call process-cdp-message API:', fetchError);
-                    // Optionally, implement a retry mechanism or notify admin
-                  });
+                    // Optionally implement retry logic here
+                  }
 
                   console.log(`Message from ${from} forwarded to CDP processor.`);
                 } else {
