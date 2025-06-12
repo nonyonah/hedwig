@@ -1,6 +1,6 @@
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-import webpack from 'webpack';
+// webpack is provided by Next.js
 import path from 'path';
 
 const require = createRequire(import.meta.url);
@@ -80,7 +80,7 @@ const nextConfig = {
   ],
   
   // Configure webpack
-  webpack: (config, { isServer, webpack }) => {
+  webpack: (config, { isServer, webpack: nextWebpack }) => {
     config.experiments = {
       ...config.experiments,
       layers: true,
@@ -133,7 +133,7 @@ const nextConfig = {
     // Add plugins for global polyfills
     config.plugins = [
       ...config.plugins,
-      new webpack.ProvidePlugin({
+      new nextWebpack.ProvidePlugin({
         process: 'process/browser',
         Buffer: ['buffer', 'Buffer'],
         crypto: 'crypto-browserify',
