@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 
 // CORS headers for API responses
@@ -214,4 +215,3 @@ export async function POST(req: NextRequest) {
     return new NextResponse('Error processing webhook', { status: 500 });
   }
 }
-
