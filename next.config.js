@@ -20,8 +20,6 @@ const {
   WEBHOOK_VERIFY_TOKEN
 } = process.env;
 
-const path = require('path');
-const webpack = require('webpack');
 
 // Load environment variables if .env file exists
 require('dotenv').config();
