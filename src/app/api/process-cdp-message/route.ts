@@ -22,8 +22,9 @@ import {
 // CORS headers for API responses
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD, PUT, PATCH, DELETE',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
+  'Access-Control-Max-Age': '86400', // 24 hours
 };
 
 // Initialize Supabase client
@@ -289,15 +290,19 @@ export async function POST(req: NextRequest) {
       if (statusUpdate.errors) {
         console.error('Message delivery error:', statusUpdate.errors);
       }
-      return new NextResponse('Status update received', { 
-        status: 200, 
-        headers: {
-          ...corsHeaders,
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE',
-          'Access-Control-Allow-Headers': 'Content-Type, Accept',
+      return NextResponse.json(
+        { status: 'success', message: 'Status update received' },
+        { 
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE',
+            'Access-Control-Allow-Headers': 'Content-Type, Accept',
+          }
         }
-      });
+      );
     }
     
     // Process incoming messages
@@ -306,10 +311,16 @@ export async function POST(req: NextRequest) {
     
     if (!messageData) {
       console.log('No processable message found in webhook');
-      return new NextResponse('No processable message', { 
-        status: 200,
-        headers: corsHeaders
-      });
+      return NextResponse.json(
+        { status: 'success', message: 'No processable message' },
+        { 
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
     const { from: phoneNumber, text: messageText, type: messageType } = messageData;
@@ -317,10 +328,16 @@ export async function POST(req: NextRequest) {
     // Validate phone number format
     if (!validatePhoneNumber(phoneNumber)) {
       console.error(`Invalid phone number format: ${phoneNumber}`);
-      return new NextResponse('Invalid phone number', { 
-        status: 400,
-        headers: corsHeaders
-      });
+      return NextResponse.json(
+        { status: 'error', message: 'Invalid phone number' },
+        { 
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
     
     // Apply rate limiting
@@ -331,10 +348,17 @@ export async function POST(req: NextRequest) {
         phoneNumber,
         `⚠️ Too many requests. Please try again in ${retryAfter} seconds.`
       );
-      return new NextResponse('Rate limit exceeded', { 
-        status: 429,
-        headers: corsHeaders
-      });
+      return NextResponse.json(
+        { status: 'error', message: 'Rate limit exceeded', retryAfter },
+        { 
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': retryAfter?.toString() || '60'
+          }
+        }
+      );
     }
 
     console.log(`Processing ${messageType} message from ${phoneNumber}: ${messageText}`);
@@ -408,10 +432,16 @@ export async function POST(req: NextRequest) {
         direction: 'incoming',
       });
       
-      return new NextResponse('Message processed successfully', { 
-        status: 200,
-        headers: corsHeaders
-      });
+      return NextResponse.json(
+        { status: 'success', message: 'Message processed successfully' },
+        { 
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
       
     } catch (error) {
       console.error('Error processing message:', error);
@@ -431,11 +461,28 @@ export async function POST(req: NextRequest) {
         '⚠️ Sorry, I encountered an error while processing your message. Please try again later.'
       );
       
-      return new NextResponse('Error processing message', { status: 200 });
+      return NextResponse.json(
+        { status: 'error', message: 'Error processing message' },
+        { 
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
   } catch (error) {
     console.error('Error in webhook handler:', error);
-    return new NextResponse('Internal server error', { status: 500 });
+    return NextResponse.json(
+      { status: 'error', message: 'Internal server error' },
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
   }
 }
 
