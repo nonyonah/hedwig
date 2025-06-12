@@ -305,9 +305,25 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Process incoming messages
+    // Process incoming messages - support both WhatsApp webhook and simplified payload formats
+    let messageData: ProcessedMessage | null = null;
+    
+    // Try standard WhatsApp webhook format first
     const entry = body.entry?.[0] as WhatsAppWebhookEntry | undefined;
-    const messageData = entry ? extractAndProcessMessage(entry) : null;
+    if (entry) {
+      messageData = extractAndProcessMessage(entry);
+    } 
+    // Fallback to simplified payload format
+    else if (body.from && (body.messageText || body.text)) {
+      console.log('Processing simplified message format:', body);
+      messageData = {
+        from: body.from,
+        text: body.messageText || body.text || '',
+        messageId: body.messageId || `web-${Date.now()}`,
+        timestamp: body.timestamp || new Date().toISOString(),
+        type: 'text'
+      };
+    }
     
     if (!messageData) {
       console.log('No processable message found in webhook');
