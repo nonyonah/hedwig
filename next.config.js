@@ -1,9 +1,18 @@
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-// webpack is provided by Next.js
 import path from 'path';
 
 const require = createRequire(import.meta.url);
+
+// Polyfill for Node.js built-ins
+import { Buffer } from 'buffer';
+import process from 'process';
+import { fileURLToPath as _fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Ensure global objects are available
+global.Buffer = Buffer;
+global.process = process;
 
 // Load environment variables
 const {
@@ -27,7 +36,6 @@ require('dotenv').config();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   
   // Public environment variables
   publicRuntimeConfig: {
@@ -48,11 +56,8 @@ const nextConfig = {
     webhookVerifyToken: WEBHOOK_VERIFY_TOKEN,
   },
   
-  // Output directory for Netlify
+  // Output standalone for Netlify
   output: 'standalone',
-  
-  // Disable static optimization for Netlify
-  outputFileTracing: true,
   
   // Enable server actions
   experimental: {
@@ -127,7 +132,8 @@ const nextConfig = {
       http: require.resolve('stream-http'),
       zlib: require.resolve('browserify-zlib'),
       querystring: require.resolve('querystring-es3'),
-      url: require.resolve('url/')
+      url: require.resolve('url/'),
+      'whatwg-url': require.resolve('whatwg-url')
     };
 
     // Add plugins for global polyfills
@@ -141,55 +147,30 @@ const nextConfig = {
         util: 'util/'
       })
     ];
+
+    // Handle whatwg-url module
+    config.module.rules.push({
+      test: /whatwg-url\/.*\.js$/,
+      type: 'javascript/auto',
+      resolve: {
+        fullySpecified: false
+      }
+    });
     
     // Configure aliases for client-side
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        'jose': require.resolve('jose/dist/node/cjs/index.js'),
+        'jose': 'jose',
         'node:crypto': 'crypto-browserify',
         'node:stream': 'stream-browserify',
         'node:buffer': 'buffer/'
       };
-      
-      config.resolve.alias = Object.entries({
-        ...config.resolve.alias,
-        './src/chacha20Poly1305.js': false,
-        'jose': false
-      }).reduce((acc, [key, value]) => {
-        if (value !== false) {
-          acc[key] = value;
-        }
-        return acc;
-      }, {});
     }
 
     // Get the directory name using import.meta.url (works in both Windows and Unix-like systems)
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    
-    // For both server and client, use the main jose export
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      'jose': 'jose'
-    };
-    
-    // Handle specific jose imports that might be causing issues
-    config.resolve.alias = Object.entries({
-      ...config.resolve.alias,
-      './src/chacha20Poly1305.js': false,
-      'jose/browser/index': 'jose',
-      'jose/node/cjs': 'jode',
-      'jose/node/cjs/index': 'jose',
-      'jose/node/cjs/jwt/verify': 'jose/jwt/verify',
-      'jose/node/cjs/jws/compact/verify': 'jose/jws/compact/verify',
-      'jose/node/cjs/jwk/import': 'jose/jwk/import'
-    }).reduce((acc, [key, value]) => {
-      if (value !== false) {
-        acc[key] = value;
-      }
-      return acc;
-    }, {});
 
     return config;
   },
