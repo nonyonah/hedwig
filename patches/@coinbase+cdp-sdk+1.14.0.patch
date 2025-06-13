@@ -1,0 +1,30 @@
+diff --git a/node_modules/@coinbase/cdp-sdk/_cjs/auth/utils/jwt.js b/node_modules/@coinbase/cdp-sdk/_cjs/auth/utils/jwt.js
+index fb240df..1f86623 100644
+--- a/node_modules/@coinbase/cdp-sdk/_cjs/auth/utils/jwt.js
++++ b/node_modules/@coinbase/cdp-sdk/_cjs/auth/utils/jwt.js
+@@ -37,7 +37,7 @@ exports.generateJwt = generateJwt;
+ exports.generateWalletJwt = generateWalletJwt;
+ const crypto = __importStar(require("crypto"));
+ const crypto_1 = require("crypto");
+-const jose_1 = require("jose");
++const jose_1 = await import("jose");
+ const errors_js_1 = require("../errors.js");
+ /**
+  * Generates a JWT (also known as a Bearer token) for authenticating with Coinbase's REST APIs.
+@@ -50,7 +50,7 @@ const errors_js_1 = require("../errors.js");
+  * @throws {Error} If required parameters are missing, invalid, or if JWT signing fails
+  */
+ async function generateJwt(options) {
+-    // Validate required parameters
++    const jose_1 = await import("jose");
+     if (!options.apiKeyId) {
+         throw new Error("Key name is required");
+     }
+@@ -101,6 +101,7 @@ async function generateJwt(options) {
+  * @throws {InvalidWalletSecretFormatError} If the private key is not in the correct format or signing fails.
+  */
+ async function generateWalletJwt(options) {
++    const jose_1 = await import("jose");
+     if (!options.walletSecret) {
+         throw new errors_js_1.UndefinedWalletSecretError("Wallet Secret is not defined");
+     }
