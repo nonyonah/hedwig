@@ -3,11 +3,21 @@ import { CdpV2EvmWalletProvider } from '@coinbase/agentkit';
 let walletProvider: CdpV2EvmWalletProvider | null = null;
 
 function getRequiredEnvVar(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+  // Try different environment variable patterns
+  const possibleNames = [
+    name,
+    name.replace('NEXT_PUBLIC_', ''),
+    name.startsWith('NEXT_PUBLIC_') ? name : `NEXT_PUBLIC_${name}`
+  ];
+  
+  for (const envName of possibleNames) {
+    const value = process.env[envName];
+    if (value) {
+      return value;
+    }
   }
-  return value;
+  
+  throw new Error(`Missing required environment variable: ${name}`);
 }
 
 /**
@@ -21,12 +31,17 @@ export async function getOrCreateWallet(userId: string, address?: string) {
   }
 
   try {
+    // Log available environment variables for debugging
+    console.log('Available environment variable keys:', Object.keys(process.env).filter(key => 
+      key.includes('CDP') || key.includes('NETWORK')
+    ));
+    
     const config = {
       // CDP v2 wallet configuration
-      apiKeyId: getRequiredEnvVar('NEXT_PUBLIC_CDP_API_KEY_ID'),
-      apiKeySecret: getRequiredEnvVar('NEXT_PUBLIC_CDP_API_KEY_SECRET'),
-      walletSecret: getRequiredEnvVar('NEXT_PUBLIC_CDP_WALLET_SECRET'),
-      networkId: process.env.NEXT_PUBLIC_NETWORK_ID || 'base-sepolia',
+      apiKeyId: getRequiredEnvVar('CDP_API_KEY_ID'),
+      apiKeySecret: getRequiredEnvVar('CDP_API_KEY_SECRET'),
+      walletSecret: getRequiredEnvVar('CDP_WALLET_SECRET'),
+      networkId: process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || 'base-sepolia',
       idempotencyKey: `user-${userId}-${Date.now()}`,
       ...(address && { address }),
       

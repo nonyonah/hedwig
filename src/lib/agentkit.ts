@@ -14,11 +14,21 @@ let walletProvider: CdpV2EvmWalletProvider | null = null;
 
 // Environment variable validation
 function getRequiredEnvVar(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+  // Try different environment variable patterns
+  const possibleNames = [
+    name,
+    name.replace('NEXT_PUBLIC_', ''),
+    name.startsWith('NEXT_PUBLIC_') ? name : `NEXT_PUBLIC_${name}`
+  ];
+  
+  for (const envName of possibleNames) {
+    const value = process.env[envName];
+    if (value) {
+      return value;
+    }
   }
-  return value;
+  
+  throw new Error(`Missing required environment variable: ${name}`);
 }
 
 /**
@@ -36,7 +46,7 @@ export async function getAgentKit(): Promise<AgentKit> {
       walletProvider = await CdpV2EvmWalletProvider.configureWithWallet({
         apiKeyId: getRequiredEnvVar('CDP_API_KEY_ID'),
         apiKeySecret: getRequiredEnvVar('CDP_API_KEY_SECRET'),
-        networkId: process.env.NETWORK_ID || 'base-sepolia',
+        networkId: process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || 'base-sepolia',
       });
     }
 
