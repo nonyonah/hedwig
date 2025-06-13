@@ -14,21 +14,31 @@ import { dirname } from 'path';
 global.Buffer = Buffer;
 global.process = process;
 
-// Load environment variables
+// Load environment variables with defaults
 const {
-  NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
-  NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
-  NEXT_PUBLIC_CDP_API_KEY_ID,
-  NEXT_PUBLIC_CDP_API_KEY_SECRET,
-  NEXT_PUBLIC_GOOGLE_API_KEY,
-  NEXT_PUBLIC_SUPABASE_URL,
-  NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  GOOGLE_GENERATIVE_AI_API_KEY,
-  WHATSAPP_ACCESS_TOKEN,
-  WHATSAPP_PHONE_NUMBER_ID,
-  WEBHOOK_VERIFY_TOKEN
+  // Wallet and Blockchain
+  NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = '',
+  NEXT_PUBLIC_ONCHAIN_KIT_API_KEY = '',
+  
+  // CDP v2 Wallet Configuration
+  NEXT_PUBLIC_CDP_API_KEY_ID = '',
+  NEXT_PUBLIC_CDP_API_KEY_SECRET = '',
+  NEXT_PUBLIC_CDP_WALLET_SECRET = '',
+  NEXT_PUBLIC_NETWORK_ID = 'base-sepolia',
+  
+  // Google
+  NEXT_PUBLIC_GOOGLE_API_KEY = '',
+  GOOGLE_GENERATIVE_AI_API_KEY = '',
+  
+  // Supabase
+  NEXT_PUBLIC_SUPABASE_URL = '',
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = '',
+  
+  // WhatsApp
+  WHATSAPP_ACCESS_TOKEN = '',
+  WHATSAPP_PHONE_NUMBER_ID = '',
+  WHATSAPP_VERIFY_TOKEN = ''
 } = process.env;
-
 
 // Load environment variables if .env file exists
 require('dotenv').config();
@@ -49,17 +59,16 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   
-  // Public environment variables
+  // Public environment variables - exposed to the client
   publicRuntimeConfig: {
     // Wallet and Blockchain
     walletConnectProjectId: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
     onchainKitApiKey: NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
     
-    // CDP v2 Wallet Configuration
+    // CDP v2 Wallet Configuration (only non-sensitive data)
     cdp: {
-      apiKeyName: NEXT_PUBLIC_CDP_API_KEY_NAME,
-      apiKeyId: process.env.CDP_API_KEY_ID,
-      networkId: process.env.NETWORK_ID || 'base-sepolia',
+      apiKeyId: NEXT_PUBLIC_CDP_API_KEY_ID,
+      networkId: NEXT_PUBLIC_NETWORK_ID,
       walletType: 'v2'
     },
     
@@ -72,16 +81,28 @@ const nextConfig = {
     
     // WhatsApp
     whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
-    whatsappVerifyToken: WEBHOOK_VERIFY_TOKEN
+    whatsappVerifyToken: WHATSAPP_VERIFY_TOKEN
   },
   
-  // Server-side environment variables
+  // Server-side environment variables - only available on the server
   serverRuntimeConfig: {
-    cdpApiKeySecret: NEXT_PUBLIC_CDP_API_KEY_SECRET,
-    googleGenerativeAiKey: GOOGLE_GENERATIVE_AI_API_KEY,
-    whatsappAccessToken: WHATSAPP_ACCESS_TOKEN,
-    whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
-    webhookVerifyToken: WEBHOOK_VERIFY_TOKEN,
+    // CDP v2 Secrets (server-side only)
+    cdp: {
+      apiKeyId: NEXT_PUBLIC_CDP_API_KEY_ID,
+      apiKeySecret: NEXT_PUBLIC_CDP_API_KEY_SECRET,
+      walletSecret: NEXT_PUBLIC_CDP_WALLET_SECRET,
+      networkId: NEXT_PUBLIC_NETWORK_ID
+    },
+    
+    // Google AI
+    googleGenerativeAiApiKey: GOOGLE_GENERATIVE_AI_API_KEY,
+    
+    // WhatsApp Configuration
+    whatsapp: {
+      accessToken: WHATSAPP_ACCESS_TOKEN,
+      phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+      verifyToken: WHATSAPP_VERIFY_TOKEN
+    }
   },
   
   // Output standalone for Netlify

@@ -22,11 +22,11 @@ export async function getOrCreateWallet(userId: string, address?: string) {
 
   try {
     const config = {
-      // Use CDP v2 wallet environment variables
-      apiKeyId: getRequiredEnvVar('CDP_API_KEY_ID'),
-      apiKeySecret: getRequiredEnvVar('CDP_API_KEY_SECRET'),
-      walletSecret: getRequiredEnvVar('CDP_WALLET_SECRET'),
-      networkId: process.env.NETWORK_ID || 'base-sepolia',
+      // CDP v2 wallet configuration
+      apiKeyId: getRequiredEnvVar('NEXT_PUBLIC_CDP_API_KEY_ID'),
+      apiKeySecret: getRequiredEnvVar('NEXT_PUBLIC_CDP_API_KEY_SECRET'),
+      walletSecret: getRequiredEnvVar('NEXT_PUBLIC_CDP_WALLET_SECRET'),
+      networkId: process.env.NEXT_PUBLIC_NETWORK_ID || 'base-sepolia',
       idempotencyKey: `user-${userId}-${Date.now()}`,
       ...(address && { address }),
       
@@ -34,6 +34,9 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       walletType: 'v2',
       walletConfig: {
         // Add any v2 specific configuration here
+        // Example:
+        // chainId: 84532, // Base Sepolia testnet
+        // rpcUrl: process.env.NEXT_PUBLIC_RPC_URL
       }
     };
 
