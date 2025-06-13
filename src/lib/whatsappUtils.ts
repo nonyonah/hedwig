@@ -1,3 +1,5 @@
+import { getRequiredEnvVar } from '@/lib/envUtils';
+
 interface WhatsAppTemplateMessage {
   to: string;
   template: {
@@ -29,12 +31,17 @@ interface WhatsAppMessageResponse {
 
 export async function sendWhatsAppMessage(to: string, message: string): Promise<WhatsAppMessageResponse> {
   try {
+    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
+    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    
+    console.log(`Sending WhatsApp message to ${to} using phone number ID: ${phoneNumberId}`);
+    
     const response = await fetch(
-      `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -69,12 +76,15 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
  */
 export async function sendWhatsAppImage(to: string, imageUrl: string, caption: string = ''): Promise<WhatsAppMessageResponse> {
   try {
+    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
+    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    
     const response = await fetch(
-      `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -107,12 +117,15 @@ export async function sendWhatsAppImage(to: string, imageUrl: string, caption: s
  */
 export async function sendWhatsAppTemplateMessage(message: WhatsAppTemplateMessage): Promise<WhatsAppMessageResponse> {
   try {
+    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
+    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    
     const response = await fetch(
-      `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -157,12 +170,15 @@ export async function sendWhatsAppListMessage(
   sections: WhatsAppListSection[]
 ): Promise<WhatsAppMessageResponse> {
   try {
+    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
+    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    
     const response = await fetch(
-      `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -214,12 +230,15 @@ export async function sendWhatsAppReplyButtons(
   buttons: WhatsAppButton[]
 ): Promise<WhatsAppMessageResponse> {
   try {
+    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
+    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    
     const response = await fetch(
-      `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -232,7 +251,7 @@ export async function sendWhatsAppReplyButtons(
               text: body,
             },
             action: {
-              buttons: buttons.map(button => ({
+              buttons: buttons.map((button) => ({
                 type: 'reply',
                 reply: {
                   id: button.id,

@@ -7,29 +7,11 @@ import {
   walletActionProvider
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
+import { getRequiredEnvVar } from './envUtils';
 
 // Singleton instance
 let agentKitInstance: AgentKit | null = null;
 let walletProvider: CdpV2EvmWalletProvider | null = null;
-
-// Environment variable validation
-function getRequiredEnvVar(name: string): string {
-  // Try different environment variable patterns
-  const possibleNames = [
-    name,
-    name.replace('NEXT_PUBLIC_', ''),
-    name.startsWith('NEXT_PUBLIC_') ? name : `NEXT_PUBLIC_${name}`
-  ];
-  
-  for (const envName of possibleNames) {
-    const value = process.env[envName];
-    if (value) {
-      return value;
-    }
-  }
-  
-  throw new Error(`Missing required environment variable: ${name}`);
-}
 
 /**
  * Initializes and returns a singleton instance of AgentKit.

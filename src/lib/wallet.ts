@@ -1,24 +1,7 @@
 import { CdpV2EvmWalletProvider } from '@coinbase/agentkit';
+import { getRequiredEnvVar } from './envUtils';
 
 let walletProvider: CdpV2EvmWalletProvider | null = null;
-
-function getRequiredEnvVar(name: string): string {
-  // Try different environment variable patterns
-  const possibleNames = [
-    name,
-    name.replace('NEXT_PUBLIC_', ''),
-    name.startsWith('NEXT_PUBLIC_') ? name : `NEXT_PUBLIC_${name}`
-  ];
-  
-  for (const envName of possibleNames) {
-    const value = process.env[envName];
-    if (value) {
-      return value;
-    }
-  }
-  
-  throw new Error(`Missing required environment variable: ${name}`);
-}
 
 /**
  * Gets or creates a wallet for a user
