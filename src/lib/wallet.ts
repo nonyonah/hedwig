@@ -22,12 +22,19 @@ export async function getOrCreateWallet(userId: string, address?: string) {
 
   try {
     const config = {
+      // Use CDP v2 wallet environment variables
       apiKeyId: getRequiredEnvVar('CDP_API_KEY_ID'),
       apiKeySecret: getRequiredEnvVar('CDP_API_KEY_SECRET'),
       walletSecret: getRequiredEnvVar('CDP_WALLET_SECRET'),
       networkId: process.env.NETWORK_ID || 'base-sepolia',
       idempotencyKey: `user-${userId}-${Date.now()}`,
       ...(address && { address }),
+      
+      // CDP v2 specific configuration
+      walletType: 'v2',
+      walletConfig: {
+        // Add any v2 specific configuration here
+      }
     };
 
     walletProvider = await CdpV2EvmWalletProvider.configureWithWallet(config);

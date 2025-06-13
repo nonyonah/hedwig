@@ -18,7 +18,7 @@ global.process = process;
 const {
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
   NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
-  NEXT_PUBLIC_CDP_API_KEY_NAME,
+  NEXT_PUBLIC_CDP_API_KEY_ID,
   NEXT_PUBLIC_CDP_API_KEY_SECRET,
   NEXT_PUBLIC_GOOGLE_API_KEY,
   NEXT_PUBLIC_SUPABASE_URL,
@@ -51,12 +51,28 @@ const nextConfig = {
   
   // Public environment variables
   publicRuntimeConfig: {
+    // Wallet and Blockchain
     walletConnectProjectId: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
     onchainKitApiKey: NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
-    cdpApiKeyName: NEXT_PUBLIC_CDP_API_KEY_NAME,
+    
+    // CDP v2 Wallet Configuration
+    cdp: {
+      apiKeyName: NEXT_PUBLIC_CDP_API_KEY_NAME,
+      apiKeyId: process.env.CDP_API_KEY_ID,
+      networkId: process.env.NETWORK_ID || 'base-sepolia',
+      walletType: 'v2'
+    },
+    
+    // API Keys
     googleApiKey: NEXT_PUBLIC_GOOGLE_API_KEY,
+    
+    // Supabase
     supabaseUrl: NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    
+    // WhatsApp
+    whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+    whatsappVerifyToken: WEBHOOK_VERIFY_TOKEN
   },
   
   // Server-side environment variables
