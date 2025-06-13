@@ -47,80 +47,48 @@ require('dotenv').config();
 const nextConfig = {
   reactStrictMode: true,
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // !! WARN !!
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    // !! WARN !!
     ignoreBuildErrors: true,
   },
-  
-  // Public environment variables - exposed to the client
   publicRuntimeConfig: {
-    // Wallet and Blockchain
     walletConnectProjectId: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
     onchainKitApiKey: NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
-    
-    // CDP v2 Wallet Configuration (only non-sensitive data)
     cdp: {
       apiKeyId: NEXT_PUBLIC_CDP_API_KEY_ID,
       networkId: NEXT_PUBLIC_NETWORK_ID,
       walletType: 'v2'
     },
-    
-    // API Keys
     googleApiKey: NEXT_PUBLIC_GOOGLE_API_KEY,
-    
-    // Supabase
     supabaseUrl: NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    
-    // WhatsApp
     whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
     whatsappVerifyToken: WHATSAPP_VERIFY_TOKEN
   },
-  
-  // Server-side environment variables - only available on the server
   serverRuntimeConfig: {
-    // CDP v2 Secrets (server-side only)
     cdp: {
       apiKeyId: NEXT_PUBLIC_CDP_API_KEY_ID,
       apiKeySecret: NEXT_PUBLIC_CDP_API_KEY_SECRET,
       walletSecret: NEXT_PUBLIC_CDP_WALLET_SECRET,
       networkId: NEXT_PUBLIC_NETWORK_ID
     },
-    
-    // Google AI
     googleGenerativeAiApiKey: GOOGLE_GENERATIVE_AI_API_KEY,
-    
-    // WhatsApp Configuration
     whatsapp: {
       accessToken: WHATSAPP_ACCESS_TOKEN,
       phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
       verifyToken: WHATSAPP_VERIFY_TOKEN
     }
   },
-  
-  // Output standalone for Netlify
   output: 'standalone',
-  
-  // Enable server actions
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',
     },
   },
-  
-  // Disable static optimization for Netlify
   images: {
     unoptimized: true,
   },
-  
-  // External packages for server components
   serverExternalPackages: [
     '@coinbase/agentkit',
     '@walletconnect/universal-provider',
@@ -132,8 +100,6 @@ const nextConfig = {
     'stream-browserify',
     'process'
   ],
-  
-  // Configure webpack
   webpack: (config, { isServer, webpack: nextWebpack }) => {
     config.experiments = {
       ...config.experiments,
@@ -141,27 +107,17 @@ const nextConfig = {
       asyncWebAssembly: true,
       topLevelAwait: true,
     };
-
-    // Add rule to handle .mjs files
     config.module.rules.push({
       test: /\.m?js$/,
-      resolve: {
-        fullySpecified: false,
-      },
+      resolve: { fullySpecified: false },
       exclude: /node_modules\/(?!@coinbase)/,
     });
-
-    // Add rule to handle .cjs files
     config.module.rules.push({
       test: /\.c?js$/,
-      resolve: {
-        fullySpecified: false,
-      },
+      resolve: { fullySpecified: false },
       include: /node_modules\/jose/,
       type: 'javascript/auto',
     });
-
-    // Configure fallbacks for Node.js built-ins
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -184,8 +140,6 @@ const nextConfig = {
       url: require.resolve('url/'),
       'whatwg-url': require.resolve('whatwg-url')
     };
-
-    // Add plugins for global polyfills
     config.plugins = [
       ...config.plugins,
       new nextWebpack.ProvidePlugin({
@@ -196,17 +150,11 @@ const nextConfig = {
         util: 'util/'
       })
     ];
-
-    // Handle whatwg-url module
     config.module.rules.push({
       test: /whatwg-url\/.*\.js$/,
       type: 'javascript/auto',
-      resolve: {
-        fullySpecified: false
-      }
+      resolve: { fullySpecified: false }
     });
-    
-    // Configure aliases for client-side
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
@@ -216,11 +164,8 @@ const nextConfig = {
         'node:buffer': 'buffer/'
       };
     }
-
-    // Get the directory name using import.meta.url (works in both Windows and Unix-like systems)
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-
     return config;
   },
 };
