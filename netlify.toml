@@ -6,9 +6,14 @@
 [build.environment]
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NODE_ENV = "production"
+  # Force installation of peer dependencies
+  NPM_FLAGS = "--legacy-peer-deps"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[[plugins]]
+  package = "netlify-plugin-inline-functions-env"
 
 [functions]
   node_bundler = "esbuild"

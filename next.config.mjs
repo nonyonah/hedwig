@@ -132,43 +132,64 @@ const nextConfig = {
       include: /node_modules\/jose/,
       type: 'javascript/auto',
     });
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
+    
+    // Use conditionally for browser polyfills
+    const fallbacks = {
       fs: false,
       net: false,
       tls: false,
       dns: false,
-      child_process: false,
-      crypto: require.resolve('crypto-browserify'),
-      stream: require.resolve('stream-browserify'),
-      buffer: require.resolve('buffer/'),
-      util: require.resolve('util/'),
-      assert: require.resolve('assert/'),
-      path: require.resolve('path-browserify'),
-      process: require.resolve('process/browser'),
-      os: require.resolve('os-browserify/browser'),
-      https: require.resolve('https-browserify'),
-      http: require.resolve('stream-http'),
-      zlib: require.resolve('browserify-zlib'),
-      querystring: require.resolve('querystring-es3'),
-      url: require.resolve('url/'),
-      'whatwg-url': require.resolve('whatwg-url')
+      child_process: false
     };
+    
+    if (!isServer) {
+      // Only include browser polyfills for client-side code
+      fallbacks.crypto = 'crypto-browserify';
+      fallbacks.stream = 'stream-browserify';
+      fallbacks.buffer = 'buffer/';
+      fallbacks.util = 'util/';
+      fallbacks.assert = 'assert/';
+      fallbacks.path = 'path-browserify';
+      fallbacks.process = 'process/browser';
+      fallbacks.os = 'os-browserify/browser';
+      fallbacks.https = 'https-browserify';
+      fallbacks.http = 'stream-http';
+      fallbacks.zlib = 'browserify-zlib';
+      fallbacks.querystring = 'querystring-es3';
+      fallbacks.url = 'url/';
+      fallbacks['whatwg-url'] = 'whatwg-url';
+    }
+    
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      ...fallbacks
+    };
+    
     config.plugins = [
       ...config.plugins,
       new nextWebpack.ProvidePlugin({
         process: 'process/browser',
-        Buffer: ['buffer', 'Buffer'],
-        crypto: 'crypto-browserify',
-        stream: 'stream-browserify',
-        util: 'util/'
+        Buffer: ['buffer', 'Buffer']
       })
     ];
+    
+    if (!isServer) {
+      // Only provide browser polyfills for client-side code
+      config.plugins.push(
+        new nextWebpack.ProvidePlugin({
+          crypto: 'crypto-browserify',
+          stream: 'stream-browserify',
+          util: 'util/'
+        })
+      );
+    }
+    
     config.module.rules.push({
       test: /whatwg-url\/.*\.js$/,
       type: 'javascript/auto',
       resolve: { fullySpecified: false }
     });
+    
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
@@ -178,6 +199,7 @@ const nextConfig = {
         'node:buffer': 'buffer/'
       };
     }
+    
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     return config;
