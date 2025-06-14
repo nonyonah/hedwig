@@ -126,10 +126,15 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     const agentKit = await getAgentKit();
     const langchainAgent = await getLangChainAgent(agentKit);
 
+    console.log('Processing message with CDP:', message);
+
     const result = await langchainAgent.invoke({
       messages: [new HumanMessage({ content: message })],
     });
 
+    console.log('CDP agent response:', result);
+
+    // Handle different response formats
     if (typeof result === 'string') {
       return result;
     } 
@@ -151,10 +156,12 @@ async function processWithCDP(message: string, userId: string): Promise<string |
       }
     }
     
-    return JSON.stringify(result);
+    // If we couldn't extract a proper response, provide a fallback
+    return "I've processed your request, but I'm having trouble formulating a response. Could you please try rephrasing your question?";
   } catch (error) {
     console.error('Error in processWithCDP:', error);
-    return null; // Return null to fall back to command handler
+    // Return a user-friendly error message instead of null
+    return "I encountered an error while processing your request. Let me try to help you in another way.";
   }
 }
 
@@ -384,13 +391,13 @@ export async function POST(req: NextRequest) {
     console.log(`Processing ${messageType} message from ${phoneNumber}: ${messageText}`);
 
     try {
-      // Try to process with CDP first
-      const cdpResponse = messageType === 'text' ? await processWithCDP(messageText, phoneNumber) : null;
+      // Try to process with CDP first for all message types
+      const cdpResponse = await processWithCDP(messageText, phoneNumber);
       
-      // Process with CDP if it's a text message and we got a response
+      // Process with CDP if we got a response
       let response: WhatsAppResponse | null = null;
       
-      if (messageType === 'text' && cdpResponse) {
+      if (cdpResponse) {
         // Log the CDP response for debugging
         console.log('CDP response:', cdpResponse);
         response = {
