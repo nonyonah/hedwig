@@ -1,0 +1,5 @@
+[33maaa3448[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Convert scripts to ES module syntax for compatibility with type:module
+[33mc5ad652[m Add crypto polyfill for JWT operations to fix wallet initialization errors
+[33mdb26fea[m Explicitly configure Base Sepolia chain ID and RPC URL for wallet providers
+[33mee85f0a[m Improve LangChain agent blockchain integration and error handling
+[33m1dd2077[m Fix idempotency key for CDP wallet initialization
