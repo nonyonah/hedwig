@@ -22,24 +22,39 @@ export function loadServerEnvironment() {
       console.error('Error reading CWD:', err);
     }
 
-    // Try to load from .env.local in different locations
+    // Try to load from .env files in different locations
     const possiblePaths = [
+      path.join(process.cwd(), '.env'),
       path.join(process.cwd(), '.env.local'),
+      path.join(process.cwd(), '.env.production'),
+      path.join(process.cwd(), '..', '.env'),
       path.join(process.cwd(), '..', '.env.local'),
+      path.join(process.cwd(), '..', '.env.production'),
+      path.join(process.cwd(), '..', '..', '.env'),
       path.join(process.cwd(), '..', '..', '.env.local'),
+      path.join(process.cwd(), '..', '..', '.env.production'),
     ];
 
+    // Try to load environment variables from the possible paths
+    let loaded = false;
     for (const envPath of possiblePaths) {
       try {
         if (fs.existsSync(envPath)) {
-          console.log(`Found .env.local at ${envPath}`);
+          console.log(`Found env file at ${envPath}`);
           const envConfig = fs.readFileSync(envPath, 'utf8');
           
           // Parse the .env file and set environment variables
           const envVars = envConfig
             .split('\n')
             .filter(line => line.trim() && !line.startsWith('#'))
-            .map(line => line.split('=').map(part => part.trim()));
+            .map(line => {
+              const equalIndex = line.indexOf('=');
+              if (equalIndex === -1) return [];
+              const key = line.substring(0, equalIndex).trim();
+              const value = line.substring(equalIndex + 1).trim();
+              return [key, value];
+            })
+            .filter(parts => parts.length === 2);
           
           for (const [key, value] of envVars) {
             if (key && value && !process.env[key]) {
@@ -48,19 +63,67 @@ export function loadServerEnvironment() {
           }
           
           console.log('Loaded environment variables from:', envPath);
-          console.log('Available environment keys:', 
-            Object.keys(process.env)
-              .filter(key => !key.includes('SECRET') && !key.includes('TOKEN'))
-              .join(', ')
-          );
-          break;
+          loaded = true;
         }
       } catch (err) {
-        console.error(`Error loading .env.local from ${envPath}:`, err);
+        console.error(`Error loading env file from ${envPath}:`, err);
+      }
+    }
+    
+    // If we loaded any environment variables, log the available keys
+    if (loaded) {
+      console.log('Available environment keys:', 
+        Object.keys(process.env)
+          .filter(key => !key.includes('SECRET') && !key.includes('TOKEN'))
+          .join(', ')
+      );
+    } else {
+      console.warn('No environment files found or loaded');
+      
+      // Hard-code critical environment variables as a last resort
+      if (!process.env.CDP_API_KEY_ID) {
+        console.log('Setting CDP_API_KEY_ID from hard-coded value');
+        process.env.CDP_API_KEY_ID = "7f01cde6-cb23-4677-8d6f-3bca08d597dc";
+      }
+      
+      if (!process.env.CDP_API_KEY_SECRET) {
+        console.log('Setting CDP_API_KEY_SECRET from hard-coded value');
+        process.env.CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==";
+      }
+      
+      if (!process.env.WHATSAPP_ACCESS_TOKEN) {
+        console.log('Setting WHATSAPP_ACCESS_TOKEN from hard-coded value');
+        process.env.WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg";
+      }
+      
+      if (!process.env.WHATSAPP_PHONE_NUMBER_ID) {
+        console.log('Setting WHATSAPP_PHONE_NUMBER_ID from hard-coded value');
+        process.env.WHATSAPP_PHONE_NUMBER_ID = "592458597294251";
       }
     }
   } catch (error) {
     console.error('Error in loadServerEnvironment:', error);
+    
+    // Hard-code critical environment variables as a last resort after an error
+    if (!process.env.CDP_API_KEY_ID) {
+      console.log('Setting CDP_API_KEY_ID from hard-coded value after error');
+      process.env.CDP_API_KEY_ID = "7f01cde6-cb23-4677-8d6f-3bca08d597dc";
+    }
+    
+    if (!process.env.CDP_API_KEY_SECRET) {
+      console.log('Setting CDP_API_KEY_SECRET from hard-coded value after error');
+      process.env.CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==";
+    }
+    
+    if (!process.env.WHATSAPP_ACCESS_TOKEN) {
+      console.log('Setting WHATSAPP_ACCESS_TOKEN from hard-coded value after error');
+      process.env.WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg";
+    }
+    
+    if (!process.env.WHATSAPP_PHONE_NUMBER_ID) {
+      console.log('Setting WHATSAPP_PHONE_NUMBER_ID from hard-coded value after error');
+      process.env.WHATSAPP_PHONE_NUMBER_ID = "592458597294251";
+    }
   }
 }
 

@@ -5,6 +5,7 @@
 
 [build.environment]
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
+  NODE_ENV = "production"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -12,12 +13,20 @@
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["@coinbase/cdp-sdk", "jose"]
-  included_files = [".env.local"]
+  included_files = [".env.local", ".env.production"]
 
 # Add environment variables explicitly for functions
 [functions.environment]
-  # This ensures environment variables are available in the serverless functions
-  NODE_ENV = "production"
+  # CDP Configuration
+  CDP_API_KEY_ID = "7f01cde6-cb23-4677-8d6f-3bca08d597dc"
+  CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg=="
+  CDP_WALLET_SECRET = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ"
+  NETWORK_ID = "base-sepolia"
+  
+  # WhatsApp Configuration
+  WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg"
+  WHATSAPP_PHONE_NUMBER_ID = "592458597294251"
+  WHATSAPP_VERIFY_TOKEN = "hedwig_agent"
 
 [[redirects]]
   from = "/*"
