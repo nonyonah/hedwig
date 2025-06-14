@@ -122,9 +122,15 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     const { getOrCreateWallet } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
 
+    console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
+
     // Try to initialize the wallet and handle errors gracefully
+    let wallet;
     try {
-      await getOrCreateWallet(userId);
+      wallet = await getOrCreateWallet(userId);
+      // Verify wallet is working by attempting to get the address
+      const address = await wallet.getAddress();
+      console.log(`Successfully initialized wallet for ${userId} with address: ${address}`);
     } catch (walletError) {
       console.error('Error initializing wallet:', walletError);
       return "I'm having trouble accessing the blockchain right now. Let me help you with something else instead.";
@@ -134,21 +140,45 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     let agentKit;
     try {
       agentKit = await getAgentKit();
+      // Verify AgentKit is properly initialized
+      const actions = await agentKit.getActions();
+      console.log(`AgentKit initialized with ${actions.length} available actions`);
     } catch (agentKitError) {
       console.error('Error initializing AgentKit:', agentKitError);
       return "I'm having trouble with my blockchain tools. Is there anything else I can help you with?";
     }
 
     // Initialize LangChain agent
-    const langchainAgent = await getLangChainAgent(agentKit);
+    let langchainAgent;
+    try {
+      langchainAgent = await getLangChainAgent(agentKit);
+    } catch (langchainError) {
+      console.error('Error initializing LangChain agent:', langchainError);
+      return "I'm experiencing technical difficulties with my AI capabilities. Can I help you with something simpler?";
+    }
 
     console.log('Processing message with CDP:', message);
 
-    const result = await langchainAgent.invoke({
-      messages: [new HumanMessage({ content: message })],
-    });
+    // Prepare a more blockchain-focused prompt if the message seems to be about blockchain
+    const blockchainKeywords = ['wallet', 'balance', 'crypto', 'token', 'transfer', 'blockchain', 'eth', 'bitcoin', 'transaction'];
+    const isBlockchainQuery = blockchainKeywords.some(keyword => message.toLowerCase().includes(keyword));
+    
+    let enhancedMessage = message;
+    if (isBlockchainQuery) {
+      enhancedMessage = `[BLOCKCHAIN QUERY] ${message} [Use blockchain tools to answer this]`;
+    }
 
-    console.log('CDP agent response:', result);
+    // Invoke the agent with proper error handling
+    let result;
+    try {
+      result = await langchainAgent.invoke({
+        messages: [new HumanMessage({ content: enhancedMessage })],
+      });
+      console.log('CDP agent response:', JSON.stringify(result, null, 2));
+    } catch (invokeError) {
+      console.error('Error invoking LangChain agent:', invokeError);
+      return "I encountered an error while processing your blockchain request. Could you try again with a simpler query?";
+    }
 
     // Handle different response formats
     if (typeof result === 'string') {

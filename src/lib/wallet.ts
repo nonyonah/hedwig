@@ -6,7 +6,8 @@ import { randomUUID } from 'crypto';
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
-let walletProvider: CdpV2EvmWalletProvider | null = null;
+// Wallet provider cache with user-specific instances
+const walletProviders = new Map<string, CdpV2EvmWalletProvider>();
 
 /**
  * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
@@ -26,11 +27,15 @@ function generateIdempotencyKey(userId: string): string {
  * @param address - Optional address of an existing wallet to use
  */
 export async function getOrCreateWallet(userId: string, address?: string) {
-  if (walletProvider) {
-    return walletProvider;
+  // Check if we already have a wallet provider for this user
+  if (walletProviders.has(userId)) {
+    console.log(`Returning cached wallet provider for user ${userId}`);
+    return walletProviders.get(userId)!;
   }
 
   try {
+    console.log(`Creating new wallet provider for user ${userId}`);
+    
     // Log available environment variables for debugging (without exposing secrets)
     const envKeys = Object.keys(process.env).filter(key => 
       key.includes('CDP') || key.includes('NETWORK')
@@ -69,8 +74,28 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       }
     };
 
-    walletProvider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-    return walletProvider;
+    console.log('Initializing wallet with config:', {
+      ...config,
+      apiKeyId: config.apiKeyId ? '[REDACTED]' : 'MISSING',
+      apiKeySecret: '[REDACTED]',
+      walletSecret: '[REDACTED]',
+    });
+
+    try {
+      const walletProvider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+      
+      // Verify the wallet is working by getting the address
+      const walletAddress = await walletProvider.getAddress();
+      console.log(`Successfully created wallet with address: ${walletAddress}`);
+      
+      // Cache the wallet provider for this user
+      walletProviders.set(userId, walletProvider);
+      
+      return walletProvider;
+    } catch (error) {
+      console.error('Error configuring wallet provider:', error);
+      throw new Error(`Failed to configure wallet provider: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   } catch (error) {
     console.error('Wallet operation failed:', error);
     throw new Error(`Wallet operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
