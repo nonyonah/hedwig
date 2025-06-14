@@ -12,9 +12,7 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[[plugins]]
-  package = "netlify-plugin-inline-functions-env"
-
+# Functions configuration
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["@coinbase/cdp-sdk", "jose"]
@@ -32,6 +30,10 @@
   WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg"
   WHATSAPP_PHONE_NUMBER_ID = "592458597294251"
   WHATSAPP_VERIFY_TOKEN = "hedwig_agent"
+
+# This plugin must run AFTER the Next.js plugin has built the functions
+[[plugins]]
+  package = "netlify-plugin-inline-functions-env"
 
 [[redirects]]
   from = "/*"
