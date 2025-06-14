@@ -9,6 +9,7 @@ import {
 import { z, ZodType, ZodTypeDef } from 'zod';
 import { getRequiredEnvVar } from './envUtils';
 import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
+import { randomUUID } from 'crypto';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -16,6 +17,17 @@ loadServerEnvironment();
 // Singleton instance
 let agentKitInstance: AgentKit | null = null;
 let walletProvider: CdpV2EvmWalletProvider | null = null;
+
+/**
+ * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
+ * @returns A unique idempotency key
+ */
+function generateIdempotencyKey(): string {
+  // Generate a UUID (36 characters) and combine with timestamp
+  const uuid = randomUUID();
+  const timestamp = Date.now().toString();
+  return `${uuid}-agentkit-${timestamp}`;
+}
 
 /**
  * Initializes and returns a singleton instance of AgentKit.
@@ -37,11 +49,16 @@ export async function getAgentKit(): Promise<AgentKit> {
         networkId: cdpEnv.networkId
       });
       
+      // Generate a proper idempotency key for wallet configuration
+      const idempotencyKey = generateIdempotencyKey();
+      console.log('AgentKit wallet idempotency key length:', idempotencyKey.length);
+      
       walletProvider = await CdpV2EvmWalletProvider.configureWithWallet({
         apiKeyId: cdpEnv.apiKeyId,
         apiKeySecret: cdpEnv.apiKeySecret,
         walletSecret: cdpEnv.walletSecret,
         networkId: cdpEnv.networkId,
+        idempotencyKey,
       });
     }
 

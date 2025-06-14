@@ -1,11 +1,24 @@
 import { CdpV2EvmWalletProvider } from '@coinbase/agentkit';
 import { getRequiredEnvVar } from './envUtils';
 import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
+import { randomUUID } from 'crypto';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
 let walletProvider: CdpV2EvmWalletProvider | null = null;
+
+/**
+ * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
+ * @param userId - User identifier to include in the key
+ * @returns A unique idempotency key
+ */
+function generateIdempotencyKey(userId: string): string {
+  // Generate a UUID (36 characters) and combine with user ID and timestamp
+  const uuid = randomUUID();
+  const timestamp = Date.now().toString();
+  return `${uuid}-user-${userId}-${timestamp}`;
+}
 
 /**
  * Gets or creates a wallet for a user
@@ -33,13 +46,17 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       networkId: cdpEnv.networkId
     });
     
+    // Generate a proper idempotency key that meets the 36-character minimum requirement
+    const idempotencyKey = generateIdempotencyKey(userId);
+    console.log('Generated idempotency key length:', idempotencyKey.length);
+    
     const config = {
       // CDP v2 wallet configuration
       apiKeyId: cdpEnv.apiKeyId,
       apiKeySecret: cdpEnv.apiKeySecret,
       walletSecret: cdpEnv.walletSecret,
       networkId: cdpEnv.networkId,
-      idempotencyKey: `user-${userId}-${Date.now()}`,
+      idempotencyKey,
       ...(address && { address }),
       
       // CDP v2 specific configuration
