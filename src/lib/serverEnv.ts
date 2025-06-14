@@ -155,6 +155,9 @@ export function getCdpEnvironment() {
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.NEXT_PUBLIC_CDP_API_KEY_ID;
   const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET;
   const walletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET || "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ";
+  const networkId = process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || "base-sepolia";
+  const chainId = 84532; // Base Sepolia testnet chain ID
+  const rpcUrl = process.env.RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org";
   
   if (!apiKeyId) {
     throw new Error('Missing required CDP API Key ID');
@@ -175,7 +178,7 @@ export function getCdpEnvironment() {
   if (!apiKeyId) missingVars.push('CDP_API_KEY_ID');
   if (!apiKeySecret) missingVars.push('CDP_API_KEY_SECRET');
   if (!walletSecret) missingVars.push('CDP_WALLET_SECRET');
-  if (!process.env.NETWORK_ID) missingVars.push('NETWORK_ID');
+  if (!networkId) missingVars.push('NETWORK_ID');
   
   if (missingVars.length > 0) {
     console.error('Missing required environment variable:', missingVars.join(', '));
@@ -191,14 +194,18 @@ export function getCdpEnvironment() {
     apiKeyId: apiKeyId ? 'PRESENT' : 'MISSING',
     apiKeySecret: apiKeySecret ? 'PRESENT' : 'MISSING',
     walletSecret: walletSecret ? 'PRESENT' : 'MISSING',
-    networkId: process.env.NETWORK_ID || 'base-sepolia'
+    networkId,
+    chainId,
+    rpcUrl
   });
   
   return {
     apiKeyId,
     apiKeySecret,
     walletSecret,
-    networkId: process.env.NETWORK_ID || 'base-sepolia',
+    networkId,
+    chainId,
+    rpcUrl,
   };
 }
 

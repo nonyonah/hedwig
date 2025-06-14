@@ -18,8 +18,15 @@ function generateIdempotencyKey(userId: string): string {
   // Generate a UUID (36 characters) and combine with user ID and timestamp
   const uuid = randomUUID();
   const timestamp = Date.now().toString();
+  // Ensure the key is truly unique and long enough
   return `${uuid}-user-${userId}-${timestamp}`;
 }
+
+// Base Sepolia testnet configuration
+const BASE_SEPOLIA_CONFIG = {
+  chainId: 84532, // Base Sepolia testnet chain ID
+  rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
+};
 
 /**
  * Gets or creates a wallet for a user
@@ -67,10 +74,9 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       // CDP v2 specific configuration
       walletType: 'v2',
       walletConfig: {
-        // Add any v2 specific configuration here
-        // Example:
-        // chainId: 84532, // Base Sepolia testnet
-        // rpcUrl: process.env.NEXT_PUBLIC_RPC_URL
+        // Explicitly set Base Sepolia testnet configuration
+        chainId: BASE_SEPOLIA_CONFIG.chainId,
+        rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
       }
     };
 
@@ -79,9 +85,13 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       apiKeyId: config.apiKeyId ? '[REDACTED]' : 'MISSING',
       apiKeySecret: '[REDACTED]',
       walletSecret: '[REDACTED]',
+      networkId: config.networkId,
+      chainId: config.walletConfig.chainId,
+      rpcUrl: config.walletConfig.rpcUrl,
     });
 
     try {
+      // Configure with explicit wallet and network parameters
       const walletProvider = await CdpV2EvmWalletProvider.configureWithWallet(config);
       
       // Verify the wallet is working by getting the address

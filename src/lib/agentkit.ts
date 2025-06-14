@@ -18,6 +18,12 @@ loadServerEnvironment();
 let agentKitInstance: AgentKit | null = null;
 let walletProvider: CdpV2EvmWalletProvider | null = null;
 
+// Base Sepolia testnet configuration
+const BASE_SEPOLIA_CONFIG = {
+  chainId: 84532, // Base Sepolia testnet chain ID
+  rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
+};
+
 /**
  * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
  * @returns A unique idempotency key
@@ -26,6 +32,7 @@ function generateIdempotencyKey(): string {
   // Generate a UUID (36 characters) and combine with timestamp
   const uuid = randomUUID();
   const timestamp = Date.now().toString();
+  // Ensure the key is truly unique and long enough
   return `${uuid}-agentkit-${timestamp}`;
 }
 
@@ -52,7 +59,19 @@ async function createWalletProvider(): Promise<CdpV2EvmWalletProvider> {
     walletSecret: cdpEnv.walletSecret,
     networkId: cdpEnv.networkId,
     idempotencyKey,
+    walletType: 'v2',
+    walletConfig: {
+      // Explicitly set Base Sepolia testnet configuration
+      chainId: BASE_SEPOLIA_CONFIG.chainId,
+      rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
+    }
   };
+  
+  console.log('Initializing AgentKit wallet with config:', {
+    networkId: config.networkId,
+    chainId: config.walletConfig.chainId,
+    rpcUrl: config.walletConfig.rpcUrl,
+  });
   
   try {
     const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
