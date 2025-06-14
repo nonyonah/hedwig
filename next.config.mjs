@@ -33,47 +33,28 @@ try {
   console.error('Error loading .env.production:', err);
 }
 
-// Hard-code critical environment variables if they are not set
-if (!process.env.CDP_API_KEY_ID) {
-  process.env.CDP_API_KEY_ID = "7f01cde6-cb23-4677-8d6f-3bca08d597dc";
-}
-
-if (!process.env.CDP_API_KEY_SECRET) {
-  process.env.CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==";
-}
-
-if (!process.env.WHATSAPP_ACCESS_TOKEN) {
-  process.env.WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg";
-}
-
-if (!process.env.WHATSAPP_PHONE_NUMBER_ID) {
-  process.env.WHATSAPP_PHONE_NUMBER_ID = "592458597294251";
-}
-
-// Load environment variables with defaults
+// Safely load environment variables with defaults
+// IMPORTANT: Do not hard-code sensitive keys here
 const {
   // Wallet and Blockchain
-  NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = '59972ef7bbe74749333c1b2267265a47',
-  NEXT_PUBLIC_ONCHAIN_KIT_API_KEY = 'aAOzNl0p1r6KoYVHqbbMbcCuNKfEodLX',
+  NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = '',
+  NEXT_PUBLIC_ONCHAIN_KIT_API_KEY = '',
   
-  // CDP v2 Wallet Configuration
-  NEXT_PUBLIC_CDP_API_KEY_ID = '7f01cde6-cb23-4677-8d6f-3bca08d597dc',
-  NEXT_PUBLIC_CDP_API_KEY_SECRET = '5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==',
-  NEXT_PUBLIC_CDP_WALLET_SECRET = 'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ',
+  // CDP v2 Wallet Configuration - Don't expose secrets here
+  NEXT_PUBLIC_CDP_API_KEY_ID = '',
   NEXT_PUBLIC_NETWORK_ID = 'base-sepolia',
   
   // Google
-  NEXT_PUBLIC_GOOGLE_API_KEY = 'AIzaSyBGUlMyBS1nsPLVbvFEh-bE5A39Z2---UQ',
-  GOOGLE_GENERATIVE_AI_API_KEY = 'AIzaSyCLFHjrH-mcTAax95P0yMt_6ESOjr6FwN0',
+  NEXT_PUBLIC_GOOGLE_API_KEY = '',
+  GOOGLE_GENERATIVE_AI_API_KEY = '',
   
   // Supabase
-  NEXT_PUBLIC_SUPABASE_URL = 'https://zzvansqojcmavxqdmgcz.supabase.co',
-  NEXT_PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6dmFuc3FvamNtYXZ4cWRtZ2N6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4MDUxMDQsImV4cCI6MjA1OTM4MTEwNH0.wR38Zs0WtXEXeATk9uRPXWRG6gRqGi7Pud6aLymgNRM',
+  NEXT_PUBLIC_SUPABASE_URL = '',
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = '',
   
   // WhatsApp
-  WHATSAPP_ACCESS_TOKEN = 'EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg',
-  WHATSAPP_PHONE_NUMBER_ID = '592458597294251',
-  WHATSAPP_VERIFY_TOKEN = 'hedwig_agent'
+  WHATSAPP_PHONE_NUMBER_ID = '',
+  WHATSAPP_VERIFY_TOKEN = ''
 } = process.env;
 
 /** @type {import('next').NextConfig} */
@@ -101,14 +82,14 @@ const nextConfig = {
   },
   serverRuntimeConfig: {
     cdp: {
-      apiKeyId: NEXT_PUBLIC_CDP_API_KEY_ID,
-      apiKeySecret: NEXT_PUBLIC_CDP_API_KEY_SECRET,
-      walletSecret: NEXT_PUBLIC_CDP_WALLET_SECRET,
-      networkId: NEXT_PUBLIC_NETWORK_ID
+      apiKeyId: process.env.CDP_API_KEY_ID || NEXT_PUBLIC_CDP_API_KEY_ID,
+      apiKeySecret: process.env.CDP_API_KEY_SECRET || '',
+      walletSecret: process.env.CDP_WALLET_SECRET || '',
+      networkId: process.env.NETWORK_ID || NEXT_PUBLIC_NETWORK_ID
     },
     googleGenerativeAiApiKey: GOOGLE_GENERATIVE_AI_API_KEY,
     whatsapp: {
-      accessToken: WHATSAPP_ACCESS_TOKEN,
+      accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
       phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
       verifyToken: WHATSAPP_VERIFY_TOKEN
     }
