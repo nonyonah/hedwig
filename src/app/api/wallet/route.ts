@@ -6,6 +6,7 @@ import { loadServerEnvironment } from '@/lib/serverEnv';
 loadServerEnvironment();
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs'; // Ensure Node.js runtime
 
 type WalletResponse = {
   success: boolean;
