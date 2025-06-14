@@ -122,8 +122,24 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     const { getOrCreateWallet } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
 
-    await getOrCreateWallet(userId);
-    const agentKit = await getAgentKit();
+    // Try to initialize the wallet and handle errors gracefully
+    try {
+      await getOrCreateWallet(userId);
+    } catch (walletError) {
+      console.error('Error initializing wallet:', walletError);
+      return "I'm having trouble accessing the blockchain right now. Let me help you with something else instead.";
+    }
+
+    // Initialize AgentKit
+    let agentKit;
+    try {
+      agentKit = await getAgentKit();
+    } catch (agentKitError) {
+      console.error('Error initializing AgentKit:', agentKitError);
+      return "I'm having trouble with my blockchain tools. Is there anything else I can help you with?";
+    }
+
+    // Initialize LangChain agent
     const langchainAgent = await getLangChainAgent(agentKit);
 
     console.log('Processing message with CDP:', message);

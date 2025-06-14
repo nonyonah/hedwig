@@ -33,12 +33,14 @@ export async function getAgentKit(): Promise<AgentKit> {
       console.log('CDP environment loaded for AgentKit:', {
         apiKeyId: cdpEnv.apiKeyId ? 'PRESENT' : 'MISSING',
         apiKeySecret: cdpEnv.apiKeySecret ? 'PRESENT' : 'MISSING',
+        walletSecret: cdpEnv.walletSecret ? 'PRESENT' : 'MISSING',
         networkId: cdpEnv.networkId
       });
       
       walletProvider = await CdpV2EvmWalletProvider.configureWithWallet({
         apiKeyId: cdpEnv.apiKeyId,
         apiKeySecret: cdpEnv.apiKeySecret,
+        walletSecret: cdpEnv.walletSecret,
         networkId: cdpEnv.networkId,
       });
     }

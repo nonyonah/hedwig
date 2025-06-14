@@ -91,6 +91,16 @@ export function loadServerEnvironment() {
         process.env.CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==";
       }
       
+      if (!process.env.CDP_WALLET_SECRET) {
+        console.log('Setting CDP_WALLET_SECRET from hard-coded value');
+        process.env.CDP_WALLET_SECRET = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ";
+      }
+      
+      if (!process.env.NETWORK_ID) {
+        console.log('Setting NETWORK_ID from hard-coded value');
+        process.env.NETWORK_ID = "base-sepolia";
+      }
+      
       if (!process.env.WHATSAPP_ACCESS_TOKEN) {
         console.log('Setting WHATSAPP_ACCESS_TOKEN from hard-coded value');
         process.env.WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg";
@@ -115,6 +125,16 @@ export function loadServerEnvironment() {
       process.env.CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==";
     }
     
+    if (!process.env.CDP_WALLET_SECRET) {
+      console.log('Setting CDP_WALLET_SECRET from hard-coded value after error');
+      process.env.CDP_WALLET_SECRET = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ";
+    }
+    
+    if (!process.env.NETWORK_ID) {
+      console.log('Setting NETWORK_ID from hard-coded value after error');
+      process.env.NETWORK_ID = "base-sepolia";
+    }
+    
     if (!process.env.WHATSAPP_ACCESS_TOKEN) {
       console.log('Setting WHATSAPP_ACCESS_TOKEN from hard-coded value after error');
       process.env.WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg";
@@ -134,7 +154,7 @@ export function getCdpEnvironment() {
   // Use non-public variables first, then fall back to public ones if needed
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.NEXT_PUBLIC_CDP_API_KEY_ID;
   const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET;
-  const walletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET || '';
+  const walletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET || "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ";
   
   if (!apiKeyId) {
     throw new Error('Missing required CDP API Key ID');
@@ -144,11 +164,41 @@ export function getCdpEnvironment() {
     throw new Error('Missing required CDP API Key Secret');
   }
   
+  // Log available CDP environment variables
+  console.log('Available CDP environment variable keys:', 
+    Object.keys(process.env)
+      .filter(key => key.startsWith('CDP_') || key.startsWith('NEXT_PUBLIC_CDP_'))
+  );
+  
+  // Check for missing essential variables and log them
+  const missingVars = [];
+  if (!apiKeyId) missingVars.push('CDP_API_KEY_ID');
+  if (!apiKeySecret) missingVars.push('CDP_API_KEY_SECRET');
+  if (!walletSecret) missingVars.push('CDP_WALLET_SECRET');
+  if (!process.env.NETWORK_ID) missingVars.push('NETWORK_ID');
+  
+  if (missingVars.length > 0) {
+    console.error('Missing required environment variable:', missingVars.join(', '));
+    console.error('Available environment variables:', 
+      Object.keys(process.env)
+        .filter(key => !key.includes('SECRET') && !key.includes('TOKEN'))
+        .join(', ')
+    );
+  }
+  
+  // Log the CDP environment configuration (without exposing secrets)
+  console.log('CDP environment loaded:', {
+    apiKeyId: apiKeyId ? 'PRESENT' : 'MISSING',
+    apiKeySecret: apiKeySecret ? 'PRESENT' : 'MISSING',
+    walletSecret: walletSecret ? 'PRESENT' : 'MISSING',
+    networkId: process.env.NETWORK_ID || 'base-sepolia'
+  });
+  
   return {
     apiKeyId,
     apiKeySecret,
     walletSecret,
-    networkId: getEnvVar('NETWORK_ID', 'base-sepolia'),
+    networkId: process.env.NETWORK_ID || 'base-sepolia',
   };
 }
 
