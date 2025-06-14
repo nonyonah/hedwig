@@ -18,6 +18,10 @@ import {
   ListResponse,
   ButtonsResponse
 } from '@/types/whatsapp';
+import { loadServerEnvironment } from '@/lib/serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 // CORS headers for API responses
 const corsHeaders = {

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrCreateWallet } from '@/lib/wallet';
+import { loadServerEnvironment } from '@/lib/serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 export const dynamic = 'force-dynamic';
 

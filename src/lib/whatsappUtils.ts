@@ -1,4 +1,8 @@
 import { getRequiredEnvVar } from '@/lib/envUtils';
+import { loadServerEnvironment, getWhatsAppEnvironment } from './serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 interface WhatsAppTemplateMessage {
   to: string;
@@ -31,8 +35,9 @@ interface WhatsAppMessageResponse {
 
 export async function sendWhatsAppMessage(to: string, message: string): Promise<WhatsAppMessageResponse> {
   try {
-    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
-    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    const whatsappEnv = getWhatsAppEnvironment();
+    const phoneNumberId = whatsappEnv.phoneNumberId;
+    const accessToken = whatsappEnv.accessToken;
     
     console.log(`Sending WhatsApp message to ${to} using phone number ID: ${phoneNumberId}`);
     
@@ -76,8 +81,9 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
  */
 export async function sendWhatsAppImage(to: string, imageUrl: string, caption: string = ''): Promise<WhatsAppMessageResponse> {
   try {
-    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
-    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    const whatsappEnv = getWhatsAppEnvironment();
+    const phoneNumberId = whatsappEnv.phoneNumberId;
+    const accessToken = whatsappEnv.accessToken;
     
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
@@ -117,8 +123,9 @@ export async function sendWhatsAppImage(to: string, imageUrl: string, caption: s
  */
 export async function sendWhatsAppTemplateMessage(message: WhatsAppTemplateMessage): Promise<WhatsAppMessageResponse> {
   try {
-    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
-    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    const whatsappEnv = getWhatsAppEnvironment();
+    const phoneNumberId = whatsappEnv.phoneNumberId;
+    const accessToken = whatsappEnv.accessToken;
     
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
@@ -170,8 +177,9 @@ export async function sendWhatsAppListMessage(
   sections: WhatsAppListSection[]
 ): Promise<WhatsAppMessageResponse> {
   try {
-    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
-    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    const whatsappEnv = getWhatsAppEnvironment();
+    const phoneNumberId = whatsappEnv.phoneNumberId;
+    const accessToken = whatsappEnv.accessToken;
     
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
@@ -230,8 +238,9 @@ export async function sendWhatsAppReplyButtons(
   buttons: WhatsAppButton[]
 ): Promise<WhatsAppMessageResponse> {
   try {
-    const phoneNumberId = getRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
-    const accessToken = getRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+    const whatsappEnv = getWhatsAppEnvironment();
+    const phoneNumberId = whatsappEnv.phoneNumberId;
+    const accessToken = whatsappEnv.accessToken;
     
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,

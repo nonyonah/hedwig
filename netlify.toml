@@ -12,6 +12,12 @@
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["@coinbase/cdp-sdk", "jose"]
+  included_files = [".env.local"]
+
+# Add environment variables explicitly for functions
+[functions.environment]
+  # This ensures environment variables are available in the serverless functions
+  NODE_ENV = "production"
 
 [[redirects]]
   from = "/*"

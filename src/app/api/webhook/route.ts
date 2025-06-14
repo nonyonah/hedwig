@@ -1,11 +1,15 @@
-
 import { NextRequest, NextResponse } from 'next/server';
+import { loadServerEnvironment } from '@/lib/serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 // CORS headers for API responses
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',};
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 
 // WhatsApp webhook verification
 export const dynamic = 'force-dynamic';

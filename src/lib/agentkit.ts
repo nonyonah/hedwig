@@ -8,6 +8,10 @@ import {
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 import { getRequiredEnvVar } from './envUtils';
+import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 // Singleton instance
 let agentKitInstance: AgentKit | null = null;
@@ -25,10 +29,17 @@ export async function getAgentKit(): Promise<AgentKit> {
   try {
     // Initialize wallet provider first if not already done
     if (!walletProvider) {
+      const cdpEnv = getCdpEnvironment();
+      console.log('CDP environment loaded for AgentKit:', {
+        apiKeyId: cdpEnv.apiKeyId ? 'PRESENT' : 'MISSING',
+        apiKeySecret: cdpEnv.apiKeySecret ? 'PRESENT' : 'MISSING',
+        networkId: cdpEnv.networkId
+      });
+      
       walletProvider = await CdpV2EvmWalletProvider.configureWithWallet({
-        apiKeyId: getRequiredEnvVar('CDP_API_KEY_ID'),
-        apiKeySecret: getRequiredEnvVar('CDP_API_KEY_SECRET'),
-        networkId: process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || 'base-sepolia',
+        apiKeyId: cdpEnv.apiKeyId,
+        apiKeySecret: cdpEnv.apiKeySecret,
+        networkId: cdpEnv.networkId,
       });
     }
 
