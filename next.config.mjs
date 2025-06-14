@@ -1,14 +1,10 @@
-import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
 
-const require = createRequire(import.meta.url);
-
 // Polyfill for Node.js built-ins
 import { Buffer } from 'buffer';
 import process from 'process';
-import { fileURLToPath as _fileURLToPath } from 'url';
 import { dirname } from 'path';
 
 // Ensure global objects are available
@@ -16,13 +12,15 @@ global.Buffer = Buffer;
 global.process = process;
 
 // Load environment variables from .env files
-require('dotenv').config();
+import dotenv from 'dotenv';
+dotenv.config();
+
 // Also try to load from .env.production
 try {
   const envPath = path.resolve(process.cwd(), '.env.production');
   if (fs.existsSync(envPath)) {
     console.log('Loading environment variables from .env.production');
-    const envConfig = require('dotenv').parse(fs.readFileSync(envPath));
+    const envConfig = dotenv.parse(fs.readFileSync(envPath));
     for (const key in envConfig) {
       if (!process.env[key]) {
         process.env[key] = envConfig[key];

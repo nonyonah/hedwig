@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npm install crypto-browserify stream-browserify buffer path-browserify assert browserify-zlib querystring-es3 stream-http https-browserify os-browserify util --no-save && npm run build"
   publish = ".next"
   functions = ".next/server"
 
@@ -7,7 +7,7 @@
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NODE_ENV = "production"
   # Force installation of peer dependencies
-  NPM_FLAGS = "--legacy-peer-deps"
+  NPM_FLAGS = "--legacy-peer-deps --force"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
