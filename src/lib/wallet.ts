@@ -1,7 +1,7 @@
 import { CdpV2EvmWalletProvider } from '@coinbase/agentkit';
 import { getRequiredEnvVar } from './envUtils';
 import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
-import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -15,8 +15,8 @@ const walletProviders = new Map<string, CdpV2EvmWalletProvider>();
  * @returns A unique idempotency key
  */
 function generateIdempotencyKey(userId: string): string {
-  // Use only the UUID, which is 36 characters and meets API requirements
-  return randomUUID();
+  // Use uuid v4, which is 36 characters and meets API requirements
+  return uuidv4();
 }
 
 // Base Sepolia testnet configuration
@@ -65,7 +65,8 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       apiKeySecret: cdpEnv.apiKeySecret,
       walletSecret: cdpEnv.walletSecret,
       networkId: cdpEnv.networkId,
-      idempotencyKey,
+      // idempotencyKey is generated but must be sent as X-Idempotency-Key header
+      idempotencyKey, // For reference; not used directly by the API
       ...(address && { address }),
       
       // CDP v2 specific configuration
@@ -74,8 +75,14 @@ export async function getOrCreateWallet(userId: string, address?: string) {
         // Explicitly set Base Sepolia testnet configuration
         chainId: BASE_SEPOLIA_CONFIG.chainId,
         rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
+      },
+      // If agentkit supports custom headers, set the header here
+      headers: {
+        'X-Idempotency-Key': idempotencyKey,
       }
     };
+    // NOTE: If @coinbase/agentkit does not forward the headers property, you must patch the library or wrap HTTP requests to ensure X-Idempotency-Key is sent.
+
 
     console.log('Initializing wallet with config:', {
       ...config,
