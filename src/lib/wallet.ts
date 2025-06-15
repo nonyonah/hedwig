@@ -15,8 +15,12 @@ const walletProviders = new Map<string, CdpV2EvmWalletProvider>();
  * @returns A unique idempotency key
  */
 function generateIdempotencyKey(userId: string): string {
-  // Use uuid v4, which is 36 characters and meets API requirements
-  return uuidv4();
+  const key = uuidv4();
+  console.log('[CDP] Generated idempotency key:', key, 'Length:', key.length);
+  if (key.length !== 36) {
+    throw new Error(`[CDP] Invalid idempotency key length: ${key.length}. Key: ${key}`);
+  }
+  return key;
 }
 
 // Base Sepolia testnet configuration
