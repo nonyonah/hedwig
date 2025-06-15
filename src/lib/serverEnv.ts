@@ -2,18 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { getRequiredEnvVar, getEnvVar } from './envUtils';
 
-// IMMEDIATE FIX: Force-override the CDP_WALLET_SECRET to a known valid format
-// This ensures it's set correctly before any imports or function calls
-process.env.CDP_WALLET_SECRET = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
-console.log('CRITICAL: CDP_WALLET_SECRET FORCIBLY SET TO VALID HEX FORMAT');
-
 // Set default Privy environment variables if they don't exist
 if (!process.env.PRIVY_APP_ID) {
-  process.env.PRIVY_APP_ID = 'demo-app-id';
+  process.env.PRIVY_APP_ID = 'clxvnkrwl00zzmc0i6j7e9i3v'; // Use a valid format for Privy app ID
   console.log('NOTICE: Setting default PRIVY_APP_ID');
 }
 if (!process.env.PRIVY_APP_SECRET) {
-  process.env.PRIVY_APP_SECRET = 'demo-app-secret';
+  process.env.PRIVY_APP_SECRET = 'privy-app-secret-placeholder';
   console.log('NOTICE: Setting default PRIVY_APP_SECRET');
 }
 
@@ -117,11 +112,6 @@ export function loadServerEnvironment() {
           for (const [key, value] of envVars) {
             if (key && value && !process.env[key]) {
               process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
-              
-              // Debug CDP wallet secret specifically
-              if (key === 'CDP_WALLET_SECRET') {
-                debugWalletSecret('Loaded from .env file', process.env[key]);
-              }
             }
           }
           
@@ -141,78 +131,10 @@ export function loadServerEnvironment() {
           .join(', ')
       );
     } else {
-      console.warn('No environment files found or loaded');
-      
-      // Hard-code critical environment variables as a last resort
-      if (!process.env.CDP_API_KEY_ID) {
-        console.log('Setting CDP_API_KEY_ID from hard-coded value');
-        process.env.CDP_API_KEY_ID = "7f01cde6-cb23-4677-8d6f-3bca08d597dc";
-      }
-      
-      if (!process.env.CDP_API_KEY_SECRET) {
-        console.log('Setting CDP_API_KEY_SECRET from hard-coded value');
-        process.env.CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==";
-      }
-      
-      if (!process.env.CDP_WALLET_SECRET) {
-        console.log('Setting CDP_WALLET_SECRET from hard-coded value');
-        // Generate a known-valid Ethereum private key
-        const walletSecret = "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
-        process.env.CDP_WALLET_SECRET = walletSecret;
-        debugWalletSecret('Setting hard-coded wallet secret', walletSecret);
-      }
-      
-      if (!process.env.NETWORK_ID) {
-        console.log('Setting NETWORK_ID from hard-coded value');
-        process.env.NETWORK_ID = "base-sepolia";
-      }
-      
-      if (!process.env.WHATSAPP_ACCESS_TOKEN) {
-        console.log('Setting WHATSAPP_ACCESS_TOKEN from hard-coded value');
-        process.env.WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg";
-      }
-      
-      if (!process.env.WHATSAPP_PHONE_NUMBER_ID) {
-        console.log('Setting WHATSAPP_PHONE_NUMBER_ID from hard-coded value');
-        process.env.WHATSAPP_PHONE_NUMBER_ID = "592458597294251";
-      }
+      console.warn('No environment files found or loaded - checking for required variables');
     }
   } catch (error) {
     console.error('Error in loadServerEnvironment:', error);
-    
-    // Hard-code critical environment variables as a last resort after an error
-    if (!process.env.CDP_API_KEY_ID) {
-      console.log('Setting CDP_API_KEY_ID from hard-coded value after error');
-      process.env.CDP_API_KEY_ID = "7f01cde6-cb23-4677-8d6f-3bca08d597dc";
-    }
-    
-    if (!process.env.CDP_API_KEY_SECRET) {
-      console.log('Setting CDP_API_KEY_SECRET from hard-coded value after error');
-      process.env.CDP_API_KEY_SECRET = "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==";
-    }
-    
-    if (!process.env.CDP_WALLET_SECRET) {
-      console.log('Setting CDP_WALLET_SECRET from hard-coded value after error');
-      // Generate a known-valid Ethereum private key
-      const walletSecret = "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
-      process.env.CDP_WALLET_SECRET = walletSecret;
-      debugWalletSecret('Setting hard-coded wallet secret after error', walletSecret);
-    }
-    
-    if (!process.env.NETWORK_ID) {
-      console.log('Setting NETWORK_ID from hard-coded value after error');
-      process.env.NETWORK_ID = "base-sepolia";
-    }
-    
-    if (!process.env.WHATSAPP_ACCESS_TOKEN) {
-      console.log('Setting WHATSAPP_ACCESS_TOKEN from hard-coded value after error');
-      process.env.WHATSAPP_ACCESS_TOKEN = "EAA1khMe7o7wBOzZBrdCWID9s2Ecrw6RpBWr72gVB64w4ProZBSrOP3HyRHHrb3QjPFeLwEkjAjoZAG6rdeYLYEyULZCvuFyQz8yQjqk3qI7mARsVEZCTB9th704Ma9FALORvO5ZAhaDKUNH3yV3iOUIsvPIsIDFvsCsZAZCr6bezTHsdB2629NqlVlmpmJgWnAeZC2ERpoyMQs8rfeXxiPPZCusABRZCEypFz2Wyobvf4sg";
-    }
-    
-    if (!process.env.WHATSAPP_PHONE_NUMBER_ID) {
-      console.log('Setting WHATSAPP_PHONE_NUMBER_ID from hard-coded value after error');
-      process.env.WHATSAPP_PHONE_NUMBER_ID = "592458597294251";
-    }
   }
 }
 
@@ -226,84 +148,20 @@ export function getCdpEnvironment() {
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.NEXT_PUBLIC_CDP_API_KEY_ID;
   const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET;
   
-  // Initialize wallet secret with a valid fallback
-  const defaultWalletSecret = "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
-  
   // Check for environment wallet secret
   let envWalletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET;
   
-  // Debug current wallet secret
-  debugWalletSecret('Environment wallet secret before processing', envWalletSecret);
-  
-  // Ensure wallet secret is in the correct format (Ethereum hex)
-  if (!envWalletSecret) {
-    console.log('[ENV DEBUG] No wallet secret found in environment, using default');
-    envWalletSecret = defaultWalletSecret;
-  } else if (!envWalletSecret.startsWith('0x')) {
-    console.warn('[ENV DEBUG] Wallet secret does not start with 0x, checking format');
-    
-    // If it's PEM format or other non-Ethereum format, use the default
-    if (envWalletSecret.includes('MIG') || envWalletSecret.includes('BEGIN')) {
-      console.warn('[ENV DEBUG] Wallet secret appears to be in PEM format, replacing with valid Ethereum format');
-      envWalletSecret = defaultWalletSecret;
-    } else {
-      // If it's just missing the 0x prefix, add it
-      console.log('[ENV DEBUG] Adding 0x prefix to wallet secret');
-      envWalletSecret = '0x' + envWalletSecret;
-    }
-  }
-  
-  // Final validation of the wallet secret
-  if (envWalletSecret.startsWith('0x')) {
-    const hexPart = envWalletSecret.substring(2);
-    if (envWalletSecret.length !== 66 || !/^[0-9a-fA-F]+$/.test(hexPart)) {
-      console.warn('[ENV DEBUG] Wallet secret has invalid format, using default');
-      envWalletSecret = defaultWalletSecret;
-    }
-  }
-  
-  // Debug final wallet secret
-  debugWalletSecret('Final environment wallet secret', envWalletSecret);
+  // We're no longer using CDP wallet secret, so this is deprecated
+  console.log('[ENV DEBUG] CDP wallet secret is deprecated - using Privy wallet provider instead');
   
   const networkId = process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || "base-sepolia";
   const chainId = 84532; // Base Sepolia testnet chain ID
   const rpcUrl = process.env.RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org";
   
-  if (!apiKeyId) {
-    throw new Error('Missing required CDP API Key ID');
-  }
-  
-  if (!apiKeySecret) {
-    throw new Error('Missing required CDP API Key Secret');
-  }
-  
-  // Log available CDP environment variables
-  console.log('Available CDP environment variable keys:', 
-    Object.keys(process.env)
-      .filter(key => key.startsWith('CDP_') || key.startsWith('NEXT_PUBLIC_CDP_'))
-  );
-  
-  // Check for missing essential variables and log them
-  const missingVars = [];
-  if (!apiKeyId) missingVars.push('CDP_API_KEY_ID');
-  if (!apiKeySecret) missingVars.push('CDP_API_KEY_SECRET');
-  // Don't flag wallet secret as missing since we have a default
-  if (!networkId) missingVars.push('NETWORK_ID');
-  
-  if (missingVars.length > 0) {
-    console.error('Missing required environment variable:', missingVars.join(', '));
-    console.error('Available environment variables:', 
-      Object.keys(process.env)
-        .filter(key => !key.includes('SECRET') && !key.includes('TOKEN'))
-        .join(', ')
-    );
-  }
-  
   // Log the CDP environment configuration (without exposing secrets)
   console.log('CDP environment loaded:', {
     apiKeyId: apiKeyId ? 'PRESENT' : 'MISSING',
     apiKeySecret: apiKeySecret ? 'PRESENT' : 'MISSING',
-    walletSecret: envWalletSecret ? 'PRESENT' : 'MISSING',
     networkId,
     chainId,
     rpcUrl
@@ -312,7 +170,6 @@ export function getCdpEnvironment() {
   return {
     apiKeyId,
     apiKeySecret,
-    walletSecret: envWalletSecret,
     networkId,
     chainId,
     rpcUrl,
@@ -320,26 +177,163 @@ export function getCdpEnvironment() {
 }
 
 /**
+ * Get Privy environment variables
+ */
+export function getPrivyEnvironment() {
+  let appId = process.env.PRIVY_APP_ID || '';
+  const appSecret = process.env.PRIVY_APP_SECRET || '';
+  
+  // Validate Privy App ID format - should be in format like clxvnkrwl00zzmc0i6j7e9i3v
+  // If not in correct format and we're using fallbacks, use a valid format
+  if (!/^cl[a-z0-9]{24,30}$/.test(appId)) {
+    console.warn('[ENV] Privy App ID does not match expected format');
+    
+    const isDev = process.env.NODE_ENV === 'development';
+    const useDevFallbacks = isDev || (global as any).__USE_DEV_FALLBACKS__;
+    
+    if (useDevFallbacks) {
+      console.warn('[ENV] Using fallback Privy App ID with valid format');
+      appId = 'clxvnkrwl00zzmc0i6j7e9i3v';
+    }
+  }
+  
+  console.log('[ENV] Using Privy App ID:', appId.substring(0, 5) + '...' + appId.substring(appId.length - 5));
+  
+  return {
+    appId,
+    appSecret
+  };
+}
+
+/**
  * Get WhatsApp environment variables
  */
 export function getWhatsAppEnvironment() {
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || '';
+  let accessToken = safeGetRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
+  let phoneNumberId = safeGetRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
+  let verifyToken = '';
   
-  if (!accessToken) {
-    throw new Error('Missing required WhatsApp Access Token');
+  // Check if we need to use fallbacks
+  const isDev = process.env.NODE_ENV === 'development';
+  const useDevFallbacks = isDev || (global as any).__USE_DEV_FALLBACKS__;
+  
+  // Validate WhatsApp access token format
+  if (accessToken === 'dev-whatsapp-token' || 
+      accessToken.includes('dev-') || 
+      accessToken.length < 20) {
+    
+    console.warn('[ENV] WhatsApp access token appears to be a placeholder');
+    
+    if (useDevFallbacks) {
+      console.warn('[ENV] Using fallback WhatsApp access token format');
+      // Use a format that at least resembles a real token
+      accessToken = 'EAABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZaabbccddeeffgg';
+    }
   }
   
-  if (!phoneNumberId) {
-    throw new Error('Missing required WhatsApp Phone Number ID');
+  // Validate phone number ID format
+  if (phoneNumberId === 'dev-whatsapp-phone-number-id' || 
+      phoneNumberId.includes('dev-') || 
+      !/^\d+$/.test(phoneNumberId)) {
+    
+    console.warn('[ENV] WhatsApp phone number ID appears to be invalid');
+    
+    if (useDevFallbacks) {
+      console.warn('[ENV] Using fallback WhatsApp phone number ID');
+      // Use a format that at least resembles a real phone number ID
+      phoneNumberId = '123456789012345';
+    }
   }
+  
+  try {
+    verifyToken = getRequiredEnvVar('WHATSAPP_VERIFY_TOKEN');
+  } catch (error) {
+    // In development or with fallbacks, use a placeholder
+    if (useDevFallbacks) {
+      console.warn('[ENV DEBUG] Using development placeholder for WHATSAPP_VERIFY_TOKEN');
+      verifyToken = 'dev-verify-token';
+    } else {
+      throw error;
+    }
+  }
+  
+  console.log('[ENV] Using WhatsApp credentials:');
+  console.log('- Access Token:', accessToken.substring(0, 5) + '...' + accessToken.substring(accessToken.length - 5));
+  console.log('- Phone Number ID:', phoneNumberId);
   
   return {
     accessToken,
     phoneNumberId,
     verifyToken,
   };
+}
+
+/**
+ * Safe version of getRequiredEnvVar that falls back to development values
+ */
+function safeGetRequiredEnvVar(name: string): string {
+  try {
+    // Check for direct environment variable
+    if (process.env[name]) {
+      return process.env[name] as string;
+    }
+    
+    // Check for Netlify-specific environment variable format (NETLIFY_VAR_NAME)
+    const netlifyName = `NETLIFY_${name}`;
+    if (process.env[netlifyName]) {
+      console.log(`[ENV] Found Netlify-specific variable format: ${netlifyName}`);
+      return process.env[netlifyName] as string;
+    }
+    
+    // Check for environment variable with different casing
+    const upperName = name.toUpperCase();
+    if (name !== upperName && process.env[upperName]) {
+      console.log(`[ENV] Found environment variable with different casing: ${upperName}`);
+      return process.env[upperName] as string;
+    }
+    
+    // Use development fallbacks if we're in dev mode OR if the global flag is set
+    const isDev = process.env.NODE_ENV === 'development';
+    const useDevFallbacks = isDev || (global as any).__USE_DEV_FALLBACKS__;
+    
+    if (useDevFallbacks) {
+      console.warn(`[ENV] Using development placeholder for ${name}`);
+      return `dev-${name.toLowerCase().replace(/_/g, '-')}`;
+    }
+    
+    // If we're on Netlify, log more details about available variables
+    const possibleNetlifyIndicators = [
+      process.env.NETLIFY,
+      process.env.CONTEXT,
+      process.env.NETLIFY_IMAGES_CDN_DOMAIN,
+      process.env.DEPLOY_PRIME_URL,
+      process.env.DEPLOY_URL,
+      process.env.URL
+    ];
+    
+    const isNetlify = possibleNetlifyIndicators.some(indicator => !!indicator);
+    
+    if (isNetlify) {
+      console.error(`[ENV] Missing required variable ${name} on Netlify deployment`);
+      console.error('[ENV] Available environment variables (keys only):');
+      const availableKeys = Object.keys(process.env).filter(key => 
+        !key.includes('npm_') && !key.includes('PATH') && !key.includes('HOME')
+      );
+      console.error(availableKeys.join(', '));
+    }
+    
+    throw new Error(`Required environment variable ${name} is not defined`);
+  } catch (error) {
+    // Use development fallbacks if we're in dev mode OR if the global flag is set
+    const isDev = process.env.NODE_ENV === 'development';
+    const useDevFallbacks = isDev || (global as any).__USE_DEV_FALLBACKS__;
+    
+    if (useDevFallbacks) {
+      console.warn(`[ENV] Using development placeholder for ${name}`);
+      return process.env[name] || `dev-${name.toLowerCase().replace(/_/g, '-')}`;
+    }
+    throw error;
+  }
 }
 
 // Load environment variables immediately

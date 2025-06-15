@@ -9,7 +9,7 @@ import {
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 import { getRequiredEnvVar } from './envUtils';
-import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
+import { loadServerEnvironment, getPrivyEnvironment } from './serverEnv';
 import { randomUUID } from 'crypto';
 
 // Ensure environment variables are loaded
@@ -44,15 +44,20 @@ function generateIdempotencyKey(): string {
 async function createWalletProvider(): Promise<WalletProvider> {
   try {
     // Get environment variables for Privy configuration
-    const appId = process.env.PRIVY_APP_ID;
-    const appSecret = process.env.PRIVY_APP_SECRET;
+    const { appId, appSecret } = getPrivyEnvironment();
     
     if (!appId || !appSecret) {
       throw new Error('Missing required Privy credentials (PRIVY_APP_ID or PRIVY_APP_SECRET)');
     }
     
+    // Validate Privy App ID format
+    if (!appId.startsWith('cl') || appId.length < 20) {
+      console.error('[AgentKit ERROR] Invalid Privy App ID format:', appId);
+      throw new Error('Invalid Privy App ID format');
+    }
+    
     console.log('Privy environment loaded for AgentKit:', {
-      appId: appId ? 'PRESENT' : 'MISSING',
+      appId: appId ? appId.substring(0, 5) + '...' + appId.substring(appId.length - 5) : 'MISSING',
       appSecret: appSecret ? 'PRESENT' : 'MISSING',
     });
     

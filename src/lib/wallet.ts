@@ -1,6 +1,6 @@
 import { PrivyEvmWalletProvider } from '@coinbase/agentkit';
 import { getRequiredEnvVar } from './envUtils';
-import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
+import { loadServerEnvironment, getCdpEnvironment, getPrivyEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
@@ -22,28 +22,34 @@ loadServerEnvironment();
  * - The private key should be a standard Ethereum private key (32 bytes as hex with 0x prefix)
  */
 export async function createDirectWalletProvider() {
-  console.log('EMERGENCY: Creating direct PrivyEvmWalletProvider with hardcoded values');
-  
-  // Valid Ethereum private key format (32 bytes as hex with 0x prefix)
-  const privateKey = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+  console.log('EMERGENCY: Creating direct PrivyEvmWalletProvider');
   
   try {
+    // Get environment variables for Privy configuration
+    const { appId, appSecret } = getPrivyEnvironment();
+    
+    // Validate Privy App ID format
+    if (!appId || !appId.startsWith('cl') || appId.length < 20) {
+      console.error('[Wallet ERROR] Invalid Privy App ID format:', appId);
+      throw new Error('Invalid Privy App ID format');
+    }
+    
+    // Generate a new private key
+    const privateKey = generatePrivateKey();
+    
     // Base Sepolia testnet configuration
     const config = {
-      // Required for Privy provider
-      appId: 'your-privy-app-id', // You'll need to replace with a real Privy app ID
-      appSecret: 'your-privy-app-secret', // You'll need to replace with a real Privy app secret
-      // Optional private key
+      appId,
+      appSecret,
       privateKey,
-      // Chain configuration
-      chainId: "84532", // Base Sepolia testnet chain ID (as string)
-      rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
+      chainId: BASE_SEPOLIA_CONFIG.chainId,
+      rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
     };
     
     console.log('Creating direct PrivyEvmWalletProvider with config:', {
       rpcUrl: config.rpcUrl,
       chainId: config.chainId,
-      privateKeyFormat: 'valid-ethereum-hex'
+      appId: config.appId ? config.appId.substring(0, 5) + '...' + config.appId.substring(config.appId.length - 5) : 'MISSING'
     });
     
     const provider = await PrivyEvmWalletProvider.configureWithWallet(config);
@@ -142,17 +148,13 @@ function generatePrivateKey(): string {
     return privateKeyHex;
   } catch (error) {
     console.error('Failed to generate private key:', error);
-    // Fallback to a hardcoded valid format if generation fails
-    const fallbackKey = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
-    console.log('Using fallback private key');
-    debugWalletSecret('Using fallback private key', fallbackKey);
-    return fallbackKey;
+    throw new Error('Failed to generate a valid private key');
   }
 }
 
 // Base Sepolia testnet configuration
 const BASE_SEPOLIA_CONFIG = {
-  chainId: 84532, // Base Sepolia testnet chain ID
+  chainId: "84532", // Base Sepolia testnet chain ID as string
   rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
 };
 
@@ -200,21 +202,28 @@ export async function getOrCreateWallet(
       console.log('[Wallet DEBUG] About to create PrivyEvmWalletProvider');
       
       // Get environment values for Privy configuration
-      const appId = process.env.PRIVY_APP_ID || 'privy-app-id';
-      const appSecret = process.env.PRIVY_APP_SECRET || 'privy-app-secret';
+      const { appId, appSecret } = getPrivyEnvironment();
+      
+      // Validate Privy App ID format
+      if (!appId || !appId.startsWith('cl') || appId.length < 20) {
+        console.error('[Wallet ERROR] Invalid Privy App ID format:', appId);
+        throw new Error('Invalid Privy App ID format');
+      }
+      
+      console.log('[Wallet] Using Privy App ID:', appId.substring(0, 5) + '...' + appId.substring(appId.length - 5));
       
       const config = {
         appId,
         appSecret,
         privateKey,
-        chainId: BASE_SEPOLIA_CONFIG.chainId.toString(), // Must be a string for Privy
+        chainId: BASE_SEPOLIA_CONFIG.chainId,
         rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
       };
       
       console.log('Initializing PrivyEvmWalletProvider with config:', {
         chainId: config.chainId,
         rpcUrl: config.rpcUrl,
-        appId: config.appId ? 'PRESENT' : 'MISSING'
+        appId: config.appId ? config.appId.substring(0, 5) + '...' + config.appId.substring(config.appId.length - 5) : 'MISSING'
       });
       
       // Create new provider
