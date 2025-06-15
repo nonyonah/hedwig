@@ -93,7 +93,8 @@ export function loadServerEnvironment() {
       
       if (!process.env.CDP_WALLET_SECRET) {
         console.log('Setting CDP_WALLET_SECRET from hard-coded value');
-        process.env.CDP_WALLET_SECRET = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ";
+        // Use valid hex format for Ethereum private key (64 hex chars with 0x prefix)
+        process.env.CDP_WALLET_SECRET = "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
       }
       
       if (!process.env.NETWORK_ID) {
@@ -127,7 +128,8 @@ export function loadServerEnvironment() {
     
     if (!process.env.CDP_WALLET_SECRET) {
       console.log('Setting CDP_WALLET_SECRET from hard-coded value after error');
-      process.env.CDP_WALLET_SECRET = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ";
+      // Use valid hex format for Ethereum private key (64 hex chars with 0x prefix)
+      process.env.CDP_WALLET_SECRET = "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
     }
     
     if (!process.env.NETWORK_ID) {
@@ -154,7 +156,8 @@ export function getCdpEnvironment() {
   // Use non-public variables first, then fall back to public ones if needed
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.NEXT_PUBLIC_CDP_API_KEY_ID;
   const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET;
-  const walletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET || "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrFql34xV8vr+Qmojg74E5ijn+wufniZcxdVVK+hdaKmhRANCAASvNTJCi2rg3eFdQxKL1xYWiKOf7kzYEYZM0AfKezWULZOZXKKmGFLgEINQAWBFxLnlxpLDs+GBXKX0JXZxIcAJ";
+  // Use a valid hex format for Ethereum private key (64 hex chars with 0x prefix)
+  const walletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET || "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b";
   const networkId = process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || "base-sepolia";
   const chainId = 84532; // Base Sepolia testnet chain ID
   const rpcUrl = process.env.RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org";
