@@ -15,7 +15,7 @@ if (typeof globalThis.crypto === 'undefined') {
 console.log('[Wallet API] typeof globalThis.crypto AFTER polyfill:', typeof globalThis.crypto);
 // --- END: Runtime and Crypto Debugging ---
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextApiRequest, NextApiResponse } from 'next';
 import { getOrCreateWallet } from '@/lib/wallet';
 import { loadServerEnvironment } from '@/lib/serverEnv';
 
@@ -32,86 +32,88 @@ type WalletResponse = {
   error?: string;
 };
 
-export async function POST(request: NextRequest): Promise<NextResponse<WalletResponse>> {
-  try {
-    const { userId, action, address } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'User ID is required',
-          error: 'Missing userId'
-        },
-        { status: 400 }
-      );
-    }
-
-    try {
-      const wallet = await getOrCreateWallet(userId, address);
-      const walletAddress = await wallet.getAddress();
-      
-      return NextResponse.json({ 
-        success: true, 
-        address: walletAddress,
-        message: action === 'create' ? 'Wallet created successfully' : 'Wallet accessed successfully'
-      });
-    } catch (error) {
-      console.error('Wallet operation failed:', error);
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Failed to access wallet',
-          error: error instanceof Error ? error.message : 'Unknown error'
-        },
-        { status: 500 }
-      );
-    }
-
-  } catch (error) {
-    console.error('Request processing failed:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Failed to process request',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+export default async function handler(req: NextApiRequest, res: NextApiResponse<WalletResponse>) {
+  // Handle different HTTP methods
+  if (req.method === 'GET') {
+    await handleGetRequest(req, res);
+  } else if (req.method === 'POST') {
+    await handlePostRequest(req, res);
+  } else {
+    res.setHeader('Allow', ['GET', 'POST']);
+    res.status(405).json({
+      success: false,
+      message: `Method ${req.method} Not Allowed`,
+      error: 'Invalid HTTP method'
+    });
   }
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse<WalletResponse>> {
-  const userId = request.nextUrl.searchParams.get('userId');
+// Handle GET requests
+async function handleGetRequest(req: NextApiRequest, res: NextApiResponse<WalletResponse>) {
+  const userId = req.query.userId as string;
   
   if (!userId) {
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: 'User ID is required',
-        error: 'Missing userId'
-      },
-      { status: 400 }
-    );
+    return res.status(400).json({
+      success: false,
+      message: 'User ID is required',
+      error: 'Missing userId'
+    });
   }
 
   try {
     // In a real app, you might want to store and retrieve wallet information from your database
     // For now, we'll just return a success response with instructions
-    return NextResponse.json({
+    return res.status(200).json({
       success: true,
       message: 'Wallet information retrieved',
       // Include any wallet information you want to return
     });
   } catch (error) {
     console.error('Failed to get wallet info:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Failed to retrieve wallet information',
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve wallet information',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+// Handle POST requests
+async function handlePostRequest(req: NextApiRequest, res: NextApiResponse<WalletResponse>) {
+  try {
+    const { userId, action, address } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required',
+        error: 'Missing userId'
+      });
+    }
+
+    try {
+      const wallet = await getOrCreateWallet(userId, address);
+      const walletAddress = await wallet.getAddress();
+      
+      return res.status(200).json({
+        success: true,
+        address: walletAddress,
+        message: action === 'create' ? 'Wallet created successfully' : 'Wallet accessed successfully'
+      });
+    } catch (error) {
+      console.error('Wallet operation failed:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to access wallet',
         error: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+      });
+    }
+  } catch (error) {
+    console.error('Request processing failed:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to process request',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 }

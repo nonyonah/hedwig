@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextApiRequest, NextApiResponse } from 'next';
 import { loadServerEnvironment } from '@/lib/serverEnv';
 
 // Ensure environment variables are loaded
@@ -14,7 +14,19 @@ const corsHeaders = {
 // WhatsApp webhook verification
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Handle different HTTP methods
+  if (req.method === 'GET') {
+    await handleWebhookVerification(req, res);
+  } else if (req.method === 'POST') {
+    await handleWebhookMessage(req, res);
+  } else {
+    res.setHeader('Allow', ['GET', 'POST']);
+    res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+}
+
+async function handleWebhookVerification(req: NextApiRequest, res: NextApiResponse) {
   try {
     // Log environment information
     console.log('=== Environment Information ===');
@@ -33,43 +45,25 @@ export async function GET(request: NextRequest) {
 
     // Log request details
     console.log('\n=== Request Information ===');
-    console.log('Request URL:', request.url);
-    console.log('Request method:', request.method);
-    console.log('Request headers:', Object.fromEntries(request.headers.entries()));
+    console.log('Request URL:', req.url);
+    console.log('Request method:', req.method);
+    console.log('Request headers:', req.headers);
     
-    // Get raw query string and log it
-    const rawQuery = request.nextUrl.search;
+    // Log raw query string
+    const rawQuery = req.url?.split('?')[1] || '';
     console.log('Raw query string:', rawQuery);
     
-    // Manually parse query parameters to handle URL encoding issues
-    const queryParams: Record<string, string> = {};
-    if (rawQuery) {
-      // Remove the leading '?' and split by '&'
-      const pairs = rawQuery.substring(1).split('&');
-      for (const pair of pairs) {
-        const [key, value] = pair.split('=');
-        // Decode both key and value
-        const decodedKey = decodeURIComponent(key);
-        const decodedValue = value ? decodeURIComponent(value) : '';
-        queryParams[decodedKey] = decodedValue;
-      }
-    }
+    // Get query parameters
+    const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
     
-    console.log('Parsed query parameters:', queryParams);
+    console.log('Parsed query parameters:', req.query);
     
-    const mode = request.nextUrl.searchParams.get('hub.mode');
-    const token = request.nextUrl.searchParams.get('hub.verify_token');
-    const challenge = request.nextUrl.searchParams.get('hub.challenge');
-
     // Get the verify token from environment variables
     const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.WEBHOOK_VERIFY_TOKEN;
     
     if (!verifyToken) {
       console.error('Error: No verification token found in environment variables. Please set WHATSAPP_VERIFY_TOKEN or WEBHOOK_VERIFY_TOKEN.');
-      return new NextResponse('Server configuration error', { 
-        status: 500,
-        headers: corsHeaders
-      });
+      return res.status(500).send('Server configuration error');
     }
     
     // Log all environment variables for debugging
@@ -108,16 +102,12 @@ export async function GET(request: NextRequest) {
     if (mode === 'subscribe' && token === verifyToken) {
       console.log('Webhook verified successfully');
       // Return the challenge as plain text
-      return new NextResponse(challenge, { 
-        status: 200,
-        headers: { 
-          'Content-Type': 'text/plain',
-          'Content-Length': challenge?.length?.toString() || '0',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      });
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Length', challenge ? challenge.toString().length : 0);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      return res.status(200).send(challenge);
     }
 
     console.error('Webhook verification failed:', { 
@@ -125,36 +115,27 @@ export async function GET(request: NextRequest) {
       token, 
       verifyToken,
       isValid: mode === 'subscribe' && token === verifyToken,
-      url: request.url
+      url: req.url
     });
     
-    return new NextResponse('Verification failed: token or mode mismatch', { 
-      status: 403,
-      headers: { 
-        'Content-Type': 'text/plain',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    return res.status(403).send('Verification failed: token or mode mismatch');
   } catch (error) {
     console.error('Error in webhook verification:', error);
-    return new NextResponse('Server error during verification', { 
-      status: 500,
-      headers: { 
-        'Content-Type': 'text/plain',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    return res.status(500).send('Server error during verification');
   }
 }
 
-// Webhook handler for WhatsApp messages
-export async function POST(req: NextRequest) {
+async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const body = await req.json();
+    const body = req.body;
     console.log('Received webhook payload:', JSON.stringify(body, null, 2));
     console.log('Webhook received:', JSON.stringify(body, null, 2));
 
@@ -211,11 +192,11 @@ export async function POST(req: NextRequest) {
           }
         }
       }
-      return new NextResponse('EVENT_RECEIVED', { status: 200 });
+      return res.status(200).send('EVENT_RECEIVED');
     }
-    return new NextResponse('Invalid request', { status: 404 });
+    return res.status(404).send('Invalid request');
   } catch (error) {
     console.error('Error processing webhook:', error);
-    return new NextResponse('Error processing webhook', { status: 500 });
+    return res.status(500).send('Error processing webhook');
   }
 }
