@@ -15,11 +15,8 @@ const walletProviders = new Map<string, CdpV2EvmWalletProvider>();
  * @returns A unique idempotency key
  */
 function generateIdempotencyKey(userId: string): string {
-  // Generate a UUID (36 characters) and combine with user ID and timestamp
-  const uuid = randomUUID();
-  const timestamp = Date.now().toString();
-  // Ensure the key is truly unique and long enough
-  return `${uuid}-user-${userId}-${timestamp}`;
+  // Use only the UUID, which is 36 characters and meets API requirements
+  return randomUUID();
 }
 
 // Base Sepolia testnet configuration
