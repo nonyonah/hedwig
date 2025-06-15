@@ -21,8 +21,8 @@ function cacheWalletCredentials(userId: string, walletSecret: string, address: s
 
 // Generate a valid Ethereum wallet secret (32-byte hex string)
 function generateWalletSecret(): string {
-  // 32 bytes = 64 hex characters
-  return require('crypto').randomBytes(32).toString('hex');
+  // 32 bytes = 64 hex characters, prefix with '0x' for Ethereum private key format
+  return '0x' + require('crypto').randomBytes(32).toString('hex');
 }
 
 
