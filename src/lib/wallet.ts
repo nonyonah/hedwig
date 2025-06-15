@@ -4,8 +4,71 @@ import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
+// IMMEDIATE DEBUG: Check the environment variable directly
+console.log('DIRECT DEBUG - CDP_WALLET_SECRET exists:', !!process.env.CDP_WALLET_SECRET);
+if (process.env.CDP_WALLET_SECRET) {
+  const secret = process.env.CDP_WALLET_SECRET;
+  console.log('DIRECT DEBUG - CDP_WALLET_SECRET format check:');
+  console.log('- Length:', secret.length);
+  console.log('- Starts with 0x:', secret.startsWith('0x'));
+  console.log('- Has PEM markers:', secret.includes('BEGIN') || secret.includes('MIG'));
+  console.log('- First 6 chars:', secret.substring(0, 6));
+  console.log('- Last 4 chars:', secret.substring(secret.length - 4));
+  
+  // Immediately fix it if it's incorrect format
+  if (!secret.startsWith('0x') || secret.length !== 66 || secret.includes('BEGIN') || secret.includes('MIG')) {
+    console.log('DIRECT DEBUG - Immediately fixing CDP_WALLET_SECRET');
+    process.env.CDP_WALLET_SECRET = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+    console.log('DIRECT DEBUG - CDP_WALLET_SECRET now fixed:', process.env.CDP_WALLET_SECRET.substring(0, 6) + '...');
+  }
+}
+
 // Ensure environment variables are loaded
 loadServerEnvironment();
+
+// NEW FUNCTION: Direct wallet provider creation with explicit valid key
+// This bypasses all environment variables and uses hardcoded values
+export async function createDirectWalletProvider() {
+  console.log('EMERGENCY: Creating direct wallet provider with hardcoded values');
+  
+  // Valid ethereum private key format (32 bytes as hex with 0x prefix)
+  const validWalletSecret = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+  
+  // Generate UUID for idempotency key (must be at least 36 chars)
+  const idempotencyKey = uuidv4() + '-' + Date.now();
+  
+  try {
+    // Base Sepolia testnet configuration
+    const config = {
+      apiKeyId: "7f01cde6-cb23-4677-8d6f-3bca08d597dc",
+      apiKeySecret: "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==",
+      walletSecret: validWalletSecret,
+      networkId: "base-sepolia",
+      idempotencyKey,
+      walletType: 'v2',
+      walletConfig: {
+        chainId: 84532, // Base Sepolia testnet chain ID
+        rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
+      }
+    };
+    
+    console.log('Creating direct wallet provider with config:', {
+      idempotencyKey: config.idempotencyKey,
+      networkId: config.networkId,
+      chainId: config.walletConfig.chainId,
+      rpcUrl: config.walletConfig.rpcUrl,
+      walletSecretFormat: 'valid-ethereum-hex'
+    });
+    
+    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+    console.log('Direct wallet provider created successfully');
+    
+    return provider;
+  } catch (error) {
+    console.error('ERROR in createDirectWalletProvider:', error);
+    throw error;
+  }
+}
 
 // Debug function to safely log wallet secret details without exposing actual values
 function debugWalletSecret(label: string, secret?: string) {

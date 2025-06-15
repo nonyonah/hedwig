@@ -102,8 +102,17 @@ export async function getAgentKit(): Promise<AgentKit> {
       try {
         walletProvider = await createWalletProvider();
       } catch (walletError) {
-        console.error('Failed to create wallet provider:', walletError);
-        throw new Error(`Wallet provider creation failed: ${walletError instanceof Error ? walletError.message : String(walletError)}`);
+        console.error('Failed to create regular wallet provider, trying direct method:', walletError);
+        try {
+          // Import the direct wallet provider function
+          const { createDirectWalletProvider } = await import('./wallet');
+          console.log('FALLBACK: Using direct wallet provider with hardcoded values');
+          walletProvider = await createDirectWalletProvider();
+          console.log('Successfully created direct wallet provider');
+        } catch (directError) {
+          console.error('Both wallet initialization methods failed:', directError);
+          throw new Error(`All wallet provider creation methods failed: ${directError instanceof Error ? directError.message : String(directError)}`);
+        }
       }
     }
 

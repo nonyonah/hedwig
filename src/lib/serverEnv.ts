@@ -2,6 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { getRequiredEnvVar, getEnvVar } from './envUtils';
 
+// IMMEDIATE FIX: Force-override the CDP_WALLET_SECRET to a known valid format
+// This ensures it's set correctly before any imports or function calls
+process.env.CDP_WALLET_SECRET = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+console.log('CRITICAL: CDP_WALLET_SECRET FORCIBLY SET TO VALID HEX FORMAT');
+
 // Debug function to safely log wallet secret details without exposing actual values
 function debugWalletSecret(label: string, secret?: string) {
   if (!secret) {

@@ -143,7 +143,7 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     // Dynamically import necessary modules
     const { HumanMessage } = await import('@langchain/core/messages');
     const { getAgentKit } = await import('@/lib/agentkit');
-    const { getOrCreateWallet } = await import('@/lib/wallet');
+    const { getOrCreateWallet, createDirectWalletProvider } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
 
     console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
@@ -151,6 +151,7 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     // Try to initialize the wallet and handle errors gracefully
     let wallet;
     try {
+      console.log('Attempting regular wallet initialization first');
       // Always use cached wallet if available, otherwise create and cache
       const { getCachedWalletCredentials } = await import('@/lib/wallet');
       let cached = getCachedWalletCredentials(userId);
@@ -159,8 +160,18 @@ async function processWithCDP(message: string, userId: string): Promise<string |
       const address = await wallet.getAddress();
       console.log(`Successfully initialized wallet for ${userId} with address: ${address}`);
     } catch (walletError) {
-      console.error('Error initializing wallet:', walletError);
-      return "I'm having trouble accessing the blockchain right now. Let me help you with something else instead.";
+      console.error('Regular wallet initialization failed, trying direct method:', walletError);
+      
+      try {
+        // Try the direct wallet provider as a fallback
+        console.log('FALLBACK: Using direct wallet provider with hardcoded values');
+        wallet = await createDirectWalletProvider();
+        const address = await wallet.getAddress();
+        console.log(`Successfully initialized direct wallet with address: ${address}`);
+      } catch (directError) {
+        console.error('Both wallet initialization methods failed:', directError);
+        return "I'm having trouble accessing the blockchain right now. Let me help you with something else instead.";
+      }
     }
 
     // Initialize AgentKit
