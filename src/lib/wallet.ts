@@ -7,6 +7,47 @@ import crypto from 'crypto';
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
+// Debug function to safely log wallet secret details without exposing actual values
+function debugWalletSecret(label: string, secret?: string) {
+  if (!secret) {
+    console.log(`[DEBUG] ${label}: undefined or null`);
+    return;
+  }
+  
+  // Check if it starts with 0x (Ethereum format)
+  const isEthFormat = secret.startsWith('0x');
+  
+  // Check if it might be PEM format
+  const isPossiblyPEM = secret.includes('BEGIN') || secret.includes('MIG');
+  
+  // Get the type, length, and a safe prefix/suffix to show
+  const type = isPossiblyPEM ? 'PEM-like' : isEthFormat ? 'Ethereum-hex' : 'unknown';
+  const length = secret.length;
+  const prefix = secret.substring(0, Math.min(6, length));
+  const suffix = length > 6 ? secret.substring(Math.max(0, length - 4)) : '';
+  
+  console.log(`[DEBUG] ${label}: Format=${type}, Length=${length}, Prefix=${prefix}..${suffix}`);
+  
+  // Additional checks for common issues
+  if (isPossiblyPEM && isEthFormat) {
+    console.warn(`[WARNING] ${label} appears to mix PEM and Ethereum formats - this will cause errors`);
+  }
+  
+  // For Ethereum format, validate correct length
+  if (isEthFormat && length !== 66) {
+    console.warn(`[WARNING] ${label} has Ethereum format but incorrect length (${length}). Should be 66 chars.`);
+  }
+  
+  // Check if valid hex (if Ethereum format)
+  if (isEthFormat) {
+    const hexPart = secret.substring(2);
+    const isValidHex = /^[0-9a-fA-F]+$/.test(hexPart);
+    if (!isValidHex) {
+      console.warn(`[WARNING] ${label} has invalid hex characters after 0x prefix`);
+    }
+  }
+}
+
 // Wallet credentials cache: only one wallet per user unless explicitly requested
 const walletCredentialsCache = new Map<string, { walletSecret: string; address: string }>();
 
@@ -34,13 +75,16 @@ function generateWalletSecret(): string {
       throw new Error(`Invalid private key length: ${privateKeyHex.length}. Expected 66 characters including 0x prefix.`);
     }
     
-    console.log(`Generated valid Ethereum private key (redacted): 0x${privateKeyHex.slice(2, 6)}...${privateKeyHex.slice(-4)}`);
+    // Debug the generated key
+    debugWalletSecret('Generated wallet secret', privateKeyHex);
     
     return privateKeyHex;
   } catch (error) {
     console.error('Failed to generate wallet secret:', error);
     // Fallback to a hardcoded valid format if generation fails
-    return '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+    const fallbackKey = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+    debugWalletSecret('Using fallback wallet secret', fallbackKey);
+    return fallbackKey;
   }
 }
 
@@ -65,11 +109,6 @@ const BASE_SEPOLIA_CONFIG = {
 };
 
 /**
- * Gets or creates a wallet for a user
- * @param userId - Unique identifier for the user
- * @param address - Optional address of an existing wallet to use
- */
-/**
  * Gets or creates (or imports) a wallet for a user.
  * If walletSecret and address are provided, import and cache them.
  * Otherwise, fallback to cached/generated wallet.
@@ -81,6 +120,8 @@ export async function getOrCreateWallet(
   walletSecretFromUser?: string
 ) {
   try {
+    console.log(`[CDP DEBUG] Starting getOrCreateWallet for user ${userId} with address ${address || 'none'}, forceNew=${forceNew}`);
+    
     // Try to get cached credentials
     let cached = getCachedWalletCredentials(userId);
     let walletSecret: string | undefined;
@@ -88,11 +129,13 @@ export async function getOrCreateWallet(
     if (walletSecretFromUser && address) {
       // User is importing a wallet
       walletSecret = walletSecretFromUser;
+      debugWalletSecret('User-provided wallet secret', walletSecret);
       walletAddress = address;
       cacheWalletCredentials(userId, walletSecret, walletAddress);
       console.log(`[CDP] Imported wallet for user ${userId}: ${walletAddress}`);
     } else if (cached && !forceNew) {
       walletSecret = cached.walletSecret;
+      debugWalletSecret('Cached wallet secret', walletSecret);
       walletAddress = cached.address;
       console.log(`[CDP] Using cached wallet for user ${userId}: ${walletAddress}`);
     } else {
@@ -117,14 +160,21 @@ export async function getOrCreateWallet(
       networkId: cdpEnv.networkId
     });
     
+    // Debug the wallet secret from environment
+    debugWalletSecret('Environment wallet secret', cdpEnv.walletSecret);
+    
     // Generate a proper idempotency key that meets the 36-character minimum requirement
     const idempotencyKey = generateIdempotencyKey(userId);
     console.log('Generated idempotency key length:', idempotencyKey.length);
     
+    // Use environment wallet secret if user wallet secret is not available
+    const finalWalletSecret = walletSecret || cdpEnv.walletSecret;
+    debugWalletSecret('Final wallet secret to be used', finalWalletSecret);
+    
     const config = {
       apiKeyId: cdpEnv.apiKeyId,
       apiKeySecret: cdpEnv.apiKeySecret,
-      walletSecret: walletSecret,
+      walletSecret: finalWalletSecret,
       networkId: cdpEnv.networkId,
       idempotencyKey,
       ...(walletAddress && { address: walletAddress }),
@@ -137,6 +187,7 @@ export async function getOrCreateWallet(
         'X-Idempotency-Key': idempotencyKey,
       }
     };
+    
     console.log('Initializing wallet with config:', {
       ...config,
       apiKeyId: config.apiKeyId ? '[REDACTED]' : 'MISSING',
@@ -146,19 +197,54 @@ export async function getOrCreateWallet(
       chainId: config.walletConfig.chainId,
       rpcUrl: config.walletConfig.rpcUrl,
     });
+    
     try {
+      console.log('[CDP DEBUG] About to call CdpV2EvmWalletProvider.configureWithWallet');
       // Always create a new provider instance per call
       const walletProvider = await CdpV2EvmWalletProvider.configureWithWallet(config);
       // Get the wallet address
+      console.log('[CDP DEBUG] Wallet provider created, getting address');
       const actualAddress = await walletProvider.getAddress();
       console.log(`[CDP] Wallet address for user ${userId}: ${actualAddress}`);
       // If this is a new wallet, cache the credentials/address
       if (!cached || !cached.address) {
-        cacheWalletCredentials(userId, walletSecret!, actualAddress);
+        cacheWalletCredentials(userId, finalWalletSecret, actualAddress);
       }
       return walletProvider;
     } catch (error) {
       console.error('Error configuring wallet provider:', error);
+      
+      // Detailed error analysis for wallet errors
+      if (error instanceof Error) {
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        
+        // Analyze specific error messages
+        if (error.message.includes('Invalid Wallet Secret format')) {
+          console.error('[CDP ERROR ANALYSIS] The wallet secret is in an incorrect format. Required: Ethereum hex private key (0x + 64 hex chars)');
+          
+          if (finalWalletSecret) {
+            console.error(`[CDP ERROR ANALYSIS] Secret format analysis:`);
+            console.error(`- Starts with 0x: ${finalWalletSecret.startsWith('0x')}`);
+            console.error(`- Length: ${finalWalletSecret.length} (should be 66 including 0x)`);
+            if (finalWalletSecret.startsWith('0x')) {
+              const hexPart = finalWalletSecret.substring(2);
+              console.error(`- Contains only hex chars: ${/^[0-9a-fA-F]+$/.test(hexPart)}`);
+            }
+            
+            // Look for PEM format indicators
+            if (finalWalletSecret.includes('BEGIN') || finalWalletSecret.includes('MIG')) {
+              console.error('[CDP ERROR ANALYSIS] Secret appears to be in PEM format rather than hex format');
+            }
+          }
+        }
+        
+        if ('cause' in error && error.cause) {
+          console.error('Error cause:', error.cause);
+          console.error('Cause type:', typeof error.cause);
+        }
+      }
+      
       throw new Error(`Failed to configure wallet provider: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   } catch (error) {
