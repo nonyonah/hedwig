@@ -1,10 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+// --- BEGIN: Runtime and Crypto Debugging (MUST BE FIRST) ---
+console.log('[Wallet API] process.versions:', typeof process !== 'undefined' ? process.versions : 'undefined');
+console.log('[Wallet API] process.release:', typeof process !== 'undefined' ? process.release : 'undefined');
+console.log('[Wallet API] typeof globalThis.crypto BEFORE polyfill:', typeof globalThis.crypto);
 
-// --- BEGIN: Runtime and Crypto Debugging ---
-console.log('[Wallet API] Runtime:', process?.versions?.node ? 'nodejs' : 'edge or unknown');
-console.log('[Wallet API] typeof globalThis.crypto:', typeof globalThis.crypto);
-
-// Polyfill globalThis.crypto with Node.js crypto if missing
 if (typeof globalThis.crypto === 'undefined') {
   try {
     // @ts-ignore
@@ -14,8 +12,10 @@ if (typeof globalThis.crypto === 'undefined') {
     console.error('[Wallet API] Failed to polyfill globalThis.crypto:', e);
   }
 }
-console.log('[Wallet API] typeof globalThis.crypto after polyfill:', typeof globalThis.crypto);
+console.log('[Wallet API] typeof globalThis.crypto AFTER polyfill:', typeof globalThis.crypto);
 // --- END: Runtime and Crypto Debugging ---
+
+import { NextRequest, NextResponse } from 'next/server';
 import { getOrCreateWallet } from '@/lib/wallet';
 import { loadServerEnvironment } from '@/lib/serverEnv';
 
