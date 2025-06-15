@@ -19,6 +19,13 @@ function cacheWalletCredentials(userId: string, walletSecret: string, address: s
   walletCredentialsCache.set(userId, { walletSecret, address });
 }
 
+// Generate a valid Ethereum wallet secret (32-byte hex string)
+function generateWalletSecret(): string {
+  // 32 bytes = 64 hex characters
+  return require('crypto').randomBytes(32).toString('hex');
+}
+
+
 
 /**
  * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
@@ -45,20 +52,35 @@ const BASE_SEPOLIA_CONFIG = {
  * @param userId - Unique identifier for the user
  * @param address - Optional address of an existing wallet to use
  */
-export async function getOrCreateWallet(userId: string, address?: string, forceNew = false) {
+/**
+ * Gets or creates (or imports) a wallet for a user.
+ * If walletSecret and address are provided, import and cache them.
+ * Otherwise, fallback to cached/generated wallet.
+ */
+export async function getOrCreateWallet(
+  userId: string,
+  address?: string,
+  forceNew = false,
+  walletSecretFromUser?: string
+) {
   try {
     // Try to get cached credentials
     let cached = getCachedWalletCredentials(userId);
     let walletSecret: string | undefined;
     let walletAddress: string | undefined;
-    if (cached && !forceNew) {
+    if (walletSecretFromUser && address) {
+      // User is importing a wallet
+      walletSecret = walletSecretFromUser;
+      walletAddress = address;
+      cacheWalletCredentials(userId, walletSecret, walletAddress);
+      console.log(`[CDP] Imported wallet for user ${userId}: ${walletAddress}`);
+    } else if (cached && !forceNew) {
       walletSecret = cached.walletSecret;
       walletAddress = cached.address;
       console.log(`[CDP] Using cached wallet for user ${userId}: ${walletAddress}`);
     } else {
       // No cached wallet, or forceNew requested: create new wallet credentials
-      // For demo: generate a new walletSecret (in real app, use secure generation/storage)
-      walletSecret = uuidv4(); // Use uuid as a stand-in for wallet secret
+      walletSecret = generateWalletSecret(); // Use a real cryptographic secret
       walletAddress = undefined; // Let provider create new wallet/address
       console.log(`[CDP] Creating new wallet for user ${userId}`);
     }
