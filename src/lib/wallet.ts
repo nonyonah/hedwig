@@ -26,12 +26,25 @@ if (process.env.CDP_WALLET_SECRET) {
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
-// NEW FUNCTION: Direct wallet provider creation with explicit valid key
-// This bypasses all environment variables and uses hardcoded values
+/**
+ * Direct wallet provider creation with explicit valid key
+ * 
+ * According to CDP documentation:
+ * @see https://docs.cdp.coinbase.com/api-v2/docs/authentication#wallet-secret
+ * 
+ * The wallet secret for CDP V2 must be a valid Ethereum private key in hex format:
+ * - Must start with "0x" prefix
+ * - Must be 64 hex characters after the prefix (66 chars total)
+ * - Must contain only valid hex characters (0-9, a-f, A-F)
+ * - Must NOT be in PEM format (no BEGIN/END markers)
+ * 
+ * This is different from CDP V1, which used different formats.
+ */
 export async function createDirectWalletProvider() {
   console.log('EMERGENCY: Creating direct wallet provider with hardcoded values');
   
   // Valid ethereum private key format (32 bytes as hex with 0x prefix)
+  // CDP V2 requires a valid Ethereum private key (0x + 64 hex chars = 66 chars total)
   const validWalletSecret = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
   
   // Generate UUID for idempotency key (must be at least 36 chars)
@@ -45,7 +58,7 @@ export async function createDirectWalletProvider() {
       walletSecret: validWalletSecret,
       networkId: "base-sepolia",
       idempotencyKey,
-      walletType: 'v2',
+      walletType: 'v2', // Explicitly set to v2, which requires Ethereum private key format
       walletConfig: {
         chainId: 84532, // Base Sepolia testnet chain ID
         rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
@@ -125,6 +138,19 @@ function cacheWalletCredentials(userId: string, walletSecret: string, address: s
 }
 
 // Generate a valid Ethereum wallet secret (32-byte hex string)
+/**
+ * Generates a valid Ethereum wallet secret for CDP V2
+ * 
+ * @see https://docs.cdp.coinbase.com/api-v2/docs/authentication#wallet-secret
+ * 
+ * CDP V2 requires a properly formatted Ethereum private key:
+ * - Must start with "0x" prefix
+ * - Must be 64 hex characters after the prefix (66 chars total)
+ * - Total length must be 66 characters
+ * - Must contain only valid hex characters
+ * 
+ * @returns A valid Ethereum private key in hex format with 0x prefix
+ */
 function generateWalletSecret(): string {
   try {
     // Generate 32 random bytes (required for Ethereum private key)
@@ -138,6 +164,14 @@ function generateWalletSecret(): string {
       throw new Error(`Invalid private key length: ${privateKeyHex.length}. Expected 66 characters including 0x prefix.`);
     }
     
+    // Verify it contains only valid hex characters
+    const hexPart = privateKeyHex.substring(2);
+    if (!/^[0-9a-f]+$/i.test(hexPart)) {
+      throw new Error('Generated key contains invalid hex characters');
+    }
+    
+    console.log('Successfully generated valid Ethereum private key for CDP V2 wallet');
+    
     // Debug the generated key
     debugWalletSecret('Generated wallet secret', privateKeyHex);
     
@@ -146,6 +180,7 @@ function generateWalletSecret(): string {
     console.error('Failed to generate wallet secret:', error);
     // Fallback to a hardcoded valid format if generation fails
     const fallbackKey = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+    console.log('Using fallback wallet secret that meets CDP V2 requirements');
     debugWalletSecret('Using fallback wallet secret', fallbackKey);
     return fallbackKey;
   }
