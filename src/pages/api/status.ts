@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import type { NextApiRequest, NextApiResponse } from 'next';
 
-export async function GET() {
-  return NextResponse.json({ 
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.status(200).json({
     status: 'ok',
     message: 'Albus API is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 }
