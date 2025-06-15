@@ -151,7 +151,10 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     // Try to initialize the wallet and handle errors gracefully
     let wallet;
     try {
-      wallet = await getOrCreateWallet(userId);
+      // Always use cached wallet if available, otherwise create and cache
+      const { getCachedWalletCredentials } = await import('@/lib/wallet');
+      let cached = getCachedWalletCredentials(userId);
+      wallet = await getOrCreateWallet(userId, cached?.address);
       // Verify wallet is working by attempting to get the address
       const address = await wallet.getAddress();
       console.log(`Successfully initialized wallet for ${userId} with address: ${address}`);

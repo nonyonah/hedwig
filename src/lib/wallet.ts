@@ -6,8 +6,19 @@ import { v4 as uuidv4 } from 'uuid';
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
-// Always create a new wallet provider for each request to ensure a unique X-Idempotency-Key
-// Removed walletProviders cache as per Coinbase CDP API idempotency requirements.
+// Wallet credentials cache: only one wallet per user unless explicitly requested
+const walletCredentialsCache = new Map<string, { walletSecret: string; address: string }>();
+
+// Helper to get wallet credentials for a user
+export function getCachedWalletCredentials(userId: string) {
+  return walletCredentialsCache.get(userId);
+}
+
+// Helper to set wallet credentials for a user
+function cacheWalletCredentials(userId: string, walletSecret: string, address: string) {
+  walletCredentialsCache.set(userId, { walletSecret, address });
+}
+
 
 /**
  * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
@@ -34,11 +45,24 @@ const BASE_SEPOLIA_CONFIG = {
  * @param userId - Unique identifier for the user
  * @param address - Optional address of an existing wallet to use
  */
-export async function getOrCreateWallet(userId: string, address?: string) {
-
+export async function getOrCreateWallet(userId: string, address?: string, forceNew = false) {
   try {
-    console.log(`Creating new wallet provider for user ${userId}`);
-    
+    // Try to get cached credentials
+    let cached = getCachedWalletCredentials(userId);
+    let walletSecret: string | undefined;
+    let walletAddress: string | undefined;
+    if (cached && !forceNew) {
+      walletSecret = cached.walletSecret;
+      walletAddress = cached.address;
+      console.log(`[CDP] Using cached wallet for user ${userId}: ${walletAddress}`);
+    } else {
+      // No cached wallet, or forceNew requested: create new wallet credentials
+      // For demo: generate a new walletSecret (in real app, use secure generation/storage)
+      walletSecret = uuidv4(); // Use uuid as a stand-in for wallet secret
+      walletAddress = undefined; // Let provider create new wallet/address
+      console.log(`[CDP] Creating new wallet for user ${userId}`);
+    }
+
     // Log available environment variables for debugging (without exposing secrets)
     const envKeys = Object.keys(process.env).filter(key => 
       key.includes('CDP') || key.includes('NETWORK')
@@ -50,7 +74,7 @@ export async function getOrCreateWallet(userId: string, address?: string) {
     console.log('CDP environment loaded:', {
       apiKeyId: cdpEnv.apiKeyId ? 'PRESENT' : 'MISSING',
       apiKeySecret: cdpEnv.apiKeySecret ? 'PRESENT' : 'MISSING',
-      walletSecret: cdpEnv.walletSecret ? 'PRESENT' : 'MISSING',
+      walletSecret: walletSecret ? '[CACHED/NEW]' : 'MISSING',
       networkId: cdpEnv.networkId
     });
     
@@ -59,30 +83,21 @@ export async function getOrCreateWallet(userId: string, address?: string) {
     console.log('Generated idempotency key length:', idempotencyKey.length);
     
     const config = {
-      // CDP v2 wallet configuration
       apiKeyId: cdpEnv.apiKeyId,
       apiKeySecret: cdpEnv.apiKeySecret,
-      walletSecret: cdpEnv.walletSecret,
+      walletSecret: walletSecret,
       networkId: cdpEnv.networkId,
-      // idempotencyKey is generated but must be sent as X-Idempotency-Key header
-      idempotencyKey, // For reference; not used directly by the API
-      ...(address && { address }),
-      
-      // CDP v2 specific configuration
+      idempotencyKey,
+      ...(walletAddress && { address: walletAddress }),
       walletType: 'v2',
       walletConfig: {
-        // Explicitly set Base Sepolia testnet configuration
         chainId: BASE_SEPOLIA_CONFIG.chainId,
         rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
       },
-      // If agentkit supports custom headers, set the header here
       headers: {
         'X-Idempotency-Key': idempotencyKey,
       }
     };
-    // NOTE: If @coinbase/agentkit does not forward the headers property, you must patch the library or wrap HTTP requests to ensure X-Idempotency-Key is sent.
-
-
     console.log('Initializing wallet with config:', {
       ...config,
       apiKeyId: config.apiKeyId ? '[REDACTED]' : 'MISSING',
@@ -92,16 +107,16 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       chainId: config.walletConfig.chainId,
       rpcUrl: config.walletConfig.rpcUrl,
     });
-
     try {
-      // Configure with explicit wallet and network parameters
+      // Always create a new provider instance per call
       const walletProvider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-      
-      // Verify the wallet is working by getting the address
-      const walletAddress = await walletProvider.getAddress();
-      console.log(`Successfully created wallet with address: ${walletAddress}`);
-      
-      // Always return a new wallet provider (no caching)
+      // Get the wallet address
+      const actualAddress = await walletProvider.getAddress();
+      console.log(`[CDP] Wallet address for user ${userId}: ${actualAddress}`);
+      // If this is a new wallet, cache the credentials/address
+      if (!cached || !cached.address) {
+        cacheWalletCredentials(userId, walletSecret!, actualAddress);
+      }
       return walletProvider;
     } catch (error) {
       console.error('Error configuring wallet provider:', error);
