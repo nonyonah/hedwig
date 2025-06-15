@@ -7,6 +7,16 @@ import { getRequiredEnvVar, getEnvVar } from './envUtils';
 process.env.CDP_WALLET_SECRET = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
 console.log('CRITICAL: CDP_WALLET_SECRET FORCIBLY SET TO VALID HEX FORMAT');
 
+// Set default Privy environment variables if they don't exist
+if (!process.env.PRIVY_APP_ID) {
+  process.env.PRIVY_APP_ID = 'demo-app-id';
+  console.log('NOTICE: Setting default PRIVY_APP_ID');
+}
+if (!process.env.PRIVY_APP_SECRET) {
+  process.env.PRIVY_APP_SECRET = 'demo-app-secret';
+  console.log('NOTICE: Setting default PRIVY_APP_SECRET');
+}
+
 // Debug function to safely log wallet secret details without exposing actual values
 function debugWalletSecret(label: string, secret?: string) {
   if (!secret) {

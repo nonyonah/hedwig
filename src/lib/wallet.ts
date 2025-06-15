@@ -1,4 +1,4 @@
-import { CdpV2EvmWalletProvider } from '@coinbase/agentkit';
+import { PrivyEvmWalletProvider } from '@coinbase/agentkit';
 import { getRequiredEnvVar } from './envUtils';
 import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,22 +6,8 @@ import crypto from 'crypto';
 
 // IMMEDIATE DEBUG: Check the environment variable directly
 console.log('DIRECT DEBUG - CDP_WALLET_SECRET exists:', !!process.env.CDP_WALLET_SECRET);
-if (process.env.CDP_WALLET_SECRET) {
-  const secret = process.env.CDP_WALLET_SECRET;
-  console.log('DIRECT DEBUG - CDP_WALLET_SECRET format check:');
-  console.log('- Length:', secret.length);
-  console.log('- Starts with 0x:', secret.startsWith('0x'));
-  console.log('- Has PEM markers:', secret.includes('BEGIN') || secret.includes('MIG'));
-  console.log('- First 6 chars:', secret.substring(0, 6));
-  console.log('- Last 4 chars:', secret.substring(secret.length - 4));
-  
-  // Immediately fix it if it's incorrect format
-  if (!secret.startsWith('0x') || secret.length !== 66 || secret.includes('BEGIN') || secret.includes('MIG')) {
-    console.log('DIRECT DEBUG - Immediately fixing CDP_WALLET_SECRET');
-    process.env.CDP_WALLET_SECRET = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
-    console.log('DIRECT DEBUG - CDP_WALLET_SECRET now fixed:', process.env.CDP_WALLET_SECRET.substring(0, 6) + '...');
-  }
-}
+// Remove the CDP wallet-specific check since we're switching to Privy
+console.log('Changing wallet provider to PrivyEvmWalletProvider - no longer using CDP_WALLET_SECRET');
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -29,52 +15,39 @@ loadServerEnvironment();
 /**
  * Direct wallet provider creation with explicit valid key
  * 
- * According to CDP documentation:
- * @see https://docs.cdp.coinbase.com/api-v2/docs/authentication#wallet-secret
+ * According to AgentKit documentation:
+ * @see https://github.com/coinbase/agentkit/blob/main/typescript/agentkit/README.md
  * 
- * The wallet secret for CDP V2 must be a valid Ethereum private key in hex format:
- * - Must start with "0x" prefix
- * - Must be 64 hex characters after the prefix (66 chars total)
- * - Must contain only valid hex characters (0-9, a-f, A-F)
- * - Must NOT be in PEM format (no BEGIN/END markers)
- * 
- * This is different from CDP V1, which used different formats.
+ * PrivyEvmWalletProvider requires an Ethereum private key and RPC configuration:
+ * - The private key should be a standard Ethereum private key (32 bytes as hex with 0x prefix)
  */
 export async function createDirectWalletProvider() {
-  console.log('EMERGENCY: Creating direct wallet provider with hardcoded values');
+  console.log('EMERGENCY: Creating direct PrivyEvmWalletProvider with hardcoded values');
   
-  // Valid ethereum private key format (32 bytes as hex with 0x prefix)
-  // CDP V2 requires a valid Ethereum private key (0x + 64 hex chars = 66 chars total)
-  const validWalletSecret = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
-  
-  // Generate UUID for idempotency key (must be at least 36 chars)
-  const idempotencyKey = uuidv4() + '-' + Date.now();
+  // Valid Ethereum private key format (32 bytes as hex with 0x prefix)
+  const privateKey = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
   
   try {
     // Base Sepolia testnet configuration
     const config = {
-      apiKeyId: "7f01cde6-cb23-4677-8d6f-3bca08d597dc",
-      apiKeySecret: "5LZgD6J5/6gsqKRM2G7VSp3KgO6uiB/4ZrxvlLkYafv+D15/Da+7q0HbBGExXN0pjzoZqRgZ24yMbT7yav0iLg==",
-      walletSecret: validWalletSecret,
-      networkId: "base-sepolia",
-      idempotencyKey,
-      walletType: 'v2', // Explicitly set to v2, which requires Ethereum private key format
-      walletConfig: {
-        chainId: 84532, // Base Sepolia testnet chain ID
-        rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
-      }
+      // Required for Privy provider
+      appId: 'your-privy-app-id', // You'll need to replace with a real Privy app ID
+      appSecret: 'your-privy-app-secret', // You'll need to replace with a real Privy app secret
+      // Optional private key
+      privateKey,
+      // Chain configuration
+      chainId: "84532", // Base Sepolia testnet chain ID (as string)
+      rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
     };
     
-    console.log('Creating direct wallet provider with config:', {
-      idempotencyKey: config.idempotencyKey,
-      networkId: config.networkId,
-      chainId: config.walletConfig.chainId,
-      rpcUrl: config.walletConfig.rpcUrl,
-      walletSecretFormat: 'valid-ethereum-hex'
+    console.log('Creating direct PrivyEvmWalletProvider with config:', {
+      rpcUrl: config.rpcUrl,
+      chainId: config.chainId,
+      privateKeyFormat: 'valid-ethereum-hex'
     });
     
-    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-    console.log('Direct wallet provider created successfully');
+    const provider = await PrivyEvmWalletProvider.configureWithWallet(config);
+    console.log('Direct PrivyEvmWalletProvider created successfully');
     
     return provider;
   } catch (error) {
@@ -125,7 +98,7 @@ function debugWalletSecret(label: string, secret?: string) {
 }
 
 // Wallet credentials cache: only one wallet per user unless explicitly requested
-const walletCredentialsCache = new Map<string, { walletSecret: string; address: string }>();
+const walletCredentialsCache = new Map<string, { privateKey: string; address: string }>();
 
 // Helper to get wallet credentials for a user
 export function getCachedWalletCredentials(userId: string) {
@@ -133,25 +106,16 @@ export function getCachedWalletCredentials(userId: string) {
 }
 
 // Helper to set wallet credentials for a user
-function cacheWalletCredentials(userId: string, walletSecret: string, address: string) {
-  walletCredentialsCache.set(userId, { walletSecret, address });
+function cacheWalletCredentials(userId: string, privateKey: string, address: string) {
+  walletCredentialsCache.set(userId, { privateKey, address });
 }
 
-// Generate a valid Ethereum wallet secret (32-byte hex string)
 /**
- * Generates a valid Ethereum wallet secret for CDP V2
- * 
- * @see https://docs.cdp.coinbase.com/api-v2/docs/authentication#wallet-secret
- * 
- * CDP V2 requires a properly formatted Ethereum private key:
- * - Must start with "0x" prefix
- * - Must be 64 hex characters after the prefix (66 chars total)
- * - Total length must be 66 characters
- * - Must contain only valid hex characters
+ * Generates a valid Ethereum private key
  * 
  * @returns A valid Ethereum private key in hex format with 0x prefix
  */
-function generateWalletSecret(): string {
+function generatePrivateKey(): string {
   try {
     // Generate 32 random bytes (required for Ethereum private key)
     const privateKeyBytes = crypto.randomBytes(32);
@@ -170,34 +134,20 @@ function generateWalletSecret(): string {
       throw new Error('Generated key contains invalid hex characters');
     }
     
-    console.log('Successfully generated valid Ethereum private key for CDP V2 wallet');
+    console.log('Successfully generated valid Ethereum private key');
     
     // Debug the generated key
-    debugWalletSecret('Generated wallet secret', privateKeyHex);
+    debugWalletSecret('Generated private key', privateKeyHex);
     
     return privateKeyHex;
   } catch (error) {
-    console.error('Failed to generate wallet secret:', error);
+    console.error('Failed to generate private key:', error);
     // Fallback to a hardcoded valid format if generation fails
     const fallbackKey = '0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
-    console.log('Using fallback wallet secret that meets CDP V2 requirements');
-    debugWalletSecret('Using fallback wallet secret', fallbackKey);
+    console.log('Using fallback private key');
+    debugWalletSecret('Using fallback private key', fallbackKey);
     return fallbackKey;
   }
-}
-
-/**
- * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
- * @param userId - User identifier to include in the key
- * @returns A unique idempotency key
- */
-function generateIdempotencyKey(userId: string): string {
-  const key = uuidv4();
-  console.log('[CDP] Generated idempotency key:', key, 'Length:', key.length);
-  if (key.length !== 36) {
-    throw new Error(`[CDP] Invalid idempotency key length: ${key.length}. Key: ${key}`);
-  }
-  return key;
 }
 
 // Base Sepolia testnet configuration
@@ -208,106 +158,78 @@ const BASE_SEPOLIA_CONFIG = {
 
 /**
  * Gets or creates (or imports) a wallet for a user.
- * If walletSecret and address are provided, import and cache them.
+ * If privateKey and address are provided, import and cache them.
  * Otherwise, fallback to cached/generated wallet.
  */
 export async function getOrCreateWallet(
   userId: string,
   address?: string,
   forceNew = false,
-  walletSecretFromUser?: string
+  privateKeyFromUser?: string
 ) {
   try {
-    console.log(`[CDP DEBUG] Starting getOrCreateWallet for user ${userId} with address ${address || 'none'}, forceNew=${forceNew}`);
+    console.log(`[Wallet DEBUG] Starting getOrCreateWallet for user ${userId} with address ${address || 'none'}, forceNew=${forceNew}`);
     
     // Try to get cached credentials
     let cached = getCachedWalletCredentials(userId);
-    let walletSecret: string | undefined;
+    let privateKey: string | undefined;
     let walletAddress: string | undefined;
-    if (walletSecretFromUser && address) {
+    
+    if (privateKeyFromUser && address) {
       // User is importing a wallet
-      walletSecret = walletSecretFromUser;
-      debugWalletSecret('User-provided wallet secret', walletSecret);
+      privateKey = privateKeyFromUser;
+      debugWalletSecret('User-provided private key', privateKey);
       walletAddress = address;
-      cacheWalletCredentials(userId, walletSecret, walletAddress);
-      console.log(`[CDP] Imported wallet for user ${userId}: ${walletAddress}`);
+      cacheWalletCredentials(userId, privateKey, walletAddress);
+      console.log(`[Wallet] Imported wallet for user ${userId}: ${walletAddress}`);
     } else if (cached && !forceNew) {
-      walletSecret = cached.walletSecret;
-      debugWalletSecret('Cached wallet secret', walletSecret);
+      // Use cached wallet
+      privateKey = cached.privateKey;
+      debugWalletSecret('Cached private key', privateKey);
       walletAddress = cached.address;
-      console.log(`[CDP] Using cached wallet for user ${userId}: ${walletAddress}`);
+      console.log(`[Wallet] Using cached wallet for user ${userId}: ${walletAddress}`);
     } else {
       // No cached wallet, or forceNew requested: create new wallet credentials
-      walletSecret = generateWalletSecret(); // Use a real cryptographic secret
-      walletAddress = undefined; // Let provider create new wallet/address
-      console.log(`[CDP] Creating new wallet for user ${userId}`);
+      privateKey = generatePrivateKey();
+      walletAddress = undefined; // Let provider determine address
+      console.log(`[Wallet] Creating new wallet for user ${userId}`);
     }
 
-    // Log available environment variables for debugging (without exposing secrets)
-    const envKeys = Object.keys(process.env).filter(key => 
-      key.includes('CDP') || key.includes('NETWORK')
-    );
-    console.log('Available CDP environment variable keys:', envKeys);
-    
-    // Get CDP environment variables
-    const cdpEnv = getCdpEnvironment();
-    console.log('CDP environment loaded:', {
-      apiKeyId: cdpEnv.apiKeyId ? 'PRESENT' : 'MISSING',
-      apiKeySecret: cdpEnv.apiKeySecret ? 'PRESENT' : 'MISSING',
-      walletSecret: walletSecret ? '[CACHED/NEW]' : 'MISSING',
-      networkId: cdpEnv.networkId
-    });
-    
-    // Debug the wallet secret from environment
-    debugWalletSecret('Environment wallet secret', cdpEnv.walletSecret);
-    
-    // Generate a proper idempotency key that meets the 36-character minimum requirement
-    const idempotencyKey = generateIdempotencyKey(userId);
-    console.log('Generated idempotency key length:', idempotencyKey.length);
-    
-    // Use environment wallet secret if user wallet secret is not available
-    const finalWalletSecret = walletSecret || cdpEnv.walletSecret;
-    debugWalletSecret('Final wallet secret to be used', finalWalletSecret);
-    
-    const config = {
-      apiKeyId: cdpEnv.apiKeyId,
-      apiKeySecret: cdpEnv.apiKeySecret,
-      walletSecret: finalWalletSecret,
-      networkId: cdpEnv.networkId,
-      idempotencyKey,
-      ...(walletAddress && { address: walletAddress }),
-      walletType: 'v2',
-      walletConfig: {
-        chainId: BASE_SEPOLIA_CONFIG.chainId,
-        rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
-      },
-      headers: {
-        'X-Idempotency-Key': idempotencyKey,
-      }
-    };
-    
-    console.log('Initializing wallet with config:', {
-      ...config,
-      apiKeyId: config.apiKeyId ? '[REDACTED]' : 'MISSING',
-      apiKeySecret: '[REDACTED]',
-      walletSecret: '[REDACTED]',
-      networkId: config.networkId,
-      chainId: config.walletConfig.chainId,
-      rpcUrl: config.walletConfig.rpcUrl,
-    });
-    
+    // Initialize Privy wallet provider
     try {
-      console.log('[CDP DEBUG] About to call CdpV2EvmWalletProvider.configureWithWallet');
-      // Always create a new provider instance per call
-      const walletProvider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-      // Get the wallet address
-      console.log('[CDP DEBUG] Wallet provider created, getting address');
+      console.log('[Wallet DEBUG] About to create PrivyEvmWalletProvider');
+      
+      // Get environment values for Privy configuration
+      const appId = process.env.PRIVY_APP_ID || 'privy-app-id';
+      const appSecret = process.env.PRIVY_APP_SECRET || 'privy-app-secret';
+      
+      const config = {
+        appId,
+        appSecret,
+        privateKey,
+        chainId: BASE_SEPOLIA_CONFIG.chainId.toString(), // Must be a string for Privy
+        rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
+      };
+      
+      console.log('Initializing PrivyEvmWalletProvider with config:', {
+        chainId: config.chainId,
+        rpcUrl: config.rpcUrl,
+        appId: config.appId ? 'PRESENT' : 'MISSING'
+      });
+      
+      // Create new provider
+      const walletProvider = await PrivyEvmWalletProvider.configureWithWallet(config);
+      
+      // Get the wallet address to verify it works
+      console.log('[Wallet DEBUG] Wallet provider created, getting address');
       const actualAddress = await walletProvider.getAddress();
-      console.log(`[CDP] Wallet address for user ${userId}: ${actualAddress}`);
+      console.log(`[Wallet] Wallet address for user ${userId}: ${actualAddress}`);
+      
       // If this is a new wallet, cache the credentials/address
       if (!cached || !cached.address) {
-        cacheWalletCredentials(userId, finalWalletSecret, actualAddress);
+        cacheWalletCredentials(userId, privateKey, actualAddress);
       }
+      
       return walletProvider;
     } catch (error) {
       console.error('Error configuring wallet provider:', error);
@@ -318,21 +240,16 @@ export async function getOrCreateWallet(
         console.error('Error message:', error.message);
         
         // Analyze specific error messages
-        if (error.message.includes('Invalid Wallet Secret format')) {
-          console.error('[CDP ERROR ANALYSIS] The wallet secret is in an incorrect format. Required: Ethereum hex private key (0x + 64 hex chars)');
+        if (error.message.includes('Invalid private key')) {
+          console.error('[Wallet ERROR ANALYSIS] The private key is invalid. Required: Ethereum hex private key (0x + 64 hex chars)');
           
-          if (finalWalletSecret) {
-            console.error(`[CDP ERROR ANALYSIS] Secret format analysis:`);
-            console.error(`- Starts with 0x: ${finalWalletSecret.startsWith('0x')}`);
-            console.error(`- Length: ${finalWalletSecret.length} (should be 66 including 0x)`);
-            if (finalWalletSecret.startsWith('0x')) {
-              const hexPart = finalWalletSecret.substring(2);
+          if (privateKey) {
+            console.error(`[Wallet ERROR ANALYSIS] Private key format analysis:`);
+            console.error(`- Starts with 0x: ${privateKey.startsWith('0x')}`);
+            console.error(`- Length: ${privateKey.length} (should be 66 including 0x)`);
+            if (privateKey.startsWith('0x')) {
+              const hexPart = privateKey.substring(2);
               console.error(`- Contains only hex chars: ${/^[0-9a-fA-F]+$/.test(hexPart)}`);
-            }
-            
-            // Look for PEM format indicators
-            if (finalWalletSecret.includes('BEGIN') || finalWalletSecret.includes('MIG')) {
-              console.error('[CDP ERROR ANALYSIS] Secret appears to be in PEM format rather than hex format');
             }
           }
         }

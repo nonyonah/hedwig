@@ -1,10 +1,11 @@
 import { 
   AgentKit, 
   Action, 
-  CdpV2EvmWalletProvider,
+  PrivyEvmWalletProvider,
   erc20ActionProvider,
   erc721ActionProvider,
-  walletActionProvider
+  walletActionProvider,
+  WalletProvider
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 import { getRequiredEnvVar } from './envUtils';
@@ -16,11 +17,11 @@ loadServerEnvironment();
 
 // Singleton instance
 let agentKitInstance: AgentKit | null = null;
-let walletProvider: CdpV2EvmWalletProvider | null = null;
+let walletProvider: WalletProvider | null = null;
 
 // Base Sepolia testnet configuration
 const BASE_SEPOLIA_CONFIG = {
-  chainId: 84532, // Base Sepolia testnet chain ID
+  chainId: "84532", // Base Sepolia testnet chain ID (as string for Privy)
   rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
 };
 
@@ -37,44 +38,42 @@ function generateIdempotencyKey(): string {
 }
 
 /**
- * Creates a new CDP wallet provider
- * @returns A configured CDP wallet provider
+ * Creates a new PrivyEvmWalletProvider
+ * @returns A configured PrivyEvmWalletProvider instance
  */
-async function createWalletProvider(): Promise<CdpV2EvmWalletProvider> {
-  const cdpEnv = getCdpEnvironment();
-  console.log('CDP environment loaded for AgentKit:', {
-    apiKeyId: cdpEnv.apiKeyId ? 'PRESENT' : 'MISSING',
-    apiKeySecret: cdpEnv.apiKeySecret ? 'PRESENT' : 'MISSING',
-    walletSecret: cdpEnv.walletSecret ? 'PRESENT' : 'MISSING',
-    networkId: cdpEnv.networkId
-  });
-  
-  // Generate a proper idempotency key for wallet configuration
-  const idempotencyKey = generateIdempotencyKey();
-  console.log('AgentKit wallet idempotency key length:', idempotencyKey.length);
-  
-  const config = {
-    apiKeyId: cdpEnv.apiKeyId,
-    apiKeySecret: cdpEnv.apiKeySecret,
-    walletSecret: cdpEnv.walletSecret,
-    networkId: cdpEnv.networkId,
-    idempotencyKey,
-    walletType: 'v2',
-    walletConfig: {
-      // Explicitly set Base Sepolia testnet configuration
-      chainId: BASE_SEPOLIA_CONFIG.chainId,
-      rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl,
-    }
-  };
-  
-  console.log('Initializing AgentKit wallet with config:', {
-    networkId: config.networkId,
-    chainId: config.walletConfig.chainId,
-    rpcUrl: config.walletConfig.rpcUrl,
-  });
-  
+async function createWalletProvider(): Promise<WalletProvider> {
   try {
-    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+    // Get environment variables for Privy configuration
+    const appId = process.env.PRIVY_APP_ID;
+    const appSecret = process.env.PRIVY_APP_SECRET;
+    
+    if (!appId || !appSecret) {
+      throw new Error('Missing required Privy credentials (PRIVY_APP_ID or PRIVY_APP_SECRET)');
+    }
+    
+    console.log('Privy environment loaded for AgentKit:', {
+      appId: appId ? 'PRESENT' : 'MISSING',
+      appSecret: appSecret ? 'PRESENT' : 'MISSING',
+    });
+    
+    // Generate a private key for the wallet
+    // In a production system, you would retrieve this from a secure storage
+    const privateKey = '0x' + Buffer.from(randomUUID().replace(/-/g, ''), 'hex').toString('hex');
+    
+    const config = {
+      appId,
+      appSecret,
+      privateKey,
+      chainId: BASE_SEPOLIA_CONFIG.chainId,
+      rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl
+    };
+    
+    console.log('Initializing AgentKit wallet with config:', {
+      chainId: config.chainId,
+      rpcUrl: config.rpcUrl,
+    });
+    
+    const provider = await PrivyEvmWalletProvider.configureWithWallet(config);
     
     // Verify the wallet is working
     const address = await provider.getAddress();
@@ -82,8 +81,8 @@ async function createWalletProvider(): Promise<CdpV2EvmWalletProvider> {
     
     return provider;
   } catch (error) {
-    console.error('Failed to initialize CDP wallet provider:', error);
-    throw new Error(`CDP wallet provider initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Failed to initialize Privy wallet provider:', error);
+    throw new Error(`Privy wallet provider initialization failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -131,6 +130,11 @@ export async function getAgentKit(): Promise<AgentKit> {
       
       console.log('Initializing AgentKit with action providers:', 
         actionProviders.map(provider => provider.name));
+      
+      // AgentKit.from expects walletProvider to be non-null
+      if (!walletProvider) {
+        throw new Error('Wallet provider is null. Cannot initialize AgentKit.');
+      }
       
       agentKitInstance = await AgentKit.from({
         walletProvider,
