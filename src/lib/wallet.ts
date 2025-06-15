@@ -6,8 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
-// Wallet provider cache with user-specific instances
-const walletProviders = new Map<string, CdpV2EvmWalletProvider>();
+// Always create a new wallet provider for each request to ensure a unique X-Idempotency-Key
+// Removed walletProviders cache as per Coinbase CDP API idempotency requirements.
 
 /**
  * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
@@ -35,11 +35,6 @@ const BASE_SEPOLIA_CONFIG = {
  * @param address - Optional address of an existing wallet to use
  */
 export async function getOrCreateWallet(userId: string, address?: string) {
-  // Check if we already have a wallet provider for this user
-  if (walletProviders.has(userId)) {
-    console.log(`Returning cached wallet provider for user ${userId}`);
-    return walletProviders.get(userId)!;
-  }
 
   try {
     console.log(`Creating new wallet provider for user ${userId}`);
@@ -106,9 +101,7 @@ export async function getOrCreateWallet(userId: string, address?: string) {
       const walletAddress = await walletProvider.getAddress();
       console.log(`Successfully created wallet with address: ${walletAddress}`);
       
-      // Cache the wallet provider for this user
-      walletProviders.set(userId, walletProvider);
-      
+      // Always return a new wallet provider (no caching)
       return walletProvider;
     } catch (error) {
       console.error('Error configuring wallet provider:', error);
