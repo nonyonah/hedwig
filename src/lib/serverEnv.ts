@@ -170,69 +170,6 @@ export function getPrivyEnvironment() {
 }
 
 /**
- * Get WhatsApp environment variables
- */
-export function getWhatsAppEnvironment() {
-  let accessToken = safeGetRequiredEnvVar('WHATSAPP_ACCESS_TOKEN');
-  let phoneNumberId = safeGetRequiredEnvVar('WHATSAPP_PHONE_NUMBER_ID');
-  let verifyToken = '';
-  
-  // Check if we need to use fallbacks
-  const isDev = process.env.NODE_ENV === 'development';
-  const useDevFallbacks = isDev || (global as any).__USE_DEV_FALLBACKS__;
-  
-  // Validate WhatsApp access token format
-  if (accessToken === 'dev-whatsapp-token' || 
-      accessToken.includes('dev-') || 
-      accessToken.length < 20) {
-    
-    console.warn('[ENV] WhatsApp access token appears to be a placeholder');
-    
-    if (useDevFallbacks) {
-      console.warn('[ENV] Using fallback WhatsApp access token format');
-      // Use a format that at least resembles a real token
-      accessToken = 'EAABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZaabbccddeeffgg';
-    }
-  }
-  
-  // Validate phone number ID format
-  if (phoneNumberId === 'dev-whatsapp-phone-number-id' || 
-      phoneNumberId.includes('dev-') || 
-      !/^\d+$/.test(phoneNumberId)) {
-    
-    console.warn('[ENV] WhatsApp phone number ID appears to be invalid');
-    
-    if (useDevFallbacks) {
-      console.warn('[ENV] Using fallback WhatsApp phone number ID');
-      // Use a format that at least resembles a real phone number ID
-      phoneNumberId = '123456789012345';
-    }
-  }
-  
-  try {
-    verifyToken = getRequiredEnvVar('WHATSAPP_VERIFY_TOKEN');
-  } catch (error) {
-    // In development or with fallbacks, use a placeholder
-    if (useDevFallbacks) {
-      console.warn('[ENV DEBUG] Using development placeholder for WHATSAPP_VERIFY_TOKEN');
-      verifyToken = 'dev-verify-token';
-    } else {
-      throw error;
-    }
-  }
-  
-  console.log('[ENV] Using WhatsApp credentials:');
-  console.log('- Access Token:', accessToken.substring(0, 5) + '...' + accessToken.substring(accessToken.length - 5));
-  console.log('- Phone Number ID:', phoneNumberId);
-  
-  return {
-    accessToken,
-    phoneNumberId,
-    verifyToken,
-  };
-}
-
-/**
  * Safe version of getRequiredEnvVar that falls back to development values
  */
 function safeGetRequiredEnvVar(name: string): string {
