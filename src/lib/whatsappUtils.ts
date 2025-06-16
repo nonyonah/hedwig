@@ -39,6 +39,39 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     const phoneNumberId = whatsappEnv.phoneNumberId;
     const accessToken = whatsappEnv.accessToken;
     
+    // Check if we have valid credentials before attempting to send
+    if (!accessToken || accessToken.includes('dev-') || accessToken === 'EAABBC') {
+      console.warn(`[WhatsApp] Missing valid WhatsApp access token. Message to ${to} will not be sent.`);
+      
+      // In development, return a fake success response
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DEV MODE] Would have sent WhatsApp message to ${to}: ${message}`);
+        return {
+          messaging_product: 'whatsapp',
+          contacts: [{ input: to, wa_id: to }],
+          messages: [{ id: `mock-${Date.now()}` }]
+        };
+      }
+      
+      throw new Error('Missing valid WhatsApp access token');
+    }
+    
+    if (!phoneNumberId || phoneNumberId.includes('dev-')) {
+      console.warn(`[WhatsApp] Missing valid WhatsApp phone number ID. Message to ${to} will not be sent.`);
+      
+      // In development, return a fake success response
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DEV MODE] Would have sent WhatsApp message to ${to} using phone ID: ${phoneNumberId}`);
+        return {
+          messaging_product: 'whatsapp',
+          contacts: [{ input: to, wa_id: to }],
+          messages: [{ id: `mock-${Date.now()}` }]
+        };
+      }
+      
+      throw new Error('Missing valid WhatsApp phone number ID');
+    }
+    
     console.log(`Sending WhatsApp message to ${to} using phone number ID: ${phoneNumberId}`);
     
     const response = await fetch(
@@ -72,6 +105,17 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     return result;
   } catch (err) {
     console.error('Exception in sendWhatsAppMessage:', err);
+    
+    // In development, provide a mock response instead of throwing
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[DEV MODE] Providing mock WhatsApp response due to error');
+      return {
+        messaging_product: 'whatsapp',
+        contacts: [{ input: to, wa_id: to }],
+        messages: [{ id: `error-mock-${Date.now()}` }]
+      };
+    }
+    
     throw err;
   }
 }

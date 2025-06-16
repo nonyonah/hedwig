@@ -2,6 +2,10 @@ import { getLangChainTools } from '@coinbase/agentkit-langchain';
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate } from "@langchain/core/prompts";
+import { loadServerEnvironment } from './serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 /**
  * LangChain Agent Setup
@@ -16,8 +20,39 @@ export async function getLangChainAgent(agentKit: any) {
   console.log(`Available AgentKit tools: ${tools.length}`, 
     tools.map(tool => ({ name: tool.name, description: tool.description })));
   
+  // Check if Google API key is available
+  const googleApiKey = process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
+  
+  if (!googleApiKey) {
+    console.error("Missing GOOGLE_API_KEY environment variable for ChatGoogleGenerativeAI");
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.warn("In development mode: Using a fallback text response mechanism");
+      
+      // Return a simplified version that just echoes the message
+      return {
+        invoke: async ({ messages }: { messages: any[] }) => {
+          const userMessage = messages[messages.length - 1].content;
+          console.log("[DEVELOPMENT] Received message:", userMessage);
+          return {
+            messages: [
+              { 
+                content: "I'm running in development mode without API keys. To use AI features, " +
+                  "please set the GOOGLE_API_KEY environment variable. For now, I'll just acknowledge your message: " + 
+                  userMessage
+              }
+            ]
+          };
+        }
+      };
+    }
+    
+    throw new Error("Please set an API key for Google GenerativeAI in the environment variable GOOGLE_API_KEY");
+  }
+  
   // Use a lower temperature for more deterministic responses
   const llm = new ChatGoogleGenerativeAI({
+    apiKey: googleApiKey,
     model: "gemini-2.0-flash",
     temperature: 0.2, // Reduced from 0.7 to make responses more focused and deterministic
     maxOutputTokens: 2048, // Ensure we have enough tokens for detailed responses

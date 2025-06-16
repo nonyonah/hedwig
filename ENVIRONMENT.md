@@ -15,6 +15,7 @@ The application requires the following environment variables:
 - `WHATSAPP_ACCESS_TOKEN`: WhatsApp Cloud API access token
 - `WHATSAPP_PHONE_NUMBER_ID`: WhatsApp phone number ID
 - `WHATSAPP_VERIFY_TOKEN`: Token for webhook verification
+- `GOOGLE_API_KEY`: Google API key for Gemini AI model access
 
 ### Database Variables
 
