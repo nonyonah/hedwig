@@ -38,6 +38,10 @@ if (!process.env.NETLIFY && process.env.NODE_ENV !== 'production') {
 // Safely load environment variables with defaults
 // IMPORTANT: Do not hard-code sensitive keys here
 const {
+
+  PRIVY_APP_ID = '',
+  PRIVY_APP_SECRET = '',
+
   // Wallet and Blockchain
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = '',
   NEXT_PUBLIC_ONCHAIN_KIT_API_KEY = '',
@@ -55,6 +59,7 @@ const {
   NEXT_PUBLIC_SUPABASE_ANON_KEY = '',
   
   // WhatsApp
+  WHATSAPP_ACCESS_TOKEN = '',
   WHATSAPP_PHONE_NUMBER_ID = '',
   WHATSAPP_VERIFY_TOKEN = ''
 } = process.env;
@@ -76,9 +81,12 @@ const nextConfig = {
       networkId: NEXT_PUBLIC_NETWORK_ID,
       walletType: 'v2'
     },
+    privyAppId: PRIVY_APP_ID,
+    privyAppSecret: PRIVY_APP_SECRET,
     googleApiKey: NEXT_PUBLIC_GOOGLE_API_KEY,
     supabaseUrl: NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    whatsappAccessToken: WHATSAPP_ACCESS_TOKEN,
     whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
     whatsappVerifyToken: WHATSAPP_VERIFY_TOKEN
   },
