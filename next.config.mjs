@@ -65,36 +65,7 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  publicRuntimeConfig: {
-    onchainKitApiKey: NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
-    cdp: {
-      apiKeyId: NEXT_PUBLIC_CDP_API_KEY_ID,
-      networkId: NEXT_PUBLIC_NETWORK_ID,
-      walletType: 'v2'
-    },
-    privyAppId: PRIVY_APP_ID,
-    privyAppSecret: PRIVY_APP_SECRET,
-    googleApiKey: NEXT_PUBLIC_GOOGLE_API_KEY,
-    supabaseUrl: NEXT_PUBLIC_SUPABASE_URL,
-    supabaseAnonKey: NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    whatsappAccessToken: WHATSAPP_ACCESS_TOKEN,
-    whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
-    whatsappVerifyToken: WHATSAPP_VERIFY_TOKEN
-  },
-  serverRuntimeConfig: {
-    cdp: {
-      apiKeyId: process.env.CDP_API_KEY_ID || NEXT_PUBLIC_CDP_API_KEY_ID,
-      apiKeySecret: process.env.CDP_API_KEY_SECRET || '',
-      walletSecret: process.env.CDP_WALLET_SECRET || '',
-      networkId: process.env.NETWORK_ID || NEXT_PUBLIC_NETWORK_ID
-    },
-    googleGenerativeAiApiKey: GOOGLE_GENERATIVE_AI_API_KEY,
-    whatsapp: {
-      accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
-      phoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
-      verifyToken: WHATSAPP_VERIFY_TOKEN
-    }
-  },
+
   output: 'standalone',
   experimental: {
     serverActions: {
