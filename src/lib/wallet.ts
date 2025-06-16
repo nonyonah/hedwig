@@ -1,7 +1,5 @@
 import { PrivyEvmWalletProvider } from '@coinbase/agentkit';
-import { getRequiredEnvVar } from './envUtils';
-import { loadServerEnvironment, getCdpEnvironment, getPrivyEnvironment } from './serverEnv';
-import { v4 as uuidv4 } from 'uuid';
+import { loadServerEnvironment, getPrivyEnvironment } from './serverEnv';
 import crypto from 'crypto';
 
 // IMMEDIATE DEBUG: Check the environment variable directly
