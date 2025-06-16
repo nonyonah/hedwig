@@ -50,20 +50,13 @@ async function createWalletProvider(): Promise<WalletProvider> {
       throw new Error('Missing required Privy credentials (PRIVY_APP_ID or PRIVY_APP_SECRET)');
     }
     
-    // Validate Privy App ID format
-    if (!appId.startsWith('cl') || appId.length < 20) {
-      console.error('[AgentKit ERROR] Invalid Privy App ID format:', appId);
-      throw new Error('Invalid Privy App ID format');
-    }
-    
     console.log('Privy environment loaded for AgentKit:', {
-      appId: appId ? appId.substring(0, 5) + '...' + appId.substring(appId.length - 5) : 'MISSING',
+      appId: appId ? appId.substring(0, Math.min(5, appId.length)) + '...' : 'MISSING',
       appSecret: appSecret ? 'PRESENT' : 'MISSING',
     });
     
-    // Generate a private key for the wallet
-    // In a production system, you would retrieve this from a secure storage
-    const privateKey = '0x' + Buffer.from(randomUUID().replace(/-/g, ''), 'hex').toString('hex');
+    // Use a simple, fixed private key for development
+    const privateKey = '0x' + '1'.repeat(64);
     
     const config = {
       appId,

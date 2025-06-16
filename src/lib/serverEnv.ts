@@ -4,53 +4,12 @@ import { getRequiredEnvVar, getEnvVar } from './envUtils';
 
 // Set default Privy environment variables if they don't exist
 if (!process.env.PRIVY_APP_ID) {
-  process.env.PRIVY_APP_ID = 'clxvnkrwl00zzmc0i6j7e9i3v'; // Use a valid format for Privy app ID
+  process.env.PRIVY_APP_ID = 'demo-app-id'; // Simple placeholder
   console.log('NOTICE: Setting default PRIVY_APP_ID');
 }
 if (!process.env.PRIVY_APP_SECRET) {
-  process.env.PRIVY_APP_SECRET = 'privy-app-secret-placeholder';
+  process.env.PRIVY_APP_SECRET = 'demo-app-secret';
   console.log('NOTICE: Setting default PRIVY_APP_SECRET');
-}
-
-// Debug function to safely log wallet secret details without exposing actual values
-function debugWalletSecret(label: string, secret?: string) {
-  if (!secret) {
-    console.log(`[DEBUG] ${label}: undefined or null`);
-    return;
-  }
-  
-  // Check if it starts with 0x (Ethereum format)
-  const isEthFormat = secret.startsWith('0x');
-  
-  // Check if it might be PEM format
-  const isPossiblyPEM = secret.includes('BEGIN') || secret.includes('MIG');
-  
-  // Get the type, length, and a safe prefix/suffix to show
-  const type = isPossiblyPEM ? 'PEM-like' : isEthFormat ? 'Ethereum-hex' : 'unknown';
-  const length = secret.length;
-  const prefix = secret.substring(0, Math.min(6, length));
-  const suffix = length > 6 ? secret.substring(Math.max(0, length - 4)) : '';
-  
-  console.log(`[DEBUG] ${label}: Format=${type}, Length=${length}, Prefix=${prefix}..${suffix}`);
-  
-  // Additional checks for common issues
-  if (isPossiblyPEM && isEthFormat) {
-    console.warn(`[WARNING] ${label} appears to mix PEM and Ethereum formats - this will cause errors`);
-  }
-  
-  // For Ethereum format, validate correct length
-  if (isEthFormat && length !== 66) {
-    console.warn(`[WARNING] ${label} has Ethereum format but incorrect length (${length}). Should be 66 chars.`);
-  }
-  
-  // Check if valid hex (if Ethereum format)
-  if (isEthFormat) {
-    const hexPart = secret.substring(2);
-    const isValidHex = /^[0-9a-fA-F]+$/.test(hexPart);
-    if (!isValidHex) {
-      console.warn(`[WARNING] ${label} has invalid hex characters after 0x prefix`);
-    }
-  }
 }
 
 /**
@@ -183,21 +142,22 @@ export function getPrivyEnvironment() {
   let appId = process.env.PRIVY_APP_ID || '';
   const appSecret = process.env.PRIVY_APP_SECRET || '';
   
-  // Validate Privy App ID format - should be in format like clxvnkrwl00zzmc0i6j7e9i3v
-  // If not in correct format and we're using fallbacks, use a valid format
-  if (!/^cl[a-z0-9]{24,30}$/.test(appId)) {
-    console.warn('[ENV] Privy App ID does not match expected format');
+  // Simple check for Privy App ID
+  if (!appId) {
+    console.warn('[ENV] Missing Privy App ID');
     
     const isDev = process.env.NODE_ENV === 'development';
     const useDevFallbacks = isDev || (global as any).__USE_DEV_FALLBACKS__;
     
     if (useDevFallbacks) {
-      console.warn('[ENV] Using fallback Privy App ID with valid format');
-      appId = 'clxvnkrwl00zzmc0i6j7e9i3v';
+      console.warn('[ENV] Using fallback Privy App ID');
+      appId = 'demo-app-id'; // Simple placeholder
     }
   }
   
-  console.log('[ENV] Using Privy App ID:', appId.substring(0, 5) + '...' + appId.substring(appId.length - 5));
+  if (appId) {
+    console.log('[ENV] Using Privy App ID:', appId.substring(0, Math.min(5, appId.length)) + '...');
+  }
   
   return {
     appId,

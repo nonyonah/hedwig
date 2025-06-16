@@ -13,7 +13,33 @@
       "persistent": true
     }
   },
-  "globalDependencies": [
-    "**/.env.*local"
-  ]
+  "globalDependencies": [".env"],
+  "tasks": {
+    "build": {
+      "env": [
+        "PRIVY_APP_ID",
+        "PRIVY_APP_SECRET",
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_VERIFY_TOKEN",
+        "RPC_URL"
+      ],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"]
+    },
+    "dev": {
+      "env": [
+        "PRIVY_APP_ID",
+        "PRIVY_APP_SECRET",
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_VERIFY_TOKEN",
+        "RPC_URL"
+      ],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"]
+    },
+    "test": {
+      "env": [],
+      "inputs": ["$TURBO_DEFAULT$", ".env.test", ".env"]
+    }
+  }
 }
