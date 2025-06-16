@@ -213,7 +213,7 @@ async function processWithCDP(message: string, userId: string): Promise<string |
       
       // Pass the message in the format expected by the agent
       result = await langchainAgent.invoke({
-        messages: [new HumanMessage(enhancedMessage)]
+        messages: [new HumanMessage({ content: enhancedMessage })]
       });
       console.log('CDP agent response:', JSON.stringify(result, null, 2));
     } catch (invokeError) {
