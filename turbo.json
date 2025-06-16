@@ -17,28 +17,81 @@
   "tasks": {
     "build": {
       "env": [
+        "CDP_API_KEY_ID",
+        "CDP_API_KEY_SECRET",
+        "CDP_WALLET_SECRET",
+        "NETWORK_ID",
+        "RPC_URL",
         "PRIVY_APP_ID",
         "PRIVY_APP_SECRET",
         "WHATSAPP_ACCESS_TOKEN",
         "WHATSAPP_PHONE_NUMBER_ID",
         "WHATSAPP_VERIFY_TOKEN",
-        "RPC_URL"
+        "WEBHOOK_VERIFY_TOKEN",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NEXT_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_CDP_API_KEY_ID",
+        "NEXT_PUBLIC_NETWORK_ID",
+        "NEXT_PUBLIC_CDP_WALLET_SECRET",
+        "NEXT_PUBLIC_RPC_URL",
+        "NODE_ENV",
+        "VERCEL",
+        "VERCEL_ENV",
+        "VERCEL_REGION",
+        "NETLIFY",
+        "CONTEXT",
+        "NETLIFY_IMAGES_CDN_DOMAIN",
+        "DEPLOY_PRIME_URL",
+        "DEPLOY_URL",
+        "URL"
       ],
       "inputs": ["$TURBO_DEFAULT$", ".env*"]
     },
     "dev": {
       "env": [
+        "CDP_API_KEY_ID",
+        "CDP_API_KEY_SECRET",
+        "CDP_WALLET_SECRET",
+        "NETWORK_ID",
+        "RPC_URL",
         "PRIVY_APP_ID",
         "PRIVY_APP_SECRET",
         "WHATSAPP_ACCESS_TOKEN",
         "WHATSAPP_PHONE_NUMBER_ID",
         "WHATSAPP_VERIFY_TOKEN",
-        "RPC_URL"
+        "WEBHOOK_VERIFY_TOKEN",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NEXT_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_CDP_API_KEY_ID",
+        "NEXT_PUBLIC_NETWORK_ID",
+        "NEXT_PUBLIC_CDP_WALLET_SECRET",
+        "NEXT_PUBLIC_RPC_URL",
+        "NODE_ENV",
+        "VERCEL",
+        "VERCEL_ENV",
+        "VERCEL_REGION",
+        "NETLIFY",
+        "CONTEXT",
+        "NETLIFY_IMAGES_CDN_DOMAIN",
+        "DEPLOY_PRIME_URL",
+        "DEPLOY_URL",
+        "URL"
       ],
       "inputs": ["$TURBO_DEFAULT$", ".env*"]
     },
     "test": {
-      "env": [],
+      "env": [
+        "PRIVY_APP_ID",
+        "PRIVY_APP_SECRET",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "NODE_ENV"
+      ],
       "inputs": ["$TURBO_DEFAULT$", ".env.test", ".env"]
     }
   }
