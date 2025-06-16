@@ -12,23 +12,27 @@ global.Buffer = Buffer;
 global.process = process;
 
 // Load environment variables from .env files
-import dotenv from 'dotenv';
-dotenv.config();
-
-// Also try to load from .env.production
-try {
-  const envPath = path.resolve(process.cwd(), '.env.production');
-  if (fs.existsSync(envPath)) {
-    console.log('Loading environment variables from .env.production');
-    const envConfig = dotenv.parse(fs.readFileSync(envPath));
-    for (const key in envConfig) {
-      if (!process.env[key]) {
-        process.env[key] = envConfig[key];
+// Only load dotenv in local development (not on Netlify or production)
+if (!process.env.NETLIFY && process.env.NODE_ENV !== 'production') {
+  try {
+    const dotenv = await import('dotenv');
+    dotenv.config();
+    // Also try to load from .env.production
+    const envPath = path.resolve(process.cwd(), '.env.production');
+    if (fs.existsSync(envPath)) {
+      console.log('Loading environment variables from .env.production');
+      const envConfig = dotenv.parse(fs.readFileSync(envPath));
+      for (const key in envConfig) {
+        if (!process.env[key]) {
+          process.env[key] = envConfig[key];
+        }
       }
     }
+  } catch (err) {
+    console.error('Error loading .env files in development:', err);
   }
-} catch (err) {
-  console.error('Error loading .env.production:', err);
+} else {
+  console.log('[ENV] Skipping dotenv loading: running on Netlify or in production. Environment variables are injected by Netlify or the platform.');
 }
 
 // Safely load environment variables with defaults

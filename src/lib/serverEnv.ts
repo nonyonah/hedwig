@@ -2,19 +2,23 @@ import fs from 'fs';
 import path from 'path';
 import { getRequiredEnvVar, getEnvVar } from './envUtils';
 
-// Set default Privy environment variables if they don't exist
-if (!process.env.PRIVY_APP_ID) {
-  process.env.PRIVY_APP_ID = 'demo-app-id'; // Simple placeholder
-  console.log('NOTICE: Setting default PRIVY_APP_ID');
-}
-if (!process.env.PRIVY_APP_SECRET) {
-  process.env.PRIVY_APP_SECRET = 'demo-app-secret';
-  console.log('NOTICE: Setting default PRIVY_APP_SECRET');
+// Only set default Privy environment variables in local development (not on Netlify)
+if (!process.env.NETLIFY) {
+  if (!process.env.PRIVY_APP_ID) {
+    process.env.PRIVY_APP_ID = 'demo-app-id'; // Simple placeholder
+    console.log('NOTICE: Setting default PRIVY_APP_ID');
+  }
+  if (!process.env.PRIVY_APP_SECRET) {
+    process.env.PRIVY_APP_SECRET = 'demo-app-secret';
+    console.log('NOTICE: Setting default PRIVY_APP_SECRET');
+  }
 }
 
 /**
  * Loads environment variables from .env.local file for serverless functions
  * This is needed because Netlify functions don't automatically load .env.local files
+ * NOTE: This function only runs in local development, not on Netlify.
+ *       Netlify injects environment variables automatically, so we skip loading .env files.
  */
 export function loadServerEnvironment() {
   try {
@@ -296,5 +300,9 @@ function safeGetRequiredEnvVar(name: string): string {
   }
 }
 
-// Load environment variables immediately
-loadServerEnvironment(); 
+// Load environment variables immediately, but skip on Netlify (Netlify injects env vars automatically)
+if (!process.env.NETLIFY) {
+  loadServerEnvironment();
+} else {
+  console.log('[ENV] Skipping loadServerEnvironment on Netlify. Environment variables are injected by Netlify.');
+}
