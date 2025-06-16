@@ -66,7 +66,6 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   publicRuntimeConfig: {
-    walletConnectProjectId: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
     onchainKitApiKey: NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
     cdp: {
       apiKeyId: NEXT_PUBLIC_CDP_API_KEY_ID,
