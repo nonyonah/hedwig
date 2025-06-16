@@ -141,7 +141,6 @@ interface ProcessedMessage {
 async function processWithCDP(message: string, userId: string): Promise<string | null> {
   try {
     // Dynamically import necessary modules
-    const { HumanMessage } = await import('@langchain/core/messages');
     const { getAgentKit } = await import('@/lib/agentkit');
     const { getOrCreateWallet, createDirectWalletProvider } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
@@ -209,9 +208,12 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     // Invoke the agent with proper error handling
     let result;
     try {
+      // Import the necessary message type
+      const { HumanMessage } = await import('@langchain/core/messages');
+      
       // Pass the message in the format expected by the agent
       result = await langchainAgent.invoke({
-        messages: [new HumanMessage({ content: enhancedMessage })]
+        messages: [new HumanMessage(enhancedMessage)]
       });
       console.log('CDP agent response:', JSON.stringify(result, null, 2));
     } catch (invokeError) {
