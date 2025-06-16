@@ -35,37 +35,29 @@ if (!process.env.NETLIFY && process.env.NODE_ENV !== 'production') {
   console.log('[ENV] Skipping dotenv loading: running on Netlify or in production. Environment variables are injected by Netlify or the platform.');
 }
 
-// Safely load environment variables with defaults
-// IMPORTANT: Do not hard-code sensitive keys here
-const {
-
-  PRIVY_APP_ID = '',
-  PRIVY_APP_SECRET = '',
-
-  // Wallet and Blockchain
-  NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = '',
-  NEXT_PUBLIC_ONCHAIN_KIT_API_KEY = '',
-  
-  // CDP v2 Wallet Configuration - Don't expose secrets here
-  NEXT_PUBLIC_CDP_API_KEY_ID = '',
-  NEXT_PUBLIC_NETWORK_ID = 'base-sepolia',
-  
-  // Google
-  NEXT_PUBLIC_GOOGLE_API_KEY = '',
-  GOOGLE_GENERATIVE_AI_API_KEY = '',
-  
-  // Supabase
-  NEXT_PUBLIC_SUPABASE_URL = '',
-  NEXT_PUBLIC_SUPABASE_ANON_KEY = '',
-  
-  // WhatsApp
-  WHATSAPP_ACCESS_TOKEN = '',
-  WHATSAPP_PHONE_NUMBER_ID = '',
-  WHATSAPP_VERIFY_TOKEN = ''
-} = process.env;
+// Expose required environment variables to Next.js using the env key.
+// This ensures variables are available at build and runtime, both on server and (if needed) client.
+// Do NOT destructure process.env at the top-level for these variables.
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
+  env: {
+    PRIVY_APP_ID: process.env.PRIVY_APP_ID,
+    PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET,
+    WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
+    WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN,
+    NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+    NEXT_PUBLIC_ONCHAIN_KIT_API_KEY: process.env.NEXT_PUBLIC_ONCHAIN_KIT_API_KEY,
+    NEXT_PUBLIC_CDP_API_KEY_ID: process.env.NEXT_PUBLIC_CDP_API_KEY_ID,
+    NEXT_PUBLIC_NETWORK_ID: process.env.NEXT_PUBLIC_NETWORK_ID,
+    NEXT_PUBLIC_GOOGLE_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
+    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  },
+
   reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: true,
