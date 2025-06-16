@@ -1,7 +1,7 @@
 import { getLangChainTools } from '@coinbase/agentkit-langchain';
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
-import { ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate } from "@langchain/core/prompts";
+import { ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate } from "@langchain/core/prompts";
 import { loadServerEnvironment } from './serverEnv';
 
 // Ensure environment variables are loaded
@@ -88,7 +88,7 @@ export async function getLangChainAgent(agentKit: any) {
       
       Always respond directly to the user in natural language, even when using tools.`
     ),
-    HumanMessagePromptTemplate.fromTemplate("{input}")
+    new MessagesPlaceholder("messages")
   ]);
   
   // Create a React agent with the updated configuration
