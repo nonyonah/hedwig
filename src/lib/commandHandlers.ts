@@ -115,9 +115,20 @@ function getWalletHelp(): string {
 // Implement the actual wallet operations
 async function getWalletBalance(userId: string): Promise<string> {
   try {
-    const wallet = await getOrCreateWallet(userId);
+    // Check if wallet exists first
+    const existingWallet = getCachedWalletCredentials(userId);
+    if (!existingWallet) {
+      console.log(`No wallet found for user ${userId} when checking balance`);
+      return walletTemplates.noWallet();
+    }
+    
+    // Use existing wallet without creating a new one
+    const { getOrCreateWallet } = await import('./wallet');
+    const wallet = await getOrCreateWallet(userId, existingWallet.address, false);
+    
     // Get balance directly without storing the address since it's not used
     const balance = await wallet.getBalance();
+    
     // Convert BigInt to string for the template
     return walletTemplates.balance(balance.toString(), 'ETH');
   } catch (error) {
@@ -180,9 +191,15 @@ async function createWallet(userId: string): Promise<string> {
 
 async function getWalletAddress(userId: string): Promise<string> {
   try {
-    const wallet = await getOrCreateWallet(userId);
-    const address = await wallet.getAddress();
-    return walletTemplates.walletAddress(address);
+    // Check if wallet exists first
+    const existingWallet = getCachedWalletCredentials(userId);
+    if (!existingWallet) {
+      console.log(`No wallet found for user ${userId} when checking address`);
+      return walletTemplates.noWallet();
+    }
+    
+    // Use the address directly from cache
+    return walletTemplates.walletAddress(existingWallet.address);
   } catch (error) {
     console.error('Error getting wallet address:', error);
     return walletTemplates.noWallet();
