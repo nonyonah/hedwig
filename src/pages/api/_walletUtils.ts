@@ -4,7 +4,17 @@ import { supabase } from '@/lib/supabaseClient';
  * Checks if a user has a wallet in the database.
  * Returns true if wallet exists, false otherwise.
  */
+// Simple UUID v4 validation (8-4-4-4-12 format)
+function isUuid(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
+
 export async function userHasWallet(userId: string): Promise<boolean> {
+  // If the supplied userId is not a valid UUID, assume the user has no wallet yet
+  if (!isUuid(userId)) {
+    return false;
+  }
+
   const { data, error } = await supabase
     .from('wallets')
     .select('id')
