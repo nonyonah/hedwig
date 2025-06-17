@@ -55,6 +55,7 @@ function generateIdempotencyKey(): string {
 export async function getUserWalletProvider(userId?: string): Promise<WalletProvider | null> {
   if (userId && userWallets.has(userId)) {
     // Return the user-specific wallet provider if it exists
+    console.log(`[AgentKit] Using existing wallet provider for user ${userId}`);
     return userWallets.get(userId)!;
   }
   
@@ -78,8 +79,36 @@ export async function getUserWalletProvider(userId?: string): Promise<WalletProv
  * @param provider The wallet provider to associate with this user
  */
 export function registerUserWallet(userId: string, provider: WalletProvider): void {
+  if (!userId) {
+    console.error('[AgentKit] Cannot register wallet: Missing userId');
+    return;
+  }
+  
+  if (!provider) {
+    console.error('[AgentKit] Cannot register wallet: Missing wallet provider');
+    return;
+  }
+  
+  // Store the wallet provider in the map
   userWallets.set(userId, provider);
-  console.log(`Registered wallet provider for user ${userId}`);
+  
+  // Log registration success with cache stats
+  console.log(`[AgentKit] Registered wallet provider for user ${userId}`);
+  console.log(`[AgentKit] Current wallet registry contains ${userWallets.size} wallet(s)`);
+  console.log(`[AgentKit] Registered users: ${Array.from(userWallets.keys()).join(', ')}`);
+  
+  // Verify the wallet is working - use an async IIFE to handle the promise
+  (async () => {
+    try {
+      const address = await provider.getAddress();
+      console.log(`[AgentKit] Verified wallet for user ${userId} with address ${address}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[AgentKit] Warning: Registered wallet for ${userId} may not be valid: ${errorMessage}`);
+    }
+  })().catch(err => {
+    console.error('[AgentKit] Unexpected error during wallet verification:', err);
+  });
 }
 
 /**

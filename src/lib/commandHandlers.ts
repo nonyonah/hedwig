@@ -143,9 +143,28 @@ async function createWallet(userId: string): Promise<string> {
     const wallet = await getOrCreateWallet(userId, undefined, true);
     const address = await wallet.getAddress();
     
-    // Register this wallet with AgentKit
+    // Register this wallet with AgentKit for persistence across requests
     const { registerUserWallet } = await import('./agentkit');
     registerUserWallet(userId, wallet);
+    console.log(`Registered wallet with AgentKit for user ${userId}`);
+    
+    // Double-check that the wallet is now registered
+    try {
+      const { getUserWalletProvider } = await import('./agentkit');
+      const registeredWallet = await getUserWalletProvider(userId);
+      if (registeredWallet) {
+        const registeredAddress = await registeredWallet.getAddress();
+        if (registeredAddress === address) {
+          console.log(`Successfully verified wallet registration for user ${userId}`);
+        } else {
+          console.warn(`Wallet address mismatch for user ${userId}: created=${address}, registered=${registeredAddress}`);
+        }
+      } else {
+        console.warn(`Failed to verify wallet registration for user ${userId}`);
+      }
+    } catch (verifyError) {
+      console.error(`Error verifying wallet registration: ${verifyError}`);
+    }
     
     console.log(`New wallet created for user ${userId} with address ${address}`);
     

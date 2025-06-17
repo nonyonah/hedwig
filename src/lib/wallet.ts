@@ -54,17 +54,43 @@ export async function createDirectWalletProvider() {
   }
 }
 
-// Wallet credentials cache: only one wallet per user unless explicitly requested
+// Wallet credentials cache - use a consistent cache across the app
+// This will persist wallets for the duration of the server instance
 const walletCredentialsCache = new Map<string, { privateKey: string; address: string }>();
 
-// Helper to get wallet credentials for a user
+/**
+ * Gets cached wallet credentials for a user.
+ * @param userId The user identifier
+ * @returns The cached credentials or undefined if not found
+ */
 export function getCachedWalletCredentials(userId: string) {
-  return walletCredentialsCache.get(userId);
+  console.log(`[Wallet] Checking cached credentials for user ${userId}`);
+  const credentials = walletCredentialsCache.get(userId);
+  
+  if (credentials) {
+    console.log(`[Wallet] Found cached credentials for user ${userId}`);
+    return credentials;
+  } else {
+    console.log(`[Wallet] No cached credentials found for user ${userId}`);
+    return undefined;
+  }
 }
 
-// Helper to set wallet credentials for a user
+/**
+ * Caches wallet credentials for a user.
+ * @param userId The user identifier
+ * @param privateKey The wallet private key
+ * @param address The wallet address
+ */
 function cacheWalletCredentials(userId: string, privateKey: string, address: string) {
+  console.log(`[Wallet] Caching credentials for user ${userId} with address ${address}`);
   walletCredentialsCache.set(userId, { privateKey, address });
+  
+  // Print cache stats for debugging
+  console.log(`[Wallet] Cache now contains ${walletCredentialsCache.size} wallet(s)`);
+  
+  // Print all cached user IDs for debugging
+  console.log(`[Wallet] Cached users: ${Array.from(walletCredentialsCache.keys()).join(', ')}`);
 }
 
 /**
@@ -88,6 +114,11 @@ const BASE_SEPOLIA_CONFIG = {
  * Gets or creates (or imports) a wallet for a user.
  * If privateKey and address are provided, import and cache them.
  * Otherwise, fallback to cached/generated wallet.
+ * @param userId The user identifier
+ * @param address Optional wallet address for lookup
+ * @param forceNew Whether to force creation of a new wallet
+ * @param privateKeyFromUser Optional private key provided by the user
+ * @returns The wallet provider
  */
 export async function getOrCreateWallet(
   userId: string,
@@ -114,9 +145,9 @@ export async function getOrCreateWallet(
       privateKey = cached.privateKey;
       walletAddress = cached.address;
       console.log(`[Wallet] Using cached wallet for user ${userId}: ${walletAddress}`);
-    } else if (forceNew || !cached) {
-      // Create new wallet when force creating or none exists
-      console.log(`[Wallet] ${forceNew ? 'Force creating' : 'Creating'} new wallet for user ${userId}`);
+    } else if (forceNew) {
+      // Only create a new wallet when explicitly requested with forceNew=true
+      console.log(`[Wallet] Force creating new wallet for user ${userId} as requested`);
       
       privateKey = generatePrivateKey();
       walletAddress = undefined; // Let provider determine address
@@ -125,9 +156,9 @@ export async function getOrCreateWallet(
       const safePrivateKey = privateKey.substring(0, 6) + '...' + privateKey.substring(privateKey.length - 4);
       console.log(`[Wallet] Generated new private key for ${userId}: ${safePrivateKey}, format: ${privateKey.startsWith('0x') ? 'hex with 0x' : 'not hex format'}`);
     } else {
-      // This should not happen anymore - we'll always create a wallet if none exists
-      console.error(`[Wallet ERROR] Unexpected state: No wallet found for ${userId} and not creating one`);
-      throw new Error(`No wallet found for user ${userId}. Please create one first.`);
+      // No existing wallet and not requesting to create one - throw error
+      console.error(`[Wallet] No wallet found for ${userId} and forceNew=false`);
+      throw new Error(`No wallet found for user ${userId}. Please create one first with '/wallet create'.`);
     }
 
     // Initialize Privy wallet provider
@@ -171,7 +202,7 @@ export async function getOrCreateWallet(
       cacheWalletCredentials(userId, privateKey, actualAddress);
       console.log(`[Wallet] Cached wallet for user ${userId} with address ${actualAddress}`);
       
-    return walletProvider;
+      return walletProvider;
     } catch (error) {
       console.error('Error configuring wallet provider:', error);
       

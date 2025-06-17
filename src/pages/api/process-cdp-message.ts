@@ -141,8 +141,8 @@ interface ProcessedMessage {
 async function processWithCDP(message: string, userId: string): Promise<string | null> {
   try {
     // Dynamically import necessary modules
-    const { getAgentKit, registerUserWallet } = await import('@/lib/agentkit');
-    const { getCachedWalletCredentials } = await import('@/lib/wallet');
+    const { getAgentKit, registerUserWallet, getUserWalletProvider } = await import('@/lib/agentkit');
+    const { getCachedWalletCredentials, getOrCreateWallet } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
 
     console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
@@ -151,17 +151,19 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     const blockchainKeywords = ['wallet', 'balance', 'crypto', 'token', 'transfer', 'blockchain', 'eth', 'bitcoin', 'transaction'];
     const isBlockchainQuery = blockchainKeywords.some(keyword => message.toLowerCase().includes(keyword));
 
-    // Try to initialize the wallet only if needed
+    // IMPORTANT: First check if we have a wallet from previous operations
+    console.log(`Checking if user ${userId} has a wallet already`);
     let wallet;
-    let cached = getCachedWalletCredentials(userId);
-    let hasWallet = !!cached;
+    let hasWallet = false;
     
-    // Only try to initialize the wallet if it exists or if we need it for blockchain operations
+    // First check the wallet cache
+    const cached = getCachedWalletCredentials(userId);
     if (cached) {
+      console.log(`Found cached wallet credentials for user ${userId}`);
+      hasWallet = true;
+      
       try {
-        console.log('Using cached wallet credentials');
-        // Use ONLY cached wallet if available
-        const { getOrCreateWallet } = await import('@/lib/wallet');
+        // Use the cached credentials to get the wallet
         wallet = await getOrCreateWallet(userId, cached.address, false); // forceNew = false
         
         // Verify wallet is working by attempting to get the address
@@ -172,10 +174,31 @@ async function processWithCDP(message: string, userId: string): Promise<string |
         registerUserWallet(userId, wallet);
       } catch (walletError) {
         console.error('Wallet initialization failed:', walletError);
-        hasWallet = false;
+        // Don't set hasWallet to false yet - try the next method
       }
     }
-
+    
+    // If we still don't have a wallet, check if it's registered with AgentKit
+    if (!wallet) {
+      try {
+        wallet = await getUserWalletProvider(userId);
+        if (wallet) {
+          console.log(`Found registered wallet for user ${userId}`);
+          hasWallet = true;
+          
+          // Try to get the address to validate the wallet
+          const address = await wallet.getAddress();
+          console.log(`Existing wallet address: ${address}`);
+        }
+      } catch (walletProviderError) {
+        console.error('Error getting wallet provider:', walletProviderError);
+        wallet = null;
+      }
+    }
+    
+    // Final wallet status
+    console.log(`Wallet status for user ${userId}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
+    
     // If this is a blockchain query but user has no wallet, prompt them to create one
     if (isBlockchainQuery && !hasWallet) {
       return "You need a wallet to perform blockchain operations. Send '/wallet create' to create one.";
