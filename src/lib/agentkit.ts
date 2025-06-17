@@ -196,14 +196,14 @@ export async function getAgentKit(userId?: string): Promise<AgentKit> {
 
     // Initialize AgentKit with the wallet provider and action providers
     const actionProviders = [
-      // ERC20 token operations
-      erc20ActionProvider(),
-      
-      // ERC721 (NFT) operations
-      erc721ActionProvider(),
-      
-      // Basic wallet operations
-      walletActionProvider()
+        // ERC20 token operations
+        erc20ActionProvider(),
+        
+        // ERC721 (NFT) operations
+        erc721ActionProvider(),
+        
+        // Basic wallet operations
+        walletActionProvider()
       
       // Note: We're not using the custom faucet action provider due to TypeScript issues
     ];

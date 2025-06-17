@@ -52,22 +52,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { getOrCreateWallet, getCachedWalletCredentials } = await import('@/lib/wallet');
     const { registerUserWallet } = await import('@/lib/agentkit');
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
+    const { userHasWalletInDb, storeWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
 
-    // Check if wallet already exists
+    // Check if wallet already exists in cache or database
     const existingWallet = getCachedWalletCredentials(from);
-    if (existingWallet) {
-      console.log(`[CREATE-WALLET] User ${from} already has a wallet with address ${existingWallet.address}`);
+    const hasWalletInDb = await userHasWalletInDb(from);
+    
+    if (existingWallet || hasWalletInDb) {
+      console.log(`[CREATE-WALLET] User ${from} already has a wallet`);
+      
+      let walletAddress: string;
+      
+      // If we have the address in cache, use it
+      if (existingWallet) {
+        walletAddress = existingWallet.address;
+        console.log(`[CREATE-WALLET] Using cached wallet address: ${walletAddress}`);
+      } else {
+        // Otherwise, get it from the database
+        const walletFromDb = await getWalletFromDb(from);
+        if (walletFromDb) {
+          walletAddress = walletFromDb.address;
+          console.log(`[CREATE-WALLET] Using wallet address from database: ${walletAddress}`);
+        } else {
+          // This shouldn't happen, but just in case
+          console.warn(`[CREATE-WALLET] Wallet exists flag is true but no wallet found for user ${from}`);
+          return res.status(500).json({
+            success: false,
+            message: 'Wallet exists but could not be retrieved',
+          });
+        }
+      }
       
       // Send wallet exists message
-      const walletExistsMessage = walletTemplates.walletExists(existingWallet.address);
-      
       try {
-        await sendWhatsAppMessage(from, `You already have a wallet with address: ${existingWallet.address}`);
+        await sendWhatsAppMessage(from, `You already have a wallet with address: ${walletAddress}`);
         
         return res.status(200).json({
           success: true,
           message: 'Wallet already exists message sent',
-          address: existingWallet.address
+          address: walletAddress
         });
       } catch (sendError) {
         console.error('[CREATE-WALLET] Error sending wallet exists message:', sendError);
@@ -92,6 +115,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Register this wallet with AgentKit for persistence
       await registerUserWallet(from, wallet);
       console.log(`[CREATE-WALLET] Registered wallet with AgentKit for user ${from}`);
+      
+      // Store the wallet in the database
+      console.log(`[CREATE-WALLET] Storing wallet in database for user ${from}`);
+      
+      // Get the private key from cache since wallet provider doesn't expose it
+      const cachedWallet = getCachedWalletCredentials(from);
+      if (!cachedWallet || !cachedWallet.privateKey) {
+        console.warn(`[CREATE-WALLET] No private key found in cache for user ${from}`);
+        // We can't store the wallet in the database without a private key
+      } else {
+        const dbStoreResult = await storeWalletInDb(from, address, cachedWallet.privateKey);
+        
+        if (dbStoreResult) {
+          console.log(`[CREATE-WALLET] Successfully stored wallet in database for user ${from}`);
+        } else {
+          console.warn(`[CREATE-WALLET] Failed to store wallet in database for user ${from}`);
+        }
+      }
       
       // Send wallet creation success message
       const successMessage = walletTemplates.walletCreated(address);

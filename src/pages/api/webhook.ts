@@ -202,7 +202,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                   }
                   console.log(`Received interactive message from ${from}:`, { messageText, buttonId, buttonTitle });
                   
-                  // Special handling for wallet creation button
+                  // Special handling for wallet-related buttons
                   if (buttonId === 'create_wallet') {
                     console.log(`WALLET CREATION BUTTON CLICKED by user ${from}`);
                     // Log extra debug info
@@ -246,6 +246,117 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                       }
                     } catch (walletError) {
                       console.error('Failed to call wallet creation API:', walletError);
+                      // Continue with regular processing as fallback
+                    }
+                  } else if (buttonId === 'view_wallet' || buttonId === 'wallet_balance') {
+                    // Handle wallet view or balance request
+                    console.log(`WALLET VIEW/BALANCE BUTTON CLICKED by user ${from}`);
+                    
+                    // Process as a wallet command
+                    const commandText = buttonId === 'view_wallet' ? '/wallet address' : '/wallet balance';
+                    
+                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const processApiUrl = `${baseUrl}/api/process-cdp-message`;
+                    
+                    try {
+                      const response = await fetch(processApiUrl, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                          from, 
+                          messageText: commandText,
+                          timestamp: new Date().toISOString(),
+                          source: 'button_click',
+                          buttonId
+                        }),
+                      });
+
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`API Error (${response.status}):`, errorText);
+                      } else {
+                        const result = await response.json();
+                        console.log('Wallet command processed successfully:', result);
+                      }
+                      
+                      // Skip regular processing
+                      continue;
+                    } catch (fetchError) {
+                      console.error('Failed to process wallet command:', fetchError);
+                      // Continue with regular processing as fallback
+                    }
+                  } else if (buttonId === 'deposit_funds') {
+                    // Handle deposit request
+                    console.log(`DEPOSIT BUTTON CLICKED by user ${from}`);
+                    
+                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const processApiUrl = `${baseUrl}/api/process-cdp-message`;
+                    
+                    try {
+                      const response = await fetch(processApiUrl, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                          from, 
+                          messageText: '/wallet deposit',
+                          timestamp: new Date().toISOString(),
+                          source: 'button_click',
+                          buttonId
+                        }),
+                      });
+
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`API Error (${response.status}):`, errorText);
+                      } else {
+                        const result = await response.json();
+                        console.log('Deposit request processed successfully:', result);
+                      }
+                      
+                      // Skip regular processing
+                      continue;
+                    } catch (fetchError) {
+                      console.error('Failed to process deposit request:', fetchError);
+                      // Continue with regular processing as fallback
+                    }
+                  } else if (buttonId === 'withdraw_funds') {
+                    // Handle withdrawal request
+                    console.log(`WITHDRAW BUTTON CLICKED by user ${from}`);
+                    
+                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const processApiUrl = `${baseUrl}/api/process-cdp-message`;
+                    
+                    try {
+                      const response = await fetch(processApiUrl, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                          from, 
+                          messageText: '/wallet withdraw',
+                          timestamp: new Date().toISOString(),
+                          source: 'button_click',
+                          buttonId
+                        }),
+                      });
+
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`API Error (${response.status}):`, errorText);
+                      } else {
+                        const result = await response.json();
+                        console.log('Withdrawal request processed successfully:', result);
+                      }
+                      
+                      // Skip regular processing
+                      continue;
+                    } catch (fetchError) {
+                      console.error('Failed to process withdrawal request:', fetchError);
                       // Continue with regular processing as fallback
                     }
                   }

@@ -94,6 +94,12 @@ const handleWalletCommand = async (userId: string, args: string[]): CommandRespo
     case 'address':
       return await getWalletAddress(userId);
       
+    case 'deposit':
+      return await handleWalletDeposit(userId);
+      
+    case 'withdraw':
+      return await handleWalletWithdraw(userId);
+      
     case '':
       // No subcommand provided, show help
       console.log(`No subcommand provided for /wallet, showing help for user ${userId}`);
@@ -110,7 +116,9 @@ function getWalletHelp(): string {
   return `💰 *Wallet Commands*:\n\n` +
     `- /wallet create - Create a new wallet\n` +
     `- /wallet balance - Check your wallet balance\n` +
-    `- /wallet address - Get your wallet address`;
+    `- /wallet address - Get your wallet address\n` +
+    `- /wallet deposit - Show deposit instructions\n` +
+    `- /wallet withdraw - Withdraw funds`;
 }
 
 // Implement the actual wallet operations
@@ -142,11 +150,33 @@ async function createWallet(userId: string): Promise<ButtonsResponse> {
   try {
     console.log(`[WALLET CREATE] Explicit wallet creation requested for user ${userId}`);
     
-    // Check if a wallet already exists
+    // Import the database functions
+    const { storeWalletInDb, userHasWalletInDb } = await import('./walletDb');
+    
+    // Check if a wallet already exists in the cache or database
     const existingWallet = getCachedWalletCredentials(userId);
-    if (existingWallet) {
-      console.log(`[WALLET CREATE] User ${userId} already has a wallet with address ${existingWallet.address}`);
-      return walletTemplates.walletExists(existingWallet.address) as ButtonsResponse;
+    const hasWalletInDb = await userHasWalletInDb(userId);
+    
+    if (existingWallet || hasWalletInDb) {
+      console.log(`[WALLET CREATE] User ${userId} already has a wallet`);
+      
+      // If we have the address in cache, use it
+      if (existingWallet) {
+        console.log(`[WALLET CREATE] Using cached wallet address: ${existingWallet.address}`);
+        return walletTemplates.walletExists(existingWallet.address) as ButtonsResponse;
+      }
+      
+      // Otherwise, get it from the database
+      const { getWalletFromDb } = await import('./walletDb');
+      const walletFromDb = await getWalletFromDb(userId);
+      
+      if (walletFromDb) {
+        console.log(`[WALLET CREATE] Using wallet address from database: ${walletFromDb.address}`);
+        return walletTemplates.walletExists(walletFromDb.address) as ButtonsResponse;
+      }
+      
+      // This shouldn't happen, but just in case
+      console.warn(`[WALLET CREATE] Wallet exists flag is true but no wallet found for user ${userId}`);
     }
 
     // If no wallet exists, create a new one with forceNew=true to ensure a fresh wallet
@@ -169,6 +199,24 @@ async function createWallet(userId: string): Promise<ButtonsResponse> {
     const { registerUserWallet } = await import('./agentkit');
     await registerUserWallet(userId, wallet);
     console.log(`[WALLET CREATE] Registered wallet with AgentKit for user ${userId}`);
+    
+    // Store the wallet in the database
+    console.log(`[WALLET CREATE] Storing wallet in database for user ${userId}`);
+    
+    // Get the private key from cache since wallet provider doesn't expose it
+    const cachedWallet = getCachedWalletCredentials(userId);
+    if (!cachedWallet || !cachedWallet.privateKey) {
+      console.warn(`[WALLET CREATE] No private key found in cache for user ${userId}`);
+      // We can't store the wallet in the database without a private key
+    } else {
+      const dbStoreResult = await storeWalletInDb(userId, address, cachedWallet.privateKey);
+      
+      if (dbStoreResult) {
+        console.log(`[WALLET CREATE] Successfully stored wallet in database for user ${userId}`);
+      } else {
+        console.warn(`[WALLET CREATE] Failed to store wallet in database for user ${userId}`);
+      }
+    }
     
     // Double-check that the wallet is now registered
     try {
@@ -255,4 +303,50 @@ async function sendWhatsAppMessage(
   }
 }
 
-// ... (rest of the code remains the same)
+/**
+ * Handle wallet deposit command
+ * Shows deposit instructions with the user's wallet address
+ */
+async function handleWalletDeposit(userId: string): Promise<WhatsAppResponse | string> {
+  try {
+    console.log(`[WALLET] Handling deposit command for user ${userId}`);
+    
+    // Check if wallet exists
+    const existingWallet = getCachedWalletCredentials(userId);
+    if (!existingWallet) {
+      console.log(`[WALLET] No wallet found for user ${userId} when handling deposit`);
+      return walletTemplates.noWallet();
+    }
+    
+    // Show deposit instructions with the user's address
+    console.log(`[WALLET] Showing deposit instructions for user ${userId} with address ${existingWallet.address}`);
+    return walletTemplates.deposit(existingWallet.address);
+  } catch (error) {
+    console.error('[WALLET] Error handling deposit command:', error);
+    return createTextResponse('Sorry, there was an error processing your deposit request. Please try again later.');
+  }
+}
+
+/**
+ * Handle wallet withdrawal command
+ * Starts the withdrawal process
+ */
+async function handleWalletWithdraw(userId: string): Promise<WhatsAppResponse | string> {
+  try {
+    console.log(`[WALLET] Handling withdraw command for user ${userId}`);
+    
+    // Check if wallet exists
+    const existingWallet = getCachedWalletCredentials(userId);
+    if (!existingWallet) {
+      console.log(`[WALLET] No wallet found for user ${userId} when handling withdrawal`);
+      return walletTemplates.noWallet();
+    }
+    
+    // Show withdrawal instructions
+    console.log(`[WALLET] Showing withdrawal instructions for user ${userId}`);
+    return walletTemplates.withdraw();
+  } catch (error) {
+    console.error('[WALLET] Error handling withdraw command:', error);
+    return createTextResponse('Sorry, there was an error processing your withdrawal request. Please try again later.');
+  }
+}

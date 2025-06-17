@@ -38,6 +38,53 @@ export const walletTemplates = {
     ]
   }),
     
+  // Deposit template with instructions and QR code option
+  deposit: (address: string): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: `💰 *Deposit Funds*\n\nTo deposit funds to your wallet, send cryptocurrency to this address:\n\n\`${address}\`\n\n*Steps:*\n1. Copy your wallet address above\n2. Open your preferred crypto wallet app\n3. Select "Send" or "Transfer"\n4. Paste your wallet address\n5. Enter the amount to send\n6. Confirm the transaction\n\n*Supported Networks:*\n• Base Sepolia (Testnet)`,
+    buttons: [
+      { id: 'copy_address', title: 'Copy Address' },
+      { id: 'show_qr', title: 'Show QR Code' }
+    ]
+  }),
+  
+  // Withdrawal template with form to collect recipient address
+  withdraw: (): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: `📤 *Withdraw Funds*\n\nTo withdraw funds from your wallet, you'll need to provide:\n\n1. Recipient address\n2. Amount to send\n3. Network/chain\n\nPlease click "Start Withdrawal" to begin the process.`,
+    buttons: [
+      { id: 'start_withdrawal', title: 'Start Withdrawal' }
+    ]
+  }),
+  
+  // Withdrawal address prompt
+  withdrawAddress: (): string => 
+    `📝 *Withdrawal - Step 1/3*\n\nPlease enter the recipient address where you want to send funds.\n\nFormat: 0x... (Ethereum-compatible address)`,
+  
+  // Withdrawal amount prompt
+  withdrawAmount: (balance: string): string => 
+    `📝 *Withdrawal - Step 2/3*\n\nYour current balance is *${balance} ETH*\n\nPlease enter the amount you wish to send (e.g., 0.01).`,
+  
+  // Withdrawal chain prompt
+  withdrawChain: (): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: `📝 *Withdrawal - Step 3/3*\n\nPlease select the network for this transaction:`,
+    buttons: [
+      { id: 'chain_base_sepolia', title: 'Base Sepolia' },
+      { id: 'chain_ethereum', title: 'Ethereum' }
+    ]
+  }),
+  
+  // Withdrawal confirmation
+  withdrawConfirm: (amount: string, to: string, chain: string): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: `⚠️ *Confirm Withdrawal*\n\n*Amount:* ${amount} ETH\n*To:* ${to}\n*Network:* ${chain}\n\nPlease confirm this transaction.`,
+    buttons: [
+      { id: 'confirm_withdrawal', title: 'Confirm' },
+      { id: 'cancel_withdrawal', title: 'Cancel' }
+    ]
+  }),
+    
   sendConfirmation: (amount: string, to: string, fee: string): string =>
     `⚠️ *Confirm Transaction*\n\nSend *${amount} ETH* to:\n\`${to}\`\n\nNetwork fee: *${fee} ETH*\n\nReply *CONFIRM* to proceed or *CANCEL* to abort.`,
     

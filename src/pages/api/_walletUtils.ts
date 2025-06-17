@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { getCachedWalletCredentials } from '@/lib/wallet';
+import { userHasWalletInDb } from '@/lib/walletDb';
 
 /**
  * Checks if a user has a wallet.
@@ -16,22 +17,10 @@ export async function userHasWallet(userId: string): Promise<boolean> {
       return true;
     }
     
-    // If not in cache, check the database as fallback
-    // Note: This is a fallback and may be removed in the future
-    const { data, error } = await supabase
-      .from('wallets')
-      .select('id')
-      .eq('user_id', userId)
-      .maybeSingle();
-      
-    if (error) {
-      console.error('[WalletUtils] Error checking wallet in database:', error);
-      return false;
-    }
-    
-    const hasWallet = !!data;
-    console.log(`[WalletUtils] Database wallet check for user ${userId}: ${hasWallet ? 'Found' : 'Not found'}`);
-    return hasWallet;
+    // If not in cache, check the database
+    const hasWalletInDb = await userHasWalletInDb(userId);
+    console.log(`[WalletUtils] Database wallet check for user ${userId}: ${hasWalletInDb ? 'Found' : 'Not found'}`);
+    return hasWalletInDb;
   } catch (error) {
     console.error(`[WalletUtils] Error checking wallet for user ${userId}:`, error);
     return false;
