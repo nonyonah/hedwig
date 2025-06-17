@@ -405,7 +405,7 @@ async function handleGetRequest(req: NextApiRequest, res: NextApiResponse) {
 // Handle POST requests
 async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { from, messageText, timestamp } = req.body;
+    const { from, messageText, buttonId, buttonTitle, type, timestamp } = req.body;
 
     // Basic validation
     if (!from || !messageText) {
@@ -433,7 +433,15 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
       });
     }
 
-    console.log(`Processing message from ${from}: ${messageText}`);
+    // Log detailed information about the incoming request
+    console.log(`Processing message from ${from}:`, {
+      messageText,
+      buttonId,
+      buttonTitle,
+      type,
+      isInteractive: type === 'interactive',
+      requestBody: JSON.stringify(req.body)
+    });
 
     // --- Wallet gating logic: prompt for wallet creation if none exists ---
     const { userHasWallet, walletPromptAlreadyShown, markWalletPromptShown } = await import('./_walletUtils');
@@ -447,11 +455,23 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
       return handleResponse(from, walletPrompt, res);
     }
 
-    // Check if it's a command (starts with /)
+    // Check if it's a command (starts with /) or a button click for wallet creation
     const isCommand = messageText.trim().startsWith('/');
-    // Check if it's a button click for wallet creation
-    const isWalletCreateButton = req.body.buttonId === 'create_wallet' || 
-                               (req.body.type === 'interactive' && req.body.buttonId === 'create_wallet');
+    
+    // Enhanced button detection - check multiple possible locations
+    const isWalletCreateButton = 
+      buttonId === 'create_wallet' || 
+      (type === 'interactive' && buttonId === 'create_wallet') ||
+      (messageText === 'create_wallet') ||
+      (req.body.interactive && req.body.interactive.button_reply && req.body.interactive.button_reply.id === 'create_wallet');
+    
+    console.log(`Message classification:`, {
+      isCommand,
+      isWalletCreateButton,
+      buttonId,
+      messageText,
+      type
+    });
     
     // Handle both explicit commands and button clicks for wallet creation
     if (isCommand || isWalletCreateButton) {
@@ -482,8 +502,13 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
           }
         };
         
+        // Log the formatted context for debugging
+        console.log('Formatted command context:', JSON.stringify(formattedContext, null, 2));
+        
         // Handle the command with explicit typing and pass the formatted context
+        console.log('Calling handleCommand with formatted context');
         const commandResult = await handleCommand(formattedContext as any);
+        console.log('Command result:', typeof commandResult, commandResult);
         
         // Ensure we have a properly formatted CommandResult
         let formattedResult: CommandResult;

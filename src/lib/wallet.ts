@@ -176,6 +176,18 @@ export async function getOrCreateWallet(
       
       console.log('[Wallet] Using Privy App ID:', appId.substring(0, Math.min(5, appId.length)) + '...');
       
+      // IMPORTANT: Log all wallet creation parameters for debugging
+      console.log('[Wallet DEBUG] Wallet creation parameters:', {
+        userId,
+        hasAddress: !!address,
+        forceNew,
+        hasPrivateKey: !!privateKey,
+        hasPrivateKeyFromUser: !!privateKeyFromUser,
+        hasCachedWallet: !!cached,
+        privateKeyFormat: privateKey ? (privateKey.startsWith('0x') ? 'hex with 0x' : 'not hex format') : 'none',
+        privateKeyLength: privateKey ? privateKey.length : 0
+      });
+      
       const config = {
         appId,
         appSecret,
@@ -187,11 +199,14 @@ export async function getOrCreateWallet(
       console.log('Initializing PrivyEvmWalletProvider with config:', {
         chainId: config.chainId,
         rpcUrl: config.rpcUrl,
-        appId: config.appId ? config.appId.substring(0, 3) + '...' : 'MISSING'
+        appId: config.appId ? config.appId.substring(0, 3) + '...' : 'MISSING',
+        hasPrivateKey: !!config.privateKey
       });
       
       // Create new provider
+      console.log('[Wallet DEBUG] Calling PrivyEvmWalletProvider.configureWithWallet');
       const walletProvider = await PrivyEvmWalletProvider.configureWithWallet(config);
+      console.log('[Wallet DEBUG] PrivyEvmWalletProvider created successfully');
       
       // Get the wallet address to verify it works
       console.log('[Wallet DEBUG] Wallet provider created, getting address');
@@ -210,6 +225,7 @@ export async function getOrCreateWallet(
       if (error instanceof Error) {
         console.error('Error name:', error.name);
         console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
       }
       
       throw new Error(`Failed to configure wallet provider: ${error instanceof Error ? error.message : 'Unknown error'}`);
