@@ -171,7 +171,7 @@ export async function getOrCreateWallet(
       cacheWalletCredentials(userId, privateKey, actualAddress);
       console.log(`[Wallet] Cached wallet for user ${userId} with address ${actualAddress}`);
       
-      return walletProvider;
+    return walletProvider;
     } catch (error) {
       console.error('Error configuring wallet provider:', error);
       

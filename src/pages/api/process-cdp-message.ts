@@ -142,54 +142,53 @@ async function processWithCDP(message: string, userId: string): Promise<string |
   try {
     // Dynamically import necessary modules
     const { getAgentKit, registerUserWallet } = await import('@/lib/agentkit');
-    const { getCachedWalletCredentials, createDirectWalletProvider } = await import('@/lib/wallet');
+    const { getCachedWalletCredentials } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
 
     console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
 
-    // Try to initialize the wallet and handle errors gracefully
+    // Check if this is a blockchain-related query
+    const blockchainKeywords = ['wallet', 'balance', 'crypto', 'token', 'transfer', 'blockchain', 'eth', 'bitcoin', 'transaction'];
+    const isBlockchainQuery = blockchainKeywords.some(keyword => message.toLowerCase().includes(keyword));
+
+    // Try to initialize the wallet only if needed
     let wallet;
     let cached = getCachedWalletCredentials(userId);
+    let hasWallet = !!cached;
     
-    if (!cached) {
-      console.log(`No wallet found for user ${userId}`);
-      return "You don't have a wallet yet. Send '/wallet create' to create one.";
-    }
-    
-    try {
-      console.log('Using cached wallet credentials');
-      // Use ONLY cached wallet if available
-      const { getOrCreateWallet } = await import('@/lib/wallet');
-      wallet = await getOrCreateWallet(userId, cached.address, false); // forceNew = false
-      
-      // Verify wallet is working by attempting to get the address
-      const address = await wallet.getAddress();
-      console.log(`Successfully initialized wallet for ${userId} with address: ${address}`);
-      
-      // Register this wallet with the wallet provider map for persistence
-      registerUserWallet(userId, wallet);
-    } catch (walletError) {
-      console.error('Wallet initialization failed:', walletError);
-      
-      // For blockchain queries, we need a wallet
-      const blockchainKeywords = ['wallet', 'balance', 'crypto', 'token', 'transfer', 'blockchain', 'eth', 'bitcoin', 'transaction'];
-      const isBlockchainQuery = blockchainKeywords.some(keyword => message.toLowerCase().includes(keyword));
-      
-      if (isBlockchainQuery) {
-        return "I'm having trouble accessing your wallet. Please try again later or type '/wallet address' to verify your wallet setup.";
+    // Only try to initialize the wallet if it exists or if we need it for blockchain operations
+    if (cached) {
+      try {
+        console.log('Using cached wallet credentials');
+        // Use ONLY cached wallet if available
+        const { getOrCreateWallet } = await import('@/lib/wallet');
+        wallet = await getOrCreateWallet(userId, cached.address, false); // forceNew = false
+        
+        // Verify wallet is working by attempting to get the address
+        const address = await wallet.getAddress();
+        console.log(`Successfully initialized wallet for ${userId} with address: ${address}`);
+        
+        // Register this wallet with the wallet provider map for persistence
+        registerUserWallet(userId, wallet);
+      } catch (walletError) {
+        console.error('Wallet initialization failed:', walletError);
+        hasWallet = false;
       }
-      
-      // For non-blockchain queries, continue without a wallet
-      console.log('Continuing without wallet for non-blockchain query');
     }
 
-    // Initialize AgentKit with the user's ID for wallet association
+    // If this is a blockchain query but user has no wallet, prompt them to create one
+    if (isBlockchainQuery && !hasWallet) {
+      return "You need a wallet to perform blockchain operations. Send '/wallet create' to create one.";
+    }
+
+    // Initialize AgentKit - if we have a wallet, use it; otherwise use default
     let agentKit;
     try {
-      agentKit = await getAgentKit(userId);
+      // Only pass userId if we have a wallet for that user
+      agentKit = await getAgentKit(hasWallet ? userId : undefined);
       // Verify AgentKit is properly initialized
       const actions = await agentKit.getActions();
-      console.log(`AgentKit initialized with ${actions.length} available actions for user ${userId}`);
+      console.log(`AgentKit initialized with ${actions.length} available actions${hasWallet ? ` for user ${userId}` : ' (default instance)'}`);
     } catch (agentKitError) {
       console.error('Error initializing AgentKit:', agentKitError);
       return "I'm having trouble with my blockchain tools. Is there anything else I can help you with?";
@@ -207,9 +206,6 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     console.log('Processing message with CDP:', message);
 
     // Prepare a more blockchain-focused prompt if the message seems to be about blockchain
-    const blockchainKeywords = ['wallet', 'balance', 'crypto', 'token', 'transfer', 'blockchain', 'eth', 'bitcoin', 'transaction'];
-    const isBlockchainQuery = blockchainKeywords.some(keyword => message.toLowerCase().includes(keyword));
-    
     let enhancedMessage = message;
     if (isBlockchainQuery) {
       enhancedMessage = `[BLOCKCHAIN QUERY] ${message} [Use blockchain tools to answer this]`;
@@ -228,7 +224,7 @@ async function processWithCDP(message: string, userId: string): Promise<string |
       console.log('CDP agent response:', JSON.stringify(result, null, 2));
     } catch (invokeError) {
       console.error('Error invoking LangChain agent:', invokeError);
-      return "I encountered an error while processing your blockchain request. Could you try again with a simpler query?";
+      return "I encountered an error while processing your request. Could you try again with a simpler query?";
     }
 
     // Handle different response formats
@@ -456,18 +452,62 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
       };
       
       try {
-        // Handle the command with explicit typing and pass as any to bypass type checking
-        const commandResult = await handleCommand(commandContext as any) as CommandResult;
+        // Create a properly formatted CommandContext with the expected message structure
+        const formattedContext = {
+          ...commandContext,
+          userId: from, // Add userId explicitly
+          message: {
+            text: messageText,
+            type: 'text',
+            from: from,
+            timestamp: timestamp || new Date().toISOString(),
+            id: `manual-${Date.now()}`,
+            preview_url: false
+          }
+        };
         
-        if (commandResult && commandResult.success) {
+        // Handle the command with explicit typing and pass the formatted context
+        const commandResult = await handleCommand(formattedContext as any);
+        
+        // Ensure we have a properly formatted CommandResult
+        let formattedResult: CommandResult;
+        
+        // If the result is a string, wrap it in a CommandResult
+        if (typeof commandResult === 'string') {
+          formattedResult = {
+            success: true,
+            message: commandResult,
+            type: 'text',
+            text: commandResult
+          };
+        } 
+        // If it's already a TextResponse, add success field
+        else if (commandResult && typeof commandResult === 'object' && 'type' in commandResult && commandResult.type === 'text') {
+          formattedResult = {
+            success: true,
+            message: commandResult.text,
+            ...commandResult
+          };
+        } 
+        // Otherwise assume it's already a CommandResult
+        else {
+          formattedResult = commandResult as CommandResult;
+        }
+        
+        // Add default success if missing
+        if (formattedResult && typeof formattedResult.success === 'undefined') {
+          formattedResult.success = true;
+        }
+        
+        if (formattedResult && formattedResult.success) {
           // Convert commandResult to appropriate WhatsAppResponse type
-          const whatsAppResponse = convertCommandResultToWhatsAppResponse(commandResult);
+          const whatsAppResponse = convertCommandResultToWhatsAppResponse(formattedResult);
           return handleResponse(from, whatsAppResponse, res);
-        } else if (commandResult) {
-          console.log(`Command failed: ${commandResult.message}`);
+        } else if (formattedResult) {
+          console.log(`Command failed: ${formattedResult.message}`);
           return res.status(200).json({
             success: false,
-            message: `Command processing failed: ${commandResult.message}`,
+            message: `Command processing failed: ${formattedResult.message}`,
           });
         } else {
           return res.status(200).json({
@@ -570,8 +610,8 @@ async function handleResponse(phoneNumber: string, response: WhatsAppResponse, r
     let result;
     
     // Handle each response type correctly
-    if (typeof response === 'string') {
-      // Handle simple string responses
+        if (typeof response === 'string') {
+          // Handle simple string responses
       result = await sendWhatsAppMessage(phoneNumber, response);
     } else {
       switch (response.type) {
