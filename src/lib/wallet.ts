@@ -114,11 +114,14 @@ export async function getOrCreateWallet(
       privateKey = cached.privateKey;
       walletAddress = cached.address;
       console.log(`[Wallet] Using cached wallet for user ${userId}: ${walletAddress}`);
-    } else {
-      // No cached wallet, or forceNew requested: create new wallet credentials
+    } else if (forceNew) {
+      // No cached wallet, but forceNew is requested: create new wallet credentials
       privateKey = generatePrivateKey();
       walletAddress = undefined; // Let provider determine address
       console.log(`[Wallet] Creating new wallet for user ${userId}`);
+    } else {
+      // No wallet found and not forcing a new one
+      throw new Error(`No wallet found for user ${userId}. Please create one first.`);
     }
 
     // Initialize Privy wallet provider

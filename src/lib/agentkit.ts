@@ -11,6 +11,7 @@ import { z, ZodType, ZodTypeDef } from 'zod';
 import { getRequiredEnvVar } from './envUtils';
 import { loadServerEnvironment, getPrivyEnvironment } from './serverEnv';
 import { randomUUID } from 'crypto';
+import fetch from 'node-fetch';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -24,6 +25,9 @@ const BASE_SEPOLIA_CONFIG = {
   chainId: "84532", // Base Sepolia testnet chain ID (as string for Privy)
   rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
 };
+
+// Base Sepolia faucet URL
+const BASE_SEPOLIA_FAUCET_URL = "https://faucet.base.org";
 
 /**
  * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
@@ -124,6 +128,9 @@ export async function getAgentKit(): Promise<AgentKit> {
         
         // Basic wallet operations
         walletActionProvider()
+        
+        // Note: We're not using the custom faucet action provider due to TypeScript issues
+        // Instead, we'll extend the wallet actions in future when the AgentKit API is clearer
       ];
       
       console.log('Initializing AgentKit with action providers:', 
@@ -142,6 +149,9 @@ export async function getAgentKit(): Promise<AgentKit> {
       // Verify AgentKit is working by getting available actions
       const actions = await agentKitInstance.getActions();
       console.log(`AgentKit initialized with ${actions.length} available actions`);
+      
+      // TODO: After initialization, find a way to add custom actions
+      console.log("Note: Custom faucet actions will be implemented in a future update");
       
       return agentKitInstance;
     } catch (agentKitError) {
@@ -188,4 +198,9 @@ export const SwapSchema = z.object({
 
 export const TransactionDetailsSchema = z.object({
   txHash: z.string().describe('The transaction hash to get details for')
+});
+
+// Schema for faucet request
+export const FaucetRequestSchema = z.object({
+  address: z.string().optional().describe('The wallet address to receive funds (defaults to user wallet)')
 });

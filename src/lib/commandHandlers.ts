@@ -2,7 +2,7 @@ import {
   walletTemplates,
   helpTemplates
 } from './whatsappTemplates'; // tokenTemplates, nftTemplates, txTemplates not currently used
-import { getOrCreateWallet } from './wallet'; // Used in wallet operations
+import { getOrCreateWallet, getCachedWalletCredentials } from './wallet'; // Used in wallet operations
 import { 
   WhatsAppResponse, 
   TextResponse, 
@@ -94,7 +94,14 @@ async function getWalletBalance(userId: string): Promise<string> {
 
 async function createWallet(userId: string): Promise<string> {
   try {
-    const wallet = await getOrCreateWallet(userId);
+    // Check if a wallet already exists
+    const existingWallet = getCachedWalletCredentials(userId);
+    if (existingWallet) {
+      return walletTemplates.walletExists(existingWallet.address);
+    }
+
+    // If no wallet exists, create a new one
+    const wallet = await getOrCreateWallet(userId, undefined, true);
     const address = await wallet.getAddress();
     return walletTemplates.walletCreated(address);
   } catch (error) {

@@ -117,6 +117,35 @@ export const nftTemplates = {
     `✅ *NFT Transferred*\n\nNFT #${tokenId} has been transferred to:\n\`${to}\``,
 };
 
+// Faucet Templates
+export const faucetTemplates = {
+  // Testnet faucet operations
+  requestSubmitted: (address: string, amount: string = '0.05 ETH', estimatedTime: number = 5): string =>
+    `🚰 *Faucet Request Submitted*\n\n` +
+    `We've requested *${amount}* testnet funds for your wallet:\n\n` +
+    `\`${address}\`\n\n` +
+    `⏳ The funds should arrive in approximately *${estimatedTime} minutes*.\n\n` +
+    `_Testnet funds are for testing only and have no real value._`,
+    
+  requestSuccess: (address: string, amount: string = '0.05 ETH'): string =>
+    `✅ *Testnet Funds Received*\n\n` +
+    `Your wallet has received *${amount}* testnet funds!\n\n` +
+    `\`${address}\`\n\n` +
+    `You can now use these funds to test transactions on the Base Sepolia testnet.`,
+    
+  requestFailed: (reason: string): string =>
+    `❌ *Faucet Request Failed*\n\n` +
+    `We couldn't request testnet funds for your wallet.\n\n` +
+    `*Reason:* ${reason}\n\n` +
+    `Please try again later or contact support if the issue persists.`,
+    
+  dailyLimitReached: (address: string): string =>
+    `⚠️ *Daily Limit Reached*\n\n` +
+    `You've reached the daily limit for testnet fund requests for address:\n\n` +
+    `\`${address}\`\n\n` +
+    `Please try again tomorrow.`
+};
+
 // Help & System Messages
 export const helpTemplates = {
   mainMenu: (): string =>
@@ -132,6 +161,8 @@ export const helpTemplates = {
     `*🖼️ NFTs*\n` +
     `/nft list - List your NFTs\n` +
     `/nft info <contract> <tokenId> - View NFT details\n\n` +
+    `*🚰 Testnet*\n` +
+    `/faucet - Request testnet funds\n\n` +
     `*❓ Help*\n` +
     `/help - Show this help message`,
     
@@ -157,6 +188,15 @@ export const helpTemplates = {
     `*/nft list* - List your NFTs\n` +
     `*/nft info <contract> <tokenId>* - View NFT details\n` +
     `*/nft transfer <id> <to>* - Transfer an NFT`,
+    
+  faucetHelp: (): string =>
+    `🚰 *Testnet Faucet Help*\n\n` +
+    `*/faucet* - Request testnet funds for your wallet\n` +
+    `*/faucet <address>* - Request testnet funds for a specific address\n\n` +
+    `Faucet limits:\n` +
+    `- One request per wallet address per day\n` +
+    `- Testnet funds have no real value\n` +
+    `- Only works on Base Sepolia testnet`,
     
   error: (message: string): string =>
     `❌ *Error*\n\n${message}`,
