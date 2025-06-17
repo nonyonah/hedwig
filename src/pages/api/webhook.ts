@@ -201,6 +201,55 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                     }
                   }
                   console.log(`Received interactive message from ${from}:`, { messageText, buttonId, buttonTitle });
+                  
+                  // Special handling for wallet creation button
+                  if (buttonId === 'create_wallet') {
+                    console.log(`WALLET CREATION BUTTON CLICKED by user ${from}`);
+                    // Log extra debug info
+                    console.log('Interactive message details:', {
+                      from,
+                      messageText,
+                      buttonId,
+                      buttonTitle,
+                      messageType,
+                      messageId: message.id,
+                      timestamp: message.timestamp
+                    });
+                    
+                    // Call the dedicated wallet creation endpoint directly
+                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const createWalletUrl = `${baseUrl}/api/create-wallet`;
+                    
+                    try {
+                      console.log(`Calling direct wallet creation endpoint: ${createWalletUrl}`);
+                      const walletResponse = await fetch(createWalletUrl, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          from,
+                          buttonId,
+                          timestamp: message.timestamp
+                        }),
+                      });
+                      
+                      if (!walletResponse.ok) {
+                        const errorText = await walletResponse.text();
+                        console.error(`Wallet creation API Error (${walletResponse.status}):`, errorText);
+                      } else {
+                        const result = await walletResponse.json();
+                        console.log('Wallet creation successful:', result);
+                        
+                        // Skip the regular processing since we've handled it directly
+                        continue;
+                      }
+                    } catch (walletError) {
+                      console.error('Failed to call wallet creation API:', walletError);
+                      // Continue with regular processing as fallback
+                    }
+                  }
+                  
                   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
                   const processApiUrl = `${baseUrl}/api/process-cdp-message`;
                   try {
@@ -216,6 +265,10 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                         buttonTitle,
                         timestamp: new Date().toISOString(),
                         type: 'interactive',
+                        // Include the full interactive data for better processing
+                        interactive: message.interactive,
+                        // Include message ID for tracking
+                        messageId: message.id
                       }),
                     });
                     if (!response.ok) {
