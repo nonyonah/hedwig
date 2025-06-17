@@ -31,6 +31,7 @@ export interface ButtonsResponse {
   buttons: Array<{
     id: string;
     title: string;
+    url?: string; // Optional URL for action buttons that open links
   }>;
 }
 

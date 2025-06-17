@@ -13,20 +13,36 @@ export const walletTemplates = {
   createWallet: (phrase: string): string =>
     `🔑 *New Wallet Created*\n\nYour wallet has been created successfully!\n\n*Recovery Phrase:*\n\`${phrase}\`\n\n⚠️ *IMPORTANT*: Write down this recovery phrase and keep it safe. Anyone with this phrase can access your funds!`,
     
-  walletCreated: (address: string): string =>
-    `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${address}\`\n\nYou can now receive and send crypto.`,
+  walletCreated: (address: string): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${address}\`\n\nYou can now receive and send crypto.`,
+    buttons: [
+      { id: 'view_wallet', title: 'View Wallet' }
+    ]
+  }),
     
   walletExists: (address: string): string =>
     `ℹ️ *Wallet Exists*\n\nYou already have a wallet:\n\`${address}\`\n\nUse /wallet address to see it.`,
     
-  noWallet: (): string =>
-    `❌ *No Wallet Found*\n\nYou don't have a wallet yet. Use /wallet create to create one.`,
+  // First-time wallet creation prompt with action button
+  noWallet: (): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: '❌ *No Wallet Found*\n\nYou don\'t have a wallet yet. Create your wallet to get started.',
+    buttons: [
+      { id: 'create_wallet', title: 'Create Wallet' }
+    ]
+  }),
     
   sendConfirmation: (amount: string, to: string, fee: string): string =>
     `⚠️ *Confirm Transaction*\n\nSend *${amount} ETH* to:\n\`${to}\`\n\nNetwork fee: *${fee} ETH*\n\nReply *CONFIRM* to proceed or *CANCEL* to abort.`,
     
-  sendSuccess: (txHash: string, amount: string, to: string): string =>
-    `✅ *Transaction Sent*\n\n*${amount} ETH* sent to:\n\`${to}\`\n\nView on Etherscan:\nhttps://etherscan.io/tx/${txHash}`,
+  sendSuccess: (txHash: string, amount: string, to: string): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: `✅ *Transaction Sent*\n\n*${amount} ETH* sent to:\n\`${to}\``,
+    buttons: [
+      { id: `view_basescan_${txHash}`, title: 'View on Basescan', url: `https://basescan.org/tx/${txHash}` }
+    ]
+  }),
     
   walletLocked: (): string =>
     `🔒 *Wallet Locked*\n\nYour wallet is currently locked. Use /unlock to access your wallet.`,

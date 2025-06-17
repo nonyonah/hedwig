@@ -435,6 +435,18 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
 
     console.log(`Processing message from ${from}: ${messageText}`);
 
+    // --- Wallet gating logic: prompt for wallet creation if none exists ---
+    const { userHasWallet, walletPromptAlreadyShown, markWalletPromptShown } = await import('./_walletUtils');
+    const hasWallet = await userHasWallet(from);
+    const promptShown = await walletPromptAlreadyShown(from);
+    if (!hasWallet && !promptShown) {
+      // Show wallet creation prompt (one time)
+      await markWalletPromptShown(from);
+      const { walletTemplates } = await import('@/lib/whatsappTemplates');
+      const walletPrompt = walletTemplates.noWallet();
+      return handleResponse(from, walletPrompt, res);
+    }
+
     // Check if it's a command (starts with /)
     const isCommand = messageText.trim().startsWith('/');
     const isWalletCreateCommand = messageText.trim().toLowerCase().startsWith('/wallet create');
@@ -590,6 +602,14 @@ function convertCommandResultToWhatsAppResponse(result: CommandResult): WhatsApp
         sections: result.sections || []
       } as ListResponse;
     case 'buttons':
+      // Special handling for transaction success (if txHash and Basescan link are present)
+      if (result.buttons && result.buttons.length && result.buttons.some((b: any) => b.id && b.id.startsWith('view_basescan_'))) {
+        return {
+          type: 'buttons',
+          text: result.text || result.body || result.bodyText || '',
+          buttons: result.buttons
+        } as ButtonsResponse;
+      }
       return {
         type: 'buttons',
         text: result.body || result.bodyText || '',
