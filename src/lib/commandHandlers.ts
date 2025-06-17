@@ -46,15 +46,19 @@ export const handleCommand = async (context: CommandContext): CommandResponse =>
     
     // Handle different commands
     switch (command) {
-      case 'balance':
-      case 'wallet':
+      case '/balance':
+      case '/wallet':
         return await handleWalletCommand(userId, args);
       
-      case 'help':
+      case '/help':
         return getHelpMessage();
       
       default:
-        return createTextResponse("I didn't understand that command. Type 'help' for a list of available commands.");
+        // Handle case where command might include a slash
+        if (command === '/wallet') {
+          return await handleWalletCommand(userId, args);
+        }
+        return createTextResponse("I didn't understand that command. Type '/help' for a list of available commands.");
     }
   } catch (error) {
     console.error('Error in handleCommand:', error);
@@ -65,16 +69,17 @@ export const handleCommand = async (context: CommandContext): CommandResponse =>
 // Helper functions for different command types
 const handleWalletCommand = async (_userId: string, args: string[]): CommandResponse => {
   const [subCommand] = args;
+  console.log(`Handling wallet subcommand: ${subCommand} for user ${_userId}`);
   
   switch (subCommand) {
     case 'balance':
-      return getWalletBalance(_userId);
+      return createTextResponse(await getWalletBalance(_userId));
     case 'create':
-      return createWallet(_userId);
+      return createTextResponse(await createWallet(_userId));
     case 'address':
-      return getWalletAddress(_userId);
+      return createTextResponse(await getWalletAddress(_userId));
     default:
-      return getHelpMessage();
+      return createTextResponse(getHelpMessage());
   }
 };
 

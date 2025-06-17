@@ -147,16 +147,6 @@ async function processWithCDP(message: string, userId: string): Promise<string |
 
     console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
 
-    // Check if we need to create a wallet (only on explicit command)
-    const isWalletCreateCommand = message.toLowerCase().includes('/wallet create') || 
-      message.toLowerCase().includes('create wallet') || 
-      message.toLowerCase().includes('make wallet');
-      
-    if (isWalletCreateCommand) {
-      // Handle wallet creation through regular command flow
-      return "To create a wallet, please use the explicit wallet command: /wallet create";
-    }
-
     // Try to initialize the wallet and handle errors gracefully
     let wallet;
     let cached = getCachedWalletCredentials(userId);
@@ -451,7 +441,13 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     console.log(`Processing message from ${from}: ${messageText}`);
 
     // Check if it's a command (starts with /)
-    if (messageText.trim().startsWith('/')) {
+    const isCommand = messageText.trim().startsWith('/');
+    const isWalletCreateCommand = messageText.trim().toLowerCase().startsWith('/wallet create');
+
+    // Always handle wallet create command through command handler
+    if (isCommand) {
+      console.log(`Handling command: ${messageText}`);
+      
       // Handle command with custom context
       const commandContext: CustomCommandContext = {
         supabase,
