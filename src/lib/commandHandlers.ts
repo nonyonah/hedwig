@@ -7,7 +7,8 @@ import {
   WhatsAppResponse, 
   TextResponse, 
   CommandContext,
-  CommandMessage
+  CommandMessage,
+  ButtonsResponse
 } from '@/types/whatsapp'; // ImageResponse and ListResponse not currently used
 
 // Re-export for backward compatibility
@@ -60,7 +61,7 @@ export const handleCommand = async (context: CommandContext): CommandResponse =>
     // Handle different commands
     switch (command) {
       case '/balance':
-        return createTextResponse(await getWalletBalance(userId));
+        return await getWalletBalance(userId);
         
       case '/wallet':
         return await handleWalletCommand(userId, args);
@@ -84,14 +85,14 @@ const handleWalletCommand = async (userId: string, args: string[]): CommandRespo
   
   switch (subCommand) {
     case 'balance':
-      return createTextResponse(await getWalletBalance(userId));
+      return await getWalletBalance(userId);
       
     case 'create':
       console.log(`Executing wallet create command for user ${userId}`);
-      return createTextResponse(await createWallet(userId));
+      return await createWallet(userId);
       
     case 'address':
-      return createTextResponse(await getWalletAddress(userId));
+      return await getWalletAddress(userId);
       
     case '':
       // No subcommand provided, show help
@@ -113,7 +114,7 @@ function getWalletHelp(): string {
 }
 
 // Implement the actual wallet operations
-async function getWalletBalance(userId: string): Promise<string> {
+async function getWalletBalance(userId: string): Promise<WhatsAppResponse | string> {
   try {
     // Check if wallet exists first
     const existingWallet = getCachedWalletCredentials(userId);
@@ -137,7 +138,7 @@ async function getWalletBalance(userId: string): Promise<string> {
   }
 }
 
-async function createWallet(userId: string): Promise<string> {
+async function createWallet(userId: string): Promise<ButtonsResponse> {
   try {
     console.log(`Explicit wallet creation requested for user ${userId}`);
     
@@ -145,7 +146,7 @@ async function createWallet(userId: string): Promise<string> {
     const existingWallet = getCachedWalletCredentials(userId);
     if (existingWallet) {
       console.log(`User ${userId} already has a wallet with address ${existingWallet.address}`);
-      return walletTemplates.walletExists(existingWallet.address);
+      return walletTemplates.walletExists(existingWallet.address) as ButtonsResponse;
     }
 
     // If no wallet exists, create a new one with forceNew=true to ensure a fresh wallet
@@ -179,17 +180,22 @@ async function createWallet(userId: string): Promise<string> {
     
     console.log(`New wallet created for user ${userId} with address ${address}`);
     
-    // Return success message with the wallet address
+    // Return enhanced success message with the wallet address
     const successMessage = walletTemplates.walletCreated(address);
-    console.log(`Returning wallet creation success message: ${successMessage.substring(0, 50)}...`);
+    console.log(`Returning wallet creation success message: ${successMessage.type || 'unknown'}`);
     return successMessage;
   } catch (error) {
     console.error('Error creating wallet:', error);
-    return 'Failed to create wallet. Please try again later.';
+    // Return a text response for error case
+    return {
+      type: 'buttons',
+      text: 'Failed to create wallet. Please try again later.',
+      buttons: [{ id: 'try_again', title: 'Try Again' }]
+    };
   }
 }
 
-async function getWalletAddress(userId: string): Promise<string> {
+async function getWalletAddress(userId: string): Promise<WhatsAppResponse | string> {
   try {
     // Check if wallet exists first
     const existingWallet = getCachedWalletCredentials(userId);

@@ -21,8 +21,13 @@ export const walletTemplates = {
     ]
   }),
     
-  walletExists: (address: string): string =>
-    `ℹ️ *Wallet Exists*\n\nYou already have a wallet:\n\`${address}\`\n\nUse /wallet address to see it.`,
+  walletExists: (address: string): import('../types/whatsapp').ButtonsResponse => ({
+    type: 'buttons',
+    text: `ℹ️ *Wallet Exists*\n\nYou already have a wallet:\n\`${address}\`\n\nUse /wallet address to see it.`,
+    buttons: [
+      { id: 'view_wallet', title: 'View Wallet' }
+    ]
+  }),
     
   // First-time wallet creation prompt with action button
   noWallet: (): import('../types/whatsapp').ButtonsResponse => ({

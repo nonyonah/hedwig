@@ -449,17 +449,22 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
 
     // Check if it's a command (starts with /)
     const isCommand = messageText.trim().startsWith('/');
-    const isWalletCreateCommand = messageText.trim().toLowerCase().startsWith('/wallet create');
-
-    // Always handle wallet create command through command handler
-    if (isCommand) {
-      console.log(`Handling command: ${messageText}`);
+    // Check if it's a button click for wallet creation
+    const isWalletCreateButton = req.body.buttonId === 'create_wallet' || 
+                               (req.body.type === 'interactive' && req.body.buttonId === 'create_wallet');
+    
+    // Handle both explicit commands and button clicks for wallet creation
+    if (isCommand || isWalletCreateButton) {
+      console.log(`Handling command or button: ${messageText} (isWalletCreateButton: ${isWalletCreateButton})`);
+      
+      // Convert button click to wallet create command if needed
+      const effectiveMessage = isWalletCreateButton ? '/wallet create' : messageText;
       
       // Handle command with custom context
       const commandContext: CustomCommandContext = {
         supabase,
         phoneNumber: from,
-        message: messageText
+        message: effectiveMessage
       };
       
       try {
@@ -468,7 +473,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
           ...commandContext,
           userId: from, // Add userId explicitly
           message: {
-            text: messageText,
+            text: effectiveMessage,
             type: 'text',
             from: from,
             timestamp: timestamp || new Date().toISOString(),
@@ -513,6 +518,44 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
         if (formattedResult && formattedResult.success) {
           // Convert commandResult to appropriate WhatsAppResponse type
           const whatsAppResponse = convertCommandResultToWhatsAppResponse(formattedResult);
+          
+          // For wallet creation success, send an additional introduction message
+          if (isWalletCreateButton || (isCommand && effectiveMessage.toLowerCase() === '/wallet create')) {
+            try {
+              // Check if the result indicates successful wallet creation
+              const isWalletCreated = formattedResult.message && 
+                (formattedResult.message.includes('Wallet Created') || 
+                 formattedResult.message.includes('wallet has been created'));
+                
+              if (isWalletCreated) {
+                // Send the wallet creation response first
+                await handleResponse(from, whatsAppResponse, res);
+                
+                // Then send the introduction message after a short delay
+                setTimeout(async () => {
+                  const introMessage = `🎉 *Welcome to Hedwig!* 🎉\n\nNow that your wallet is ready, I can help you with:\n\n• Checking your wallet balance\n• Sending and receiving crypto\n• Getting testnet funds\n• Exploring blockchain data\n• Learning about Web3\n\nWhat would you like to do first?`;
+                  
+                  try {
+                    await sendWhatsAppMessage(from, introMessage);
+                    console.log('Sent introduction message after wallet creation');
+                  } catch (introError) {
+                    console.error('Failed to send introduction message:', introError);
+                  }
+                }, 1500); // 1.5 second delay
+                
+                // Return success immediately after sending the wallet creation response
+                return res.status(200).json({
+                  success: true,
+                  message: 'Wallet created and introduction message scheduled',
+                });
+              }
+            } catch (introError) {
+              console.error('Error handling introduction message:', introError);
+              // Continue with normal response handling if there was an error
+            }
+          }
+          
+          // Normal response handling for non-wallet creation commands
           return handleResponse(from, whatsAppResponse, res);
         } else if (formattedResult) {
           console.log(`Command failed: ${formattedResult.message}`);
