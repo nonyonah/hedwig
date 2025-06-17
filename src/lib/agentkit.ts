@@ -16,9 +16,13 @@ import fetch from 'node-fetch';
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
-// Singleton instance
+// Singleton instances
 let agentKitInstance: AgentKit | null = null;
-let walletProvider: WalletProvider | null = null;
+let defaultWalletProvider: WalletProvider | null = null;
+
+// Map of user wallets for persistence
+// Key is userId (typically phone number), value is the wallet provider
+const userWallets: Map<string, WalletProvider> = new Map();
 
 // Base Sepolia testnet configuration
 const BASE_SEPOLIA_CONFIG = {
@@ -42,10 +46,47 @@ function generateIdempotencyKey(): string {
 }
 
 /**
- * Creates a new PrivyEvmWalletProvider
+ * Get a WalletProvider for a specific user
+ * This only returns an existing wallet provider or the default one
+ * It will NOT create a new wallet for the user
+ * @param userId User identifier (e.g., phone number)
+ * @returns A wallet provider for the user or null if it doesn't exist
+ */
+export async function getUserWalletProvider(userId?: string): Promise<WalletProvider | null> {
+  if (userId && userWallets.has(userId)) {
+    // Return the user-specific wallet provider if it exists
+    return userWallets.get(userId)!;
+  }
+  
+  // Return the default wallet provider for system operations
+  // or create one if needed
+  if (!defaultWalletProvider) {
+    try {
+      defaultWalletProvider = await createDefaultWalletProvider();
+    } catch (error) {
+      console.error('Failed to create default wallet provider:', error);
+      return null;
+    }
+  }
+  
+  return defaultWalletProvider;
+}
+
+/**
+ * Register a user's wallet provider for persistence
+ * @param userId User identifier (e.g., phone number)
+ * @param provider The wallet provider to associate with this user
+ */
+export function registerUserWallet(userId: string, provider: WalletProvider): void {
+  userWallets.set(userId, provider);
+  console.log(`Registered wallet provider for user ${userId}`);
+}
+
+/**
+ * Creates a default wallet provider that's only used for system operations
  * @returns A configured PrivyEvmWalletProvider instance
  */
-async function createWalletProvider(): Promise<WalletProvider> {
+async function createDefaultWalletProvider(): Promise<WalletProvider> {
   try {
     // Get environment variables for Privy configuration
     const { appId, appSecret } = getPrivyEnvironment();
@@ -54,12 +95,12 @@ async function createWalletProvider(): Promise<WalletProvider> {
       throw new Error('Missing required Privy credentials (PRIVY_APP_ID or PRIVY_APP_SECRET)');
     }
     
-    console.log('Privy environment loaded for AgentKit:', {
+    console.log('Privy environment loaded for default wallet provider:', {
       appId: appId ? appId.substring(0, Math.min(5, appId.length)) + '...' : 'MISSING',
       appSecret: appSecret ? 'PRESENT' : 'MISSING',
     });
     
-    // Use a simple, fixed private key for development
+    // Use a simple, fixed private key for the default wallet
     const privateKey = '0x' + '1'.repeat(64);
     
     const config = {
@@ -70,7 +111,7 @@ async function createWalletProvider(): Promise<WalletProvider> {
       rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl
     };
     
-    console.log('Initializing AgentKit wallet with config:', {
+    console.log('Initializing default wallet provider with config:', {
       chainId: config.chainId,
       rpcUrl: config.rpcUrl,
     });
@@ -79,85 +120,69 @@ async function createWalletProvider(): Promise<WalletProvider> {
     
     // Verify the wallet is working
     const address = await provider.getAddress();
-    console.log(`AgentKit wallet provider initialized with address: ${address}`);
+    console.log(`Default wallet provider initialized with address: ${address}`);
     
     return provider;
   } catch (error) {
-    console.error('Failed to initialize Privy wallet provider:', error);
-    throw new Error(`Privy wallet provider initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Failed to initialize default wallet provider:', error);
+    throw new Error(`Default wallet provider initialization failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 /**
  * Initializes and returns a singleton instance of AgentKit.
  * Uses environment variables for API key configuration.
+ * @param userId Optional user ID to use their specific wallet
  */
-export async function getAgentKit(): Promise<AgentKit> {
-  if (agentKitInstance) {
+export async function getAgentKit(userId?: string): Promise<AgentKit> {
+  // If we already have an AgentKit instance and no specific user,
+  // return the singleton instance
+  if (agentKitInstance && !userId) {
     return agentKitInstance;
   }
 
   try {
-    // Initialize wallet provider first if not already done
+    // Get the appropriate wallet provider for this user
+    // or use the default wallet provider
+    const walletProvider = await getUserWalletProvider(userId);
+    
     if (!walletProvider) {
-      try {
-        walletProvider = await createWalletProvider();
-      } catch (walletError) {
-        console.error('Failed to create regular wallet provider, trying direct method:', walletError);
-        try {
-          // Import the direct wallet provider function
-          const { createDirectWalletProvider } = await import('./wallet');
-          console.log('FALLBACK: Using direct wallet provider with hardcoded values');
-          walletProvider = await createDirectWalletProvider();
-          console.log('Successfully created direct wallet provider');
-        } catch (directError) {
-          console.error('Both wallet initialization methods failed:', directError);
-          throw new Error(`All wallet provider creation methods failed: ${directError instanceof Error ? directError.message : String(directError)}`);
-        }
-      }
+      throw new Error('Could not obtain a valid wallet provider');
     }
 
     // Initialize AgentKit with the wallet provider and action providers
-    try {
-      const actionProviders = [
-        // ERC20 token operations
-        erc20ActionProvider(),
-        
-        // ERC721 (NFT) operations
-        erc721ActionProvider(),
-        
-        // Basic wallet operations
-        walletActionProvider()
-        
-        // Note: We're not using the custom faucet action provider due to TypeScript issues
-        // Instead, we'll extend the wallet actions in future when the AgentKit API is clearer
-      ];
+    const actionProviders = [
+      // ERC20 token operations
+      erc20ActionProvider(),
       
-      console.log('Initializing AgentKit with action providers:', 
-        actionProviders.map(provider => provider.name));
+      // ERC721 (NFT) operations
+      erc721ActionProvider(),
       
-      // AgentKit.from expects walletProvider to be non-null
-      if (!walletProvider) {
-        throw new Error('Wallet provider is null. Cannot initialize AgentKit.');
-      }
+      // Basic wallet operations
+      walletActionProvider()
       
-      agentKitInstance = await AgentKit.from({
-        walletProvider,
-        actionProviders,
-      });
-      
-      // Verify AgentKit is working by getting available actions
-      const actions = await agentKitInstance.getActions();
-      console.log(`AgentKit initialized with ${actions.length} available actions`);
-      
-      // TODO: After initialization, find a way to add custom actions
-      console.log("Note: Custom faucet actions will be implemented in a future update");
-      
-      return agentKitInstance;
-    } catch (agentKitError) {
-      console.error('Failed to initialize AgentKit:', agentKitError);
-      throw new Error(`AgentKit initialization failed: ${agentKitError instanceof Error ? agentKitError.message : String(agentKitError)}`);
+      // Note: We're not using the custom faucet action provider due to TypeScript issues
+    ];
+    
+    console.log('Initializing AgentKit with action providers:', 
+      actionProviders.map(provider => provider.name));
+    
+    const newAgentKitInstance = await AgentKit.from({
+      walletProvider,
+      actionProviders,
+    });
+    
+    // Verify AgentKit is working by getting available actions
+    const actions = await newAgentKitInstance.getActions();
+    console.log(`AgentKit initialized with ${actions.length} available actions` + 
+      (userId ? ` for user ${userId}` : ' (default instance)'));
+    
+    // If this is the default instance (no userId), save it as singleton
+    if (!userId) {
+      agentKitInstance = newAgentKitInstance;
     }
+    
+    return newAgentKitInstance;
   } catch (error) {
     console.error('Failed to initialize AgentKit:', error);
     throw new Error(`AgentKit initialization failed: ${error instanceof Error ? error.message : String(error)}`);

@@ -141,45 +141,65 @@ interface ProcessedMessage {
 async function processWithCDP(message: string, userId: string): Promise<string | null> {
   try {
     // Dynamically import necessary modules
-    const { getAgentKit } = await import('@/lib/agentkit');
-    const { getOrCreateWallet, createDirectWalletProvider } = await import('@/lib/wallet');
+    const { getAgentKit, registerUserWallet } = await import('@/lib/agentkit');
+    const { getCachedWalletCredentials, createDirectWalletProvider } = await import('@/lib/wallet');
     const { getLangChainAgent } = await import('@/lib/langchain');
 
     console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
 
+    // Check if we need to create a wallet (only on explicit command)
+    const isWalletCreateCommand = message.toLowerCase().includes('/wallet create') || 
+      message.toLowerCase().includes('create wallet') || 
+      message.toLowerCase().includes('make wallet');
+      
+    if (isWalletCreateCommand) {
+      // Handle wallet creation through regular command flow
+      return "To create a wallet, please use the explicit wallet command: /wallet create";
+    }
+
     // Try to initialize the wallet and handle errors gracefully
     let wallet;
+    let cached = getCachedWalletCredentials(userId);
+    
+    if (!cached) {
+      console.log(`No wallet found for user ${userId}`);
+      return "You don't have a wallet yet. Send '/wallet create' to create one.";
+    }
+    
     try {
-      console.log('Attempting regular wallet initialization first');
-      // Always use cached wallet if available, otherwise create and cache
-      const { getCachedWalletCredentials } = await import('@/lib/wallet');
-      let cached = getCachedWalletCredentials(userId);
-      wallet = await getOrCreateWallet(userId, cached?.address);
+      console.log('Using cached wallet credentials');
+      // Use ONLY cached wallet if available
+      const { getOrCreateWallet } = await import('@/lib/wallet');
+      wallet = await getOrCreateWallet(userId, cached.address, false); // forceNew = false
+      
       // Verify wallet is working by attempting to get the address
       const address = await wallet.getAddress();
       console.log(`Successfully initialized wallet for ${userId} with address: ${address}`);
-    } catch (walletError) {
-      console.error('Regular wallet initialization failed, trying direct method:', walletError);
       
-      try {
-        // Try the direct wallet provider as a fallback
-        console.log('FALLBACK: Using direct wallet provider with hardcoded values');
-        wallet = await createDirectWalletProvider();
-        const address = await wallet.getAddress();
-        console.log(`Successfully initialized direct wallet with address: ${address}`);
-      } catch (directError) {
-        console.error('Both wallet initialization methods failed:', directError);
-        return "I'm having trouble accessing the blockchain right now. Let me help you with something else instead.";
+      // Register this wallet with the wallet provider map for persistence
+      registerUserWallet(userId, wallet);
+    } catch (walletError) {
+      console.error('Wallet initialization failed:', walletError);
+      
+      // For blockchain queries, we need a wallet
+      const blockchainKeywords = ['wallet', 'balance', 'crypto', 'token', 'transfer', 'blockchain', 'eth', 'bitcoin', 'transaction'];
+      const isBlockchainQuery = blockchainKeywords.some(keyword => message.toLowerCase().includes(keyword));
+      
+      if (isBlockchainQuery) {
+        return "I'm having trouble accessing your wallet. Please try again later or type '/wallet address' to verify your wallet setup.";
       }
+      
+      // For non-blockchain queries, continue without a wallet
+      console.log('Continuing without wallet for non-blockchain query');
     }
 
-    // Initialize AgentKit
+    // Initialize AgentKit with the user's ID for wallet association
     let agentKit;
     try {
-      agentKit = await getAgentKit();
+      agentKit = await getAgentKit(userId);
       // Verify AgentKit is properly initialized
       const actions = await agentKit.getActions();
-      console.log(`AgentKit initialized with ${actions.length} available actions`);
+      console.log(`AgentKit initialized with ${actions.length} available actions for user ${userId}`);
     } catch (agentKitError) {
       console.error('Error initializing AgentKit:', agentKitError);
       return "I'm having trouble with my blockchain tools. Is there anything else I can help you with?";

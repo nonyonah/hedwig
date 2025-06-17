@@ -114,13 +114,23 @@ export async function getOrCreateWallet(
       privateKey = cached.privateKey;
       walletAddress = cached.address;
       console.log(`[Wallet] Using cached wallet for user ${userId}: ${walletAddress}`);
-    } else if (forceNew) {
-      // No cached wallet, but forceNew is requested: create new wallet credentials
+    } else if (forceNew || (!cached && userId)) {
+      // Create new wallet only if forceNew is true or no wallet exists for the user
+      if (forceNew) {
+        console.log(`[Wallet] Force creating new wallet for user ${userId}`);
+      } else {
+        console.log(`[Wallet] No wallet found for user ${userId}, creating new wallet as requested`);
+      }
+      
       privateKey = generatePrivateKey();
       walletAddress = undefined; // Let provider determine address
-      console.log(`[Wallet] Creating new wallet for user ${userId}`);
+      
+      // Log the private key format for debugging (safe version)
+      const safePrivateKey = privateKey.substring(0, 6) + '...' + privateKey.substring(privateKey.length - 4);
+      console.log(`[Wallet] Generated new private key for ${userId}: ${safePrivateKey}, format: ${privateKey.startsWith('0x') ? 'hex with 0x' : 'not hex format'}`);
     } else {
-      // No wallet found and not forcing a new one
+      // No wallet found and not forcing a new one - this is an error
+      console.error(`[Wallet ERROR] No wallet found for user ${userId} and forceNew is false`);
       throw new Error(`No wallet found for user ${userId}. Please create one first.`);
     }
 
@@ -161,9 +171,10 @@ export async function getOrCreateWallet(
       const actualAddress = await walletProvider.getAddress();
       console.log(`[Wallet] Wallet address for user ${userId}: ${actualAddress}`);
       
-      // If this is a new wallet, cache the credentials/address
-      if (!cached || !cached.address) {
+      // If this is a new wallet or imported wallet, cache the credentials/address
+      if (forceNew || !cached || !cached.address) {
         cacheWalletCredentials(userId, privateKey, actualAddress);
+        console.log(`[Wallet] Cached new wallet for user ${userId} with address ${actualAddress}`);
       }
       
       return walletProvider;

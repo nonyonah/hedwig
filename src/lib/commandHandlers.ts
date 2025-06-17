@@ -94,15 +94,25 @@ async function getWalletBalance(userId: string): Promise<string> {
 
 async function createWallet(userId: string): Promise<string> {
   try {
+    console.log(`Explicit wallet creation requested for user ${userId}`);
+    
     // Check if a wallet already exists
     const existingWallet = getCachedWalletCredentials(userId);
     if (existingWallet) {
+      console.log(`User ${userId} already has a wallet with address ${existingWallet.address}`);
       return walletTemplates.walletExists(existingWallet.address);
     }
 
-    // If no wallet exists, create a new one
+    // If no wallet exists, create a new one with forceNew=true to ensure a fresh wallet
+    console.log(`Creating new wallet for user ${userId}`);
     const wallet = await getOrCreateWallet(userId, undefined, true);
     const address = await wallet.getAddress();
+    
+    // Register this wallet with AgentKit
+    const { registerUserWallet } = await import('./agentkit');
+    registerUserWallet(userId, wallet);
+    
+    console.log(`New wallet created for user ${userId} with address ${address}`);
     return walletTemplates.walletCreated(address);
   } catch (error) {
     console.error('Error creating wallet:', error);
