@@ -184,6 +184,51 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                   }
 
                   console.log(`Message from ${from} forwarded to CDP processor.`);
+                } else if (messageType === 'interactive') {
+                  // Handle interactive messages (button and list replies)
+                  let messageText = '';
+                  let buttonId = '';
+                  let buttonTitle = '';
+                  if (message.interactive) {
+                    if (message.interactive.type === 'button_reply' && message.interactive.button_reply) {
+                      messageText = message.interactive.button_reply.id || '';
+                      buttonId = message.interactive.button_reply.id;
+                      buttonTitle = message.interactive.button_reply.title;
+                    } else if (message.interactive.type === 'list_reply' && message.interactive.list_reply) {
+                      messageText = message.interactive.list_reply.id || '';
+                      buttonId = message.interactive.list_reply.id;
+                      buttonTitle = message.interactive.list_reply.title;
+                    }
+                  }
+                  console.log(`Received interactive message from ${from}:`, { messageText, buttonId, buttonTitle });
+                  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                  const processApiUrl = `${baseUrl}/api/process-cdp-message`;
+                  try {
+                    const response = await fetch(processApiUrl, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        from,
+                        messageText,
+                        buttonId,
+                        buttonTitle,
+                        timestamp: new Date().toISOString(),
+                        type: 'interactive',
+                      }),
+                    });
+                    if (!response.ok) {
+                      const errorText = await response.text();
+                      console.error(`API Error (${response.status}):`, errorText);
+                    } else {
+                      const result = await response.json();
+                      console.log('Interactive message processed successfully:', result);
+                    }
+                  } catch (fetchError) {
+                    console.error('Failed to call process-cdp-message API (interactive):', fetchError);
+                  }
+                  console.log(`Interactive message from ${from} forwarded to CDP processor.`);
                 } else {
                   console.log(`Unsupported message type: ${messageType} from ${from}. Not forwarding.`);
                 }
