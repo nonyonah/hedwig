@@ -568,56 +568,91 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
             if (responseType === 'text' && 'text' in commandResult) {
               const textResponse: TextResponse = {
                 type: 'text',
-                text: commandResult.text
+                text: commandResult.text || 'No message content'
               };
               formattedResult = {
                 success: true,
                 message: textResponse,
                 type: 'text',
-                text: commandResult.text
+                text: commandResult.text || 'No message content'
               };
             } else if (responseType === 'buttons' && 'buttons' in commandResult) {
               const buttonsResponse: ButtonsResponse = {
                 type: 'buttons',
-                text: 'text' in commandResult ? commandResult.text : '',
-                buttons: commandResult.buttons
+                text: 'text' in commandResult ? (commandResult.text || '') : '',
+                buttons: Array.isArray(commandResult.buttons) ? commandResult.buttons.map(button => ({
+                  id: button.id || 'button_' + Math.random().toString(36).substring(2, 9),
+                  title: button.title || 'Button',
+                  ...(button.url ? { url: button.url } : {})
+                })) : [{ id: 'default_button', title: 'OK' }]
               };
               formattedResult = {
                 success: true,
                 message: buttonsResponse,
                 type: 'buttons',
-                buttons: commandResult.buttons,
-                text: 'text' in commandResult ? commandResult.text : ''
+                buttons: buttonsResponse.buttons,
+                text: buttonsResponse.text
               };
             } else if (responseType === 'image' && 'url' in commandResult) {
               const imageResponse: ImageResponse = {
                 type: 'image',
                 url: String(commandResult.url),
-                caption: 'caption' in commandResult ? String(commandResult.caption) : undefined
+                caption: 'caption' in commandResult ? String(commandResult.caption || '') : undefined
               };
               formattedResult = {
                 success: true,
                 message: imageResponse,
                 type: 'image',
                 imageUrl: String(commandResult.url),
-                caption: 'caption' in commandResult ? String(commandResult.caption) : undefined
+                caption: 'caption' in commandResult ? String(commandResult.caption || '') : undefined
               };
             } else if (responseType === 'list' && 'sections' in commandResult) {
+              // Ensure sections have the correct structure
+              interface ListRow {
+                id?: string;
+                title?: string;
+                description?: string;
+              }
+              
+              interface ListSection {
+                title?: string;
+                rows?: ListRow[];
+              }
+              
+              const validSections = Array.isArray(commandResult.sections) 
+                ? commandResult.sections.map((section: ListSection) => ({
+                    title: typeof section.title === 'string' ? section.title : 'Section',
+                    rows: Array.isArray(section.rows) 
+                      ? section.rows.map((row: ListRow) => ({
+                          id: typeof row.id === 'string' ? row.id : 'row_' + Math.random().toString(36).substring(2, 9),
+                          title: typeof row.title === 'string' ? row.title : 'Item',
+                          ...(row.description ? { description: String(row.description) } : {})
+                        })) 
+                      : [{ id: 'default_row', title: 'Default Item' }]
+                  })) 
+                : [
+                    {
+                      title: 'Default Section',
+                      rows: [{ id: 'default_row', title: 'Default Item' }]
+                    }
+                  ];
+              
               const listResponse: ListResponse = {
                 type: 'list',
-                header: 'header' in commandResult ? String(commandResult.header) : '',
-                body: 'body' in commandResult ? String(commandResult.body) : '',
-                buttonText: 'buttonText' in commandResult ? String(commandResult.buttonText) : 'Select',
-                sections: commandResult.sections
+                header: 'header' in commandResult ? String(commandResult.header || '') : '',
+                body: 'body' in commandResult ? String(commandResult.body || '') : '',
+                buttonText: 'buttonText' in commandResult ? String(commandResult.buttonText || 'Select') : 'Select',
+                sections: validSections
               };
+              
               formattedResult = {
                 success: true,
                 message: listResponse,
                 type: 'list',
-                header: 'header' in commandResult ? String(commandResult.header) : '',
-                body: 'body' in commandResult ? String(commandResult.body) : '',
-                buttonText: 'buttonText' in commandResult ? String(commandResult.buttonText) : 'Select',
-                sections: commandResult.sections
+                header: listResponse.header,
+                body: listResponse.body,
+                buttonText: listResponse.buttonText,
+                sections: validSections
               };
             } else {
               // Default case for other response types
@@ -784,21 +819,54 @@ function convertCommandResultToWhatsAppResponse(result: CommandResult): WhatsApp
       } as ImageResponse;
       
     case 'list':
+      // Validate sections
       if (!result.sections || !Array.isArray(result.sections) || result.sections.length === 0) {
         return {
           type: 'text',
           text: 'Sections are required for list messages'
         } as TextResponse;
       }
+      
+      // Ensure each section has a valid structure
+      const validSections = result.sections.map((section: { title?: string; rows?: any[] }) => {
+        // Validate section
+        if (!section || typeof section !== 'object') {
+          return {
+            title: 'Default Section',
+            rows: [{ id: 'default_row', title: 'Default Item' }]
+          };
+        }
+        
+        // Validate rows
+        const rows = Array.isArray(section.rows) 
+          ? section.rows.map((row: { id?: string; title?: string; description?: string }) => {
+              if (!row || typeof row !== 'object') {
+                return { id: 'default_row', title: 'Default Item' };
+              }
+              return {
+                id: typeof row.id === 'string' ? row.id : 'row_' + Math.random().toString(36).substring(2, 9),
+                title: typeof row.title === 'string' ? row.title : 'Item',
+                ...(row.description ? { description: String(row.description) } : {})
+              };
+            })
+          : [{ id: 'default_row', title: 'Default Item' }];
+        
+        return {
+          title: typeof section.title === 'string' ? section.title : 'Section',
+          rows
+        };
+      });
+      
       return {
         type: 'list',
         header: result.header || '',
         body: result.body || result.bodyText || '',
         buttonText: result.buttonText || 'Select',
-        sections: result.sections
+        sections: validSections
       } as ListResponse;
       
     case 'buttons':
+      // Validate buttons
       if (!result.buttons || !Array.isArray(result.buttons) || result.buttons.length === 0) {
         return {
           type: 'text',
@@ -806,19 +874,31 @@ function convertCommandResultToWhatsAppResponse(result: CommandResult): WhatsApp
         } as TextResponse;
       }
       
+      // Ensure each button has a valid structure
+      const validButtons = result.buttons.map((button: { id?: string; title?: string; url?: string }) => {
+        if (!button || typeof button !== 'object') {
+          return { id: 'default_button', title: 'OK' };
+        }
+        return {
+          id: typeof button.id === 'string' ? button.id : 'button_' + Math.random().toString(36).substring(2, 9),
+          title: typeof button.title === 'string' ? button.title : 'Button',
+          ...(button.url ? { url: String(button.url) } : {})
+        };
+      });
+      
       // Special handling for transaction success (if txHash and Basescan link are present)
-      if (result.buttons.some(b => b.id && b.id.startsWith('view_basescan_'))) {
+      if (validButtons.some(b => b.id && b.id.startsWith('view_basescan_'))) {
         return {
           type: 'buttons',
           text: result.text || result.body || result.bodyText || '',
-          buttons: result.buttons
+          buttons: validButtons
         } as ButtonsResponse;
       }
       
       return {
         type: 'buttons',
         text: result.text || result.body || result.bodyText || '',
-        buttons: result.buttons
+        buttons: validButtons
       } as ButtonsResponse;
       
     default:
