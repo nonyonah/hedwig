@@ -51,7 +51,7 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 // Define a proper CommandResult interface that doesn't conflict with WhatsAppResponse
 interface CommandResult {
   success: boolean;
-  message: string | TextResponse | ButtonsResponse | ImageResponse | ListResponse;
+  message: string | WhatsAppResponse;
   type?: string;
   text?: string;
   imageUrl?: string;
@@ -566,43 +566,68 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
             const responseType = commandResult.type;
             
             if (responseType === 'text' && 'text' in commandResult) {
+              const textResponse: TextResponse = {
+                type: 'text',
+                text: commandResult.text
+              };
               formattedResult = {
                 success: true,
-                message: commandResult,
+                message: textResponse,
                 type: 'text',
                 text: commandResult.text
               };
             } else if (responseType === 'buttons' && 'buttons' in commandResult) {
+              const buttonsResponse: ButtonsResponse = {
+                type: 'buttons',
+                text: 'text' in commandResult ? commandResult.text : '',
+                buttons: commandResult.buttons
+              };
               formattedResult = {
                 success: true,
-                message: commandResult,
+                message: buttonsResponse,
                 type: 'buttons',
                 buttons: commandResult.buttons,
                 text: 'text' in commandResult ? commandResult.text : ''
               };
             } else if (responseType === 'image' && 'url' in commandResult) {
+              const imageResponse: ImageResponse = {
+                type: 'image',
+                url: String(commandResult.url),
+                caption: 'caption' in commandResult ? String(commandResult.caption) : undefined
+              };
               formattedResult = {
                 success: true,
-                message: commandResult,
+                message: imageResponse,
                 type: 'image',
-                imageUrl: commandResult.url,
-                caption: 'caption' in commandResult ? commandResult.caption : undefined
+                imageUrl: String(commandResult.url),
+                caption: 'caption' in commandResult ? String(commandResult.caption) : undefined
               };
             } else if (responseType === 'list' && 'sections' in commandResult) {
+              const listResponse: ListResponse = {
+                type: 'list',
+                header: 'header' in commandResult ? String(commandResult.header) : '',
+                body: 'body' in commandResult ? String(commandResult.body) : '',
+                buttonText: 'buttonText' in commandResult ? String(commandResult.buttonText) : 'Select',
+                sections: commandResult.sections
+              };
               formattedResult = {
                 success: true,
-                message: commandResult,
+                message: listResponse,
                 type: 'list',
-                header: 'header' in commandResult ? commandResult.header : '',
-                body: 'body' in commandResult ? commandResult.body : '',
-                buttonText: 'buttonText' in commandResult ? commandResult.buttonText : 'Select',
+                header: 'header' in commandResult ? String(commandResult.header) : '',
+                body: 'body' in commandResult ? String(commandResult.body) : '',
+                buttonText: 'buttonText' in commandResult ? String(commandResult.buttonText) : 'Select',
                 sections: commandResult.sections
               };
             } else {
               // Default case for other response types
+              const defaultResponse: TextResponse = {
+                type: 'text',
+                text: 'Unknown response type'
+              };
               formattedResult = {
                 success: true,
-                message: commandResult as unknown as TextResponse,
+                message: defaultResponse,
                 type: 'text',
                 text: 'Unknown response type'
               };
