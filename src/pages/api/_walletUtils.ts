@@ -1,6 +1,22 @@
-import { supabase } from '@/lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
+import { Database } from '@/lib/database';
 import { getCachedWalletCredentials } from '@/lib/wallet';
 import { userHasWalletInDb } from '@/lib/walletDb';
+import { loadServerEnvironment } from '@/lib/serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Missing Supabase URL or key in _walletUtils.ts');
+}
+
+// Create Supabase client
+export const supabase = createClient<Database>(supabaseUrl!, supabaseKey!);
 
 /**
  * Checks if a user has a wallet.
@@ -45,4 +61,4 @@ export async function walletPromptAlreadyShown(userId: string): Promise<boolean>
   const shown = walletPromptsShown.has(userId);
   console.log(`[WalletUtils] Wallet prompt shown check for user ${userId}: ${shown}`);
   return shown;
-}
+} 

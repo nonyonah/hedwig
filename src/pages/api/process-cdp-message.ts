@@ -39,7 +39,7 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase URL or key');
 }
 
-const supabase = createClient<Database>(supabaseUrl, supabaseKey);
+const supabase = createClient<Database>(supabaseUrl!, supabaseKey!);
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
