@@ -134,24 +134,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
       
-      // Send wallet creation success message
-      const successMessage = walletTemplates.walletCreated(address);
-      
       // Send the wallet creation success message
       try {
         await sendWhatsAppMessage(from, `✅ Wallet Created! Your new wallet address is: ${address}`);
         
-        // Send introduction message after a short delay
-        setTimeout(async () => {
-          const introMessage = `🎉 *Welcome to Hedwig!* 🎉\n\nNow that your wallet is ready, I can help you with:\n\n• Checking your wallet balance\n• Sending and receiving crypto\n• Getting testnet funds\n• Exploring blockchain data\n• Learning about Web3\n\nWhat would you like to do first?`;
-          
-          try {
-            await sendWhatsAppMessage(from, introMessage);
-            console.log('[CREATE-WALLET] Sent introduction message after wallet creation');
-          } catch (introError) {
-            console.error('[CREATE-WALLET] Failed to send introduction message:', introError);
-          }
-        }, 1500); // 1.5 second delay
+        // Send introduction message immediately
+        const introMessage = `🎉 *Welcome to Hedwig!* 🎉\n\nNow that your wallet is ready, I can help you with:\n\n• Checking your wallet balance\n• Sending and receiving crypto\n• Getting testnet funds\n• Exploring blockchain data\n• Learning about Web3\n\nWhat would you like to do first?`;
+        
+        try {
+          await sendWhatsAppMessage(from, introMessage);
+          console.log('[CREATE-WALLET] Sent introduction message after wallet creation');
+        } catch (introError) {
+          console.error('[CREATE-WALLET] Failed to send introduction message:', introError);
+        }
         
         return res.status(200).json({
           success: true,

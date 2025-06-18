@@ -171,6 +171,11 @@ function decryptPrivateKey(encryptedKey: string): string {
  */
 export async function getOrCreateUser(phoneNumber: string): Promise<string> {
   try {
+    if (!phoneNumber) {
+      console.error('[WalletDB] Error in getOrCreateUser: phoneNumber parameter is undefined or empty');
+      throw new Error('Phone number is required');
+    }
+
     console.log(`[WalletDB] Getting or creating user for phone number: ${phoneNumber}`);
     
     // First check if user exists - use admin client to bypass RLS
@@ -278,6 +283,11 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
  */
 export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
   try {
+    if (!phoneNumber) {
+      console.error('[WalletDB] Error checking if user has wallet: phoneNumber parameter is undefined or empty');
+      return false;
+    }
+    
     console.log(`[WalletDB] Checking if user ${phoneNumber} has a wallet in database`);
     
     // First check the in-memory cache
@@ -346,6 +356,16 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
  */
 export async function storeWalletInDb(phoneNumber: string, address: string, privateKey: string): Promise<boolean> {
   try {
+    if (!phoneNumber) {
+      console.error('[WalletDB] Error storing wallet: phoneNumber parameter is undefined or empty');
+      return false;
+    }
+    
+    if (!address || !privateKey) {
+      console.error('[WalletDB] Error storing wallet: address or privateKey is missing');
+      return false;
+    }
+    
     console.log(`[WalletDB] Storing wallet for user ${phoneNumber} with address ${address}`);
     
     // Get or create user
@@ -448,6 +468,11 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
  */
 export async function getWalletFromDb(phoneNumber: string): Promise<{ address: string; privateKey: string } | null> {
   try {
+    if (!phoneNumber) {
+      console.error('[WalletDB] Error getting wallet: phoneNumber parameter is undefined or empty');
+      return null;
+    }
+    
     console.log(`[WalletDB] Getting wallet for user ${phoneNumber} from database`);
     
     // Get the user ID - use admin client to bypass RLS
