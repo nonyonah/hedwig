@@ -243,8 +243,29 @@ async function processWithCDP(message: string, userId: string): Promise<string |
       const isWalletCommand = message.trim().toLowerCase().startsWith('/wallet');
       
       if (!isWalletCommand) {
-        console.log(`[processWithCDP] Blockchain query detected but user ${userId} has no wallet. Prompting to create one.`);
-        return "You need a wallet to perform blockchain operations. Send '/wallet create' to create one.";
+        console.log(`[processWithCDP] Blockchain query detected but user ${userId} has no wallet. Sending wallet creation template.`);
+        
+        // Check if wallet prompt has been shown before
+        const { walletPromptAlreadyShown, markWalletPromptShown } = await import('@/pages/api/_walletUtils');
+        const promptShown = await walletPromptAlreadyShown(userId);
+        
+        if (!promptShown) {
+          // Mark that we've shown the wallet prompt to this user
+          await markWalletPromptShown(userId);
+          
+          // Send wallet creation template with button
+          try {
+            const { sendWhatsAppReplyButtons } = await import('@/lib/whatsappUtils');
+            const noWalletTemplate = walletTemplates.noWallet();
+            await sendWhatsAppReplyButtons(userId, noWalletTemplate.text, noWalletTemplate.buttons);
+            console.log(`[processWithCDP] Sent wallet creation template to user ${userId}`);
+          } catch (templateError) {
+            console.error('[processWithCDP] Error sending wallet template:', templateError);
+          }
+        }
+        
+        // Return a message that will be sent after the template
+        return "You need a wallet to perform blockchain operations. I've sent you a button to create one.";
       } else {
         console.log(`[processWithCDP] Allowing wallet command to proceed: ${message}`);
       }

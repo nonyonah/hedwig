@@ -255,7 +255,8 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
     
     if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
       console.error('[WalletDB] Error fetching user:', fetchError);
-      throw new Error(`Failed to fetch user: ${fetchError.message}`);
+      console.log('[WalletDB] Will attempt to create user since fetch failed');
+      // Continue to user creation below
     }
     
     // If user exists, return their ID
@@ -267,30 +268,85 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
     // Create new user - use admin client to bypass RLS
     console.log(`[WalletDB] Creating new user for phone number: ${phoneNumber}`);
     
-    const { data: newUser, error: createError } = await supabaseAdmin
+    // Try multiple approaches to ensure user creation succeeds
+    let userId: string | null = null;
+    
+    // Approach 1: Standard insert
+    try {
+      const { data: newUser, error: createError } = await supabaseAdmin
+        .from('users')
+        .insert([{ phone_number: phoneNumber }])
+        .select('id')
+        .single();
+      
+      if (!createError && newUser) {
+        console.log(`[WalletDB] Created new user with standard insert, ID: ${newUser.id}`);
+        userId = newUser.id;
+      } else {
+        console.warn('[WalletDB] Standard insert failed:', createError);
+      }
+    } catch (insertError) {
+      console.warn('[WalletDB] Exception during standard user insert:', insertError);
+    }
+    
+    // Approach 2: SQL function if available
+    if (!userId) {
+      try {
+        console.log('[WalletDB] Trying create_user_with_wallet function...');
+        const { data: funcResult, error: funcError } = await supabaseAdmin.rpc(
+          'create_user_with_wallet',
+          { 
+            p_phone: phoneNumber,
+            p_wallet_address: '', // Empty for now, we'll update later
+            p_private_key_encrypted: '' // Empty for now, we'll update later
+          }
+        );
+        
+        if (!funcError && funcResult && funcResult.user_id) {
+          console.log(`[WalletDB] Created user with function, ID: ${funcResult.user_id}`);
+          userId = funcResult.user_id;
+        } else {
+          console.warn('[WalletDB] Function call failed:', funcError);
+        }
+      } catch (funcError) {
+        console.warn('[WalletDB] Exception during function call:', funcError);
+      }
+    }
+    
+    // Approach 3: Direct SQL as last resort
+    if (!userId) {
+      try {
+        console.log('[WalletDB] Trying direct SQL user creation...');
+        userId = await createUserWithSql(phoneNumber);
+        if (userId) {
+          console.log(`[WalletDB] Created user with direct SQL, ID: ${userId}`);
+        } else {
+          console.error('[WalletDB] Direct SQL user creation returned no ID');
+        }
+      } catch (sqlError) {
+        console.error('[WalletDB] Exception during SQL user creation:', sqlError);
+      }
+    }
+    
+    // Verify user was created
+    if (!userId) {
+      throw new Error('Failed to create user after multiple attempts');
+    }
+    
+    // Double-check the user exists after creation
+    const { data: verifyUser } = await supabaseAdmin
       .from('users')
-      .insert([{ phone_number: phoneNumber }])
       .select('id')
+      .eq('id', userId)
       .single();
     
-    if (createError) {
-      console.error('[WalletDB] Error creating user:', createError);
-      
-      // If the admin client insert fails, try createUserWithSql as fallback
-      const userId = await createUserWithSql(phoneNumber);
-      if (userId) {
-        return userId;
-      }
-      
-      throw new Error(`Failed to create user: ${createError.message}`);
+    if (!verifyUser) {
+      console.error(`[WalletDB] User verification failed after creation for ID: ${userId}`);
+      throw new Error('User creation verification failed');
     }
     
-    if (!newUser) {
-      throw new Error('User creation returned no data');
-    }
-    
-    console.log(`[WalletDB] Created new user with ID: ${newUser.id}`);
-    return newUser.id;
+    console.log(`[WalletDB] Verified new user with ID: ${userId}`);
+    return userId;
   } catch (error) {
     console.error('[WalletDB] Error in getOrCreateUser:', error);
     throw error;
@@ -371,47 +427,76 @@ export async function storeWalletInDb(phoneNumber: string, address: string): Pro
     
     console.log(`[WalletDB] Storing wallet for user ${phoneNumber} with address ${address}`);
     
-    // Get or create user
+    // Get or create user - this is critical
     let userId;
     try {
       userId = await getOrCreateUser(phoneNumber);
+      if (!userId) {
+        console.error(`[WalletDB] Failed to get or create user for ${phoneNumber}`);
+        return false;
+      }
+      console.log(`[WalletDB] Got user ID ${userId} for phone number ${phoneNumber}`);
     } catch (userError) {
-      console.error('[WalletDB] Error storing wallet:', userError);
+      console.error(`[WalletDB] Error getting/creating user for wallet storage:`, userError);
       return false;
     }
     
-    // Check if wallet already exists - use admin client to bypass RLS
-    const { data: existingWallet, error: fetchError } = await supabaseAdmin
-      .from('wallets')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
-    
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error('[WalletDB] Error fetching wallet:', fetchError);
-      throw new Error(`Failed to fetch wallet: ${fetchError.message}`);
+    // Verify user exists in database
+    try {
+      const { data: userExists, error: userCheckError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single();
+      
+      if (userCheckError || !userExists) {
+        console.error(`[WalletDB] User ${userId} does not exist in database:`, userCheckError);
+        return false;
+      }
+      
+      console.log(`[WalletDB] Verified user ${userId} exists in database`);
+    } catch (verifyError) {
+      console.error(`[WalletDB] Error verifying user existence:`, verifyError);
+      return false;
     }
     
-    if (existingWallet) {
-      // Update existing wallet - use admin client to bypass RLS
-      console.log(`[WalletDB] Updating existing wallet for user ${phoneNumber}`);
-      const { error: updateError } = await supabaseAdmin
+    // Multiple approaches to store wallet
+    let walletStored = false;
+    
+    // Approach 1: Check if wallet already exists and update
+    try {
+      const { data: existingWallet, error: fetchError } = await supabaseAdmin
         .from('wallets')
-        .update({
-          address,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existingWallet.id);
+        .select('id')
+        .eq('user_id', userId)
+        .single();
       
-      if (updateError) {
-        console.error('[WalletDB] Error updating wallet:', updateError);
-        throw new Error(`Failed to update wallet: ${updateError.message}`);
+      if (!fetchError && existingWallet) {
+        // Update existing wallet
+        console.log(`[WalletDB] Updating existing wallet for user ${phoneNumber}`);
+        const { error: updateError } = await supabaseAdmin
+          .from('wallets')
+          .update({
+            address,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingWallet.id);
+        
+        if (!updateError) {
+          console.log(`[WalletDB] Successfully updated wallet for user ${phoneNumber}`);
+          walletStored = true;
+        } else {
+          console.error('[WalletDB] Error updating wallet:', updateError);
+        }
       }
-    } else {
-      // Create new wallet - use admin client to bypass RLS
-      console.log(`[WalletDB] Creating new wallet for user ${phoneNumber}`);
-      
+    } catch (checkError) {
+      console.warn('[WalletDB] Error checking existing wallet:', checkError);
+    }
+    
+    // Approach 2: Standard insert if no wallet exists or update failed
+    if (!walletStored) {
       try {
+        console.log(`[WalletDB] Creating new wallet for user ${phoneNumber} with standard insert`);
         const { error: insertError } = await supabaseAdmin
           .from('wallets')
           .insert([{
@@ -419,35 +504,63 @@ export async function storeWalletInDb(phoneNumber: string, address: string): Pro
             address
           }]);
         
-        if (insertError) {
-          console.error('[WalletDB] Error inserting wallet:', insertError);
-          
-          // Special handling for RLS policy violations
-          if (insertError.code === '42501' || insertError.message.includes('row-level security policy')) {
-            console.error('[WalletDB] RLS policy violation when inserting wallet. Attempting direct SQL approach...');
-            
-            // Try direct SQL insertion
-            const success = await createWalletWithSql(userId, address, '');
-            if (success) {
-              console.log(`[WalletDB] Successfully created wallet using direct SQL for user ${phoneNumber}`);
-              return true;
-            }
-            
-            // If direct SQL fails too
-            console.error('[WalletDB] CRITICAL: Both standard and direct SQL approaches failed. Please check Supabase RLS policies.');
-            return false;
-          }
-          
-          throw new Error(`Failed to insert wallet: ${insertError.message}`);
+        if (!insertError) {
+          console.log(`[WalletDB] Successfully created wallet for user ${phoneNumber} with standard insert`);
+          walletStored = true;
+        } else {
+          console.warn('[WalletDB] Standard wallet insert failed:', insertError);
         }
       } catch (insertError) {
-        console.error('[WalletDB] Exception during wallet insertion:', insertError);
-        return false;
+        console.warn('[WalletDB] Exception during standard wallet insert:', insertError);
       }
     }
     
-    console.log(`[WalletDB] Successfully stored wallet for user ${phoneNumber} in database`);
+    // Approach 3: Try SQL function if available
+    if (!walletStored) {
+      try {
+        console.log('[WalletDB] Trying to create wallet with SQL function...');
+        const { data: funcResult, error: funcError } = await supabaseAdmin.rpc(
+          'create_user_with_wallet',
+          { 
+            p_phone: phoneNumber,
+            p_wallet_address: address,
+            p_private_key_encrypted: '' // Empty for now
+          }
+        );
+        
+        if (!funcError) {
+          console.log(`[WalletDB] Successfully created wallet with function for user ${phoneNumber}`);
+          walletStored = true;
+        } else {
+          console.warn('[WalletDB] Function wallet creation failed:', funcError);
+        }
+      } catch (funcError) {
+        console.warn('[WalletDB] Exception during function wallet creation:', funcError);
+      }
+    }
     
+    // Approach 4: Direct SQL as last resort
+    if (!walletStored) {
+      try {
+        console.log('[WalletDB] Trying direct SQL wallet creation...');
+        const success = await createWalletWithSql(userId, address, '');
+        if (success) {
+          console.log(`[WalletDB] Successfully created wallet with direct SQL for user ${phoneNumber}`);
+          walletStored = true;
+        } else {
+          console.error('[WalletDB] Direct SQL wallet creation failed');
+        }
+      } catch (sqlError) {
+        console.error('[WalletDB] Exception during SQL wallet creation:', sqlError);
+      }
+    }
+    
+    if (!walletStored) {
+      console.error(`[WalletDB] All wallet storage approaches failed for user ${phoneNumber}`);
+      return false;
+    }
+    
+    console.log(`[WalletDB] Successfully stored wallet for user ${phoneNumber} in database`);
     return true;
   } catch (error) {
     console.error('[WalletDB] Error storing wallet:', error);
