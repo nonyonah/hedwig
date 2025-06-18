@@ -233,122 +233,143 @@ function decryptPrivateKey(encryptedKey: string): string {
 }
 
 /**
- * Get or create a user in the database
+ * Gets or creates a user in the database
  * @param phoneNumber The user's phone number
- * @returns The user ID
+ * @returns The user's ID
  */
 export async function getOrCreateUser(phoneNumber: string): Promise<string> {
   try {
     if (!phoneNumber) {
-      console.error('[WalletDB] Error in getOrCreateUser: phoneNumber parameter is undefined or empty');
+      console.error('[WalletDB] getOrCreateUser: Phone number is missing');
       throw new Error('Phone number is required');
     }
-
-    console.log(`[WalletDB] Getting or creating user for phone number: ${phoneNumber}`);
     
-    // First check if user exists - use admin client to bypass RLS
-    const { data: existingUser, error: fetchError } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('phone_number', phoneNumber)
-      .single();
+    console.log(`[WalletDB] Getting or creating user for phone number ${phoneNumber}`);
     
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-      console.error('[WalletDB] Error fetching user:', fetchError);
-      console.log('[WalletDB] Will attempt to create user since fetch failed');
-      // Continue to user creation below
-    }
+    // Try multiple approaches to ensure robustness
     
-    // If user exists, return their ID
-    if (existingUser) {
-      console.log(`[WalletDB] Found existing user with ID: ${existingUser.id}`);
-      return existingUser.id;
-    }
-    
-    // Create new user - use admin client to bypass RLS
-    console.log(`[WalletDB] Creating new user for phone number: ${phoneNumber}`);
-    
-    // Try multiple approaches to ensure user creation succeeds
-    let userId: string | null = null;
-    
-    // Approach 1: Standard insert
+    // Approach 1: Check if user exists with SELECT
     try {
-      const { data: newUser, error: createError } = await supabaseAdmin
+      console.log(`[WalletDB] Checking if user ${phoneNumber} exists`);
+      const { data: existingUser, error: selectError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('phone_number', phoneNumber)
+        .single();
+      
+      if (!selectError && existingUser) {
+        console.log(`[WalletDB] Found existing user with ID ${existingUser.id}`);
+        return existingUser.id;
+      } else if (selectError) {
+        console.warn(`[WalletDB] Error checking if user exists:`, selectError);
+      }
+    } catch (selectError) {
+      console.warn(`[WalletDB] Exception checking if user exists:`, selectError);
+    }
+    
+    // Approach 2: Try direct SQL insert
+    try {
+      console.log(`[WalletDB] Creating user with direct SQL for ${phoneNumber}`);
+      const createUserQuery = `
+        INSERT INTO public.users (phone_number, created_at, updated_at)
+        VALUES ($1, NOW(), NOW())
+        ON CONFLICT (phone_number) DO UPDATE
+        SET updated_at = NOW()
+        RETURNING id
+      `;
+      
+      const result = await executeSql<{id: string}[]>(createUserQuery, [phoneNumber]);
+      
+      if (result && result.length > 0) {
+        const userId: string = result[0].id;
+        console.log(`[WalletDB] Created/updated user with direct SQL, ID: ${userId}`);
+        return userId;
+      }
+    } catch (sqlError) {
+      console.warn(`[WalletDB] Error creating user with direct SQL:`, sqlError);
+    }
+    
+    // Approach 3: Use upsert
+    try {
+      console.log(`[WalletDB] Creating user with upsert for ${phoneNumber}`);
+      const { data: upsertResult, error: upsertError } = await supabaseAdmin
+        .from('users')
+        .upsert([{ phone_number: phoneNumber }], { onConflict: 'phone_number' })
+        .select('id')
+        .single();
+      
+      if (!upsertError && upsertResult) {
+        const userId: string = upsertResult.id;
+        console.log(`[WalletDB] Created/updated user with upsert, ID: ${userId}`);
+        return userId;
+      } else if (upsertError) {
+        console.warn(`[WalletDB] Error upserting user:`, upsertError);
+      }
+    } catch (upsertError) {
+      console.warn(`[WalletDB] Exception during user upsert:`, upsertError);
+    }
+    
+    // Approach 4: Try insert and ignore duplicate error
+    try {
+      console.log(`[WalletDB] Trying simple insert for ${phoneNumber}`);
+      const { data: insertResult, error: insertError } = await supabaseAdmin
         .from('users')
         .insert([{ phone_number: phoneNumber }])
         .select('id')
         .single();
       
-      if (!createError && newUser) {
-        console.log(`[WalletDB] Created new user with standard insert, ID: ${newUser.id}`);
-        userId = newUser.id;
-      } else {
-        console.warn('[WalletDB] Standard insert failed:', createError);
+      if (!insertError && insertResult) {
+        const userId: string = insertResult.id;
+        console.log(`[WalletDB] Created user with simple insert, ID: ${userId}`);
+        return userId;
+      } else if (insertError && insertError.code === '23505') {
+        // Duplicate key error - user already exists
+        console.log(`[WalletDB] User already exists, trying to get ID again`);
+        
+        // Try to get the ID again
+        const { data: existingUser, error: getError } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('phone_number', phoneNumber)
+          .single();
+        
+        if (!getError && existingUser) {
+          const userId: string = existingUser.id;
+          console.log(`[WalletDB] Got ID for existing user: ${userId}`);
+          return userId;
+        } else if (getError) {
+          console.warn(`[WalletDB] Error getting existing user:`, getError);
+        }
+      } else if (insertError) {
+        console.warn(`[WalletDB] Error inserting user:`, insertError);
       }
     } catch (insertError) {
-      console.warn('[WalletDB] Exception during standard user insert:', insertError);
+      console.warn(`[WalletDB] Exception during user insert:`, insertError);
     }
     
-    // Approach 2: SQL function if available
-    if (!userId) {
-      try {
-        console.log('[WalletDB] Trying create_user_with_wallet function...');
-        const { data: funcResult, error: funcError } = await supabaseAdmin.rpc(
-          'create_user_with_wallet',
-          { 
-            p_phone: phoneNumber,
-            p_wallet_address: '', // Empty for now, we'll update later
-            p_private_key_encrypted: '' // Empty for now, we'll update later
-          }
-        );
-        
-        if (!funcError && funcResult && funcResult.user_id) {
-          console.log(`[WalletDB] Created user with function, ID: ${funcResult.user_id}`);
-          userId = funcResult.user_id;
-        } else {
-          console.warn('[WalletDB] Function call failed:', funcError);
-        }
-      } catch (funcError) {
-        console.warn('[WalletDB] Exception during function call:', funcError);
+    // Approach 5: Try RPC function if available
+    try {
+      console.log(`[WalletDB] Trying RPC function for ${phoneNumber}`);
+      const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc(
+        'get_or_create_user',
+        { p_phone: phoneNumber }
+      );
+      
+      if (!rpcError && rpcResult) {
+        const userId: string = rpcResult as string;
+        console.log(`[WalletDB] Got/created user with RPC function, ID: ${userId}`);
+        return userId;
+      } else if (rpcError) {
+        console.warn(`[WalletDB] Error with RPC function:`, rpcError);
       }
+    } catch (rpcError) {
+      console.warn(`[WalletDB] Exception during RPC function call:`, rpcError);
     }
     
-    // Approach 3: Direct SQL as last resort
-    if (!userId) {
-      try {
-        console.log('[WalletDB] Trying direct SQL user creation...');
-        userId = await createUserWithSql(phoneNumber);
-        if (userId) {
-          console.log(`[WalletDB] Created user with direct SQL, ID: ${userId}`);
-        } else {
-          console.error('[WalletDB] Direct SQL user creation returned no ID');
-        }
-      } catch (sqlError) {
-        console.error('[WalletDB] Exception during SQL user creation:', sqlError);
-      }
-    }
-    
-    // Verify user was created
-    if (!userId) {
-      throw new Error('Failed to create user after multiple attempts');
-    }
-    
-    // Double-check the user exists after creation
-    const { data: verifyUser } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single();
-    
-    if (!verifyUser) {
-      console.error(`[WalletDB] User verification failed after creation for ID: ${userId}`);
-      throw new Error('User creation verification failed');
-    }
-    
-    console.log(`[WalletDB] Verified new user with ID: ${userId}`);
-    return userId;
+    console.error(`[WalletDB] All approaches to get/create user failed for ${phoneNumber}`);
+    throw new Error(`Failed to get or create user for ${phoneNumber}`);
   } catch (error) {
-    console.error('[WalletDB] Error in getOrCreateUser:', error);
+    console.error(`[WalletDB] Error in getOrCreateUser:`, error);
     throw error;
   }
 }
@@ -427,17 +448,46 @@ export async function storeWalletInDb(phoneNumber: string, address: string): Pro
     
     console.log(`[WalletDB] Storing wallet for user ${phoneNumber} with address ${address}`);
     
-    // Get or create user - this is critical
+    // Create the user directly with SQL to ensure it exists
+    console.log(`[WalletDB] Creating user directly with SQL for ${phoneNumber}`);
+    try {
+      // Insert user directly with SQL if they don't exist
+      const createUserQuery = `
+        INSERT INTO public.users (phone_number, created_at, updated_at)
+        VALUES ($1, NOW(), NOW())
+        ON CONFLICT (phone_number) DO NOTHING
+        RETURNING id
+      `;
+      
+      const result = await executeSql<{id: string}[]>(createUserQuery, [phoneNumber]);
+      console.log(`[WalletDB] Direct SQL user creation result:`, result);
+      
+      // If that fails, try the standard approach
+      if (!result || result.length === 0) {
+        console.log(`[WalletDB] Direct SQL user creation returned no data, trying standard insert`);
+        
+        const { data, error } = await supabaseAdmin
+          .from('users')
+          .insert([{ phone_number: phoneNumber }])
+          .select('id');
+          
+        if (error && error.code !== '23505') { // 23505 is duplicate key error, which is fine
+          console.error('[WalletDB] Error inserting user with standard approach:', error);
+        } else if (data && data.length > 0) {
+          console.log(`[WalletDB] Created user with standard insert, ID: ${data[0].id}`);
+        }
+      }
+    } catch (userError) {
+      console.error('[WalletDB] Error creating user directly:', userError);
+      // Continue with wallet creation anyway
+    }
+    
+    // Get or create user
     let userId;
     try {
       userId = await getOrCreateUser(phoneNumber);
-      if (!userId) {
-        console.error(`[WalletDB] Failed to get or create user for ${phoneNumber}`);
-        return false;
-      }
-      console.log(`[WalletDB] Got user ID ${userId} for phone number ${phoneNumber}`);
     } catch (userError) {
-      console.error(`[WalletDB] Error getting/creating user for wallet storage:`, userError);
+      console.error('[WalletDB] Error storing wallet:', userError);
       return false;
     }
     

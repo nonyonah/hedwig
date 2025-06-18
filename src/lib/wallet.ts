@@ -267,60 +267,90 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
  */
 export async function storeWalletInDb(userId: string, address: string): Promise<boolean> {
   try {
-    // First ensure the user exists in the database
+    // First, ensure the user exists and get their UUID
+    let userUuid: string | null = null;
+    
     try {
-      console.log(`[storeWalletInDb] Ensuring user ${userId} exists in database`);
-      const { getOrCreateUser } = await import('./walletDb');
-      await getOrCreateUser(userId);
-      console.log(`[storeWalletInDb] User ${userId} exists or was created in database`);
+      // Try to get the user's UUID from the database
+      const { data, error } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone_number', userId)
+        .single();
+      
+      if (error) {
+        console.error(`[Wallet] Error getting user UUID for ${userId}:`, error);
+        
+        // Try to create the user
+        const { data: newUser, error: insertError } = await supabase
+          .from('users')
+          .insert([{ phone_number: userId }])
+          .select('id')
+          .single();
+        
+        if (insertError) {
+          console.error(`[Wallet] Error creating user for ${userId}:`, insertError);
+        } else if (newUser) {
+          console.log(`[Wallet] Created user for ${userId} with UUID ${newUser.id}`);
+          userUuid = newUser.id;
+        }
+      } else if (data) {
+        console.log(`[Wallet] Found user for ${userId} with UUID ${data.id}`);
+        userUuid = data.id;
+      }
     } catch (userError) {
-      console.error(`[storeWalletInDb] Error ensuring user exists:`, userError);
-      return false;
+      console.error(`[Wallet] Exception getting/creating user for ${userId}:`, userError);
     }
     
-    // Now store the wallet
+    // If we couldn't get a UUID, try using the walletDb functions
+    if (!userUuid) {
+      console.log(`[Wallet] Couldn't get UUID for ${userId}, using walletDb functions`);
+      try {
+        const { storeWalletInDb: robustStoreWallet } = await import('./walletDb');
+        return await robustStoreWallet(userId, address);
+      } catch (fallbackError) {
+        console.error(`[Wallet] Error using walletDb functions:`, fallbackError);
+        return false;
+      }
+    }
+    
+    // Now store the wallet using the UUID
+    console.log(`[Wallet] Storing wallet for user ${userId} (UUID: ${userUuid}) with address ${address}`);
     const { error } = await supabase
       .from('wallets')
       .insert({
-        user_id: userId,
+        user_id: userUuid,
         address: address,
         created_at: new Date().toISOString(),
       });
     
     if (error) {
-      console.error(`Error storing wallet for user ${userId}:`, error);
+      console.error(`[Wallet] Error storing wallet for user ${userId}:`, error);
       
-      // If there's a foreign key violation, it means the user doesn't exist
-      if (error.code === '23503' || error.message.includes('foreign key constraint')) {
-        console.error(`[storeWalletInDb] Foreign key violation - user ${userId} doesn't exist`);
-        
-        // Try using the walletDb function which has more robust user creation
-        try {
-          const { storeWalletInDb: robustStoreWallet } = await import('./walletDb');
-          const result = await robustStoreWallet(userId, address);
-          return result;
-        } catch (fallbackError) {
-          console.error(`[storeWalletInDb] Fallback wallet storage failed:`, fallbackError);
-          return false;
-        }
+      // Try using the walletDb functions as a fallback
+      try {
+        console.log(`[Wallet] Trying walletDb functions as fallback`);
+        const { storeWalletInDb: robustStoreWallet } = await import('./walletDb');
+        return await robustStoreWallet(userId, address);
+      } catch (fallbackError) {
+        console.error(`[Wallet] Error using walletDb functions:`, fallbackError);
+        return false;
       }
-      
-      return false;
     }
     
-    console.log(`Wallet stored in DB for user ${userId} with address ${address}`);
+    console.log(`[Wallet] Wallet stored in DB for user ${userId} with address ${address}`);
     return true;
   } catch (error) {
-    console.error(`Exception storing wallet in DB for user ${userId}:`, error);
+    console.error(`[Wallet] Exception storing wallet in DB for user ${userId}:`, error);
     
     // Try using the walletDb function as a fallback
     try {
-      console.log(`[storeWalletInDb] Attempting fallback wallet storage for user ${userId}`);
+      console.log(`[Wallet] Attempting fallback wallet storage for user ${userId}`);
       const { storeWalletInDb: robustStoreWallet } = await import('./walletDb');
       const result = await robustStoreWallet(userId, address);
       return result;
     } catch (fallbackError) {
-      console.error(`[storeWalletInDb] Fallback wallet storage failed:`, fallbackError);
+      console.error(`[Wallet] Fallback wallet storage failed:`, fallbackError);
       return false;
     }
   }
