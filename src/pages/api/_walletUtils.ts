@@ -8,15 +8,9 @@ import { loadServerEnvironment } from '@/lib/serverEnv';
 loadServerEnvironment();
 
 // Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase URL or key in _walletUtils.ts');
-}
-
-// Create Supabase client
-export const supabase = createClient<Database>(supabaseUrl!, supabaseKey!);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
 
 /**
  * Checks if a user has a wallet.
