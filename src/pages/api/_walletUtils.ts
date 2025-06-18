@@ -30,6 +30,11 @@ const walletCreationAttempts = new Map<string, number>();
 export async function shouldAllowWalletCreation(userId: string): Promise<boolean> {
   console.log(`[WalletUtils] Checking if user ${userId} is allowed to create a wallet`);
   
+  // Temporarily disable rate limiting to fix wallet creation issues
+  console.log(`[WalletUtils] Rate limiting temporarily disabled for wallet creation`);
+  return true;
+  
+  /* Rate limiting code commented out for now
   try {
     // First check database for last attempt
     const { data, error } = await supabase
@@ -74,6 +79,7 @@ export async function shouldAllowWalletCreation(userId: string): Promise<boolean
     // Fall back to in-memory if database check fails
     return checkInMemoryRateLimit(userId);
   }
+  */
 }
 
 /**
@@ -108,36 +114,62 @@ export async function recordWalletCreationAttempt(userId: string): Promise<void>
   console.log(`[WalletUtils] Recording wallet creation attempt for user ${userId}`);
   
   try {
-    // Record in database
-    const { error } = await supabase
+    // First check if the record already exists
+    const { data: existingRecord, error: checkError } = await supabase
       .from('wallet_creation_attempts')
-      .upsert([
-        { 
-          user_id: userId, 
-          last_attempt_at: new Date().toISOString(),
-          attempt_count: 1 // We'll increment this in a future version if needed
-        }
-      ], { 
-        onConflict: 'user_id',
-        ignoreDuplicates: false
-      });
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
     
-    if (error) {
+    if (checkError) {
       // Handle case where table doesn't exist
-      if (error.code === '42P01') { // relation does not exist
+      if (checkError.code === '42P01') { // relation does not exist
         console.warn(`[WalletUtils] Table wallet_creation_attempts does not exist. Falling back to in-memory tracking.`);
         walletCreationAttempts.set(userId, Date.now());
         return;
       }
       
-      console.error(`[WalletUtils] Error recording wallet creation attempt:`, error);
+      console.error(`[WalletUtils] Error checking existing wallet creation attempt:`, checkError);
       // Fall back to in-memory
       walletCreationAttempts.set(userId, Date.now());
-    } else {
-      console.log(`[WalletUtils] Successfully recorded wallet creation attempt for ${userId} in database`);
-      // Also update in-memory for double protection
-      walletCreationAttempts.set(userId, Date.now());
+      return;
     }
+    
+    // If record exists, update it; otherwise insert a new one
+    if (existingRecord) {
+      // Update existing record
+      const { error: updateError } = await supabase
+        .from('wallet_creation_attempts')
+        .update({ 
+          last_attempt_at: new Date().toISOString(),
+          attempt_count: 1 // Reset to 1 for now
+        })
+        .eq('id', existingRecord.id);
+      
+      if (updateError) {
+        console.error(`[WalletUtils] Error updating wallet creation attempt:`, updateError);
+      } else {
+        console.log(`[WalletUtils] Successfully updated wallet creation attempt for ${userId}`);
+      }
+    } else {
+      // Insert new record
+      const { error: insertError } = await supabase
+        .from('wallet_creation_attempts')
+        .insert([{ 
+          user_id: userId, 
+          last_attempt_at: new Date().toISOString(),
+          attempt_count: 1
+        }]);
+      
+      if (insertError) {
+        console.error(`[WalletUtils] Error inserting wallet creation attempt:`, insertError);
+      } else {
+        console.log(`[WalletUtils] Successfully inserted wallet creation attempt for ${userId}`);
+      }
+    }
+    
+    // Always update in-memory for double protection
+    walletCreationAttempts.set(userId, Date.now());
   } catch (error) {
     console.error(`[WalletUtils] Exception recording wallet creation attempt:`, error);
     // Fall back to in-memory

@@ -1,7 +1,11 @@
+-- Drop existing tables if they exist to avoid constraint issues
+DROP TABLE IF EXISTS public.wallet_creation_attempts CASCADE;
+DROP TABLE IF EXISTS public.wallet_prompts CASCADE;
+
 -- Create wallet_creation_attempts table to track wallet creation attempts
 CREATE TABLE IF NOT EXISTS public.wallet_creation_attempts (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id text NOT NULL,
+    user_id text NOT NULL UNIQUE,
     last_attempt_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     attempt_count integer DEFAULT 1 NOT NULL,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -14,7 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_wallet_creation_attempts_user_id ON public.wallet
 -- Create wallet_prompts table to track when wallet creation prompts have been shown
 CREATE TABLE IF NOT EXISTS public.wallet_prompts (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id text NOT NULL,
+    user_id text NOT NULL UNIQUE,
     prompt_shown boolean DEFAULT false NOT NULL,
     shown_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,

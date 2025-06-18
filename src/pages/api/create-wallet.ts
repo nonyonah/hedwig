@@ -97,8 +97,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Check if we should allow wallet creation based on cooldown
     const canCreate = await shouldAllowWalletCreation(from);
     if (!canCreate) {
-      console.log(`[CREATE-WALLET] Wallet creation currently rate-limited for user ${from}`);
-      
+      console.log(`[CREATE-WALLET] Wallet creation currently rate-limited for user ${from}, but proceeding anyway`);
+      // Temporarily bypass rate limiting - remove this comment when rate limiting is fixed
+      // Try to proceed with wallet creation despite rate limit
+      /*
       try {
         await sendWhatsAppMessage(from, 'Please wait a few minutes before trying to create another wallet.');
         return res.status(429).json({
@@ -112,10 +114,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           message: 'Wallet creation rate limited',
         });
       }
+      */
     }
 
     // Record the creation attempt
-    await recordWalletCreationAttempt(from);
+    try {
+      await recordWalletCreationAttempt(from);
+    } catch (recordError) {
+      console.error('[CREATE-WALLET] Error recording wallet creation attempt:', recordError);
+      // Continue with wallet creation even if recording fails
+    }
 
     // Create a new wallet
     console.log(`[CREATE-WALLET] Creating new wallet for user ${from}`);
