@@ -183,6 +183,8 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     // Dynamically import necessary modules
     const { getAgentKit, registerUserWallet, getUserWalletProvider } = await import('@/lib/agentkit');
     const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
+    const { walletTemplates } = await import('@/lib/whatsappTemplates');
+    const { sendWhatsAppReplyButtons } = await import('@/lib/whatsappUtils');
 
     console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
 
@@ -238,34 +240,28 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     
     // If this is a blockchain query but user has no wallet, prompt them to create one
     if (isBlockchainQuery && !hasWallet) {
-      const { walletTemplates } = await import('@/lib/whatsappTemplates');
       // Check if this message is already a wallet command to avoid circular prompting
       const isWalletCommand = message.trim().toLowerCase().startsWith('/wallet');
       
       if (!isWalletCommand) {
-        console.log(`[processWithCDP] Blockchain query detected but user ${userId} has no wallet. Sending wallet creation template.`);
+        console.log(`[processWithCDP] Blockchain query detected but user ${userId} has no wallet. Showing wallet creation button.`);
         
-        // Check if wallet prompt has been shown before
-        const { walletPromptAlreadyShown, markWalletPromptShown } = await import('@/pages/api/_walletUtils');
-        const promptShown = await walletPromptAlreadyShown(userId);
-        
-        if (!promptShown) {
-          // Mark that we've shown the wallet prompt to this user
-          await markWalletPromptShown(userId);
+        // Always show the wallet creation template for blockchain queries when no wallet exists
+        try {
+          // Create the wallet creation button template
+          const noWalletTemplate = walletTemplates.noWallet();
           
-          // Send wallet creation template with button
-          try {
-            const { sendWhatsAppReplyButtons } = await import('@/lib/whatsappUtils');
-            const noWalletTemplate = walletTemplates.noWallet();
-            await sendWhatsAppReplyButtons(userId, noWalletTemplate.text, noWalletTemplate.buttons);
-            console.log(`[processWithCDP] Sent wallet creation template to user ${userId}`);
-          } catch (templateError) {
-            console.error('[processWithCDP] Error sending wallet template:', templateError);
-          }
+          // Send the template with the Create Wallet button
+          await sendWhatsAppReplyButtons(userId, noWalletTemplate.text, noWalletTemplate.buttons);
+          console.log(`[processWithCDP] Sent wallet creation button template to user ${userId}`);
+          
+          // Return a message that will be sent after the template
+          return "You need a wallet to perform blockchain operations. Click the 'Create Wallet' button to get started.";
+        } catch (templateError) {
+          console.error('[processWithCDP] Error sending wallet template:', templateError);
+          // Fallback to text-only response if template fails
+          return "You need a wallet to perform blockchain operations. Send '/wallet create' to create one.";
         }
-        
-        // Return a message that will be sent after the template
-        return "You need a wallet to perform blockchain operations. I've sent you a button to create one.";
       } else {
         console.log(`[processWithCDP] Allowing wallet command to proceed: ${message}`);
       }
@@ -428,42 +424,50 @@ function extractAndProcessMessage(entry: WhatsAppWebhookEntry): ProcessedMessage
   let buttonId: string | undefined;
   let buttonText: string | undefined;
 
-  // Handle different message types
-  if (message.type === 'text' && message.text) {
-    text = message.text.body;
-  } else if (message.type === 'image' && message.image) {
-    // Ensure caption is always treated as a string
-    text = (typeof message.image.caption === 'string') ? message.image.caption : '';
-    mediaId = message.image.id;
-  } else if (message.type === 'button' && message.button) {
-    text = message.button.payload || '';
-    buttonId = message.button.payload;
-    buttonText = message.button.text;
-  } else if (message.type === 'interactive' && message.interactive) {
-    const interactive = message.interactive;
-    if (interactive.type === 'button_reply' && interactive.button_reply) {
-      text = interactive.button_reply.id || '';
-      buttonId = interactive.button_reply.id;
-      buttonText = interactive.button_reply.title;
-    } else if (interactive.type === 'list_reply' && interactive.list_reply) {
-      text = interactive.list_reply.id || '';
-      buttonId = interactive.list_reply.id;
-      buttonText = interactive.list_reply.title;
-    }
+  // Process different message types
+  switch (messageType) {
+    case 'text':
+      text = message.text?.body || '';
+      break;
+    case 'image':
+      mediaId = message.image?.id;
+      text = message.image?.caption || '';
+      break;
+    case 'button':
+      text = message.button?.text || '';
+      buttonId = message.button?.payload;
+      break;
+    case 'interactive':
+      if (message.interactive?.type === 'button_reply') {
+        buttonId = message.interactive.button_reply?.id;
+        buttonText = message.interactive.button_reply?.title;
+        text = buttonText || '';
+      } else if (message.interactive?.type === 'list_reply') {
+        buttonId = message.interactive.list_reply?.id;
+        buttonText = message.interactive.list_reply?.title;
+        text = buttonText || '';
+      }
+      break;
+    default:
+      text = '';
   }
 
-  // Return the processed message with guaranteed string text
+  // Special handling for wallet creation button
+  if (buttonId === 'create_wallet' || text.toLowerCase() === 'create wallet') {
+    console.log('Wallet creation button detected');
+    text = '/wallet create';
+  }
+
   return {
     from: message.from,
+    text,
     messageId: message.id,
     timestamp: message.timestamp,
-    text,
     type: messageType,
-    ...(mediaId && { mediaId }),
-    ...(buttonId && { buttonId }),
-    ...(buttonText && { buttonText })
+    mediaId,
+    buttonId,
+    buttonText
   };
-
 }
 
 // Default export handler function for Pages Router API
@@ -1277,8 +1281,23 @@ async function createWallet(userId: string): Promise<CommandResult> {
     console.log(`Creating wallet for user ${userId}`);
     
     // Import necessary modules
-    const { userHasWalletInDb, getWalletFromDb, getOrCreateWallet } = await import('@/lib/wallet');
+    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/wallet');
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
+    const { getOrCreateUser } = await import('@/lib/walletDb');
+    
+    // First ensure the user exists in the database
+    try {
+      console.log(`[createWallet] Ensuring user ${userId} exists in database`);
+      await getOrCreateUser(userId);
+      console.log(`[createWallet] User ${userId} exists or was created in database`);
+    } catch (userError) {
+      console.error(`[createWallet] Error ensuring user exists:`, userError);
+      return {
+        success: false,
+        message: 'Sorry, there was an error with your account. Please try again later.',
+        type: 'text'
+      };
+    }
     
     // Check if the user already has a wallet
     const hasWallet = await userHasWalletInDb(userId);
@@ -1288,7 +1307,7 @@ async function createWallet(userId: string): Promise<CommandResult> {
       return {
         success: true,
         message: walletTemplates.walletExists(existingWallet?.address || 'Unknown address'),
-        type: 'text'
+        type: 'buttons'
       };
     }
     
@@ -1296,6 +1315,7 @@ async function createWallet(userId: string): Promise<CommandResult> {
     
     try {
       // Create new wallet
+      const { getOrCreateWallet } = await import('@/lib/wallet');
       const walletResult = await getOrCreateWallet(userId);
       const provider = walletResult.provider;
       const address = await provider.getAddress();
@@ -1303,7 +1323,7 @@ async function createWallet(userId: string): Promise<CommandResult> {
       return {
         success: true,
         message: walletTemplates.walletCreated(address),
-        type: 'text'
+        type: 'buttons'
       };
     } catch (walletError) {
       console.error('Error creating wallet:', walletError);

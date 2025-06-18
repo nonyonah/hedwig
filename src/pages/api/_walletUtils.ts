@@ -38,8 +38,17 @@ export async function shouldAllowWalletCreation(userId: string): Promise<boolean
       .eq('user_id', userId)
       .single();
     
-    if (error && error.code !== 'PGRST116') {
-      console.error(`[WalletUtils] Error checking wallet creation attempts:`, error);
+    if (error) {
+      // Handle case where table doesn't exist
+      if (error.code === '42P01') { // relation does not exist
+        console.warn(`[WalletUtils] Table wallet_creation_attempts does not exist. Allowing wallet creation.`);
+        return true;
+      }
+      
+      if (error.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is expected for new users
+        console.error(`[WalletUtils] Error checking wallet creation attempts:`, error);
+      }
+      
       // Fall back to in-memory if database check fails
       return checkInMemoryRateLimit(userId);
     }
@@ -114,6 +123,13 @@ export async function recordWalletCreationAttempt(userId: string): Promise<void>
       });
     
     if (error) {
+      // Handle case where table doesn't exist
+      if (error.code === '42P01') { // relation does not exist
+        console.warn(`[WalletUtils] Table wallet_creation_attempts does not exist. Falling back to in-memory tracking.`);
+        walletCreationAttempts.set(userId, Date.now());
+        return;
+      }
+      
       console.error(`[WalletUtils] Error recording wallet creation attempt:`, error);
       // Fall back to in-memory
       walletCreationAttempts.set(userId, Date.now());
@@ -168,6 +184,13 @@ export async function markWalletPromptShown(userId: string): Promise<void> {
       ]);
     
     if (error) {
+      // Handle case where table doesn't exist
+      if (error.code === '42P01') { // relation does not exist
+        console.warn(`[WalletUtils] Table wallet_prompts does not exist. Falling back to in-memory tracking.`);
+        walletPromptsShown.add(userId);
+        return;
+      }
+      
       console.error(`[WalletUtils] Error marking prompt as shown:`, error);
       // Add to in-memory as fallback
       walletPromptsShown.add(userId);
@@ -208,8 +231,16 @@ export async function walletPromptAlreadyShown(userId: string): Promise<boolean>
       .eq('user_id', userId)
       .single();
     
-    if (error && error.code !== 'PGRST116') {
-      console.error(`[WalletUtils] Error checking if prompt shown:`, error);
+    if (error) {
+      // Handle case where table doesn't exist
+      if (error.code === '42P01') { // relation does not exist
+        console.warn(`[WalletUtils] Table wallet_prompts does not exist. Assuming prompt not shown.`);
+        return false;
+      }
+      
+      if (error.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is expected for new users
+        console.error(`[WalletUtils] Error checking if prompt shown:`, error);
+      }
       return shownInMemory;
     }
     

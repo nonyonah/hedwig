@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS public.wallet_prompts (
 CREATE INDEX IF NOT EXISTS idx_wallet_prompts_user_id ON public.wallet_prompts(user_id);
 
 -- Add trigger for updated_at timestamps
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS trigger AS $$
+BEGIN
+    new.updated_at = timezone('utc'::text, now());
+    RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 CREATE TRIGGER handle_wallet_creation_attempts_updated_at
     BEFORE UPDATE ON public.wallet_creation_attempts
     FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();
