@@ -48,22 +48,46 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
       throw new Error('Missing required CDP credentials for wallet creation');
     }
     
+    // Generate a proper idempotency key
+    const idempotencyKey = generateWalletIdempotencyKey(userId);
+    console.log(`Generated idempotency key for user ${userId}: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
+    
     // Configuration for CDP wallet provider
     const config = {
       apiKeyId,
       apiKeySecret,
       walletSecret,
       networkId,
-      idempotencyKey: generateWalletIdempotencyKey(userId),
+      idempotencyKey,
     };
     
     console.log('Creating CDP wallet provider with config:', {
       networkId: config.networkId,
-      idempotencyKey: config.idempotencyKey,
+      idempotencyKeyLength: config.idempotencyKey.length,
+      apiKeyIdPrefix: config.apiKeyId.substring(0, 6) + '...',
     });
     
-    // Create and initialize wallet provider
-    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+    // Create and initialize wallet provider with detailed error handling
+    let provider;
+    try {
+      provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+    } catch (error) {
+      console.error('CDP wallet provider initialization error:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('idempotency')) {
+          // If there's an idempotency key issue, try with a new key
+          console.log('Retrying with a new idempotency key due to idempotency error');
+          config.idempotencyKey = generateWalletIdempotencyKey(userId + Date.now().toString());
+          console.log(`New idempotency key: ${config.idempotencyKey.substring(0, 8)}...${config.idempotencyKey.substring(config.idempotencyKey.length - 8)} (length: ${config.idempotencyKey.length})`);
+          provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+        } else {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
     
     // Verify the wallet is working
     const address = await provider.getAddress();

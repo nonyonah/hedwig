@@ -172,9 +172,30 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
     console.log('Initializing default CDP wallet provider with config:', {
       networkId: config.networkId,
       idempotencyKeyLength: config.idempotencyKey.length,
+      apiKeyIdPrefix: apiKeyId.substring(0, 6) + '...',
     });
     
-    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+    // Create and initialize wallet provider with detailed error handling
+    let provider;
+    try {
+      provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+    } catch (error) {
+      console.error('CDP default wallet provider initialization error:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('idempotency')) {
+          // If there's an idempotency key issue, try with a new key
+          console.log('Retrying with a new idempotency key due to idempotency error');
+          config.idempotencyKey = generateIdempotencyKey();
+          console.log(`New idempotency key: ${config.idempotencyKey.substring(0, 8)}...${config.idempotencyKey.substring(config.idempotencyKey.length - 8)} (length: ${config.idempotencyKey.length})`);
+          provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+        } else {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
     
     // Verify the wallet is working
     const address = await provider.getAddress();

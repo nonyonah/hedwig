@@ -538,6 +538,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
       buttonId === 'create_wallet' || 
       (type === 'interactive' && buttonId === 'create_wallet') ||
       (messageText === 'create_wallet') ||
+      (messageText.toLowerCase().includes('create wallet')) ||
       (req.body.interactive && req.body.interactive.button_reply && req.body.interactive.button_reply.id === 'create_wallet');
     
     console.log(`Message classification:`, {
