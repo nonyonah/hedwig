@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/lib/database';
-import { getCachedWalletCredentials } from '@/lib/wallet';
 import { userHasWalletInDb } from '@/lib/walletDb';
 import { loadServerEnvironment } from '@/lib/serverEnv';
 
@@ -18,6 +17,45 @@ if (!supabaseUrl || !supabaseKey) {
 // Create Supabase client
 export const supabase = createClient<Database>(supabaseUrl!, supabaseKey!);
 
+// Add wallet creation throttling functions
+const WALLET_CREATION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown
+const walletCreationAttempts = new Map<string, number>();
+
+/**
+ * Check if a user should be allowed to create a wallet based on recent attempts
+ * @param userId The user ID to check
+ * @returns True if wallet creation should be allowed, false otherwise
+ */
+export async function shouldAllowWalletCreation(userId: string): Promise<boolean> {
+  console.log(`[WalletUtils] Checking if user ${userId} is allowed to create a wallet`);
+  
+  const lastAttempt = walletCreationAttempts.get(userId);
+  if (!lastAttempt) {
+    console.log(`[WalletUtils] No previous wallet creation attempts for user ${userId}`);
+    return true;
+  }
+  
+  const now = Date.now();
+  const timeSinceLastAttempt = now - lastAttempt;
+  
+  if (timeSinceLastAttempt < WALLET_CREATION_COOLDOWN_MS) {
+    console.log(`[WalletUtils] User ${userId} attempted to create a wallet too soon (${Math.round(timeSinceLastAttempt / 1000)}s since last attempt, cooldown is ${WALLET_CREATION_COOLDOWN_MS / 1000}s)`);
+    return false;
+  }
+  
+  console.log(`[WalletUtils] User ${userId} is allowed to create a wallet (${Math.round(timeSinceLastAttempt / 1000)}s since last attempt)`);
+  return true;
+}
+
+/**
+ * Record a wallet creation attempt for a user
+ * @param userId The user ID to record the attempt for
+ */
+export async function recordWalletCreationAttempt(userId: string): Promise<void> {
+  console.log(`[WalletUtils] Recording wallet creation attempt for user ${userId}`);
+  walletCreationAttempts.set(userId, Date.now());
+}
+
 /**
  * Checks if a user has a wallet.
  * Returns true if wallet exists, false otherwise.
@@ -26,14 +64,7 @@ export async function userHasWallet(userId: string): Promise<boolean> {
   console.log(`[WalletUtils] Checking if user ${userId} has a wallet`);
   
   try {
-    // First check the in-memory wallet cache which is our source of truth
-    const cachedWallet = getCachedWalletCredentials(userId);
-    if (cachedWallet) {
-      console.log(`[WalletUtils] Found wallet in cache for user ${userId}`);
-      return true;
-    }
-    
-    // If not in cache, check the database
+    // Check the database
     const hasWalletInDb = await userHasWalletInDb(userId);
     console.log(`[WalletUtils] Database wallet check for user ${userId}: ${hasWalletInDb ? 'Found' : 'Not found'}`);
     return hasWalletInDb;

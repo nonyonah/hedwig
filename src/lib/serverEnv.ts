@@ -111,31 +111,35 @@ export function getCdpEnvironment() {
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.NEXT_PUBLIC_CDP_API_KEY_ID;
   const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET;
   
-  // Check for environment wallet secret
-  let envWalletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET;
+  // Get wallet secret - this is now required for CDP V2 wallet provider
+  const walletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET;
   
-  // We're no longer using CDP wallet secret, so this is deprecated
-  console.log('[ENV DEBUG] CDP wallet secret is deprecated - using Privy wallet provider instead');
+  // Check if we have all required CDP credentials
+  if (!apiKeyId || !apiKeySecret || !walletSecret) {
+    console.error('[ENV ERROR] Missing required CDP credentials:',
+      !apiKeyId ? 'CDP_API_KEY_ID is missing' : '',
+      !apiKeySecret ? 'CDP_API_KEY_SECRET is missing' : '',
+      !walletSecret ? 'CDP_WALLET_SECRET is missing' : ''
+    );
+  } else {
+    console.log('[ENV] CDP credentials loaded successfully');
+  }
   
   const networkId = process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || "base-sepolia";
-  const chainId = 84532; // Base Sepolia testnet chain ID
-  const rpcUrl = process.env.RPC_URL || process.env.NEXT_PUBLIC_RPC_URL || "https://sepolia.base.org";
   
   // Log the CDP environment configuration (without exposing secrets)
   console.log('CDP environment loaded:', {
     apiKeyId: apiKeyId ? 'PRESENT' : 'MISSING',
     apiKeySecret: apiKeySecret ? 'PRESENT' : 'MISSING',
+    walletSecret: walletSecret ? 'PRESENT' : 'MISSING',
     networkId,
-    chainId,
-    rpcUrl
   });
   
   return {
     apiKeyId,
     apiKeySecret,
+    walletSecret,
     networkId,
-    chainId,
-    rpcUrl,
   };
 }
 

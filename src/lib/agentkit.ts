@@ -1,7 +1,7 @@
 import { 
   AgentKit, 
   Action, 
-  PrivyEvmWalletProvider,
+  CdpV2EvmWalletProvider,
   erc20ActionProvider,
   erc721ActionProvider,
   walletActionProvider,
@@ -9,7 +9,7 @@ import {
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 import { getRequiredEnvVar } from './envUtils';
-import { loadServerEnvironment, getPrivyEnvironment } from './serverEnv';
+import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
 import { randomUUID } from 'crypto';
 import fetch from 'node-fetch';
 
@@ -26,8 +26,7 @@ const userWallets: Map<string, WalletProvider> = new Map();
 
 // Base Sepolia testnet configuration
 const BASE_SEPOLIA_CONFIG = {
-  chainId: "84532", // Base Sepolia testnet chain ID (as string for Privy)
-  rpcUrl: "https://sepolia.base.org", // Base Sepolia RPC URL
+  networkId: "base-sepolia", // Base Sepolia testnet network ID for CDP
 };
 
 // Base Sepolia faucet URL
@@ -128,43 +127,41 @@ export async function registerUserWallet(userId: string, provider: any): Promise
 
 /**
  * Creates a default wallet provider that's only used for system operations
- * @returns A configured PrivyEvmWalletProvider instance
+ * @returns A configured CdpV2EvmWalletProvider instance
  */
 async function createDefaultWalletProvider(): Promise<WalletProvider> {
   try {
-    // Get environment variables for Privy configuration
-    const { appId, appSecret } = getPrivyEnvironment();
+    // Get required CDP environment variables
+    const { apiKeyId, apiKeySecret, walletSecret, networkId } = getCdpEnvironment();
     
-    if (!appId || !appSecret) {
-      throw new Error('Missing required Privy credentials (PRIVY_APP_ID or PRIVY_APP_SECRET)');
+    if (!apiKeyId || !apiKeySecret || !walletSecret) {
+      throw new Error('Missing required CDP credentials (CDP_API_KEY_ID, CDP_API_KEY_SECRET, or CDP_WALLET_SECRET)');
     }
     
-    console.log('Privy environment loaded for default wallet provider:', {
-      appId: appId ? appId.substring(0, Math.min(5, appId.length)) + '...' : 'MISSING',
-      appSecret: appSecret ? 'PRESENT' : 'MISSING',
+    console.log('CDP environment loaded for default wallet provider:', {
+      apiKeyId: apiKeyId ? apiKeyId.substring(0, Math.min(5, apiKeyId.length)) + '...' : 'MISSING',
+      apiKeySecret: apiKeySecret ? 'PRESENT' : 'MISSING',
+      walletSecret: walletSecret ? 'PRESENT' : 'MISSING',
     });
     
-    // Use a simple, fixed private key for the default wallet
-    const privateKey = '0x' + '1'.repeat(64);
-    
+    // Configuration for CDP wallet provider
     const config = {
-      appId,
-      appSecret,
-      privateKey,
-      chainId: BASE_SEPOLIA_CONFIG.chainId,
-      rpcUrl: BASE_SEPOLIA_CONFIG.rpcUrl
+      apiKeyId,
+      apiKeySecret,
+      walletSecret,
+      networkId,
+      idempotencyKey: 'default-system-wallet', // Fixed key for default system wallet
     };
     
-    console.log('Initializing default wallet provider with config:', {
-      chainId: config.chainId,
-      rpcUrl: config.rpcUrl,
+    console.log('Initializing default CDP wallet provider with config:', {
+      networkId: config.networkId,
     });
     
-    const provider = await PrivyEvmWalletProvider.configureWithWallet(config);
+    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
     
     // Verify the wallet is working
     const address = await provider.getAddress();
-    console.log(`Default wallet provider initialized with address: ${address}`);
+    console.log(`Default CDP wallet provider initialized with address: ${address}`);
     
     return provider;
   } catch (error) {
