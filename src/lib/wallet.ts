@@ -10,6 +10,49 @@ console.log('Changing wallet provider to PrivyEvmWalletProvider - no longer usin
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
+// Track when we last attempted to create a wallet for a user
+// This helps prevent duplicate wallet creation attempts
+const lastWalletCreationAttempt = new Map<string, number>();
+const WALLET_CREATION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Checks if we should allow a new wallet creation attempt
+ * Prevents rapid successive wallet creations for the same user
+ * @param userId The user ID
+ * @param forceBypass Whether to force bypass the cooldown check
+ * @returns True if a new wallet creation is allowed, false otherwise
+ */
+function shouldAllowWalletCreation(userId: string, forceBypass = false): boolean {
+  if (forceBypass) {
+    console.log(`[Wallet] Bypassing wallet creation cooldown for user ${userId} due to force flag`);
+    return true;
+  }
+  
+  const lastAttempt = lastWalletCreationAttempt.get(userId);
+  if (!lastAttempt) {
+    return true;
+  }
+  
+  const now = Date.now();
+  const timeSinceLastAttempt = now - lastAttempt;
+  
+  if (timeSinceLastAttempt < WALLET_CREATION_COOLDOWN_MS) {
+    console.log(`[Wallet] Blocking wallet creation for user ${userId} - last attempt was ${timeSinceLastAttempt/1000} seconds ago`);
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Records a wallet creation attempt
+ * @param userId The user ID
+ */
+function recordWalletCreationAttempt(userId: string): void {
+  lastWalletCreationAttempt.set(userId, Date.now());
+  console.log(`[Wallet] Recorded wallet creation attempt for user ${userId}`);
+}
+
 /**
  * Direct wallet provider creation for emergency fallback
  */
@@ -129,6 +172,13 @@ export async function getOrCreateWallet(
   try {
     console.log(`[Wallet DEBUG] Starting getOrCreateWallet for user ${userId} with address ${address || 'none'}, forceNew=${forceNew}`);
     
+    // Check if we're allowed to create a new wallet (prevents duplicate creation)
+    if (forceNew && !shouldAllowWalletCreation(userId, false)) {
+      console.log(`[Wallet] Blocking duplicate wallet creation for user ${userId} - using cached wallet instead`);
+      // Override forceNew to false to use existing wallet
+      forceNew = false;
+    }
+    
     // Try to get cached credentials
     let cached = getCachedWalletCredentials(userId);
     let privateKey: string | undefined;
@@ -146,6 +196,9 @@ export async function getOrCreateWallet(
       walletAddress = cached.address;
       console.log(`[Wallet] Using cached wallet for user ${userId}: ${walletAddress}`);
     } else if (forceNew) {
+      // Record this creation attempt to prevent duplicates
+      recordWalletCreationAttempt(userId);
+      
       // Only create a new wallet when explicitly requested with forceNew=true
       console.log(`[Wallet] Force creating new wallet for user ${userId} as requested`);
       

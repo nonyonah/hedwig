@@ -54,6 +54,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
     const { userHasWalletInDb, storeWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
 
+    // Use a locking mechanism to prevent concurrent wallet creations
+    // We'll check for existing wallet creation in progress and use timestamp
+    const IS_CREATING_WALLET_KEY = `creating_wallet_${from}`;
+    const CREATION_TIMEOUT_MS = 30000; // 30 seconds
+
     // Check if wallet already exists in cache or database
     const existingWallet = getCachedWalletCredentials(from);
     const hasWalletInDb = await userHasWalletInDb(from);
