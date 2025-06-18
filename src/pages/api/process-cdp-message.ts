@@ -209,7 +209,15 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     // If this is a blockchain query but user has no wallet, prompt them to create one
     if (isBlockchainQuery && !hasWallet) {
       const { walletTemplates } = await import('@/lib/whatsappTemplates');
-      return "You need a wallet to perform blockchain operations. Send '/wallet create' to create one.";
+      // Check if this message is already a wallet command to avoid circular prompting
+      const isWalletCommand = message.trim().toLowerCase().startsWith('/wallet');
+      
+      if (!isWalletCommand) {
+        console.log(`[processWithCDP] Blockchain query detected but user ${userId} has no wallet. Prompting to create one.`);
+        return "You need a wallet to perform blockchain operations. Send '/wallet create' to create one.";
+      } else {
+        console.log(`[processWithCDP] Allowing wallet command to proceed: ${message}`);
+      }
     }
 
     // Initialize AgentKit - if we have a wallet, use it; otherwise use default
@@ -244,6 +252,11 @@ async function processWithCDP(message: string, userId: string): Promise<string |
         enhancedMessage = `[BLOCKCHAIN QUERY WITH WALLET] ${message} [User has a wallet. Use blockchain tools to answer this]`;
       } else {
         enhancedMessage = `[BLOCKCHAIN QUERY WITHOUT WALLET] ${message} [User does NOT have a wallet yet. Provide educational information only]`;
+      }
+    } else {
+      // Even for non-blockchain queries, indicate wallet status to avoid confusion
+      if (hasWallet) {
+        enhancedMessage = `[User has a wallet] ${message}`;
       }
     }
 
@@ -483,17 +496,12 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     // --- Wallet gating logic: prompt for wallet creation if none exists ---
     const { userHasWallet, walletPromptAlreadyShown, markWalletPromptShown } = await import('./_walletUtils');
     const hasWallet = await userHasWallet(from);
-    const promptShown = await walletPromptAlreadyShown(from);
-    if (!hasWallet && !promptShown) {
-      // Show wallet creation prompt (one time)
-      await markWalletPromptShown(from);
-      const { walletTemplates } = await import('@/lib/whatsappTemplates');
-      const walletPrompt = walletTemplates.noWallet();
-      return handleResponse(from, walletPrompt, res);
-    }
-
-    // Check if it's a command (starts with /) or a button click for wallet creation
+    
+    console.log(`[process-cdp-message] Wallet check for ${from}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
+    
+    // Check if it's a command (starts with /) or a wallet-related command
     const isCommand = messageText.trim().startsWith('/');
+    const isWalletCommand = messageText.trim().startsWith('/wallet');
     
     // Enhanced button detection - check multiple possible locations
     const isWalletCreateButton = 
@@ -504,11 +512,27 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     
     console.log(`Message classification:`, {
       isCommand,
+      isWalletCommand,
       isWalletCreateButton,
       buttonId,
       messageText,
       type
     });
+    
+    // Only show wallet prompt if:
+    // 1. User doesn't have a wallet
+    // 2. Prompt hasn't been shown before
+    // 3. This is not a wallet creation command or button click
+    const promptShown = await walletPromptAlreadyShown(from);
+    
+    if (!hasWallet && !promptShown && !isWalletCommand && !isWalletCreateButton) {
+      // Show wallet creation prompt (one time)
+      console.log(`[process-cdp-message] Showing wallet prompt to user ${from}`);
+      await markWalletPromptShown(from);
+      const { walletTemplates } = await import('@/lib/whatsappTemplates');
+      const walletPrompt = walletTemplates.noWallet();
+      return handleResponse(from, walletPrompt, res);
+    }
     
     // Handle both explicit commands and button clicks for wallet creation
     if (isCommand || isWalletCreateButton) {

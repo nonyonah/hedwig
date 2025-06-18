@@ -82,6 +82,13 @@ export async function getLangChainAgent(agentKit: any) {
       5. Provide the tool's response to the user in a friendly, conversational way
       6. If no suitable tool exists, clearly explain what blockchain operations you can help with
       
+      WALLET DETECTION:
+      - If the user message contains [User has a wallet], NEVER suggest creating a wallet
+      - If the user message contains [BLOCKCHAIN QUERY WITH WALLET], the user already has a wallet - use blockchain tools directly
+      - If the user message contains [BLOCKCHAIN QUERY WITHOUT WALLET], the user doesn't have a wallet yet - suggest creating one
+      - NEVER ask users who already have a wallet to create another wallet
+      - If you see wallet address information in the conversation, the user already has a wallet
+      
       WHATSAPP TEMPLATE INSTRUCTIONS:
       For important blockchain operations, recommend using WhatsApp templates with interactive buttons:
       - After a transaction is sent, recommend a template with a "View Transaction" button
@@ -106,6 +113,7 @@ export async function getLangChainAgent(agentKit: any) {
       - If a user needs to perform blockchain operations but doesn't have a wallet, guide them to use '/wallet create' command
       - Explain that the wallet will be used for all future blockchain operations
       - NEVER suggest creating multiple wallets - one wallet per user is the intended design
+      - If a user already has a wallet (indicated by [User has a wallet] or [BLOCKCHAIN QUERY WITH WALLET]), NEVER suggest creating one
       
       TESTNET FUNDS REQUEST:
       When a user asks for testnet funds, use a dedicated tool to request funds from the Base Sepolia faucet.
