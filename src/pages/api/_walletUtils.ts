@@ -42,7 +42,7 @@ export async function shouldAllowWalletCreation(userId: string): Promise<boolean
     console.log(`[WalletUtils] User ${userId} attempted to create a wallet too soon (${Math.round(timeSinceLastAttempt / 1000)}s since last attempt, cooldown is ${WALLET_CREATION_COOLDOWN_MS / 1000}s)`);
     return false;
   }
-  
+
   console.log(`[WalletUtils] User ${userId} is allowed to create a wallet (${Math.round(timeSinceLastAttempt / 1000)}s since last attempt)`);
   return true;
 }
@@ -152,5 +152,5 @@ export async function walletPromptAlreadyShown(userId: string): Promise<boolean>
   } catch (error) {
     console.error(`[WalletUtils] Exception checking if prompt shown:`, error);
     return shownInMemory;
-  }
+}
 } 

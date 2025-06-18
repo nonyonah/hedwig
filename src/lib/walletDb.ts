@@ -92,7 +92,7 @@ async function createUserWithSql(phoneNumber: string): Promise<string | null> {
 
 /**
  * Create a wallet using standard insert or SQL fallback
- * @param userId The user ID
+ * @param userId The user ID (now stored as TEXT)
  * @param address The wallet address
  * @param encryptedPrivateKey The encrypted private key
  * @returns True if successful, false otherwise
@@ -105,7 +105,7 @@ async function createWalletWithSql(userId: string, address: string, encryptedPri
     const { error } = await supabaseAdmin
       .from('wallets')
       .insert([{
-        user_id: userId,
+        user_id: userId, // Now stored as TEXT
         address,
         private_key_encrypted: encryptedPrivateKey
       }]);
@@ -329,10 +329,11 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
     }
     
     // Check if the user has a wallet - use admin client to bypass RLS
+    // Note: user.id is now stored as TEXT in the wallets table
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
       .select('address')
-      .eq('user_id', user.id)
+      .eq('user_id', user.id.toString()) // Convert UUID to string to match TEXT column
       .single();
     
     if (walletError && walletError.code !== 'PGRST116') {
@@ -486,10 +487,11 @@ export async function getWalletFromDb(phoneNumber: string): Promise<{ address: s
     }
     
     // Get the wallet - use admin client to bypass RLS
+    // Note: user.id is now stored as TEXT in the wallets table
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
       .select('address')
-      .eq('user_id', user.id)
+      .eq('user_id', user.id.toString()) // Convert UUID to string to match TEXT column
       .single();
     
     if (walletError) {

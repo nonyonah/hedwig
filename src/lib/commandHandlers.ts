@@ -304,8 +304,8 @@ async function handleWalletWithdraw(userId: string): Promise<WhatsAppResponse | 
     const hasWallet = await userHasWalletInDb(userId);
     if (!hasWallet) {
       return walletTemplates.noWallet();
-    }
-    
+}
+
     // For now, just return the withdraw template
     return walletTemplates.withdraw();
   } catch (error) {

@@ -1095,7 +1095,7 @@ async function handleWalletCommand(userId: string, args: string[]): Promise<Comm
           type: 'text'
         };
     }
-  } catch (error) {
+    } catch (error) {
     console.error('Error handling wallet command:', error);
     return {
       success: false,
@@ -1181,7 +1181,7 @@ async function handleWalletAddress(userId: string): Promise<CommandResult> {
         const walletResult = await getOrCreateWallet(userId);
         const provider = walletResult.provider;
         address = await provider.getAddress();
-      } catch (error) {
+  } catch (error) {
         console.error('Error getting wallet provider:', error);
       }
     }
