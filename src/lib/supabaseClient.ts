@@ -7,10 +7,9 @@ loadServerEnvironment();
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 // Create regular client with anon key
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
 
-// Create admin client with service role key for bypassing RLS
-export const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceKey);
+// Create admin client also using the anon key since RLS policies are in place
+export const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseAnonKey);

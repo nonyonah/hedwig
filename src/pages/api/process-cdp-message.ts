@@ -168,7 +168,7 @@ async function processWithCDP(message: string, userId: string): Promise<string |
         // Check if the wallet is registered with AgentKit
         wallet = await getUserWalletProvider(userId);
         console.log(`User ${userId} has a registered wallet`);
-      } catch (walletError) {
+    } catch (walletError) {
         console.error('Wallet initialization check failed:', walletError);
         wallet = null;
       }
@@ -823,7 +823,7 @@ function convertCommandResultToWhatsAppResponse(result: CommandResult): WhatsApp
   if (!result.type || result.type === 'text') {
     // Default to text response if type is not specified or is text
     return {
-      type: 'text',
+          type: 'text',
       text: result.text || (typeof result.message === 'string' ? result.message : 'No message available')
     } as TextResponse;
   }
@@ -1109,7 +1109,7 @@ async function handleWalletCommand(userId: string, args: string[]): Promise<Comm
           type: 'text'
         };
     }
-  } catch (error) {
+    } catch (error) {
     console.error('Error handling wallet command:', error);
     return {
       success: false,
