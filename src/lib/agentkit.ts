@@ -37,11 +37,23 @@ const BASE_SEPOLIA_FAUCET_URL = "https://faucet.base.org";
  * @returns A unique idempotency key
  */
 function generateIdempotencyKey(): string {
-  // Generate a UUID (36 characters) and combine with timestamp
-  const uuid = randomUUID();
-  const timestamp = Date.now().toString();
-  // Ensure the key is truly unique and long enough
-  return `${uuid}-agentkit-${timestamp}`;
+  try {
+    // Generate a UUID (36 characters) and combine with timestamp for extra uniqueness
+    const uuid = randomUUID();
+    const timestamp = Date.now().toString();
+    // Ensure the key is truly unique and long enough (well over 36 characters)
+    return `${uuid}-agentkit-${timestamp}`;
+  } catch (error) {
+    console.error('Error generating UUID, falling back to manual implementation:', error);
+    // Fallback implementation that still meets the 36 character minimum
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    // Generate a 40-character string to be safe
+    for (let i = 0; i < 40; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `manual-${result}-${Date.now()}`;
+  }
 }
 
 /**
@@ -144,17 +156,22 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
       walletSecret: walletSecret ? 'PRESENT' : 'MISSING',
     });
     
+    // Generate a proper idempotency key that meets the minimum length requirement
+    const idempotencyKey = generateIdempotencyKey();
+    console.log(`Generated idempotency key for default wallet: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
+    
     // Configuration for CDP wallet provider
     const config = {
       apiKeyId,
       apiKeySecret,
       walletSecret,
       networkId,
-      idempotencyKey: 'default-system-wallet', // Fixed key for default system wallet
+      idempotencyKey,
     };
     
     console.log('Initializing default CDP wallet provider with config:', {
       networkId: config.networkId,
+      idempotencyKeyLength: config.idempotencyKey.length,
     });
     
     const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
