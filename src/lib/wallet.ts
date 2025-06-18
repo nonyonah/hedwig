@@ -1,9 +1,9 @@
 import { randomUUID } from 'crypto';
 import { CdpV2EvmWalletProvider, WalletProvider } from '@coinbase/agentkit';
-import { registerWallet } from './agentkit';
+import { registerUserWallet } from './agentkit';
 import { getCdpEnvironment } from './serverEnv';
 import { supabase } from './supabaseClient';
-import { shouldAllowWalletCreation, recordWalletCreationAttempt } from './walletUtils';
+import { shouldAllowWalletCreation, recordWalletCreationAttempt } from '@/pages/api/_walletUtils';
 
 // Cache for storing wallet providers by user ID
 const walletCache: Map<string, WalletProvider> = new Map();
@@ -14,10 +14,26 @@ const walletCache: Map<string, WalletProvider> = new Map();
  * @returns A unique idempotency key
  */
 export function generateWalletIdempotencyKey(userId: string): string {
-  const uuid = randomUUID();
-  const timestamp = Date.now().toString();
-  // Create a key that's unique and specific to this user
-  return `${userId}-${uuid}-${timestamp}`;
+  try {
+    // Generate a UUID v4 using Node's crypto module
+    const uuid = randomUUID();
+    const timestamp = Date.now().toString();
+    
+    // Create a key that's unique and specific to this user
+    const idempotencyKey = `${userId}-${uuid}-${timestamp}`;
+    console.log(`Generated idempotency key for user ${userId}: ${idempotencyKey}`);
+    return idempotencyKey;
+  } catch (error) {
+    // Fallback in case randomUUID fails (shouldn't happen in Node environment)
+    console.error(`Error generating UUID, falling back to manual implementation:`, error);
+    const fallbackUuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+    const timestamp = Date.now().toString();
+    return `${userId}-${fallbackUuid}-${timestamp}`;
+  }
 }
 
 /**
@@ -61,7 +77,7 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
     walletCache.set(userId, provider);
     
     // Register with AgentKit
-    await registerWallet(userId, provider);
+    await registerUserWallet(userId, provider);
     
     return provider;
   } catch (error) {
@@ -134,17 +150,19 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
       throw new Error('Missing required CDP credentials for wallet retrieval');
     }
     
-    // Configuration for CDP wallet provider
+    // Configuration for CDP wallet provider with existing wallet
     const config = {
       apiKeyId,
       apiKeySecret,
       walletSecret,
       networkId,
-      address: walletData.address, // Use existing wallet address
+      address: walletData.address, // For existing wallet, pass address directly
     };
     
+    console.log(`Creating CDP wallet provider with existing address: ${walletData.address.substring(0, 8)}...`);
+    
     // Create and initialize wallet provider
-    const provider = await CdpV2EvmWalletProvider.configureExisting(config);
+    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
     
     // Verify the wallet is working
     const address = await provider.getAddress();
@@ -154,7 +172,7 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
     walletCache.set(userId, provider);
     
     // Register with AgentKit
-    await registerWallet(userId, provider);
+    await registerUserWallet(userId, provider);
     
     return provider;
   } catch (error) {

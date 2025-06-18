@@ -81,7 +81,7 @@ async function handleGetRequest(req: NextApiRequest, res: NextApiResponse<Wallet
 // Handle POST requests
 async function handlePostRequest(req: NextApiRequest, res: NextApiResponse<WalletResponse>) {
   try {
-    const { userId, action, address } = req.body;
+    const { userId, action } = req.body;
 
     if (!userId) {
       return res.status(400).json({
@@ -92,13 +92,13 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse<Walle
     }
 
     try {
-      const wallet = await getOrCreateWallet(userId, address);
-      const walletAddress = await wallet.getAddress();
+      const result = await getOrCreateWallet(userId);
+      const walletAddress = await result.provider.getAddress();
       
       return res.status(200).json({
         success: true,
         address: walletAddress,
-        message: action === 'create' ? 'Wallet created successfully' : 'Wallet accessed successfully'
+        message: result.created ? 'Wallet created successfully' : 'Wallet accessed successfully'
       });
     } catch (error) {
       console.error('Wallet operation failed:', error);

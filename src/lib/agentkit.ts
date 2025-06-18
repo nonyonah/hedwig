@@ -8,9 +8,9 @@ import {
   WalletProvider
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
-import { getRequiredEnvVar } from './envUtils';
 import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
 import { randomUUID } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
 
 // Ensure environment variables are loaded

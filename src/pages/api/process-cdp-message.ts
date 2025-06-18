@@ -141,7 +141,6 @@ async function processWithCDP(message: string, userId: string): Promise<string |
   try {
     // Dynamically import necessary modules
     const { getAgentKit, registerUserWallet, getUserWalletProvider } = await import('@/lib/agentkit');
-    const { getCachedWalletCredentials } = await import('@/lib/wallet');
     const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
 
     console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
@@ -158,48 +157,38 @@ async function processWithCDP(message: string, userId: string): Promise<string |
     let wallet = null;
     let hasWallet = false;
     
-    // First check the in-memory cache
-    const cached = getCachedWalletCredentials(userId);
-    if (cached) {
-      console.log(`Found cached wallet credentials for user ${userId}`);
+    // Check the database for a wallet
+    console.log(`Checking database for wallet for user ${userId}`);
+    const hasWalletInDb = await userHasWalletInDb(userId);
+    
+    if (hasWalletInDb) {
+      console.log(`Found wallet in database for user ${userId}`);
       hasWallet = true;
       
       try {
-        // Check if the wallet is registered with AgentKit
-        wallet = await getUserWalletProvider(userId);
-        console.log(`User ${userId} has a registered wallet`);
-    } catch (walletError) {
-        console.error('Wallet initialization check failed:', walletError);
-        wallet = null;
-      }
-    } else {
-      // If not in cache, check the database
-      console.log(`Checking database for wallet for user ${userId}`);
-      const hasWalletInDb = await userHasWalletInDb(userId);
-      
-      if (hasWalletInDb) {
-        console.log(`Found wallet in database for user ${userId}`);
-        hasWallet = true;
+        // Get the wallet from the database
+        const walletFromDb = await getWalletFromDb(userId);
         
-        try {
-          // Get the wallet from the database
-          const walletFromDb = await getWalletFromDb(userId);
+        if (walletFromDb) {
+          console.log(`Successfully retrieved wallet from database for user ${userId}`);
           
-          if (walletFromDb) {
-            console.log(`Successfully retrieved wallet from database for user ${userId}`);
-            
-            // Initialize the wallet provider
+          // Try to get the initialized wallet provider
+          wallet = await getUserWalletProvider(userId);
+          
+          if (!wallet) {
+            // Initialize the wallet provider if it doesn't exist
             const { getOrCreateWallet } = await import('@/lib/wallet');
-            wallet = await getOrCreateWallet(userId, walletFromDb.address, false);
+            const result = await getOrCreateWallet(userId);
+            wallet = result.provider;
             
             // Register with AgentKit
-            registerUserWallet(userId, wallet);
+            await registerUserWallet(userId, wallet);
             console.log(`Registered wallet with AgentKit for user ${userId}`);
           }
-        } catch (dbWalletError) {
-          console.error('Error initializing wallet from database:', dbWalletError);
-          wallet = null;
         }
+      } catch (dbWalletError) {
+        console.error('Error initializing wallet from database:', dbWalletError);
+        wallet = null;
       }
     }
     
@@ -1037,17 +1026,14 @@ async function handleWalletCommand(userId: string, args: string[]): Promise<Comm
     console.log(`Handling wallet command for user ${userId} with args:`, args);
     
     // Import required modules
-    const { getCachedWalletCredentials } = await import('@/lib/wallet');
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
+    const { userHasWalletInDb } = await import('@/lib/walletDb');
     
     // Get the subcommand (default to 'help' if none provided)
     const subcommand = args.length > 0 ? args[0].toLowerCase() : 'help';
     
-    // Check if user has a wallet (either in cache or database)
-    const cachedWallet = getCachedWalletCredentials(userId);
-    const hasWalletInDb = await userHasWalletInDb(userId);
-    const hasWallet = !!cachedWallet || hasWalletInDb;
+    // Check if user has a wallet
+    const hasWallet = await userHasWalletInDb(userId);
     
     console.log(`Wallet status for user ${userId}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
     
@@ -1109,7 +1095,7 @@ async function handleWalletCommand(userId: string, args: string[]): Promise<Comm
           type: 'text'
         };
     }
-    } catch (error) {
+  } catch (error) {
     console.error('Error handling wallet command:', error);
     return {
       success: false,
@@ -1124,41 +1110,15 @@ async function handleWalletBalance(userId: string): Promise<CommandResult> {
     console.log(`Handling wallet balance request for user ${userId}`);
     
     // Import required modules
-    const { getOrCreateWallet, getCachedWalletCredentials } = await import('@/lib/wallet');
-    const { getUserWalletProvider } = await import('@/lib/agentkit');
+    const { getOrCreateWallet } = await import('@/lib/wallet');
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
     const { ethers } = await import('ethers');
     
-    // Get wallet provider - first try from AgentKit
-    let wallet;
-    try {
-      wallet = await getUserWalletProvider(userId);
-      console.log(`Retrieved wallet provider from AgentKit for user ${userId}`);
-    } catch (error) {
-      console.log(`No wallet provider in AgentKit for user ${userId}, trying alternatives`);
-      
-      // Check if wallet exists in cache
-      const cachedWallet = getCachedWalletCredentials(userId);
-      if (cachedWallet) {
-        console.log(`Found cached wallet credentials for user ${userId}`);
-        wallet = await getOrCreateWallet(userId, cachedWallet.address, false);
-      } else {
-        // Check if wallet exists in database
-        const hasWalletInDb = await userHasWalletInDb(userId);
-        if (hasWalletInDb) {
-          console.log(`Found wallet in database for user ${userId}`);
-          const walletFromDb = await getWalletFromDb(userId);
-          
-          if (walletFromDb) {
-            console.log(`Retrieved wallet from database for user ${userId}`);
-            wallet = await getOrCreateWallet(userId, walletFromDb.address, false);
-          }
-        }
-      }
-    }
+    // Get wallet provider
+    const walletResult = await getOrCreateWallet(userId);
+    const provider = walletResult.provider;
     
-    if (!wallet) {
+    if (!provider) {
       console.error(`Could not retrieve wallet for user ${userId}`);
       return {
         success: false,
@@ -1168,14 +1128,14 @@ async function handleWalletBalance(userId: string): Promise<CommandResult> {
     }
     
     // Get wallet address
-    const address = await wallet.getAddress();
+    const address = await provider.getAddress();
     console.log(`Retrieved wallet address for user ${userId}: ${address}`);
     
     // Get provider for Base Sepolia
-    const provider = new ethers.JsonRpcProvider('https://sepolia.base.org');
+    const rpcProvider = new ethers.JsonRpcProvider('https://sepolia.base.org');
     
     // Get balance
-    const balanceWei = await provider.getBalance(address);
+    const balanceWei = await rpcProvider.getBalance(address);
     const balanceEth = ethers.formatEther(balanceWei);
     console.log(`Retrieved balance for user ${userId}: ${balanceEth} ETH`);
     
@@ -1202,57 +1162,37 @@ async function handleWalletAddress(userId: string): Promise<CommandResult> {
     console.log(`Handling wallet address request for user ${userId}`);
     
     // Import required modules
-    const { getOrCreateWallet, getCachedWalletCredentials } = await import('@/lib/wallet');
-    const { getUserWalletProvider } = await import('@/lib/agentkit');
+    const { getOrCreateWallet, getWalletFromDb } = await import('@/lib/wallet');
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
     
-    // Get wallet address - first try from cache
+    // Get wallet address
     let address = '';
-    const cachedWallet = getCachedWalletCredentials(userId);
     
-    if (cachedWallet) {
-      console.log(`Found cached wallet credentials for user ${userId}`);
-      address = cachedWallet.address;
-    } else {
-      // Try from database
-      const hasWalletInDb = await userHasWalletInDb(userId);
-      if (hasWalletInDb) {
-        console.log(`Found wallet in database for user ${userId}`);
-        const walletFromDb = await getWalletFromDb(userId);
-        
-        if (walletFromDb) {
-          console.log(`Retrieved wallet from database for user ${userId}`);
-          address = walletFromDb.address;
-        }
-      }
-      
-      // If still no address, try from AgentKit
-      if (!address) {
-        try {
-          const wallet = await getUserWalletProvider(userId);
-          console.log(`Retrieved wallet provider from AgentKit for user ${userId}`);
-          if (wallet) {
-            address = await wallet.getAddress();
-          } else {
-            console.log(`No wallet provider found in AgentKit for user ${userId}`);
-          }
-        } catch (error) {
-          console.error(`Could not retrieve wallet from AgentKit for user ${userId}:`, error);
-        }
+    // Try getting address from database first
+    const walletFromDb = await getWalletFromDb(userId);
+    if (walletFromDb) {
+      console.log(`Retrieved wallet from database for user ${userId}`);
+      address = walletFromDb.address;
+    }
+    
+    // If no address found in database, get it from the provider
+    if (!address) {
+      try {
+        const walletResult = await getOrCreateWallet(userId);
+        const provider = walletResult.provider;
+        address = await provider.getAddress();
+      } catch (error) {
+        console.error('Error getting wallet provider:', error);
       }
     }
     
     if (!address) {
-      console.error(`Could not retrieve wallet address for user ${userId}`);
       return {
         success: false,
-        message: 'Could not access your wallet. Please try creating a new one with /wallet create.',
+        message: 'Could not retrieve your wallet address. Please try creating a new wallet with /wallet create.',
         type: 'buttons'
       };
     }
-    
-    console.log(`Retrieved wallet address for user ${userId}: ${address}`);
     
     return {
       success: true,
@@ -1271,82 +1211,31 @@ async function handleWalletAddress(userId: string): Promise<CommandResult> {
 
 async function createWallet(userId: string): Promise<CommandResult> {
   try {
-    console.log(`Handling wallet creation request for user ${userId}`);
+    console.log(`Creating wallet for user ${userId}`);
     
-    // Import required modules
-    const { getOrCreateWallet, getCachedWalletCredentials } = await import('@/lib/wallet');
-    const { registerUserWallet } = await import('@/lib/agentkit');
+    // Import necessary modules
+    const { userHasWalletInDb, getWalletFromDb, getOrCreateWallet } = await import('@/lib/wallet');
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { userHasWalletInDb, storeWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
     
-    // Check if wallet already exists
-    const existingWallet = getCachedWalletCredentials(userId);
-    const hasWalletInDb = await userHasWalletInDb(userId);
+    // Check if the user already has a wallet
+    const hasWallet = await userHasWalletInDb(userId);
     
-    if (existingWallet || hasWalletInDb) {
-      console.log(`User ${userId} already has a wallet`);
-      
-      let walletAddress: string;
-      
-      // If we have the address in cache, use it
-      if (existingWallet) {
-        walletAddress = existingWallet.address;
-        console.log(`Using cached wallet address: ${walletAddress}`);
-      } else {
-        // Otherwise, get it from the database
-        const walletFromDb = await getWalletFromDb(userId);
-        if (walletFromDb) {
-          walletAddress = walletFromDb.address;
-          console.log(`Using wallet address from database: ${walletAddress}`);
-        } else {
-          // This shouldn't happen, but just in case
-          console.warn(`Wallet exists flag is true but no wallet found for user ${userId}`);
-          return {
-            success: false,
-            message: 'Wallet exists but could not be retrieved. Please contact support.',
-            type: 'buttons'
-          };
-        }
-      }
-      
+    if (hasWallet) {
+      const existingWallet = await getWalletFromDb(userId);
       return {
         success: true,
-        message: walletTemplates.walletExists(walletAddress),
+        message: walletTemplates.walletExists(existingWallet?.address || 'Unknown address'),
         type: 'text'
       };
     }
     
-    // Create a new wallet with forceNew=true
-    console.log(`Creating new wallet for user ${userId} with forceNew=true`);
+    console.log(`No existing wallet found for user ${userId}, creating new one`);
     
     try {
-      // Force create a new wallet
-      const wallet = await getOrCreateWallet(userId, undefined, true);
-      
-      // Verify the wallet was created by getting its address
-      const address = await wallet.getAddress();
-      console.log(`New wallet created for user ${userId} with address ${address}`);
-      
-      // Register this wallet with AgentKit for persistence
-      await registerUserWallet(userId, wallet);
-      console.log(`Registered wallet with AgentKit for user ${userId}`);
-      
-      // Store the wallet in the database
-      console.log(`Storing wallet in database for user ${userId}`);
-      
-      // Get the private key from cache since wallet provider doesn't expose it
-      const cachedWallet = getCachedWalletCredentials(userId);
-      if (cachedWallet && cachedWallet.privateKey) {
-        const dbStoreResult = await storeWalletInDb(userId, address, cachedWallet.privateKey);
-        
-        if (dbStoreResult) {
-          console.log(`Successfully stored wallet in database for user ${userId}`);
-        } else {
-          console.warn(`Failed to store wallet in database for user ${userId}`);
-        }
-      } else {
-        console.warn(`No private key found in cache for user ${userId}, can't store in database`);
-      }
+      // Create new wallet
+      const walletResult = await getOrCreateWallet(userId);
+      const provider = walletResult.provider;
+      const address = await provider.getAddress();
       
       return {
         success: true,
@@ -1376,28 +1265,27 @@ async function handleWalletDeposit(userId: string): Promise<CommandResult> {
     console.log(`Handling wallet deposit request for user ${userId}`);
     
     // Import required modules
-    const { getCachedWalletCredentials } = await import('@/lib/wallet');
+    const { getOrCreateWallet, getWalletFromDb } = await import('@/lib/wallet');
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
     
     // Get wallet address
     let address = '';
-    const cachedWallet = getCachedWalletCredentials(userId);
     
-    if (cachedWallet) {
-      console.log(`Found cached wallet credentials for user ${userId}`);
-      address = cachedWallet.address;
-    } else {
-      // Try from database
-      const hasWalletInDb = await userHasWalletInDb(userId);
-      if (hasWalletInDb) {
-        console.log(`Found wallet in database for user ${userId}`);
-        const walletFromDb = await getWalletFromDb(userId);
-        
-        if (walletFromDb) {
-          console.log(`Retrieved wallet from database for user ${userId}`);
-          address = walletFromDb.address;
-        }
+    // Try getting address from database first
+    const walletFromDb = await getWalletFromDb(userId);
+    if (walletFromDb) {
+      console.log(`Retrieved wallet from database for user ${userId}`);
+      address = walletFromDb.address;
+    }
+    
+    // If still no address, try creating or getting the wallet
+    if (!address) {
+      try {
+        const walletResult = await getOrCreateWallet(userId);
+        const provider = walletResult.provider;
+        address = await provider.getAddress();
+      } catch (error) {
+        console.error(`Could not create or get wallet for user ${userId}:`, error);
       }
     }
     

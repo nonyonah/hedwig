@@ -43,8 +43,10 @@ if (!process.env.NETLIFY && process.env.NODE_ENV !== 'production') {
 const nextConfig = {
   reactStrictMode: true,
   env: {
-    PRIVY_APP_ID: process.env.PRIVY_APP_ID,
-    PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET,
+    CDP_API_KEY_ID: process.env.CDP_API_KEY_ID,
+    CDP_API_KEY_SECRET: process.env.CDP_API_KEY_SECRET,
+    CDP_WALLET_SECRET: process.env.CDP_WALLET_SECRET,
+    CDP_NETWORK_ID: process.env.CDP_NETWORK_ID,
     WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
     WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID,
     WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN,

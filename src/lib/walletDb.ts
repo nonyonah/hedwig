@@ -1,5 +1,4 @@
 import { supabase, supabaseAdmin } from './supabaseClient';
-import { getCachedWalletCredentials, cacheWalletCredentials } from './wallet';
 import crypto from 'crypto';
 
 /**
@@ -312,13 +311,6 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
     
     console.log(`[WalletDB] Checking if user ${phoneNumber} has a wallet in database`);
     
-    // First check the in-memory cache
-    const cachedWallet = getCachedWalletCredentials(phoneNumber);
-    if (cachedWallet) {
-      console.log(`[WalletDB] Found wallet in cache for user ${phoneNumber}`);
-      return true;
-    }
-    
     // Get the user ID - use admin client to bypass RLS
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
@@ -339,7 +331,7 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
     // Check if the user has a wallet - use admin client to bypass RLS
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
-      .select('address, private_key_encrypted')
+      .select('address')
       .eq('user_id', user.id)
       .single();
     
@@ -350,17 +342,6 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
     
     const hasWallet = !!wallet;
     console.log(`[WalletDB] Database wallet check for user ${phoneNumber}: ${hasWallet ? 'Found' : 'Not found'}`);
-    
-    // If we found a wallet in the database but not in cache, add it to cache
-    if (hasWallet && wallet) {
-      try {
-        const privateKey = decryptPrivateKey(wallet.private_key_encrypted);
-        cacheWalletCredentials(phoneNumber, privateKey, wallet.address);
-        console.log(`[WalletDB] Added wallet from database to cache for user ${phoneNumber}`);
-      } catch (decryptError) {
-        console.error('[WalletDB] Error decrypting private key:', decryptError);
-      }
-    }
     
     return hasWallet;
   } catch (error) {
@@ -373,18 +354,17 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
  * Store a wallet in the database
  * @param phoneNumber The user's phone number
  * @param address The wallet address
- * @param privateKey The wallet private key
  * @returns True if successful, false otherwise
  */
-export async function storeWalletInDb(phoneNumber: string, address: string, privateKey: string): Promise<boolean> {
+export async function storeWalletInDb(phoneNumber: string, address: string): Promise<boolean> {
   try {
     if (!phoneNumber) {
       console.error('[WalletDB] Error storing wallet: phoneNumber parameter is undefined or empty');
       return false;
     }
     
-    if (!address || !privateKey) {
-      console.error('[WalletDB] Error storing wallet: address or privateKey is missing');
+    if (!address) {
+      console.error('[WalletDB] Error storing wallet: address is missing');
       return false;
     }
     
@@ -398,9 +378,6 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
       console.error('[WalletDB] Error storing wallet:', userError);
       return false;
     }
-    
-    // Encrypt the private key
-    const encryptedPrivateKey = encryptPrivateKey(privateKey);
     
     // Check if wallet already exists - use admin client to bypass RLS
     const { data: existingWallet, error: fetchError } = await supabaseAdmin
@@ -421,7 +398,6 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
         .from('wallets')
         .update({
           address,
-          private_key_encrypted: encryptedPrivateKey,
           updated_at: new Date().toISOString()
         })
         .eq('id', existingWallet.id);
@@ -439,8 +415,7 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
           .from('wallets')
           .insert([{
             user_id: userId,
-            address,
-            private_key_encrypted: encryptedPrivateKey
+            address
           }]);
         
         if (insertError) {
@@ -451,11 +426,9 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
             console.error('[WalletDB] RLS policy violation when inserting wallet. Attempting direct SQL approach...');
             
             // Try direct SQL insertion
-            const success = await createWalletWithSql(userId, address, encryptedPrivateKey);
+            const success = await createWalletWithSql(userId, address, '');
             if (success) {
               console.log(`[WalletDB] Successfully created wallet using direct SQL for user ${phoneNumber}`);
-              // Add wallet to cache
-              cacheWalletCredentials(phoneNumber, privateKey, address);
               return true;
             }
             
@@ -472,9 +445,7 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
       }
     }
     
-    // Add wallet to cache
-    cacheWalletCredentials(phoneNumber, privateKey, address);
-    console.log(`[WalletDB] Successfully stored wallet for user ${phoneNumber} in database and cache`);
+    console.log(`[WalletDB] Successfully stored wallet for user ${phoneNumber} in database`);
     
     return true;
   } catch (error) {
@@ -486,9 +457,9 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
 /**
  * Get a wallet from the database
  * @param phoneNumber The user's phone number
- * @returns The wallet address and private key, or null if not found
+ * @returns The wallet address or null if not found
  */
-export async function getWalletFromDb(phoneNumber: string): Promise<{ address: string; privateKey: string } | null> {
+export async function getWalletFromDb(phoneNumber: string): Promise<{ address: string } | null> {
   try {
     if (!phoneNumber) {
       console.error('[WalletDB] Error getting wallet: phoneNumber parameter is undefined or empty');
@@ -517,7 +488,7 @@ export async function getWalletFromDb(phoneNumber: string): Promise<{ address: s
     // Get the wallet - use admin client to bypass RLS
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
-      .select('address, private_key_encrypted')
+      .select('address')
       .eq('user_id', user.id)
       .single();
     
@@ -531,24 +502,11 @@ export async function getWalletFromDb(phoneNumber: string): Promise<{ address: s
       return null;
     }
     
-    try {
-      // Decrypt the private key
-      const privateKey = decryptPrivateKey(wallet.private_key_encrypted);
-      
-      // Add to cache
-      cacheWalletCredentials(phoneNumber, privateKey, wallet.address);
-      
-      console.log(`[WalletDB] Successfully retrieved wallet for user ${phoneNumber}`);
-      return {
-        address: wallet.address,
-        privateKey
-      };
-    } catch (decryptError) {
-      console.error('[WalletDB] Error decrypting private key:', decryptError);
-      return null;
-    }
+    console.log(`[WalletDB] Successfully retrieved wallet for user ${phoneNumber}`);
+    
+    return { address: wallet.address };
   } catch (error) {
-    console.error('[WalletDB] Error getting wallet from database:', error);
+    console.error('[WalletDB] Error getting wallet:', error);
     return null;
   }
 } 
