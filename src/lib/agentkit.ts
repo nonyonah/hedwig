@@ -9,7 +9,6 @@ import {
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
-import { randomUUID } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
 
@@ -33,27 +32,13 @@ const BASE_SEPOLIA_CONFIG = {
 const BASE_SEPOLIA_FAUCET_URL = "https://faucet.base.org";
 
 /**
- * Generates a unique idempotency key that meets CDP requirements (minimum 36 characters)
+ * Generates a unique idempotency key that meets CDP requirements (exactly 36 characters)
  * @returns A unique idempotency key
  */
 function generateIdempotencyKey(): string {
-  try {
-    // Generate a UUID (36 characters) and combine with timestamp for extra uniqueness
-    const uuid = randomUUID();
-    const timestamp = Date.now().toString();
-    // Ensure the key is truly unique and long enough (well over 36 characters)
-    return `${uuid}-agentkit-${timestamp}`;
-  } catch (error) {
-    console.error('Error generating UUID, falling back to manual implementation:', error);
-    // Fallback implementation that still meets the 36 character minimum
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    // Generate a 40-character string to be safe
-    for (let i = 0; i < 40; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return `manual-${result}-${Date.now()}`;
-  }
+  // Use uuid v4 which generates a 36-character string (including hyphens)
+  // This is the exact length required by CDP
+  return uuidv4();
 }
 
 /**
@@ -64,24 +49,55 @@ function generateIdempotencyKey(): string {
  * @returns A wallet provider for the user or null if it doesn't exist
  */
 export async function getUserWalletProvider(userId?: string): Promise<WalletProvider | null> {
-  if (userId && userWallets.has(userId)) {
-    // Return the user-specific wallet provider if it exists
-    console.log(`[AgentKit] Using existing wallet provider for user ${userId}`);
-    return userWallets.get(userId)!;
-  }
-  
-  // Return the default wallet provider for system operations
-  // or create one if needed
-  if (!defaultWalletProvider) {
-    try {
-      defaultWalletProvider = await createDefaultWalletProvider();
-    } catch (error) {
-      console.error('Failed to create default wallet provider:', error);
+  try {
+    if (userId && userWallets.has(userId)) {
+      // Return the user-specific wallet provider if it exists
+      console.log(`[AgentKit] Using existing wallet provider for user ${userId}`);
+      return userWallets.get(userId)!;
+    }
+    
+    // Return the default wallet provider for system operations
+    // or create one if needed
+    if (!defaultWalletProvider) {
+      try {
+        console.log('[AgentKit] Creating default wallet provider...');
+        defaultWalletProvider = await createDefaultWalletProvider();
+        console.log('[AgentKit] Default wallet provider created successfully');
+      } catch (error) {
+        console.error('[AgentKit] Failed to create default wallet provider:', error);
+        
+        // Try one more time with a new idempotency key
+        try {
+          console.log('[AgentKit] Retrying default wallet provider creation...');
+          defaultWalletProvider = await createDefaultWalletProvider();
+          console.log('[AgentKit] Default wallet provider created successfully on retry');
+        } catch (retryError) {
+          console.error('[AgentKit] Failed to create default wallet provider on retry:', retryError);
+          return null;
+        }
+      }
+    }
+    
+    if (!defaultWalletProvider) {
+      console.error('[AgentKit] Default wallet provider is null after initialization attempts');
       return null;
     }
+    
+    // Verify the wallet provider is working
+    try {
+      const address = await defaultWalletProvider.getAddress();
+      console.log(`[AgentKit] Default wallet provider verified with address: ${address}`);
+    } catch (verifyError) {
+      console.error('[AgentKit] Failed to verify default wallet provider:', verifyError);
+      defaultWalletProvider = null;
+      return null;
+    }
+    
+    return defaultWalletProvider;
+  } catch (error) {
+    console.error('[AgentKit] Unexpected error in getUserWalletProvider:', error);
+    return null;
   }
-  
-  return defaultWalletProvider;
 }
 
 /**
@@ -147,31 +163,33 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
     const { apiKeyId, apiKeySecret, walletSecret, networkId } = getCdpEnvironment();
     
     if (!apiKeyId || !apiKeySecret || !walletSecret) {
+      console.error('[AgentKit] Missing required CDP credentials');
       throw new Error('Missing required CDP credentials (CDP_API_KEY_ID, CDP_API_KEY_SECRET, or CDP_WALLET_SECRET)');
     }
     
-    console.log('CDP environment loaded for default wallet provider:', {
+    console.log('[AgentKit] CDP environment loaded for default wallet provider:', {
       apiKeyId: apiKeyId ? apiKeyId.substring(0, Math.min(5, apiKeyId.length)) + '...' : 'MISSING',
       apiKeySecret: apiKeySecret ? 'PRESENT' : 'MISSING',
       walletSecret: walletSecret ? 'PRESENT' : 'MISSING',
+      networkId: networkId || 'MISSING'
     });
     
-    // Generate a proper idempotency key that meets the minimum length requirement
+    // Generate a proper idempotency key that meets the exact 36-character requirement
     const idempotencyKey = generateIdempotencyKey();
-    console.log(`Generated idempotency key for default wallet: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
+    console.log(`[AgentKit] Generated idempotency key for default wallet: ${idempotencyKey} (length: 36)`);
     
     // Configuration for CDP wallet provider
     const config = {
       apiKeyId,
       apiKeySecret,
       walletSecret,
-      networkId,
+      networkId: networkId || BASE_SEPOLIA_CONFIG.networkId, // Ensure we have a fallback
       idempotencyKey,
     };
     
-    console.log('Initializing default CDP wallet provider with config:', {
+    console.log('[AgentKit] Initializing default CDP wallet provider with config:', {
       networkId: config.networkId,
-      idempotencyKeyLength: config.idempotencyKey.length,
+      idempotencyKey: config.idempotencyKey,
       apiKeyIdPrefix: apiKeyId.substring(0, 6) + '...',
     });
     
@@ -180,14 +198,14 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
     try {
       provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
     } catch (error) {
-      console.error('CDP default wallet provider initialization error:', error);
+      console.error('[AgentKit] CDP default wallet provider initialization error:', error);
       
       if (error instanceof Error) {
         if (error.message.includes('idempotency')) {
           // If there's an idempotency key issue, try with a new key
-          console.log('Retrying with a new idempotency key due to idempotency error');
+          console.log('[AgentKit] Retrying with a new idempotency key due to idempotency error');
           config.idempotencyKey = generateIdempotencyKey();
-          console.log(`New idempotency key: ${config.idempotencyKey.substring(0, 8)}...${config.idempotencyKey.substring(config.idempotencyKey.length - 8)} (length: ${config.idempotencyKey.length})`);
+          console.log(`[AgentKit] New idempotency key: ${config.idempotencyKey} (length: 36)`);
           provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
         } else {
           throw error;
@@ -197,13 +215,23 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
       }
     }
     
+    if (!provider) {
+      console.error('[AgentKit] Provider is null after initialization');
+      throw new Error('Failed to initialize wallet provider: provider is null');
+    }
+    
     // Verify the wallet is working
-    const address = await provider.getAddress();
-    console.log(`Default CDP wallet provider initialized with address: ${address}`);
+    try {
+      const address = await provider.getAddress();
+      console.log(`[AgentKit] Default CDP wallet provider initialized with address: ${address}`);
+    } catch (addressError) {
+      console.error('[AgentKit] Failed to get wallet address:', addressError);
+      throw new Error(`Wallet provider initialization failed: could not get wallet address: ${addressError instanceof Error ? addressError.message : String(addressError)}`);
+    }
     
     return provider;
   } catch (error) {
-    console.error('Failed to initialize default wallet provider:', error);
+    console.error('[AgentKit] Failed to initialize default wallet provider:', error);
     throw new Error(`Default wallet provider initialization failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -214,47 +242,77 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
  * @param userId Optional user ID to use their specific wallet
  */
 export async function getAgentKit(userId?: string): Promise<AgentKit> {
-  // If we already have an AgentKit instance and no specific user,
-  // return the singleton instance
-  if (agentKitInstance && !userId) {
-    return agentKitInstance;
-  }
-
   try {
+    // If we already have an AgentKit instance and no specific user,
+    // return the singleton instance
+    if (agentKitInstance && !userId) {
+      console.log('[AgentKit] Using existing AgentKit instance');
+      return agentKitInstance;
+    }
+
+    console.log(`[AgentKit] Initializing AgentKit${userId ? ` for user ${userId}` : ''}`);
+
     // Get the appropriate wallet provider for this user
     // or use the default wallet provider
+    console.log(`[AgentKit] Getting wallet provider${userId ? ` for user ${userId}` : ''}`);
     const walletProvider = await getUserWalletProvider(userId);
     
     if (!walletProvider) {
+      console.error('[AgentKit] Failed to obtain a valid wallet provider');
       throw new Error('Could not obtain a valid wallet provider');
+    }
+
+    // Verify the wallet provider is functional
+    try {
+      const address = await walletProvider.getAddress();
+      console.log(`[AgentKit] Wallet provider verified with address: ${address}`);
+    } catch (error) {
+      console.error('[AgentKit] Wallet provider verification failed:', error);
+      throw new Error(`Wallet provider verification failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     // Initialize AgentKit with the wallet provider and action providers
     const actionProviders = [
-        // ERC20 token operations
-        erc20ActionProvider(),
-        
-        // ERC721 (NFT) operations
-        erc721ActionProvider(),
-        
-        // Basic wallet operations
-        walletActionProvider()
+      // ERC20 token operations
+      erc20ActionProvider(),
       
+      // ERC721 (NFT) operations
+      erc721ActionProvider(),
+      
+      // Basic wallet operations
+      walletActionProvider()
+    
       // Note: We're not using the custom faucet action provider due to TypeScript issues
     ];
     
-    console.log('Initializing AgentKit with action providers:', 
+    console.log('[AgentKit] Initializing AgentKit with action providers:', 
       actionProviders.map(provider => provider.name));
     
-    const newAgentKitInstance = await AgentKit.from({
-      walletProvider,
-      actionProviders,
-    });
+    let newAgentKitInstance: AgentKit;
+    try {
+      newAgentKitInstance = await AgentKit.from({
+        walletProvider,
+        actionProviders,
+      });
+    } catch (error) {
+      console.error('[AgentKit] Failed to initialize AgentKit instance:', error);
+      throw new Error(`AgentKit initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    
+    if (!newAgentKitInstance) {
+      console.error('[AgentKit] AgentKit instance is null after initialization');
+      throw new Error('AgentKit initialization failed: instance is null');
+    }
     
     // Verify AgentKit is working by getting available actions
-    const actions = await newAgentKitInstance.getActions();
-    console.log(`AgentKit initialized with ${actions.length} available actions` + 
-      (userId ? ` for user ${userId}` : ' (default instance)'));
+    try {
+      const actions = await newAgentKitInstance.getActions();
+      console.log(`[AgentKit] AgentKit initialized with ${actions.length} available actions` + 
+        (userId ? ` for user ${userId}` : ' (default instance)'));
+    } catch (error) {
+      console.error('[AgentKit] Failed to get actions from AgentKit:', error);
+      throw new Error(`AgentKit verification failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     
     // If this is the default instance (no userId), save it as singleton
     if (!userId) {
@@ -263,7 +321,7 @@ export async function getAgentKit(userId?: string): Promise<AgentKit> {
     
     return newAgentKitInstance;
   } catch (error) {
-    console.error('Failed to initialize AgentKit:', error);
+    console.error('[AgentKit] Failed to initialize AgentKit:', error);
     throw new Error(`AgentKit initialization failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
