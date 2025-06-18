@@ -9,20 +9,16 @@ import { shouldAllowWalletCreation, recordWalletCreationAttempt } from '@/pages/
 const walletCache: Map<string, WalletProvider> = new Map();
 
 /**
- * Generates a unique idempotency key for wallet creation
- * @param userId Unique identifier for the user
- * @returns A unique idempotency key
+ * Generates a UUID v4 key for wallet creation (exactly 36 characters)
+ * @param userId Unique identifier for the user (not used in key generation)
+ * @returns A standard UUID v4 string (36 characters)
  */
 export function generateWalletIdempotencyKey(userId: string): string {
   try {
-    // Generate a UUID v4 using Node's crypto module
+    // Generate a standard UUID v4 using Node's crypto module (36 characters)
     const uuid = randomUUID();
-    const timestamp = Date.now().toString();
-    
-    // Create a key that's unique and specific to this user
-    const idempotencyKey = `${userId}-${uuid}-${timestamp}`;
-    console.log(`Generated idempotency key for user ${userId}: ${idempotencyKey}`);
-    return idempotencyKey;
+    console.log(`Generated idempotency key for user ${userId}: ${uuid}`);
+    return uuid;
   } catch (error) {
     // Fallback in case randomUUID fails (shouldn't happen in Node environment)
     console.error(`Error generating UUID, falling back to manual implementation:`, error);
@@ -31,8 +27,8 @@ export function generateWalletIdempotencyKey(userId: string): string {
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
-    const timestamp = Date.now().toString();
-    return `${userId}-${fallbackUuid}-${timestamp}`;
+    console.log(`Generated fallback idempotency key for user ${userId}: ${fallbackUuid}`);
+    return fallbackUuid;
   }
 }
 
