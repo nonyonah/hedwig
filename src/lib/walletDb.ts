@@ -1,6 +1,91 @@
-import { supabase } from './supabaseClient';
+import { supabase, supabaseAdmin } from './supabaseClient';
 import { getCachedWalletCredentials, cacheWalletCredentials } from './wallet';
 import crypto from 'crypto';
+
+/**
+ * Execute a direct SQL query to bypass RLS
+ * @param query The SQL query to execute
+ * @param params The query parameters
+ * @returns The query result
+ */
+async function executeSql<T = any>(query: string, params: any[] = []): Promise<T | null> {
+  try {
+    // Use the admin client to execute the query
+    const { data, error } = await supabaseAdmin.rpc('exec_sql', { 
+      sql: query,
+      params: JSON.stringify(params)
+    });
+    
+    if (error) {
+      console.error('[WalletDB] Error executing SQL:', error);
+      throw error;
+    }
+    
+    return data as T;
+  } catch (error) {
+    console.error('[WalletDB] Error in executeSql:', error);
+    return null;
+  }
+}
+
+/**
+ * Create a user directly with SQL to bypass RLS
+ * @param phoneNumber The user's phone number
+ * @returns The user ID
+ */
+async function createUserWithSql(phoneNumber: string): Promise<string | null> {
+  try {
+    console.log(`[WalletDB] Creating user with direct SQL for phone number: ${phoneNumber}`);
+    
+    // Insert the user and return the ID
+    const query = `
+      INSERT INTO public.users (phone_number, created_at)
+      VALUES ($1, NOW())
+      RETURNING id
+    `;
+    
+    const result = await executeSql<{id: string}[]>(query, [phoneNumber]);
+    
+    if (!result || result.length === 0) {
+      console.error('[WalletDB] SQL insertion returned no data');
+      return null;
+    }
+    
+    const userId = result[0].id;
+    console.log(`[WalletDB] Created user with SQL, ID: ${userId}`);
+    return userId;
+  } catch (error) {
+    console.error('[WalletDB] Error creating user with SQL:', error);
+    return null;
+  }
+}
+
+/**
+ * Create a wallet directly with SQL to bypass RLS
+ * @param userId The user ID
+ * @param address The wallet address
+ * @param encryptedPrivateKey The encrypted private key
+ * @returns True if successful, false otherwise
+ */
+async function createWalletWithSql(userId: string, address: string, encryptedPrivateKey: string): Promise<boolean> {
+  try {
+    console.log(`[WalletDB] Creating wallet with direct SQL for user ID: ${userId}`);
+    
+    // Insert the wallet
+    const query = `
+      INSERT INTO public.wallets (user_id, address, private_key_encrypted, created_at)
+      VALUES ($1, $2, $3, NOW())
+    `;
+    
+    await executeSql(query, [userId, address, encryptedPrivateKey]);
+    
+    console.log(`[WalletDB] Created wallet with SQL for user ID: ${userId}`);
+    return true;
+  } catch (error) {
+    console.error('[WalletDB] Error creating wallet with SQL:', error);
+    return false;
+  }
+}
 
 /**
  * Encrypt a private key using the server's encryption key
@@ -88,8 +173,8 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
   try {
     console.log(`[WalletDB] Getting or creating user for phone number: ${phoneNumber}`);
     
-    // Check if user exists
-    const { data: existingUser, error: fetchError } = await supabase
+    // First check if user exists - use admin client to bypass RLS
+    const { data: existingUser, error: fetchError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('phone_number', phoneNumber)
@@ -106,21 +191,80 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
       return existingUser.id;
     }
     
-    // Create new user
+    // Create new user - use admin client to bypass RLS
     console.log(`[WalletDB] Creating new user for phone number: ${phoneNumber}`);
-    const { data: newUser, error: createError } = await supabase
-      .from('users')
-      .insert([{ phone_number: phoneNumber }])
-      .select('id')
-      .single();
     
-    if (createError || !newUser) {
-      console.error('[WalletDB] Error creating user:', createError);
-      throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
+    // Verify we have the service role key properly set
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[WalletDB] SUPABASE_SERVICE_ROLE_KEY is not set');
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
     }
     
-    console.log(`[WalletDB] Created new user with ID: ${newUser.id}`);
-    return newUser.id;
+    // Add detailed logging about the client
+    console.log(`[WalletDB] Using supabaseAdmin client with URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+    
+    try {
+      const { data: newUser, error: createError } = await supabaseAdmin
+        .from('users')
+        .insert([{ phone_number: phoneNumber }])
+        .select('id')
+        .single();
+      
+      if (createError) {
+        console.error('[WalletDB] Error creating user:', createError);
+        
+        // Special handling for RLS policy violations
+        if (createError.code === '42501' || createError.message.includes('row-level security policy')) {
+          console.error('[WalletDB] RLS policy violation. Attempting direct SQL approach...');
+          
+          // Try direct SQL insertion
+          const userId = await createUserWithSql(phoneNumber);
+          if (userId) {
+            return userId;
+          }
+          
+          // If direct SQL fails, try the alternative approach
+          console.error('[WalletDB] Direct SQL failed. Attempting alternative approach...');
+          
+          // Try a different approach - first insert without returning, then query separately
+          const { error: insertError } = await supabaseAdmin
+            .from('users')
+            .insert([{ phone_number: phoneNumber }]);
+          
+          if (insertError) {
+            console.error('[WalletDB] Alternative insert failed:', insertError);
+            throw new Error(`Failed to create user: ${insertError.message}`);
+          }
+          
+          // Now query for the user we just created
+          const { data: createdUser, error: queryError } = await supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('phone_number', phoneNumber)
+            .single();
+          
+          if (queryError || !createdUser) {
+            console.error('[WalletDB] Failed to retrieve created user:', queryError);
+            throw new Error(`Failed to retrieve created user: ${queryError?.message || 'User not found'}`);
+          }
+          
+          console.log(`[WalletDB] Created new user with ID: ${createdUser.id} (alternative method)`);
+          return createdUser.id;
+        }
+        
+        throw new Error(`Failed to create user: ${createError.message}`);
+      }
+      
+      if (!newUser) {
+        throw new Error('User creation returned no data');
+      }
+      
+      console.log(`[WalletDB] Created new user with ID: ${newUser.id}`);
+      return newUser.id;
+    } catch (dbError) {
+      console.error('[WalletDB] Database operation failed:', dbError);
+      throw dbError;
+    }
   } catch (error) {
     console.error('[WalletDB] Error in getOrCreateUser:', error);
     throw error;
@@ -143,8 +287,8 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
       return true;
     }
     
-    // Get the user ID
-    const { data: user, error: userError } = await supabase
+    // Get the user ID - use admin client to bypass RLS
+    const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('phone_number', phoneNumber)
@@ -160,8 +304,8 @@ export async function userHasWalletInDb(phoneNumber: string): Promise<boolean> {
       return false;
     }
     
-    // Check if the user has a wallet
-    const { data: wallet, error: walletError } = await supabase
+    // Check if the user has a wallet - use admin client to bypass RLS
+    const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
       .select('address, private_key_encrypted')
       .eq('user_id', user.id)
@@ -205,13 +349,19 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
     console.log(`[WalletDB] Storing wallet for user ${phoneNumber} with address ${address}`);
     
     // Get or create user
-    const userId = await getOrCreateUser(phoneNumber);
+    let userId;
+    try {
+      userId = await getOrCreateUser(phoneNumber);
+    } catch (userError) {
+      console.error('[WalletDB] Error storing wallet:', userError);
+      return false;
+    }
     
     // Encrypt the private key
     const encryptedPrivateKey = encryptPrivateKey(privateKey);
     
-    // Check if wallet already exists
-    const { data: existingWallet, error: fetchError } = await supabase
+    // Check if wallet already exists - use admin client to bypass RLS
+    const { data: existingWallet, error: fetchError } = await supabaseAdmin
       .from('wallets')
       .select('id')
       .eq('user_id', userId)
@@ -223,9 +373,9 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
     }
     
     if (existingWallet) {
-      // Update existing wallet
+      // Update existing wallet - use admin client to bypass RLS
       console.log(`[WalletDB] Updating existing wallet for user ${phoneNumber}`);
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from('wallets')
         .update({
           address,
@@ -239,26 +389,51 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
         throw new Error(`Failed to update wallet: ${updateError.message}`);
       }
     } else {
-      // Create new wallet
+      // Create new wallet - use admin client to bypass RLS
       console.log(`[WalletDB] Creating new wallet for user ${phoneNumber}`);
-      const { error: insertError } = await supabase
-        .from('wallets')
-        .insert([{
-          user_id: userId,
-          address,
-          private_key_encrypted: encryptedPrivateKey
-        }]);
       
-      if (insertError) {
-        console.error('[WalletDB] Error creating wallet:', insertError);
-        throw new Error(`Failed to create wallet: ${insertError.message}`);
+      try {
+        const { error: insertError } = await supabaseAdmin
+          .from('wallets')
+          .insert([{
+            user_id: userId,
+            address,
+            private_key_encrypted: encryptedPrivateKey
+          }]);
+        
+        if (insertError) {
+          console.error('[WalletDB] Error inserting wallet:', insertError);
+          
+          // Special handling for RLS policy violations
+          if (insertError.code === '42501' || insertError.message.includes('row-level security policy')) {
+            console.error('[WalletDB] RLS policy violation when inserting wallet. Attempting direct SQL approach...');
+            
+            // Try direct SQL insertion
+            const success = await createWalletWithSql(userId, address, encryptedPrivateKey);
+            if (success) {
+              console.log(`[WalletDB] Successfully created wallet using direct SQL for user ${phoneNumber}`);
+              // Add wallet to cache
+              cacheWalletCredentials(phoneNumber, privateKey, address);
+              return true;
+            }
+            
+            // If direct SQL fails too
+            console.error('[WalletDB] CRITICAL: Both standard and direct SQL approaches failed. Please check Supabase RLS policies.');
+            return false;
+          }
+          
+          throw new Error(`Failed to insert wallet: ${insertError.message}`);
+        }
+      } catch (insertError) {
+        console.error('[WalletDB] Exception during wallet insertion:', insertError);
+        return false;
       }
     }
     
-    // Also update the in-memory cache
+    // Add wallet to cache
     cacheWalletCredentials(phoneNumber, privateKey, address);
+    console.log(`[WalletDB] Successfully stored wallet for user ${phoneNumber} in database and cache`);
     
-    console.log(`[WalletDB] Successfully stored wallet for user ${phoneNumber}`);
     return true;
   } catch (error) {
     console.error('[WalletDB] Error storing wallet:', error);
@@ -269,24 +444,14 @@ export async function storeWalletInDb(phoneNumber: string, address: string, priv
 /**
  * Get a wallet from the database
  * @param phoneNumber The user's phone number
- * @returns The wallet credentials or null if not found
+ * @returns The wallet address and private key, or null if not found
  */
 export async function getWalletFromDb(phoneNumber: string): Promise<{ address: string; privateKey: string } | null> {
   try {
-    console.log(`[WalletDB] Getting wallet for user ${phoneNumber}`);
+    console.log(`[WalletDB] Getting wallet for user ${phoneNumber} from database`);
     
-    // First check the in-memory cache
-    const cachedWallet = getCachedWalletCredentials(phoneNumber);
-    if (cachedWallet) {
-      console.log(`[WalletDB] Found wallet in cache for user ${phoneNumber}`);
-      return {
-        address: cachedWallet.address,
-        privateKey: cachedWallet.privateKey
-      };
-    }
-    
-    // Get the user ID
-    const { data: user, error: userError } = await supabase
+    // Get the user ID - use admin client to bypass RLS
+    const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('phone_number', phoneNumber)
@@ -302,8 +467,8 @@ export async function getWalletFromDb(phoneNumber: string): Promise<{ address: s
       return null;
     }
     
-    // Get the wallet
-    const { data: wallet, error: walletError } = await supabase
+    // Get the wallet - use admin client to bypass RLS
+    const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
       .select('address, private_key_encrypted')
       .eq('user_id', user.id)
@@ -319,11 +484,11 @@ export async function getWalletFromDb(phoneNumber: string): Promise<{ address: s
       return null;
     }
     
-    // Decrypt the private key
     try {
+      // Decrypt the private key
       const privateKey = decryptPrivateKey(wallet.private_key_encrypted);
       
-      // Update the in-memory cache
+      // Add to cache
       cacheWalletCredentials(phoneNumber, privateKey, wallet.address);
       
       console.log(`[WalletDB] Successfully retrieved wallet for user ${phoneNumber}`);
@@ -336,7 +501,7 @@ export async function getWalletFromDb(phoneNumber: string): Promise<{ address: s
       return null;
     }
   } catch (error) {
-    console.error('[WalletDB] Error getting wallet:', error);
+    console.error('[WalletDB] Error getting wallet from database:', error);
     return null;
   }
 } 

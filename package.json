@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "node fix-cdp-sdk.js",
-    "prebuild": "node node-polyfill-check.js"
+    "prebuild": "node node-polyfill-check.js",
+    "fix-rls": "node scripts/apply-rls-fix.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.18",
