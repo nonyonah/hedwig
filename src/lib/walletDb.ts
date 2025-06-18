@@ -3,65 +3,109 @@ import { getCachedWalletCredentials, cacheWalletCredentials } from './wallet';
 import crypto from 'crypto';
 
 /**
- * Execute a direct SQL query to bypass RLS
+ * Execute a direct SQL query or fall back to standard queries
  * @param query The SQL query to execute
  * @param params The query parameters
  * @returns The query result
  */
 async function executeSql<T = any>(query: string, params: any[] = []): Promise<T | null> {
   try {
-    // Use the admin client to execute the query
+    console.log('[WalletDB] Attempting to execute SQL query with RPC');
+    
+    // First try to use RPC (which will work if the RPC function is defined)
     const { data, error } = await supabaseAdmin.rpc('exec_sql', { 
       sql: query,
       params: JSON.stringify(params)
     });
     
     if (error) {
-      console.error('[WalletDB] Error executing SQL:', error);
+      console.warn('[WalletDB] RPC execution failed:', error);
       throw error;
     }
     
     return data as T;
   } catch (error) {
-    console.error('[WalletDB] Error in executeSql:', error);
+    console.warn('[WalletDB] SQL execution via RPC failed, falling back to standard queries');
+    
+    // For user creation/query operations, fall back to standard queries
+    if (query.includes('INSERT INTO public.users')) {
+      console.log('[WalletDB] Falling back to standard user insert');
+      const phoneNumber = params[0];
+      
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .insert([{ phone_number: phoneNumber }])
+        .select('id');
+        
+      if (error) {
+        console.error('[WalletDB] Standard user insert failed:', error);
+        return null;
+      }
+      
+      return data as unknown as T;
+    }
+    
+    console.error('[WalletDB] Error in executeSql and no fallback available:', error);
     return null;
   }
 }
 
 /**
- * Create a user directly with SQL to bypass RLS
+ * Create a user directly with SQL or standard insert
  * @param phoneNumber The user's phone number
  * @returns The user ID
  */
 async function createUserWithSql(phoneNumber: string): Promise<string | null> {
   try {
-    console.log(`[WalletDB] Creating user with direct SQL for phone number: ${phoneNumber}`);
+    console.log(`[WalletDB] Creating user for phone number: ${phoneNumber}`);
     
-    // Insert the user and return the ID
-    const query = `
-      INSERT INTO public.users (phone_number, created_at)
-      VALUES ($1, NOW())
-      RETURNING id
-    `;
+    // Try standard insert first
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .insert([{ phone_number: phoneNumber }])
+      .select('id');
     
-    const result = await executeSql<{id: string}[]>(query, [phoneNumber]);
+    if (error) {
+      console.warn('[WalletDB] Standard user insert failed:', error);
+      
+      // Fall back to SQL query
+      console.log('[WalletDB] Attempting SQL fallback for user creation');
+      
+      // Insert the user and return the ID
+      const query = `
+        INSERT INTO public.users (phone_number, created_at)
+        VALUES ($1, NOW())
+        RETURNING id
+      `;
+      
+      const result = await executeSql<{id: string}[]>(query, [phoneNumber]);
+      
+      if (!result || result.length === 0) {
+        console.error('[WalletDB] SQL insertion returned no data');
+        return null;
+      }
+      
+      const userId = result[0].id;
+      console.log(`[WalletDB] Created user with SQL, ID: ${userId}`);
+      return userId;
+    }
     
-    if (!result || result.length === 0) {
-      console.error('[WalletDB] SQL insertion returned no data');
+    if (!data || data.length === 0) {
+      console.error('[WalletDB] Standard insertion returned no data');
       return null;
     }
     
-    const userId = result[0].id;
-    console.log(`[WalletDB] Created user with SQL, ID: ${userId}`);
+    const userId = data[0].id;
+    console.log(`[WalletDB] Created user with standard insert, ID: ${userId}`);
     return userId;
   } catch (error) {
-    console.error('[WalletDB] Error creating user with SQL:', error);
+    console.error('[WalletDB] Error creating user:', error);
     return null;
   }
 }
 
 /**
- * Create a wallet directly with SQL to bypass RLS
+ * Create a wallet using standard insert or SQL fallback
  * @param userId The user ID
  * @param address The wallet address
  * @param encryptedPrivateKey The encrypted private key
@@ -69,20 +113,36 @@ async function createUserWithSql(phoneNumber: string): Promise<string | null> {
  */
 async function createWalletWithSql(userId: string, address: string, encryptedPrivateKey: string): Promise<boolean> {
   try {
-    console.log(`[WalletDB] Creating wallet with direct SQL for user ID: ${userId}`);
+    console.log(`[WalletDB] Creating wallet for user ID: ${userId}`);
     
-    // Insert the wallet
-    const query = `
-      INSERT INTO public.wallets (user_id, address, private_key_encrypted, created_at)
-      VALUES ($1, $2, $3, NOW())
-    `;
+    // Try standard insert first
+    const { error } = await supabaseAdmin
+      .from('wallets')
+      .insert([{
+        user_id: userId,
+        address,
+        private_key_encrypted: encryptedPrivateKey
+      }]);
     
-    await executeSql(query, [userId, address, encryptedPrivateKey]);
+    if (error) {
+      console.warn('[WalletDB] Standard wallet insert failed:', error);
+      
+      // Fall back to SQL query
+      console.log('[WalletDB] Attempting SQL fallback for wallet creation');
+      
+      // Insert the wallet
+      const query = `
+        INSERT INTO public.wallets (user_id, address, private_key_encrypted, created_at)
+        VALUES ($1, $2, $3, NOW())
+      `;
+      
+      await executeSql(query, [userId, address, encryptedPrivateKey]);
+    }
     
-    console.log(`[WalletDB] Created wallet with SQL for user ID: ${userId}`);
+    console.log(`[WalletDB] Created wallet for user ID: ${userId}`);
     return true;
   } catch (error) {
-    console.error('[WalletDB] Error creating wallet with SQL:', error);
+    console.error('[WalletDB] Error creating wallet:', error);
     return false;
   }
 }
@@ -198,12 +258,6 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
     
     // Create new user - use admin client to bypass RLS
     console.log(`[WalletDB] Creating new user for phone number: ${phoneNumber}`);
-    
-    // Verify we have the service role key properly set
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('[WalletDB] SUPABASE_SERVICE_ROLE_KEY is not set');
-      throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
-    }
     
     // Add detailed logging about the client
     console.log(`[WalletDB] Using supabaseAdmin client with URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
