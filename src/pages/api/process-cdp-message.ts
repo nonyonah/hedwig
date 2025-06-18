@@ -135,6 +135,47 @@ interface ProcessedMessage {
 // WebhookEntry type checking is done through the WhatsAppWebhookEntry type
 
 /**
+ * Safe JSON stringify function that handles circular references
+ * @param obj The object to stringify
+ * @returns JSON string without circular references
+ */
+function safeJsonStringify(obj: any, indent = 2): string {
+  const cache = new Set();
+  
+  return JSON.stringify(obj, (key, value) => {
+    // Handle non-serializable types like functions
+    if (typeof value === 'function') {
+      return '[Function]';
+    }
+    
+    // Handle circular references
+    if (typeof value === 'object' && value !== null) {
+      // Skip DOM nodes
+      if (value.nodeType && value.nodeType === 1) {
+        return '[DOM Node]';
+      }
+      
+      // Skip Timer objects (common source of circular refs)
+      if (
+        value._idleTimeout !== undefined && 
+        value._idlePrev !== undefined && 
+        value._idleNext !== undefined
+      ) {
+        return '[Timer]';
+      }
+      
+      // Handle circular references in objects
+      if (cache.has(value)) {
+        return '[Circular Reference]';
+      }
+      cache.add(value);
+    }
+    
+    return value;
+  }, indent);
+}
+
+/**
  * Processes a WhatsApp message through the CDP agent
  */
 async function processWithCDP(message: string, userId: string): Promise<string | null> {
@@ -259,7 +300,7 @@ async function processWithCDP(message: string, userId: string): Promise<string |
       result = await langchainAgent.invoke({
         messages: [new HumanMessage({ content: enhancedMessage })]
       });
-      console.log('CDP agent response:', JSON.stringify(result, null, 2));
+      console.log('CDP agent response:', safeJsonStringify(result, 2));
     } catch (invokeError) {
       console.error('Error invoking LangChain agent:', invokeError);
       return "I encountered an error while processing your request. Could you try again with a simpler query?";
@@ -479,7 +520,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
       buttonTitle,
       type,
       isInteractive: type === 'interactive',
-      requestBody: JSON.stringify(req.body)
+      requestBody: safeJsonStringify(req.body)
     });
 
     // --- Wallet gating logic: prompt for wallet creation if none exists ---
@@ -553,7 +594,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
         };
         
         // Log the formatted context for debugging
-        console.log('Formatted command context:', JSON.stringify(formattedContext, null, 2));
+        console.log('Formatted command context:', safeJsonStringify(formattedContext, 2));
         
         // Handle the command with explicit typing and pass the formatted context
         console.log('Calling handleCommand with formatted context');

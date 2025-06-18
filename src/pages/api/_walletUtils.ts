@@ -19,6 +19,7 @@ export const supabase = createClient<Database>(supabaseUrl!, supabaseKey!);
 
 // Add wallet creation throttling functions
 const WALLET_CREATION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown
+// Keep in-memory cache as a backup but primarily use database
 const walletCreationAttempts = new Map<string, number>();
 
 /**
@@ -29,9 +30,52 @@ const walletCreationAttempts = new Map<string, number>();
 export async function shouldAllowWalletCreation(userId: string): Promise<boolean> {
   console.log(`[WalletUtils] Checking if user ${userId} is allowed to create a wallet`);
   
+  try {
+    // First check database for last attempt
+    const { data, error } = await supabase
+      .from('wallet_creation_attempts')
+      .select('last_attempt_at')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      console.error(`[WalletUtils] Error checking wallet creation attempts:`, error);
+      // Fall back to in-memory if database check fails
+      return checkInMemoryRateLimit(userId);
+    }
+    
+    if (!data) {
+      console.log(`[WalletUtils] No previous wallet creation attempts for user ${userId} in database`);
+      return true;
+    }
+    
+    const lastAttemptTime = new Date(data.last_attempt_at).getTime();
+    const now = Date.now();
+    const timeSinceLastAttempt = now - lastAttemptTime;
+    
+    if (timeSinceLastAttempt < WALLET_CREATION_COOLDOWN_MS) {
+      console.log(`[WalletUtils] User ${userId} attempted to create a wallet too soon (${Math.round(timeSinceLastAttempt / 1000)}s since last attempt, cooldown is ${WALLET_CREATION_COOLDOWN_MS / 1000}s)`);
+      return false;
+    }
+
+    console.log(`[WalletUtils] User ${userId} is allowed to create a wallet (${Math.round(timeSinceLastAttempt / 1000)}s since last attempt)`);
+    return true;
+  } catch (error) {
+    console.error(`[WalletUtils] Exception checking wallet creation attempts:`, error);
+    // Fall back to in-memory if database check fails
+    return checkInMemoryRateLimit(userId);
+  }
+}
+
+/**
+ * Fallback to check rate limit in memory if database check fails
+ */
+function checkInMemoryRateLimit(userId: string): boolean {
+  console.log(`[WalletUtils] Falling back to in-memory rate limit check for user ${userId}`);
+  
   const lastAttempt = walletCreationAttempts.get(userId);
   if (!lastAttempt) {
-    console.log(`[WalletUtils] No previous wallet creation attempts for user ${userId}`);
+    console.log(`[WalletUtils] No previous wallet creation attempts for user ${userId} in memory`);
     return true;
   }
   
@@ -53,7 +97,36 @@ export async function shouldAllowWalletCreation(userId: string): Promise<boolean
  */
 export async function recordWalletCreationAttempt(userId: string): Promise<void> {
   console.log(`[WalletUtils] Recording wallet creation attempt for user ${userId}`);
-  walletCreationAttempts.set(userId, Date.now());
+  
+  try {
+    // Record in database
+    const { error } = await supabase
+      .from('wallet_creation_attempts')
+      .upsert([
+        { 
+          user_id: userId, 
+          last_attempt_at: new Date().toISOString(),
+          attempt_count: 1 // We'll increment this in a future version if needed
+        }
+      ], { 
+        onConflict: 'user_id',
+        ignoreDuplicates: false
+      });
+    
+    if (error) {
+      console.error(`[WalletUtils] Error recording wallet creation attempt:`, error);
+      // Fall back to in-memory
+      walletCreationAttempts.set(userId, Date.now());
+    } else {
+      console.log(`[WalletUtils] Successfully recorded wallet creation attempt for ${userId} in database`);
+      // Also update in-memory for double protection
+      walletCreationAttempts.set(userId, Date.now());
+    }
+  } catch (error) {
+    console.error(`[WalletUtils] Exception recording wallet creation attempt:`, error);
+    // Fall back to in-memory
+    walletCreationAttempts.set(userId, Date.now());
+  }
 }
 
 /**
@@ -152,5 +225,5 @@ export async function walletPromptAlreadyShown(userId: string): Promise<boolean>
   } catch (error) {
     console.error(`[WalletUtils] Exception checking if prompt shown:`, error);
     return shownInMemory;
-}
+  }
 } 
