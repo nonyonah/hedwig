@@ -348,3 +348,93 @@ export function formatPhoneNumber(phoneNumber: string): string {
   // Default to US country code if no country code provided
   return `+1${digits}`;
 }
+
+/**
+ * Sends a custom interactive template via WhatsApp
+ * @param to Phone number to send to
+ * @param template Template object with interactive content
+ * @returns WhatsApp message response
+ */
+export async function sendWhatsAppTemplate(to: string, template: any): Promise<WhatsAppMessageResponse> {
+  try {
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+    
+    // Check if we have valid credentials before attempting to send
+    if (!accessToken || accessToken.includes('dev-') || accessToken === 'EAABBC') {
+      console.warn(`[WhatsApp] Missing valid WhatsApp access token. Template to ${to} will not be sent.`);
+      
+      // In development, return a fake success response
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DEV MODE] Would have sent WhatsApp template to ${to}:`, JSON.stringify(template, null, 2));
+        return {
+          messaging_product: 'whatsapp',
+          contacts: [{ input: to, wa_id: to }],
+          messages: [{ id: `mock-${Date.now()}` }]
+        };
+      }
+      
+      throw new Error('Missing valid WhatsApp access token');
+    }
+    
+    if (!phoneNumberId || phoneNumberId.includes('dev-')) {
+      console.warn(`[WhatsApp] Missing valid WhatsApp phone number ID. Template to ${to} will not be sent.`);
+      
+      // In development, return a fake success response
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DEV MODE] Would have sent WhatsApp template to ${to} using phone ID: ${phoneNumberId}`);
+        return {
+          messaging_product: 'whatsapp',
+          contacts: [{ input: to, wa_id: to }],
+          messages: [{ id: `mock-${Date.now()}` }]
+        };
+      }
+      
+      throw new Error('Missing valid WhatsApp phone number ID');
+    }
+    
+    console.log(`Sending WhatsApp template to ${to} using phone number ID: ${phoneNumberId}`);
+    
+    // Add the recipient to the template
+    const fullTemplate = {
+      ...template,
+      to
+    };
+    
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(fullTemplate),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Error sending WhatsApp template:', response.status, errorData);
+      throw new Error(`Failed to send WhatsApp template: ${errorData}`);
+    }
+    
+    const result = await response.json();
+    console.log('WhatsApp template sent successfully to:', to);
+    return result;
+  } catch (err) {
+    console.error('Exception in sendWhatsAppTemplate:', err);
+    
+    // In development, provide a mock response instead of throwing
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[DEV MODE] Providing mock WhatsApp response due to error');
+      return {
+        messaging_product: 'whatsapp',
+        contacts: [{ input: to, wa_id: to }],
+        messages: [{ id: `error-mock-${Date.now()}` }]
+      };
+    }
+    
+    throw err;
+  }
+}

@@ -1,3 +1,5 @@
+import { formatAddress } from './utils';
+
 // Wallet Templates
 export const walletTemplates = {
   // Basic wallet operations
@@ -90,9 +92,9 @@ export const walletTemplates = {
     
   sendSuccess: (txHash: string, amount: string, to: string): import('../types/whatsapp').ButtonsResponse => ({
     type: 'buttons',
-    text: `✅ *Transaction Sent*\n\n*${amount} ETH* sent to:\n\`${to}\``,
+    text: `✅ *Transaction Sent*\n\n*${amount} ETH* sent to:\n\`${to}\`\n\nView on Basescan: https://basescan.org/tx/${txHash}`,
     buttons: [
-      { id: `view_basescan_${txHash}`, title: 'View on Basescan', url: `https://basescan.org/tx/${txHash}` }
+      { id: `view_basescan_${txHash}`, title: 'View on Basescan' }
     ]
   }),
     
@@ -300,3 +302,167 @@ export const txTemplates = {
     `View on Etherscan:\n` +
     `https://etherscan.io/tx/${txHash}`,
 };
+
+/**
+ * Creates a WhatsApp template for wallet details with Send/Receive buttons
+ * @param address Wallet address
+ * @param network Blockchain network (e.g., 'base', 'optimism')
+ * @param nativeBalance Native token balance (ETH)
+ * @param tokens Array of token balances
+ * @returns WhatsApp template object for sending
+ */
+export function createWalletDetailsTemplate(
+  address: string,
+  network: string,
+  nativeBalance: string,
+  tokens: Array<{ symbol: string; name: string; formattedBalance: string }> = []
+) {
+  // Format the network name for display
+  const networkDisplay = network.charAt(0).toUpperCase() + network.slice(1);
+  
+  // Format native balance (assuming ETH)
+  const formattedNativeBalance = `${nativeBalance} ETH`;
+  
+  // Create token balance display
+  const tokenBalances = tokens
+    .filter(token => parseFloat(token.formattedBalance) > 0)
+    .map(token => `• ${token.formattedBalance} ${token.symbol}`)
+    .join('\n');
+  
+  // Create the message text
+  let messageText = `*Wallet Details*\n\n`;
+  messageText += `*Network:* ${networkDisplay}\n`;
+  messageText += `*Address:* ${formatAddress(address)}\n\n`;
+  messageText += `*Balances:*\n• ${formattedNativeBalance}`;
+  
+  if (tokenBalances) {
+    messageText += `\n${tokenBalances}`;
+  }
+  
+  // Create the template
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: {
+        text: messageText
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: "send_crypto",
+              title: "Send"
+            }
+          },
+          {
+            type: "reply",
+            reply: {
+              id: "receive_crypto",
+              title: "Receive"
+            }
+          }
+        ]
+      }
+    }
+  };
+}
+
+/**
+ * Creates a WhatsApp template for wallet import instructions
+ * @returns WhatsApp template object for sending
+ */
+export function createWalletImportTemplate() {
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: {
+        text: "*Import Your Wallet*\n\nYou can import an existing wallet by sending your private key or seed phrase.\n\nNote: Always keep your private keys secure and never share them in public channels."
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: "import_wallet",
+              title: "Import Wallet"
+            }
+          },
+          {
+            type: "reply",
+            reply: {
+              id: "cancel",
+              title: "Cancel"
+            }
+          }
+        ]
+      }
+    }
+  };
+}
+
+/**
+ * Creates a WhatsApp template for sending crypto
+ * @param address User's wallet address
+ * @returns WhatsApp template object for sending
+ */
+export function createSendCryptoTemplate(address: string) {
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: {
+        text: "*Send Crypto*\n\nTo send crypto, please provide:\n\n1. Recipient address\n2. Amount\n3. Token (ETH, USDC, etc.)\n\nExample: `send 0.01 ETH to 0x123...`"
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: "cancel_send",
+              title: "Cancel"
+            }
+          }
+        ]
+      }
+    }
+  };
+}
+
+/**
+ * Creates a WhatsApp template for receiving crypto
+ * @param address User's wallet address
+ * @returns WhatsApp template object for sending
+ */
+export function createReceiveCryptoTemplate(address: string) {
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: {
+        text: `*Receive Crypto*\n\nYour wallet address:\n\`${address}\`\n\nShare this address with others to receive crypto.`
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: "get_testnet_funds",
+              title: "Get Testnet Funds"
+            }
+          }
+        ]
+      }
+    }
+  };
+}

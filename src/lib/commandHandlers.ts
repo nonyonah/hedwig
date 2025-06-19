@@ -8,14 +8,15 @@ import {
   TextResponse, 
   CommandContext,
   CommandMessage,
-  ButtonsResponse
+  ButtonsResponse,
+  InteractiveTemplateResponse
 } from '@/types/whatsapp'; // ImageResponse and ListResponse not currently used
 
 // Re-export for backward compatibility
 export type { CommandContext, CommandMessage };
 
 // Define response types for command handlers
-type CommandResponse = Promise<WhatsAppResponse | string | null>;
+type CommandResponse = Promise<WhatsAppResponse | null>;
 
 // Use helpTemplates in a log statement
 if (typeof helpTemplates === 'object') {
@@ -122,10 +123,10 @@ function getWalletHelp(): string {
 }
 
 // Implement the actual wallet operations
-async function getWalletBalance(userId: string): Promise<WhatsAppResponse | string> {
+async function getWalletBalance(userId: string): Promise<WhatsAppResponse> {
   try {
     // Import required wallet functions
-    const { userHasWalletInDb } = await import('./wallet');
+    const { userHasWalletInDb, getWalletBalances } = await import('./wallet');
     
     // Check if wallet exists first
     const hasWallet = await userHasWalletInDb(userId);
@@ -134,28 +135,29 @@ async function getWalletBalance(userId: string): Promise<WhatsAppResponse | stri
       return walletTemplates.noWallet();
     }
     
-    // Use wallet provider to get balance
-    const { getOrCreateWallet } = await import('./wallet');
-    const { ethers } = await import('ethers');
+    // Get wallet balances including tokens
+    const balances = await getWalletBalances(userId);
+    if (!balances) {
+      console.log(`Failed to get balances for user ${userId}`);
+      return walletTemplates.noWallet();
+    }
     
-    // Get the wallet provider
-    const walletResult = await getOrCreateWallet(userId);
-    const provider = walletResult.provider;
+    // Import the template function
+    const { createWalletDetailsTemplate } = await import('./whatsappTemplates');
     
-    // Get wallet address
-    const address = await provider.getAddress();
+    // Create the wallet details template with Send/Receive buttons
+    const template = createWalletDetailsTemplate(
+      balances.address,
+      balances.network,
+      balances.nativeBalance,
+      balances.tokens
+    );
     
-    // Get provider for Base Sepolia
-    const rpcProvider = new ethers.JsonRpcProvider('https://sepolia.base.org');
-    
-    // Get balance
-    const balanceWei = await rpcProvider.getBalance(address);
-    const balanceEth = ethers.formatEther(balanceWei);
-    
-    // Format balance to 6 decimal places
-    const formattedBalance = parseFloat(balanceEth).toFixed(6);
-    
-    return walletTemplates.balance(formattedBalance, 'ETH');
+    // Add the type property for our response type
+    return {
+      ...template,
+      type: 'interactive_template'
+    } as InteractiveTemplateResponse;
   } catch (error) {
     console.error('Error getting wallet balance:', error);
     return walletTemplates.noWallet();
@@ -223,10 +225,10 @@ async function createWallet(userId: string): Promise<ButtonsResponse> {
   }
 }
 
-async function getWalletAddress(userId: string): Promise<WhatsAppResponse | string> {
+async function getWalletAddress(userId: string): Promise<WhatsAppResponse> {
   try {
     // Import wallet functions
-    const { userHasWalletInDb, getWalletFromDb, getOrCreateWallet } = await import('./wallet');
+    const { userHasWalletInDb, getWalletBalances } = await import('./wallet');
     
     // Check if wallet exists
     const hasWallet = await userHasWalletInDb(userId);
@@ -234,25 +236,27 @@ async function getWalletAddress(userId: string): Promise<WhatsAppResponse | stri
       return walletTemplates.noWallet();
     }
     
-    // Get wallet address
-    let address = '';
-    
-    // Try getting address from database first
-    const walletFromDb = await getWalletFromDb(userId);
-    if (walletFromDb) {
-      address = walletFromDb.address;
+    // Get wallet details including address
+    const balances = await getWalletBalances(userId);
+    if (!balances) {
+      console.log(`Failed to get wallet details for user ${userId}`);
+      return walletTemplates.noWallet();
     }
     
-    // If no address found in database, get it from the provider
-    if (!address) {
-      const walletResult = await getOrCreateWallet(userId);
-      address = await walletResult.provider.getAddress();
-    }
+    // Import the template function
+    const { createReceiveCryptoTemplate } = await import('./whatsappTemplates');
     
-    return walletTemplates.address(address);
+    // Return the receive template which shows the wallet address
+    const template = createReceiveCryptoTemplate(balances.address);
+    
+    // Add the type property for our response type
+    return {
+      ...template,
+      type: 'interactive_template'
+    } as InteractiveTemplateResponse;
   } catch (error) {
     console.error('Error getting wallet address:', error);
-    return 'Could not retrieve your wallet address. Please try again later.';
+    return walletTemplates.noWallet();
   }
 }
 
@@ -264,52 +268,70 @@ function getHelpMessage(): string {
 }
 
 // Other functions remain unchanged
-async function handleWalletDeposit(userId: string): Promise<WhatsAppResponse | string> {
+async function handleWalletDeposit(userId: string): Promise<WhatsAppResponse> {
   try {
     // Check if wallet exists first
-    const { userHasWalletInDb, getWalletFromDb, getOrCreateWallet } = await import('./wallet');
+    const { userHasWalletInDb, getWalletBalances } = await import('./wallet');
     
     const hasWallet = await userHasWalletInDb(userId);
     if (!hasWallet) {
       return walletTemplates.noWallet();
     }
     
-    // Get wallet address
-    let address = '';
-    
-    // Try getting address from database first
-    const walletFromDb = await getWalletFromDb(userId);
-    if (walletFromDb) {
-      address = walletFromDb.address;
+    // Get wallet details including address
+    const balances = await getWalletBalances(userId);
+    if (!balances) {
+      console.log(`Failed to get wallet details for user ${userId}`);
+      return walletTemplates.noWallet();
     }
     
-    // If no address found in database, get it from the provider
-    if (!address) {
-      const walletResult = await getOrCreateWallet(userId);
-      address = await walletResult.provider.getAddress();
-    }
+    // Import the template function
+    const { createReceiveCryptoTemplate } = await import('./whatsappTemplates');
     
-    return walletTemplates.deposit(address);
+    // Return the receive template which shows the wallet address
+    const template = createReceiveCryptoTemplate(balances.address);
+    
+    // Add the type property for our response type
+    return {
+      ...template,
+      type: 'interactive_template'
+    } as InteractiveTemplateResponse;
   } catch (error) {
     console.error('Error handling wallet deposit:', error);
-    return 'Could not process your deposit request. Please try again later.';
+    return createTextResponse('Could not process your deposit request. Please try again later.');
   }
 }
 
-async function handleWalletWithdraw(userId: string): Promise<WhatsAppResponse | string> {
+async function handleWalletWithdraw(userId: string): Promise<WhatsAppResponse> {
   try {
     // Check if wallet exists
-    const { userHasWalletInDb } = await import('./wallet');
+    const { userHasWalletInDb, getWalletBalances } = await import('./wallet');
     
     const hasWallet = await userHasWalletInDb(userId);
     if (!hasWallet) {
       return walletTemplates.noWallet();
-}
-
-    // For now, just return the withdraw template
-    return walletTemplates.withdraw();
+    }
+    
+    // Get wallet details including address
+    const balances = await getWalletBalances(userId);
+    if (!balances) {
+      console.log(`Failed to get wallet details for user ${userId}`);
+      return walletTemplates.noWallet();
+    }
+    
+    // Import the template function
+    const { createSendCryptoTemplate } = await import('./whatsappTemplates');
+    
+    // Return the send template which provides instructions for sending crypto
+    const template = createSendCryptoTemplate(balances.address);
+    
+    // Add the type property for our response type
+    return {
+      ...template,
+      type: 'interactive_template'
+    } as InteractiveTemplateResponse;
   } catch (error) {
     console.error('Error handling wallet withdrawal:', error);
-    return 'Could not process your withdrawal request. Please try again later.';
+    return createTextResponse('Could not process your withdrawal request. Please try again later.');
   }
 }

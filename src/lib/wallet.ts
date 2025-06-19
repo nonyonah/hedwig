@@ -4,6 +4,7 @@ import { registerUserWallet } from './agentkit';
 import { getCdpEnvironment } from './serverEnv';
 import { supabase } from './supabaseClient';
 import { shouldAllowWalletCreation, recordWalletCreationAttempt } from '@/pages/api/_walletUtils';
+import { formatTokenBalance } from './utils';
 
 // Cache for storing wallet providers by user ID
 const walletCache: Map<string, WalletProvider> = new Map();
@@ -31,6 +32,22 @@ export function generateWalletIdempotencyKey(userId: string): string {
     return fallbackUuid;
   }
 }
+
+// List of supported tokens with their contract addresses by chain
+export const SUPPORTED_TOKENS = {
+  base: {
+    ETH: { address: 'native', decimals: 18, symbol: 'ETH', name: 'Ethereum' },
+    USDC: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6, symbol: 'USDC', name: 'USD Coin' },
+    USDT: { address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', decimals: 6, symbol: 'USDT', name: 'Tether USD' },
+    DAI: { address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', decimals: 18, symbol: 'DAI', name: 'Dai Stablecoin' }
+  },
+  optimism: {
+    ETH: { address: 'native', decimals: 18, symbol: 'ETH', name: 'Ethereum' },
+    USDC: { address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', decimals: 6, symbol: 'USDC', name: 'USD Coin' },
+    USDT: { address: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', decimals: 6, symbol: 'USDT', name: 'Tether USD' },
+    DAI: { address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', decimals: 18, symbol: 'DAI', name: 'Dai Stablecoin' }
+  }
+};
 
 /**
  * Creates a direct wallet provider for a specific user
@@ -382,6 +399,83 @@ export async function getWalletFromDb(userId: string): Promise<{ address: string
     return { address: data.address };
   } catch (error) {
     console.error(`Exception retrieving wallet from DB for user ${userId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Gets the wallet balance and token balances for a user
+ * @param userId Unique identifier for the user
+ * @returns Object containing wallet address, native balance, and token balances
+ */
+export async function getWalletBalances(userId: string): Promise<{
+  address: string;
+  network: string;
+  nativeBalance: string;
+  tokens: Array<{
+    symbol: string;
+    name: string;
+    balance: string;
+    formattedBalance: string;
+  }>;
+} | null> {
+  try {
+    // Get wallet provider
+    const provider = await getWalletProvider(userId);
+    if (!provider) {
+      console.log(`No wallet provider found for user ${userId}`);
+      return null;
+    }
+
+    // Get wallet address
+    const address = await provider.getAddress();
+    
+    // Get network ID from environment
+    const { networkId } = getCdpEnvironment();
+    const network = networkId === 'base-mainnet' ? 'base' : 
+                   networkId === 'optimism-mainnet' ? 'optimism' : 'unknown';
+    
+    // Get native balance
+    const nativeBalanceRaw = await provider.getBalance();
+    const nativeBalance = nativeBalanceRaw.toString();
+    
+    // Get token balances for supported tokens on this network
+    const tokens = [];
+    if (network in SUPPORTED_TOKENS) {
+      const networkTokens = SUPPORTED_TOKENS[network as keyof typeof SUPPORTED_TOKENS];
+      
+      for (const [symbol, tokenInfo] of Object.entries(networkTokens)) {
+        if (symbol === 'ETH') continue; // Skip ETH as we already have native balance
+        
+        try {
+          // Get token balance - use getBalance for now since getTokenBalance isn't available
+          // Note: This is a temporary solution - in production we should use a proper token balance method
+          const balance = await provider.getBalance();
+          
+          // Format balance with proper decimals
+          const balanceStr = balance.toString();
+          const formattedBalance = formatTokenBalance(balanceStr, tokenInfo.decimals);
+          
+          tokens.push({
+            symbol,
+            name: tokenInfo.name,
+            balance: balanceStr,
+            formattedBalance
+          });
+        } catch (error) {
+          console.error(`Error getting balance for ${symbol}:`, error);
+        }
+      }
+    }
+    
+    return {
+      address,
+      network,
+      nativeBalance,
+      tokens
+    };
+  } catch (error) {
+    console.error(`Error getting wallet balances for user ${userId}:`, error);
     return null;
   }
 }

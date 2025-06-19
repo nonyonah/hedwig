@@ -16,8 +16,11 @@ console.log('[Wallet API] typeof globalThis.crypto AFTER polyfill:', typeof glob
 // --- END: Runtime and Crypto Debugging ---
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getOrCreateWallet } from '@/lib/wallet';
+import { getOrCreateWallet, getWalletBalances } from '@/lib/wallet';
 import { loadServerEnvironment } from '@/lib/serverEnv';
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '@/lib/whatsappUtils';
+import { createWalletDetailsTemplate, createWalletImportTemplate, createSendCryptoTemplate, createReceiveCryptoTemplate } from '@/lib/whatsappTemplates';
+import { formatTokenBalance } from '@/lib/utils';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -30,6 +33,7 @@ type WalletResponse = {
   address?: string;
   message: string;
   error?: string;
+  balances?: any;
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<WalletResponse>) {
@@ -51,6 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 // Handle GET requests
 async function handleGetRequest(req: NextApiRequest, res: NextApiResponse<WalletResponse>) {
   const userId = req.query.userId as string;
+  const action = req.query.action as string;
   
   if (!userId) {
     return res.status(400).json({
@@ -61,12 +66,56 @@ async function handleGetRequest(req: NextApiRequest, res: NextApiResponse<Wallet
   }
 
   try {
-    // In a real app, you might want to store and retrieve wallet information from your database
-    // For now, we'll just return a success response with instructions
+    // Get wallet balances
+    const balances = await getWalletBalances(userId);
+    
+    if (!balances) {
+      return res.status(404).json({
+        success: false,
+        message: 'No wallet found for this user',
+        error: 'Wallet not found'
+      });
+    }
+    
+    // If a WhatsApp phone number is provided, send the wallet details as a template
+    const phone = req.query.phone as string;
+    if (phone) {
+      try {
+        // Create and send wallet details template with buttons
+        const template = createWalletDetailsTemplate(
+          balances.address,
+          balances.network,
+          balances.nativeBalance,
+          balances.tokens
+        );
+        
+        await sendWhatsAppTemplate(phone, template);
+        
+        // Handle specific actions
+        if (action === 'send') {
+          const sendTemplate = createSendCryptoTemplate(balances.address);
+          await sendWhatsAppTemplate(phone, sendTemplate);
+        } else if (action === 'receive') {
+          const receiveTemplate = createReceiveCryptoTemplate(balances.address);
+          await sendWhatsAppTemplate(phone, receiveTemplate);
+        } else if (action === 'import') {
+          const importTemplate = createWalletImportTemplate();
+          await sendWhatsAppTemplate(phone, importTemplate);
+        }
+      } catch (sendError) {
+        console.error('Error sending wallet template:', sendError);
+      }
+    }
+    
     return res.status(200).json({
       success: true,
       message: 'Wallet information retrieved',
-      // Include any wallet information you want to return
+      address: balances.address,
+      balances: {
+        network: balances.network,
+        nativeBalance: balances.nativeBalance,
+        tokens: balances.tokens
+      }
     });
   } catch (error) {
     console.error('Failed to get wallet info:', error);
@@ -91,22 +140,47 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse<Walle
       });
     }
 
-    try {
-      const result = await getOrCreateWallet(userId);
-      const walletAddress = await result.provider.getAddress();
-      
-      return res.status(200).json({
-        success: true,
-        address: walletAddress,
-        message: result.created ? 'Wallet created successfully' : 'Wallet accessed successfully'
-      });
-    } catch (error) {
-      console.error('Wallet operation failed:', error);
-      return res.status(500).json({
+    // Handle different actions
+    if (action === 'import') {
+      // Import wallet functionality would go here
+      // This is a placeholder for future implementation
+      return res.status(501).json({
         success: false,
-        message: 'Failed to access wallet',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Wallet import not yet implemented',
+        error: 'Not implemented'
       });
+    } else {
+      // Default: Get or create wallet
+      try {
+        const result = await getOrCreateWallet(userId);
+        const walletAddress = await result.provider.getAddress();
+        
+        // Get balances if wallet was successfully created or accessed
+        let balances = null;
+        try {
+          balances = await getWalletBalances(userId);
+        } catch (balanceError) {
+          console.error('Error getting wallet balances:', balanceError);
+        }
+        
+        return res.status(200).json({
+          success: true,
+          address: walletAddress,
+          message: result.created ? 'Wallet created successfully' : 'Wallet accessed successfully',
+          balances: balances ? {
+            network: balances.network,
+            nativeBalance: balances.nativeBalance,
+            tokens: balances.tokens
+          } : undefined
+        });
+      } catch (error) {
+        console.error('Wallet operation failed:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to access wallet',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
     }
   } catch (error) {
     console.error('Request processing failed:', error);

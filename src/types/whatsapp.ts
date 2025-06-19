@@ -1,20 +1,19 @@
 // Response types for WhatsApp messages
-export interface TextResponse {
+export type TextResponse = {
   type: 'text';
   text: string;
-}
+};
 
-export interface ImageResponse {
+export type ImageResponse = {
   type: 'image';
   url: string;
   caption?: string;
-}
+};
 
-export interface ListResponse {
+export type ListResponse = {
   type: 'list';
-  header: string;
-  body: string;
-  buttonText: string;
+  text: string;
+  button: string;
   sections: Array<{
     title: string;
     rows: Array<{
@@ -23,19 +22,39 @@ export interface ListResponse {
       description?: string;
     }>;
   }>;
-}
+};
 
-export interface ButtonsResponse {
+export type ButtonsResponse = {
   type: 'buttons';
   text: string;
   buttons: Array<{
     id: string;
     title: string;
-    url?: string; // Optional URL for action buttons that open links
   }>;
-}
+};
 
-export type WhatsAppResponse = TextResponse | ImageResponse | ListResponse | ButtonsResponse | string;
+export type InteractiveTemplateResponse = {
+  type: 'interactive_template';
+  messaging_product: string;
+  recipient_type: string;
+  interactive: {
+    type: string;
+    body: {
+      text: string;
+    };
+    action: {
+      buttons: Array<{
+        type: string;
+        reply: {
+          id: string;
+          title: string;
+        };
+      }>;
+    };
+  };
+};
+
+export type WhatsAppResponse = TextResponse | ImageResponse | ListResponse | ButtonsResponse | InteractiveTemplateResponse;
 
 // Message type for command context
 export interface CommandMessage {
