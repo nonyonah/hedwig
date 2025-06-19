@@ -339,7 +339,7 @@ export function createWalletDetailsTemplate(
     messageText += `\n${tokenBalances}`;
   }
   
-  // Create the template
+  // Create the template with enhanced buttons
   return {
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -427,6 +427,13 @@ export function createSendCryptoTemplate(address: string) {
           {
             type: "reply",
             reply: {
+              id: "send_eth",
+              title: "Send ETH"
+            }
+          },
+          {
+            type: "reply",
+            reply: {
               id: "cancel_send",
               title: "Cancel"
             }
@@ -459,6 +466,63 @@ export function createReceiveCryptoTemplate(address: string) {
             reply: {
               id: "get_testnet_funds",
               title: "Get Testnet Funds"
+            }
+          }
+        ]
+      }
+    }
+  };
+}
+
+/**
+ * Creates a WhatsApp template for transaction notifications (when receiving tokens)
+ * @param amount Amount of tokens received
+ * @param symbol Token symbol (e.g., 'ETH', 'USDC')
+ * @param from Sender address
+ * @param txHash Transaction hash
+ * @param network Network name (e.g., 'base', 'optimism')
+ * @returns WhatsApp template object for sending
+ */
+export function createTransactionNotificationTemplate(
+  amount: string,
+  symbol: string,
+  from: string,
+  txHash: string,
+  network: string = 'base'
+) {
+  // Format the network name for display
+  const networkDisplay = network.charAt(0).toUpperCase() + network.slice(1);
+  
+  // Create explorer URL based on network
+  const explorerUrl = network === 'base' 
+    ? `https://basescan.org/tx/${txHash}`
+    : network === 'optimism'
+      ? `https://optimistic.etherscan.io/tx/${txHash}`
+      : `https://etherscan.io/tx/${txHash}`;
+  
+  // Create the message text
+  const messageText = `💰 *Token Received*\n\n` +
+    `You've received *${amount} ${symbol}*\n` +
+    `From: ${formatAddress(from)}\n` +
+    `Network: ${networkDisplay}\n\n` +
+    `Click the button below to view transaction details.`;
+  
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: {
+        text: messageText
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: `view_tx_${txHash}`,
+              title: "View Transaction"
             }
           }
         ]

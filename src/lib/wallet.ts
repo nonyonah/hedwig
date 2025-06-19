@@ -107,12 +107,12 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
       }
     }
     
-    // If no existing wallet, create a new one with a consistent idempotency key
+    // If no existing wallet, create a new one with a deterministic idempotency key
     
-    // Generate a consistent idempotency key based on user ID
+    // Generate a deterministic idempotency key based on user ID and a fixed salt
     // This ensures the same wallet is created even after redeployment
-    const idempotencyKey = generateConsistentIdempotencyKey(userId);
-    console.log(`Generated consistent idempotency key for user ${userId}: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
+    const idempotencyKey = generateDeterministicIdempotencyKey(userId);
+    console.log(`Generated deterministic idempotency key for user ${userId}: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
     
     // Configuration for CDP wallet provider
     const config = {
@@ -155,6 +155,15 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
     const address = await provider.getAddress();
     console.log(`Wallet created successfully for ${userId} with address: ${address}`);
     
+    // Store the wallet address in the database immediately
+    try {
+      await storeWalletInDb(userId, address);
+      console.log(`Wallet address ${address} stored in database for user ${userId}`);
+    } catch (storeError) {
+      console.error(`Error storing wallet address in database: ${storeError}`);
+      // Continue even if storing fails - we'll try again later
+    }
+    
     // Cache the provider for future use
     walletCache.set(userId, provider);
     
@@ -169,20 +178,22 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
 }
 
 /**
- * Generates a consistent idempotency key for a user
+ * Generates a deterministic idempotency key for a user
  * This ensures the same wallet is created even after redeployment
  * @param userId Unique identifier for the user
- * @returns A consistent idempotency key
+ * @returns A deterministic idempotency key in UUID format
  */
-function generateConsistentIdempotencyKey(userId: string): string {
-  // Use a hash of the user ID to generate a consistent key
-  // This ensures the same wallet is created even after redeployment
+function generateDeterministicIdempotencyKey(userId: string): string {
+  // Use a fixed salt that doesn't change between deployments
+  const FIXED_SALT = 'hedwig-wallet-fixed-salt-v1';
+  
+  // Create a deterministic hash based on the user ID and fixed salt
   const crypto = require('crypto');
   const hash = crypto.createHash('sha256');
-  hash.update(userId + 'hedwig-wallet-salt'); // Add a salt to make it more secure
+  hash.update(userId + FIXED_SALT);
   const hashHex = hash.digest('hex');
   
-  // Format as a UUID-like string (for compatibility)
+  // Format as a UUID-like string (for compatibility with CDP requirements)
   return `${hashHex.slice(0, 8)}-${hashHex.slice(8, 12)}-${hashHex.slice(12, 16)}-${hashHex.slice(16, 20)}-${hashHex.slice(20, 32)}`;
 }
 
@@ -323,21 +334,6 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
       }
     }
     
-    // Check if we should allow wallet creation based on cooldown
-    let canCreate = true;
-    try {
-      canCreate = await shouldAllowWalletCreation(userId);
-      if (!canCreate) {
-        console.log(`[Wallet] Rate limit detected for user ${userId}, but proceeding with wallet creation anyway`);
-        // Temporarily bypass rate limiting
-        canCreate = true;
-      }
-    } catch (rateError) {
-      console.error(`[Wallet] Error checking rate limit for user ${userId}:`, rateError);
-      // Proceed with wallet creation even if rate limit check fails
-      canCreate = true;
-    }
-    
     // Record the attempt - but continue even if this fails
     try {
       await recordWalletCreationAttempt(userId);
@@ -365,14 +361,21 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
         isNewWallet = false;
       } else {
         console.warn(`Different wallet address found in database for user ${userId}. DB: ${existingWallet.address}, New: ${address}`);
-        // We'll store the new wallet address
+        // Update the wallet address in the database
+        try {
+          await storeWalletInDb(userId, address);
+          console.log(`Updated wallet address in database for user ${userId}`);
+        } catch (updateError) {
+          console.error(`Error updating wallet address in database: ${updateError}`);
+        }
       }
     }
     
-    // Store wallet in database if it's new or different
+    // Store wallet in database if it's new
     if (isNewWallet) {
       try {
         await storeWalletInDb(userId, address);
+        console.log(`New wallet address ${address} stored in database for user ${userId}`);
       } catch (storeError) {
         console.error(`[Wallet] Error storing wallet in database for user ${userId}:`, storeError);
         // Continue even if storing fails - the wallet was created successfully

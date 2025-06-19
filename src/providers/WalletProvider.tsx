@@ -1,5 +1,23 @@
-import { useEffect } from 'react';
+import { useEffect, createContext, useContext, useState, ReactNode } from 'react';
 import { EventEmitter } from 'events';
+
+// Define the wallet context type
+interface WalletContextType {
+  address: string | null;
+  isConnected: boolean;
+  isLoading: boolean;
+  network: string | null;
+  error: string | null;
+}
+
+// Create the context with default values
+const WalletContext = createContext<WalletContextType>({
+  address: null,
+  isConnected: false,
+  isLoading: true,
+  network: null,
+  error: null
+});
 
 // Increase the max listeners limit for EventEmitter
 // This helps prevent the warning but doesn't solve the underlying issue
@@ -18,15 +36,64 @@ const increaseMaxListeners = () => {
   }
 };
 
-export function WalletProviderWrapper({ children }: { children: React.ReactNode }) {
+// Hook to access wallet context
+export function useWallet() {
+  return useContext(WalletContext);
+}
+
+export function WalletProviderWrapper({ children }: { children: ReactNode }) {
+  const [walletState, setWalletState] = useState<WalletContextType>({
+    address: null,
+    isConnected: false,
+    isLoading: true,
+    network: null,
+    error: null
+  });
+
   useEffect(() => {
     // Increase max listeners when the provider mounts
     increaseMaxListeners();
     
+    // Initialize wallet connection
+    const initWallet = async () => {
+      try {
+        // This would be replaced with actual wallet initialization code
+        // For now, we're just simulating the loading state
+        setWalletState(prev => ({ ...prev, isLoading: true }));
+        
+        // Simulated delay to represent wallet connection
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Set wallet as connected with sample data
+        setWalletState({
+          address: null, // Will be populated when a real wallet connects
+          isConnected: false,
+          isLoading: false,
+          network: null,
+          error: null
+        });
+      } catch (error) {
+        console.error('Wallet initialization error:', error);
+        setWalletState({
+          address: null,
+          isConnected: false,
+          isLoading: false,
+          network: null,
+          error: error instanceof Error ? error.message : 'Unknown wallet error'
+        });
+      }
+    };
+    
+    initWallet();
+    
     return () => {
-      // Any cleanup if needed
+      // Cleanup wallet connection if needed
     };
   }, []);
 
-  return children;
+  return (
+    <WalletContext.Provider value={walletState}>
+      {children}
+    </WalletContext.Provider>
+  );
 }
