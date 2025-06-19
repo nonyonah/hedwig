@@ -65,9 +65,54 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
       throw new Error('Missing required CDP credentials for wallet creation');
     }
     
-    // Generate a proper idempotency key
-    const idempotencyKey = generateWalletIdempotencyKey(userId);
-    console.log(`Generated idempotency key for user ${userId}: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
+    // Check if the wallet already exists in the database first
+    const existingWallet = await getWalletFromDb(userId);
+    if (existingWallet) {
+      console.log(`Wallet already exists in DB for user ${userId} with address ${existingWallet.address}`);
+      console.log(`Using existing wallet instead of creating a new one`);
+      
+      // Use the existing wallet configuration
+      const config = {
+        apiKeyId,
+        apiKeySecret,
+        walletSecret,
+        networkId,
+        address: existingWallet.address,
+      };
+      
+      try {
+        // Create provider with existing wallet
+        const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+        
+        // Verify the wallet is working
+        const address = await provider.getAddress();
+        console.log(`Provider created for existing wallet ${userId} with address: ${address}`);
+        
+        // Verify the address matches what we have in the database
+        if (address.toLowerCase() !== existingWallet.address.toLowerCase()) {
+          console.error(`Address mismatch for user ${userId}! DB: ${existingWallet.address}, Provider: ${address}`);
+          throw new Error('Wallet address mismatch - possible wallet recreation issue');
+        }
+        
+        // Cache the provider for future use
+        walletCache.set(userId, provider);
+        
+        // Register with AgentKit
+        await registerUserWallet(userId, provider);
+        
+        return provider;
+      } catch (error) {
+        console.error(`Error creating provider for existing wallet: ${error}`);
+        throw error;
+      }
+    }
+    
+    // If no existing wallet, create a new one with a consistent idempotency key
+    
+    // Generate a consistent idempotency key based on user ID
+    // This ensures the same wallet is created even after redeployment
+    const idempotencyKey = generateConsistentIdempotencyKey(userId);
+    console.log(`Generated consistent idempotency key for user ${userId}: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
     
     // Configuration for CDP wallet provider
     const config = {
@@ -121,6 +166,24 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
     console.error(`Failed to create wallet for user ${userId}:`, error);
     throw new Error(`Wallet creation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/**
+ * Generates a consistent idempotency key for a user
+ * This ensures the same wallet is created even after redeployment
+ * @param userId Unique identifier for the user
+ * @returns A consistent idempotency key
+ */
+function generateConsistentIdempotencyKey(userId: string): string {
+  // Use a hash of the user ID to generate a consistent key
+  // This ensures the same wallet is created even after redeployment
+  const crypto = require('crypto');
+  const hash = crypto.createHash('sha256');
+  hash.update(userId + 'hedwig-wallet-salt'); // Add a salt to make it more secure
+  const hashHex = hash.digest('hex');
+  
+  // Format as a UUID-like string (for compatibility)
+  return `${hashHex.slice(0, 8)}-${hashHex.slice(8, 12)}-${hashHex.slice(12, 16)}-${hashHex.slice(16, 20)}-${hashHex.slice(20, 32)}`;
 }
 
 /**
@@ -187,31 +250,46 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
       throw new Error('Missing required CDP credentials for wallet retrieval');
     }
     
-    // Configuration for CDP wallet provider with existing wallet
-    const config = {
-      apiKeyId,
-      apiKeySecret,
-      walletSecret,
-      networkId,
-      address: walletData.address, // For existing wallet, pass address directly
-    };
-    
     console.log(`Creating CDP wallet provider with existing address: ${walletData.address.substring(0, 8)}...`);
     
-    // Create and initialize wallet provider
-    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-    
-    // Verify the wallet is working
-    const address = await provider.getAddress();
-    console.log(`Provider created for existing wallet ${userId} with address: ${address}`);
-    
-    // Cache the provider for future use
-    walletCache.set(userId, provider);
-    
-    // Register with AgentKit
-    await registerUserWallet(userId, provider);
-    
-    return provider;
+    // IMPORTANT: For existing wallets, we need to use the correct configuration
+    // According to CDP docs, we should use walletId or address with the correct method
+    try {
+      // Configuration for CDP wallet provider with existing wallet
+      const config = {
+        apiKeyId,
+        apiKeySecret,
+        walletSecret,
+        networkId,
+        // We're using the address as the wallet identifier
+        address: walletData.address,
+      };
+      
+      // Create and initialize wallet provider using the proper method for existing wallets
+      // This ensures we're using the same wallet and not creating a new one
+      const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+      
+      // Verify the wallet is working
+      const address = await provider.getAddress();
+      console.log(`Provider created for existing wallet ${userId} with address: ${address}`);
+      
+      // Verify the address matches what we have in the database
+      if (address.toLowerCase() !== walletData.address.toLowerCase()) {
+        console.error(`Address mismatch for user ${userId}! DB: ${walletData.address}, Provider: ${address}`);
+        throw new Error('Wallet address mismatch - possible wallet recreation issue');
+      }
+      
+      // Cache the provider for future use
+      walletCache.set(userId, provider);
+      
+      // Register with AgentKit
+      await registerUserWallet(userId, provider);
+      
+      return provider;
+    } catch (error) {
+      console.error(`Error creating provider for existing wallet: ${error}`);
+      throw error;
+    }
   } catch (error) {
     console.error(`Failed to get wallet provider for user ${userId}:`, error);
     return null;
@@ -225,14 +303,27 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
  */
 export async function getOrCreateWallet(userId: string): Promise<{ provider: WalletProvider; created: boolean }> {
   try {
-    // Check if wallet exists
-    const existingProvider = await getWalletProvider(userId);
-    if (existingProvider) {
-      return { provider: existingProvider, created: false };
+    console.log(`Getting or creating wallet for user: ${userId}`);
+    
+    // First, check if wallet exists in the database
+    const walletExists = await userHasWalletInDb(userId);
+    
+    if (walletExists) {
+      console.log(`Wallet exists in database for user: ${userId}, retrieving it`);
+      
+      // Try to get the existing wallet provider
+      const existingProvider = await getWalletProvider(userId);
+      
+      if (existingProvider) {
+        console.log(`Successfully retrieved existing wallet provider for user: ${userId}`);
+        return { provider: existingProvider, created: false };
+      } else {
+        console.warn(`Failed to retrieve existing wallet provider for user: ${userId} despite wallet existing in DB`);
+        // We'll continue to try creating a wallet, but this should use the same address
+      }
     }
     
     // Check if we should allow wallet creation based on cooldown
-    // Temporarily bypass rate limiting
     let canCreate = true;
     try {
       canCreate = await shouldAllowWalletCreation(userId);
@@ -255,21 +346,40 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
       // Continue with wallet creation even if recording fails
     }
     
-    // Create new wallet
+    // Create or retrieve wallet using our enhanced provider function
+    // This will handle existing wallets correctly
+    console.log(`Creating wallet provider for user: ${userId}`);
     const provider = await createDirectWalletProvider(userId);
     
-    // Store wallet in database
+    // Get the wallet address
     const address = await provider.getAddress();
+    console.log(`Got wallet with address ${address} for user ${userId}`);
     
-    // Try to store wallet but continue even if this fails
-    try {
-      await storeWalletInDb(userId, address);
-    } catch (storeError) {
-      console.error(`[Wallet] Error storing wallet in database for user ${userId}:`, storeError);
-      // Continue even if storing fails - the wallet was created successfully
+    // Check if this wallet already exists in the database
+    const existingWallet = await getWalletFromDb(userId);
+    let isNewWallet = true;
+    
+    if (existingWallet) {
+      if (existingWallet.address.toLowerCase() === address.toLowerCase()) {
+        console.log(`Wallet address ${address} already exists in database for user ${userId}`);
+        isNewWallet = false;
+      } else {
+        console.warn(`Different wallet address found in database for user ${userId}. DB: ${existingWallet.address}, New: ${address}`);
+        // We'll store the new wallet address
+      }
     }
     
-    return { provider, created: true };
+    // Store wallet in database if it's new or different
+    if (isNewWallet) {
+      try {
+        await storeWalletInDb(userId, address);
+      } catch (storeError) {
+        console.error(`[Wallet] Error storing wallet in database for user ${userId}:`, storeError);
+        // Continue even if storing fails - the wallet was created successfully
+      }
+    }
+    
+    return { provider, created: isNewWallet };
   } catch (error) {
     console.error(`Failed to get or create wallet for user ${userId}:`, error);
     throw new Error(`Wallet operation failed: ${error instanceof Error ? error.message : String(error)}`);
