@@ -266,37 +266,37 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
     // IMPORTANT: For existing wallets, we need to use the correct configuration
     // According to CDP docs, we should use walletId or address with the correct method
     try {
-      // Configuration for CDP wallet provider with existing wallet
-      const config = {
-        apiKeyId,
-        apiKeySecret,
-        walletSecret,
-        networkId,
+    // Configuration for CDP wallet provider with existing wallet
+    const config = {
+      apiKeyId,
+      apiKeySecret,
+      walletSecret,
+      networkId,
         // We're using the address as the wallet identifier
         address: walletData.address,
-      };
-      
+    };
+    
       // Create and initialize wallet provider using the proper method for existing wallets
       // This ensures we're using the same wallet and not creating a new one
-      const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-      
-      // Verify the wallet is working
-      const address = await provider.getAddress();
-      console.log(`Provider created for existing wallet ${userId} with address: ${address}`);
+    const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+    
+    // Verify the wallet is working
+    const address = await provider.getAddress();
+    console.log(`Provider created for existing wallet ${userId} with address: ${address}`);
       
       // Verify the address matches what we have in the database
       if (address.toLowerCase() !== walletData.address.toLowerCase()) {
         console.error(`Address mismatch for user ${userId}! DB: ${walletData.address}, Provider: ${address}`);
         throw new Error('Wallet address mismatch - possible wallet recreation issue');
       }
-      
-      // Cache the provider for future use
-      walletCache.set(userId, provider);
-      
-      // Register with AgentKit
-      await registerUserWallet(userId, provider);
-      
-      return provider;
+    
+    // Cache the provider for future use
+    walletCache.set(userId, provider);
+    
+    // Register with AgentKit
+    await registerUserWallet(userId, provider);
+    
+    return provider;
     } catch (error) {
       console.error(`Error creating provider for existing wallet: ${error}`);
       throw error;
@@ -323,11 +323,11 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
       console.log(`Wallet exists in database for user: ${userId}, retrieving it`);
       
       // Try to get the existing wallet provider
-      const existingProvider = await getWalletProvider(userId);
+    const existingProvider = await getWalletProvider(userId);
       
-      if (existingProvider) {
+    if (existingProvider) {
         console.log(`Successfully retrieved existing wallet provider for user: ${userId}`);
-        return { provider: existingProvider, created: false };
+      return { provider: existingProvider, created: false };
       } else {
         console.warn(`Failed to retrieve existing wallet provider for user: ${userId} despite wallet existing in DB`);
         // We'll continue to try creating a wallet, but this should use the same address
@@ -374,7 +374,7 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
     // Store wallet in database if it's new
     if (isNewWallet) {
       try {
-        await storeWalletInDb(userId, address);
+    await storeWalletInDb(userId, address);
         console.log(`New wallet address ${address} stored in database for user ${userId}`);
       } catch (storeError) {
         console.error(`[Wallet] Error storing wallet in database for user ${userId}:`, storeError);
@@ -464,7 +464,7 @@ export async function storeWalletInDb(userId: string, address: string): Promise<
         return await robustStoreWallet(userId, address);
       } catch (fallbackError) {
         console.error(`[Wallet] Error using walletDb functions:`, fallbackError);
-        return false;
+      return false;
       }
     }
     
@@ -481,7 +481,7 @@ export async function storeWalletInDb(userId: string, address: string): Promise<
       return result;
     } catch (fallbackError) {
       console.error(`[Wallet] Fallback wallet storage failed:`, fallbackError);
-      return false;
+    return false;
     }
   }
 }

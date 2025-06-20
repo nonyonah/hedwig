@@ -276,6 +276,8 @@ export async function processWithCDP(
         contextualizedMessage = `[BLOCKCHAIN QUERY WITHOUT WALLET] ${message}`;
       }
       
+      console.log(`[CDP] Sending contextualized message to LangChain: ${contextualizedMessage}`);
+      
       // Call the agent with the message
       const result = await agent.invoke({
         messages: [
@@ -294,9 +296,12 @@ export async function processWithCDP(
         
         if (typeof lastMessage.content === 'string') {
           responseText = lastMessage.content;
+          console.log(`[CDP] LangChain returned string response: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
         } else {
           // For non-string content, try to extract text in a safe way
           try {
+            console.log('[CDP] LangChain returned non-string response:', JSON.stringify(lastMessage.content).substring(0, 200));
+            
             if (Array.isArray(lastMessage.content)) {
               // Handle array of content blocks
               responseText = lastMessage.content
@@ -309,23 +314,37 @@ export async function processWithCDP(
                 })
                 .filter(text => text)
                 .join('\n');
+                
+              console.log(`[CDP] Extracted text from array: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
             } else if (lastMessage.content && typeof lastMessage.content === 'object') {
               // Handle object content
               responseText = JSON.stringify(lastMessage.content);
+              console.log(`[CDP] Converted object to string: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
             }
           } catch (err) {
             console.error('[CDP] Error extracting text from complex content:', err);
           }
         }
+      } else {
+        console.warn('[CDP] LangChain returned empty or invalid result structure:', result);
       }
       
-      // If we got a response, return it, otherwise return fallback
+      // If we got a response, return it, otherwise use fallback
       if (responseText) {
-        console.log(`[CDP] LangChain agent response: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
         return responseText;
       } else {
-        console.warn('[CDP] LangChain agent returned empty or invalid response');
-        return "I'm sorry, I couldn't process your request properly. Please try again.";
+        // If we couldn't get a valid response, use a simple fallback based on the message
+        console.warn('[CDP] Using fallback response for message:', message);
+        
+        if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi ') || message.toLowerCase() === 'hi') {
+          return "Hello! I'm Hedwig, your crypto assistant. How can I help you today?";
+        } else if (message.toLowerCase().includes('how are you')) {
+          return "I'm doing well, thank you for asking! How can I assist you with crypto today?";
+        } else if (message.toLowerCase().includes('your name')) {
+          return "I'm Hedwig, your friendly crypto and blockchain assistant. How can I help you today?";
+        } else {
+          return "I'm here to help with crypto and blockchain questions. Would you like to learn about creating a wallet, checking balances, or sending crypto?";
+        }
       }
     } catch (error) {
       console.error('[CDP] Error processing message with LangChain agent:', error);
@@ -499,7 +518,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
 
     // Use phone parameter if available, otherwise fall back to from
     const userPhone = phone || from;
-    
+
     // Basic validation
     if (!userPhone || !messageText) {
       return res.status(400).json({
@@ -857,11 +876,11 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
         // Check if the response is a WhatsAppResponse object or a string
         if (typeof response === 'string') {
           const result = await sendWhatsAppMessage(userPhone, response);
-          return res.status(200).json({
-            success: true,
+        return res.status(200).json({
+          success: true,
             message: 'Response sent successfully',
-            result
-          });
+          result
+        });
         } else {
           // It's a WhatsAppResponse object, handle it with the appropriate method
           return handleResponse(userPhone, response, res);
