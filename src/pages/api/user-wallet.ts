@@ -80,19 +80,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Create a new wallet
     console.log(`[User Wallet] Creating new wallet for user ${userId}${username ? ` (${username})` : ''}`);
-    const walletResult = await getOrCreateWallet(userId, username);
     
-    return res.status(201).json({
-      address: walletResult.address,
-      userId,
-      username,
-      network,
-      created: walletResult.created,
-      imported: false,
-      message: walletResult.created 
-        ? 'New wallet created successfully' 
-        : 'Existing wallet retrieved successfully'
-    });
+    try {
+      const walletResult = await getOrCreateWallet(userId, username);
+      
+      return res.status(201).json({
+        address: walletResult.address,
+        userId,
+        username,
+        network,
+        created: walletResult.created,
+        imported: false,
+        message: walletResult.created 
+          ? 'New wallet created successfully' 
+          : 'Existing wallet retrieved successfully'
+      });
+    } catch (walletError) {
+      console.error('[User Wallet] Error creating wallet:', walletError);
+      return res.status(500).json({ 
+        error: walletError instanceof Error ? walletError.message : 'Unknown error creating wallet',
+        success: false,
+        message: 'Failed to create wallet. Please try again later.'
+      });
+    }
   } catch (error) {
     console.error('[User Wallet] Error:', error);
     return res.status(500).json({ 

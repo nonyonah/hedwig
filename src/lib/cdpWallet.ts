@@ -16,6 +16,24 @@ export interface WalletData {
 }
 
 /**
+ * Ensures the UUID is in the correct format required by CDP API
+ * Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx where x is any hex digit and y is 8, 9, a, or b
+ * @param uuid UUID to validate
+ * @returns A valid UUID in the required format
+ */
+function ensureValidUuid(uuid: string): string {
+  // Check if the UUID matches the required pattern
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  
+  if (uuidPattern.test(uuid)) {
+    return uuid; // UUID is already valid
+  }
+  
+  // If not valid, generate a new one that matches the pattern
+  return uuidv4();
+}
+
+/**
  * Get or create a wallet for a user using AgentKit's CdpV2EvmWalletProvider
  * @param userId User identifier (phone number)
  * @param username User's WhatsApp name
@@ -107,7 +125,7 @@ export async function getOrCreateWallet(
     // Generate a UUID that matches the required format pattern
     // The format must be: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx where x is any hex digit and y is 8, 9, a, or b
     const uuid = uuidv4();
-    const idempotencyKey = uuid;
+    const idempotencyKey = ensureValidUuid(uuid);
     
     console.log(`[CDP] Creating new wallet for user ${userId} with idempotency key: ${idempotencyKey}`);
     

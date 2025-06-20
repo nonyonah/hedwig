@@ -1292,13 +1292,22 @@ async function createWallet(userId: string, username?: string): Promise<string> 
       }),
     });
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error(`[CDP] Error creating wallet:`, errorData);
-      return "I couldn't create a wallet for you right now. Please try again later.";
+    // Get the response body as text first to ensure we can parse it
+    const responseText = await response.text();
+    let walletData;
+    
+    try {
+      walletData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error(`[CDP] Error parsing wallet API response:`, parseError);
+      console.error(`[CDP] Raw response:`, responseText);
+      return "There was a problem creating your wallet. Please try again later.";
     }
     
-    const walletData = await response.json();
+    if (!response.ok) {
+      console.error(`[CDP] Error creating wallet:`, walletData);
+      return walletData.message || "I couldn't create a wallet for you right now. Please try again later.";
+    }
     
     if (!walletData || !walletData.address) {
       console.error(`[CDP] Invalid wallet data received:`, walletData);
