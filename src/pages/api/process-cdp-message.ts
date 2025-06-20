@@ -258,12 +258,17 @@ export async function processWithCDP(
     
     // Process the message with AgentKit
     try {
-      // Use type assertion to bypass TypeScript error
-      const response = await (agentKit as any).process({
-        messages: [{ role: 'user', content: message }],
-      });
+      // Inspect available methods on agentKit
+      console.log('[CDP] Available AgentKit methods:', Object.keys(agentKit));
       
-      return response.content || response.message || "I don't have a response for that.";
+      // Try to use the getActions method first to see what's available
+      const actions = await agentKit.getActions();
+      console.log('[CDP] Available actions:', actions.map(a => a.name));
+      
+      // Use the run method which is likely available
+      const response = await agentKit.run(message);
+      
+      return typeof response === 'string' ? response : JSON.stringify(response);
     } catch (error) {
       console.error('[CDP] Error processing message with AgentKit:', error);
       return "I'm sorry, I couldn't process your message. Please try again later.";

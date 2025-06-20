@@ -61,7 +61,9 @@ export async function getOrCreateCdpWallet(
     const cdp = await getCdpClient();
     
     // Create a deterministic name for the account based on the user ID
-    const accountName = `hedwig-${userId}-${network}`;
+    // Account name must match regex "^[A-Za-z0-9][A-Za-z0-9-]{0,34}[A-Za-z0-9]$"
+    const sanitizedUserId = userId.replace(/[^A-Za-z0-9-]/g, '-');
+    const accountName = `hedwig${sanitizedUserId}`.substring(0, 36);
     
     // Generate a unique idempotency key
     const idempotencyKey = uuidv4();
