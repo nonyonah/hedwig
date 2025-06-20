@@ -31,8 +31,8 @@ export async function getCdpClient() {
   
   // Initialize CDP client
   return new CdpClient({
-    apiKeyId,
-    apiKeySecret,
+      apiKeyId,
+      apiKeySecret,
   });
 }
 
@@ -214,4 +214,4 @@ export async function getWalletFromDb(
     console.error(`[CDP] Error getting wallet from database:`, error);
     return null;
   }
-} 
+}

@@ -243,7 +243,7 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
       console.error('[WalletDB] getOrCreateUser: Phone number is missing');
       throw new Error('Phone number is required');
     }
-    
+
     console.log(`[WalletDB] Getting or creating user for phone number ${phoneNumber}`);
     
     // Try multiple approaches to ensure robustness
@@ -252,11 +252,11 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
     try {
       console.log(`[WalletDB] Checking if user ${phoneNumber} exists`);
       const { data: existingUser, error: selectError } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('phone_number', phoneNumber)
-        .single();
-      
+      .from('users')
+      .select('id')
+      .eq('phone_number', phoneNumber)
+      .single();
+    
       if (!selectError && existingUser) {
         console.log(`[WalletDB] Found existing user with ID ${existingUser.id}`);
         return existingUser.id;
@@ -313,11 +313,11 @@ export async function getOrCreateUser(phoneNumber: string): Promise<string> {
     try {
       console.log(`[WalletDB] Trying simple insert for ${phoneNumber}`);
       const { data: insertResult, error: insertError } = await supabaseAdmin
-        .from('users')
-        .insert([{ phone_number: phoneNumber }])
-        .select('id')
-        .single();
-      
+      .from('users')
+      .insert([{ phone_number: phoneNumber }])
+      .select('id')
+      .single();
+    
       if (!insertError && insertResult) {
         const userId: string = insertResult.id;
         console.log(`[WalletDB] Created user with simple insert, ID: ${userId}`);
@@ -515,28 +515,28 @@ export async function storeWalletInDb(phoneNumber: string, address: string): Pro
     
     // Approach 1: Check if wallet already exists and update
     try {
-      const { data: existingWallet, error: fetchError } = await supabaseAdmin
-        .from('wallets')
-        .select('id')
-        .eq('user_id', userId)
-        .single();
-      
+    const { data: existingWallet, error: fetchError } = await supabaseAdmin
+      .from('wallets')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+    
       if (!fetchError && existingWallet) {
         // Update existing wallet
-        console.log(`[WalletDB] Updating existing wallet for user ${phoneNumber}`);
-        const { error: updateError } = await supabaseAdmin
-          .from('wallets')
-          .update({
-            address,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingWallet.id);
-        
+      console.log(`[WalletDB] Updating existing wallet for user ${phoneNumber}`);
+      const { error: updateError } = await supabaseAdmin
+        .from('wallets')
+        .update({
+          address,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingWallet.id);
+      
         if (!updateError) {
           console.log(`[WalletDB] Successfully updated wallet for user ${phoneNumber}`);
           walletStored = true;
         } else {
-          console.error('[WalletDB] Error updating wallet:', updateError);
+        console.error('[WalletDB] Error updating wallet:', updateError);
         }
       }
     } catch (checkError) {
