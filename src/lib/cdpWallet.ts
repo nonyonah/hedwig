@@ -1,90 +1,138 @@
 /**
  * CDP Wallet Utilities
- * Handles CDP client initialization and wallet operations
+ * Handles wallet operations using AgentKit's CdpV2EvmWalletProvider
  */
 import { getCdpEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
+import { CdpV2EvmWalletProvider } from '@coinbase/agentkit';
 
 // Type for wallet data stored in database
 export interface WalletData {
   user_id: string;
   address: string;
-  network: string;
+  username?: string;
   wallet_type: string;
   created_at: string;
+  imported?: boolean;
 }
 
 /**
- * Get CDP client for wallet operations
- * @returns Initialized CDP client
- */
-export async function getCdpClient() {
-  // Get CDP environment variables
-  const { apiKeyId, apiKeySecret } = getCdpEnvironment();
-  
-  if (!apiKeyId || !apiKeySecret) {
-    throw new Error('Missing CDP credentials (CDP_API_KEY_ID or CDP_API_KEY_SECRET)');
-  }
-  
-  // Import CDP SDK dynamically
-  const { CdpClient } = await import('@coinbase/cdp-sdk');
-  
-  // Initialize CDP client
-  return new CdpClient({
-      apiKeyId,
-      apiKeySecret,
-  });
-}
-
-/**
- * Get or create a wallet for a user using CDP SDK directly
- * @param userId User identifier
- * @param network Network to create wallet on (defaults to base-sepolia)
+ * Get or create a wallet for a user using AgentKit's CdpV2EvmWalletProvider
+ * @param userId User identifier (phone number)
+ * @param username User's WhatsApp name
+ * @param importedAddress Optional address to import (if user is importing a wallet)
  * @returns Object containing wallet address and whether it was newly created
  */
-export async function getOrCreateCdpWallet(
+export async function getOrCreateWallet(
   userId: string, 
-  network: string = 'base-sepolia'
-): Promise<{ address: string; created: boolean }> {
+  username?: string,
+  importedAddress?: string
+): Promise<{ address: string; created: boolean; provider: CdpV2EvmWalletProvider }> {
   try {
-    console.log(`[CDP] Getting or creating wallet for user: ${userId} on network: ${network}`);
+    console.log(`[CDP] Getting or creating wallet for user: ${userId}${username ? ` (${username})` : ''}`);
     
     // First check if user already has a wallet in the database
-    const existingWallet = await getWalletFromDb(userId, network);
+    const existingWallet = await getWalletFromDb(userId);
     
     if (existingWallet) {
       console.log(`[CDP] User ${userId} already has wallet with address: ${existingWallet.address}`);
-      return { address: existingWallet.address, created: false };
+      
+      // Get CDP environment variables
+      const { apiKeyId, apiKeySecret, walletSecret } = getCdpEnvironment();
+      
+      if (!apiKeyId || !apiKeySecret || !walletSecret) {
+        throw new Error('Missing CDP credentials (CDP_API_KEY_ID, CDP_API_KEY_SECRET, or CDP_WALLET_SECRET)');
+      }
+      
+      // Configure wallet provider with existing wallet address
+      const provider = await CdpV2EvmWalletProvider.configureWithWallet({
+        apiKeyId,
+        apiKeySecret,
+        walletSecret,
+        address: existingWallet.address,
+        networkId: 'base-sepolia'
+      });
+      
+      return { 
+        address: existingWallet.address, 
+        created: false,
+        provider
+      };
     }
     
-    // If no existing wallet, create a new one using CDP SDK
-    const cdp = await getCdpClient();
+    // If importing a wallet, use that address
+    if (importedAddress) {
+      console.log(`[CDP] Importing wallet with address: ${importedAddress} for user ${userId}`);
+      
+      // Get CDP environment variables
+      const { apiKeyId, apiKeySecret, walletSecret } = getCdpEnvironment();
+      
+      if (!apiKeyId || !apiKeySecret || !walletSecret) {
+        throw new Error('Missing CDP credentials');
+      }
+      
+      // Configure wallet provider with imported address
+      const provider = await CdpV2EvmWalletProvider.configureWithWallet({
+        apiKeyId,
+        apiKeySecret,
+        walletSecret,
+        address: importedAddress,
+        networkId: 'base-sepolia'
+      });
+      
+      // Verify the address
+      const verifiedAddress = await provider.getAddress();
+      
+      if (verifiedAddress.toLowerCase() !== importedAddress.toLowerCase()) {
+        throw new Error('Imported wallet address verification failed');
+      }
+      
+      // Store the wallet in the database
+      await storeWalletInDb(userId, verifiedAddress, username, true);
+      
+      return { 
+        address: verifiedAddress, 
+        created: true,
+        provider
+      };
+    }
     
-    // Create a deterministic name for the account based on the user ID
-    // Account name must match regex "^[A-Za-z0-9][A-Za-z0-9-]{0,34}[A-Za-z0-9]$"
-    const sanitizedUserId = userId.replace(/[^A-Za-z0-9-]/g, '-');
-    const accountName = `hedwig${sanitizedUserId}`.substring(0, 36);
+    // If no existing wallet and not importing, create a new one
+    // Get CDP environment variables
+    const { apiKeyId, apiKeySecret, walletSecret } = getCdpEnvironment();
     
-    // Generate a unique idempotency key
-    const idempotencyKey = uuidv4();
+    if (!apiKeyId || !apiKeySecret || !walletSecret) {
+      throw new Error('Missing CDP credentials');
+    }
     
-    // Try to create a new account
-    console.log(`[CDP] Creating EVM account for user ${userId} with name ${accountName}`);
-    const account = await cdp.evm.createAccount({
-      name: accountName,
-      idempotencyKey
+    // Generate a deterministic idempotency key based on the user ID
+    // This ensures the same user always gets the same wallet
+    const idempotencyKey = `hedwig-${userId.slice(-8)}-${uuidv4().slice(0, 13)}`;
+    
+    console.log(`[CDP] Creating new wallet for user ${userId} with idempotency key: ${idempotencyKey}`);
+    
+    // Create wallet provider with idempotency key to create a new wallet
+    const provider = await CdpV2EvmWalletProvider.configureWithWallet({
+      apiKeyId,
+      apiKeySecret,
+      walletSecret,
+      idempotencyKey,
+      networkId: 'base-sepolia'
     });
     
-    if (!account || !account.address) {
-      throw new Error('Failed to create wallet: CDP returned empty account or address');
-    }
+    // Get the address of the new wallet
+    const address = await provider.getAddress();
     
-    console.log(`[CDP] Created wallet for user ${userId} with address: ${account.address}`);
+    console.log(`[CDP] Created wallet for user ${userId} with address: ${address}`);
     
     // Store the wallet in the database
-    await storeWalletInDb(userId, account.address, network);
+    await storeWalletInDb(userId, address, username);
     
-    return { address: account.address, created: true };
+    return { 
+      address, 
+      created: true,
+      provider
+    };
   } catch (error) {
     console.error(`[CDP] Error creating wallet for user ${userId}:`, error);
     throw new Error(`Wallet creation failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -93,14 +141,16 @@ export async function getOrCreateCdpWallet(
 
 /**
  * Store a wallet in the database
- * @param userId User identifier
+ * @param userId User identifier (phone number)
  * @param address Wallet address
- * @param network Network the wallet is on (not stored in DB)
+ * @param username User's WhatsApp name
+ * @param imported Whether the wallet was imported
  */
 export async function storeWalletInDb(
   userId: string, 
-  address: string, 
-  network: string = 'base-sepolia'
+  address: string,
+  username?: string,
+  imported: boolean = false
 ): Promise<void> {
   try {
     console.log(`[CDP] Storing wallet in database for user ${userId} with address ${address}`);
@@ -119,14 +169,16 @@ export async function storeWalletInDb(
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Insert wallet into database - omitting network column
+    // Insert wallet into database
     const { error } = await supabase
       .from('wallets')
       .insert({
         user_id: userId,
         address,
-        wallet_type: 'cdp',
-        created_at: new Date().toISOString()
+        username: username || null,
+        wallet_type: imported ? 'imported' : 'cdp',
+        created_at: new Date().toISOString(),
+        imported
       });
     
     if (error) {
@@ -142,16 +194,12 @@ export async function storeWalletInDb(
 
 /**
  * Check if a user has a wallet in the database
- * @param userId User identifier
- * @param network Network to check for wallet on (not used for filtering)
+ * @param userId User identifier (phone number)
  * @returns True if user has a wallet, false otherwise
  */
-export async function userHasWalletInDb(
-  userId: string, 
-  network: string = 'base-sepolia'
-): Promise<boolean> {
+export async function userHasWalletInDb(userId: string): Promise<boolean> {
   try {
-    const wallet = await getWalletFromDb(userId, network);
+    const wallet = await getWalletFromDb(userId);
     return !!wallet;
   } catch (error) {
     console.error(`[CDP] Error checking if user has wallet:`, error);
@@ -161,14 +209,10 @@ export async function userHasWalletInDb(
 
 /**
  * Get a wallet from the database
- * @param userId User identifier
- * @param network Network to get wallet from (not used for filtering)
+ * @param userId User identifier (phone number)
  * @returns Wallet data or null if not found
  */
-export async function getWalletFromDb(
-  userId: string, 
-  network: string = 'base-sepolia'
-): Promise<WalletData | null> {
+export async function getWalletFromDb(userId: string): Promise<WalletData | null> {
   try {
     console.log(`[CDP] Getting wallet from database for user ${userId}`);
     
@@ -186,7 +230,7 @@ export async function getWalletFromDb(
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Query for wallet - only filter by user_id
+    // Query for wallet
     const { data, error } = await supabase
       .from('wallets')
       .select('*')
@@ -202,16 +246,35 @@ export async function getWalletFromDb(
       return null;
     }
     
-    // Add network to the returned data since it's expected in the WalletData interface
-    const walletData = {
-      ...data,
-      network: network // Add default network since it's not stored in DB
-    };
-    
-    console.log(`[CDP] Found wallet in database for user ${userId}: ${walletData.address}`);
-    return walletData as WalletData;
+    console.log(`[CDP] Found wallet in database for user ${userId}: ${data.address}`);
+    return data as WalletData;
   } catch (error) {
     console.error(`[CDP] Error getting wallet from database:`, error);
     return null;
+  }
+}
+
+/**
+ * Get wallet balance
+ * @param address Wallet address
+ * @returns Balance in ETH
+ */
+export async function getWalletBalance(address: string): Promise<string> {
+  try {
+    console.log(`[CDP] Getting balance for wallet: ${address}`);
+    
+    // Use ethers.js to get balance
+    const { ethers } = await import('ethers');
+    const provider = new ethers.JsonRpcProvider('https://sepolia.base.org');
+    
+    const balanceWei = await provider.getBalance(address);
+    const balanceEth = ethers.formatEther(balanceWei);
+    
+    console.log(`[CDP] Balance for wallet ${address}: ${balanceEth} ETH`);
+    
+    return balanceEth;
+  } catch (error) {
+    console.error(`[CDP] Error getting wallet balance:`, error);
+    throw new Error(`Failed to get wallet balance: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

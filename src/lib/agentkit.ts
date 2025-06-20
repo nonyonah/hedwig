@@ -303,10 +303,11 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
 /**
  * Get an AgentKit instance configured with the user's wallet if available
  * @param userId User identifier (e.g., phone number)
+ * @param username Optional username for the user
  * @returns An initialized AgentKit instance
  */
-export async function getAgentKit(userId?: string): Promise<AgentKit> {
-  console.log(`[AgentKit] Initializing AgentKit for user ${userId || 'system'}`);
+export async function getAgentKit(userId?: string, username?: string): Promise<AgentKit> {
+  console.log(`[AgentKit] Initializing AgentKit for user ${userId || 'system'}${username ? ` (${username})` : ''}`);
   
   try {
     // Get API credentials
@@ -320,16 +321,16 @@ export async function getAgentKit(userId?: string): Promise<AgentKit> {
     // Try to get the user's wallet provider if userId is provided
     let walletProvider: WalletProvider | undefined = undefined;
     if (userId) {
-      console.log(`[AgentKit] Getting wallet provider for user ${userId}`);
+      console.log(`[AgentKit] Getting wallet provider for user ${userId}${username ? ` (${username})` : ''}`);
       const userWalletProvider = await getUserWalletProvider(userId);
       
       if (userWalletProvider) {
         walletProvider = userWalletProvider;
-        console.log(`[AgentKit] Successfully retrieved wallet provider for user ${userId}`);
+        console.log(`[AgentKit] Successfully retrieved wallet provider for user ${userId}${username ? ` (${username})` : ''}`);
         const address = await walletProvider.getAddress();
         console.log(`[AgentKit] Wallet address: ${address}`);
       } else {
-        console.log(`[AgentKit] No wallet provider found for user ${userId}`);
+        console.log(`[AgentKit] No wallet provider found for user ${userId}${username ? ` (${username})` : ''}`);
       }
     }
     

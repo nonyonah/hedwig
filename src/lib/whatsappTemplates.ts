@@ -34,10 +34,17 @@ export const walletTemplates = {
   // First-time wallet creation prompt with action button
   noWallet: (): import('../types/whatsapp').ButtonsResponse => ({
     type: 'buttons',
-    text: '❌ *No Wallet Found*\n\nYou don\'t have a wallet yet. Create your wallet to get started.',
+    text: '❌ *No Wallet Found*\n\nYou don\'t have a wallet yet. Would you like to create a new wallet or import an existing one?',
     buttons: [
-      { id: 'create_wallet', title: 'Create Wallet' }
+      { id: 'create_wallet', title: 'Create Wallet' },
+      { id: 'import_wallet', title: 'Import Wallet' }
     ]
+  }),
+    
+  // Instructions for wallet import
+  importWalletInstructions: (): import('../types/whatsapp').TextResponse => ({
+    type: 'text',
+    text: "🔐 *Import Wallet*\n\nTo import your existing wallet, you'll need your private key. This will start a secure flow where you can safely enter your private key.\n\n⚠️ IMPORTANT: Never share your private key in regular messages. Only enter it in the secure flow that will follow."
   }),
     
   // Deposit template with instructions and QR code option
