@@ -169,11 +169,43 @@ export async function storeWalletInDb(
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
+    // Check if user exists, create if it doesn't
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone_number', userId)
+      .single();
+      
+    if (!existingUser) {
+      console.log(`[CDP] User ${userId} doesn't exist, creating new user`);
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          phone_number: userId
+        });
+        
+      if (userError) {
+        console.error(`[CDP] Error creating user:`, userError);
+        throw new Error(`Failed to create user: ${userError.message}`);
+      }
+    }
+    
+    // Get the user ID
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone_number', userId)
+      .single();
+      
+    if (!user) {
+      throw new Error(`Failed to find or create user with phone number ${userId}`);
+    }
+    
     // Insert wallet into database
     const { error } = await supabase
       .from('wallets')
       .insert({
-        user_id: userId,
+        user_id: user.id,
         address,
         username: username || null,
         wallet_type: imported ? 'imported' : 'cdp',
