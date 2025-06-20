@@ -13,7 +13,6 @@ export interface WalletData {
   username?: string;
   wallet_type: string;
   created_at: string;
-  imported?: boolean;
 }
 
 /**
