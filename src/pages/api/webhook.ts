@@ -152,8 +152,8 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                   const messageText = message.text.body;
                   console.log(`Received text message from ${from}: ${messageText}`);
 
-                  // Get the base URL from environment variable or use relative URL for same-origin
-                  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                  // Get the base URL from environment variable or use default for server-side
+                  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
                   const processApiUrl = `${baseUrl}/api/process-cdp-message`;
                   
                   console.log(`Forwarding message to: ${processApiUrl}`);
@@ -217,7 +217,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                     });
                     
                     // Call the dedicated wallet creation endpoint directly
-                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
                     const createWalletUrl = `${baseUrl}/api/create-wallet`;
                     
                     try {
@@ -255,7 +255,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                     // Process as a wallet command
                     const commandText = buttonId === 'view_wallet' ? '/wallet address' : '/wallet balance';
                     
-                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
                     const processApiUrl = `${baseUrl}/api/process-cdp-message`;
                     
                     try {
@@ -291,7 +291,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                     // Handle deposit request
                     console.log(`DEPOSIT BUTTON CLICKED by user ${from}`);
                     
-                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
                     const processApiUrl = `${baseUrl}/api/process-cdp-message`;
                     
                     try {
@@ -327,7 +327,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                     // Handle withdrawal request
                     console.log(`WITHDRAW BUTTON CLICKED by user ${from}`);
                     
-                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
                     const processApiUrl = `${baseUrl}/api/process-cdp-message`;
                     
                     try {
@@ -361,7 +361,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                     }
                   }
                   
-                  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+                  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
                   const processApiUrl = `${baseUrl}/api/process-cdp-message`;
                   try {
                     const response = await fetch(processApiUrl, {
