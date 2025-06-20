@@ -105,9 +105,10 @@ export async function getOrCreateWallet(
       throw new Error('Missing CDP credentials');
     }
     
-    // Generate a deterministic idempotency key based on the user ID
-    // This ensures the same user always gets the same wallet
-    const idempotencyKey = uuidv4(); // Using full UUID to meet the 36 character requirement
+    // Generate a UUID that matches the required format pattern
+    // The format must be: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx where x is any hex digit and y is 8, 9, a, or b
+    const uuid = uuidv4();
+    const idempotencyKey = uuid;
     
     console.log(`[CDP] Creating new wallet for user ${userId} with idempotency key: ${idempotencyKey}`);
     
