@@ -34,17 +34,10 @@ export const walletTemplates = {
   // First-time wallet creation prompt with action button
   noWallet: (): import('../types/whatsapp').ButtonsResponse => ({
     type: 'buttons',
-    text: '❌ *No Wallet Found*\n\nYou don\'t have a wallet yet. Would you like to create a new wallet or import an existing one?',
+    text: '❌ *No Wallet Found*\n\nYou don\'t have a wallet yet. Would you like to create a new wallet?',
     buttons: [
-      { id: 'create_wallet', title: 'Create Wallet' },
-      { id: 'import_wallet', title: 'Import Wallet' }
+      { id: 'create_wallet', title: 'Create Wallet' }
     ]
-  }),
-    
-  // Instructions for wallet import
-  importWalletInstructions: (): import('../types/whatsapp').TextResponse => ({
-    type: 'text',
-    text: "🔐 *Import Wallet*\n\nTo import your existing wallet, you'll need your private key. This will start a secure flow where you can safely enter your private key.\n\n⚠️ IMPORTANT: Never share your private key in regular messages. Only enter it in the secure flow that will follow."
   }),
     
   // Deposit template with instructions and QR code option
@@ -370,42 +363,6 @@ export function createWalletDetailsTemplate(
             reply: {
               id: "receive_crypto",
               title: "Receive"
-            }
-          }
-        ]
-      }
-    }
-  };
-}
-
-/**
- * Creates a WhatsApp template for wallet import instructions
- * @returns WhatsApp template object for sending
- */
-export function createWalletImportTemplate() {
-  return {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    type: "interactive",
-    interactive: {
-      type: "button",
-      body: {
-        text: "*Import Your Wallet*\n\nYou can import an existing wallet by sending your private key or seed phrase.\n\nNote: Always keep your private keys secure and never share them in public channels."
-      },
-      action: {
-        buttons: [
-          {
-            type: "reply",
-            reply: {
-              id: "import_wallet",
-              title: "Import Wallet"
-            }
-          },
-          {
-            type: "reply",
-            reply: {
-              id: "cancel",
-              title: "Cancel"
             }
           }
         ]

@@ -251,16 +251,6 @@ export async function processWithCDP(
       return result.message;
     }
     
-    if (message.toLowerCase().includes('wallet address')) {
-      const result = await handleWalletAddress(userId, username);
-      return result.message;
-    }
-    
-    // For import wallet button clicks
-    if (message.toLowerCase() === 'import wallet') {
-      return walletTemplates.importWalletInstructions();
-    }
-    
     // Process the message with LangChain agent
     try {
       console.log('[CDP] Processing message with LangChain agent');
@@ -565,68 +555,30 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     const isCommand = messageText.trim().startsWith('/');
     const isWalletCommand = messageText.trim().startsWith('/wallet');
     
-    // Enhanced button detection - check multiple possible locations
+    // Detect wallet create button clicks
     const isWalletCreateButton = 
       buttonId === 'create_wallet' || 
       (type === 'interactive' && buttonId === 'create_wallet') ||
       (messageText === 'create_wallet') ||
       (messageText.toLowerCase().includes('create wallet')) ||
       (req.body.interactive && req.body.interactive.button_reply && req.body.interactive.button_reply.id === 'create_wallet');
-      
-    // Detect wallet import button clicks
-    const isWalletImportButton = 
-      buttonId === 'import_wallet' || 
-      (type === 'interactive' && buttonId === 'import_wallet') ||
-      (messageText === 'import_wallet') ||
-      (req.body.interactive && req.body.interactive.button_reply && req.body.interactive.button_reply.id === 'import_wallet');
     
     console.log(`Message classification:`, {
       isCommand,
       isWalletCommand,
       isWalletCreateButton,
-      isWalletImportButton,
       buttonId,
       messageText,
       type
     });
     
-    // Handle wallet import button click
-    if (isWalletImportButton) {
-      console.log(`Handling import wallet request for user ${userPhone}`);
-      
-      try {
-        // First send instructions
-        const { walletTemplates } = await import('@/lib/whatsappTemplates');
-        await sendWhatsAppMessage(userPhone, walletTemplates.importWalletInstructions().text);
-        
-        // Then trigger the flow
-        const { triggerWalletImportFlow } = await import('@/lib/whatsappUtils');
-        await triggerWalletImportFlow(userPhone);
-        
-        return res.status(200).json({
-          success: true,
-          message: 'Import wallet flow triggered',
-        });
-      } catch (error) {
-        console.error('Error triggering wallet import flow:', error);
-        await sendWhatsAppMessage(userPhone, "Sorry, we couldn't start the wallet import process. Please try again later.");
-        
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to trigger wallet import flow',
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    }
-    
     // Only show wallet prompt if:
     // 1. User doesn't have a wallet
     // 2. Prompt hasn't been shown before
     // 3. This is not a wallet creation command or button click
-    // 4. This is not a wallet import button click
     const promptShown = await walletPromptAlreadyShown(userPhone);
     
-    if (!hasWallet && !promptShown && !isWalletCommand && !isWalletCreateButton && !isWalletImportButton) {
+    if (!hasWallet && !promptShown && !isWalletCommand && !isWalletCreateButton) {
       // Show wallet creation prompt (one time)
       console.log(`[process-cdp-message] Showing wallet prompt to user ${userPhone}`);
       await markWalletPromptShown(userPhone);
