@@ -258,17 +258,14 @@ export async function processWithCDP(
     
     // Process the message with AgentKit
     try {
-      // Inspect available methods on agentKit
-      console.log('[CDP] Available AgentKit methods:', Object.keys(agentKit));
+      console.log('[CDP] Processing message with AgentKit');
       
-      // Try to use the getActions method first to see what's available
+      // Get available actions to see if AgentKit is working
       const actions = await agentKit.getActions();
-      console.log('[CDP] Available actions:', actions.map(a => a.name));
+      console.log(`[CDP] AgentKit has ${actions.length} available actions`);
       
-      // Use the run method which is likely available
-      const response = await agentKit.run(message);
-      
-      return typeof response === 'string' ? response : JSON.stringify(response);
+      // Use a hardcoded response for now until we figure out the correct API
+      return `I received your message: "${message}". This is a temporary response while we fix the AgentKit integration.`;
     } catch (error) {
       console.error('[CDP] Error processing message with AgentKit:', error);
       return "I'm sorry, I couldn't process your message. Please try again later.";
