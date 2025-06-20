@@ -2,13 +2,24 @@ import { formatAddress } from './utils';
 
 // Wallet Templates
 export const walletTemplates = {
-  // Basic wallet operations
-  balance: (balance: string, currency: string = 'ETH'): string => 
-    `💰 *Wallet Balance*\n\nYour current balance is *${balance} ${currency}*`,
-    
-  address: (address: string): string =>
-    `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`,
-    
+  // Wallet balance template
+  // Triggers: 'balance', 'wallet balance', 'show balance'
+  balance: (balance: string, currency: string = 'ETH') => ({
+    type: 'buttons',
+    text: `💰 *Wallet Balance*\n\nYour current balance is *${balance} ${currency}*`,
+    buttons: [
+      { id: 'send', title: 'Send' },
+      { id: 'receive', title: 'Receive' }
+    ]
+  }),
+  
+  // Wallet address template
+  // Triggers: 'address', 'wallet address', 'show address'
+  address: (address: string) => ({
+    type: 'text',
+    text: `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`
+  }),
+  
   walletAddress: (address: string): string =>
     `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`,
     
@@ -31,10 +42,11 @@ export const walletTemplates = {
     ]
   }),
     
-  // First-time wallet creation prompt with action button
-  noWallet: (): import('../types/whatsapp').ButtonsResponse => ({
+  // No wallet template
+  // Triggers: 'no wallet', 'create wallet', 'missing wallet'
+  noWallet: () => ({
     type: 'buttons',
-    text: '❌ *No Wallet Found*\n\nYou don\'t have a wallet yet. Would you like to create a new wallet?',
+    text: `You don't have a wallet yet. Would you like to create one?`,
     buttons: [
       { id: 'create_wallet', title: 'Create Wallet' }
     ]

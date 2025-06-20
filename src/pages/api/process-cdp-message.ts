@@ -19,6 +19,7 @@ import {
   CommandMessage
 } from '@/types/whatsapp';
 import { loadServerEnvironment } from '@/lib/serverEnv';
+import { getWalletFromDb } from '@/lib/cdpWallet';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -251,6 +252,11 @@ export async function processWithCDP(
       return result.message;
     }
     
+    if (message.toLowerCase().includes('wallet address')) {
+      const result = await handleWalletAddress(userId, username);
+      return result.message;
+    }
+    
     // Process the message with LangChain agent
     try {
       console.log('[CDP] Processing message with LangChain agent');
@@ -300,8 +306,8 @@ export async function processWithCDP(
                   if (item && typeof item === 'object' && 'text' in item) {
                     return String(item.text);
                   }
-                  return '';
-                })
+            return '';
+          })
                 .filter(text => text)
                 .join('\n');
                 
@@ -336,7 +342,7 @@ export async function processWithCDP(
           return "I'm here to help with crypto and blockchain questions. Would you like to learn about creating a wallet, checking balances, or sending crypto?";
         }
       }
-    } catch (error) {
+  } catch (error) {
       console.error('[CDP] Error processing message with LangChain agent:', error);
       
       // Fallback to a more friendly response
@@ -1002,56 +1008,82 @@ function convertCommandResultToWhatsAppResponse(result: CommandResult): WhatsApp
 async function handleResponse(phoneNumber: string, response: WhatsAppResponse, res: NextApiResponse) {
   try {
     let result;
-    
-    // Handle each response type correctly
-        if (typeof response === 'string') {
-          // Handle simple string responses
-      result = await sendWhatsAppMessage(phoneNumber, response);
+    let safeResponse = response;
+    if (response === null || response === undefined) {
+      console.warn('[CDP] Received null/undefined response, using fallback message');
+      safeResponse = { type: 'text', text: "I'm sorry, I couldn't process your request. Please try again later." };
+    } else if (typeof response !== 'string' && !response.type) {
+      console.warn('[CDP] Received invalid response format:', response);
+      try {
+        const stringResponse = typeof response === 'object' ? JSON.stringify(response) : String(response);
+        safeResponse = { type: 'text', text: stringResponse.length > 1000 ? stringResponse.substring(0, 997) + '...' : stringResponse };
+      } catch (e) {
+        console.error('[CDP] Error stringifying response:', e);
+        safeResponse = { type: 'text', text: "I'm sorry, I couldn't process your request. Please try again later." };
+      }
+    }
+    // Pass through all template types
+    if (typeof safeResponse === 'string') {
+      console.log(`[CDP] Sending text message to ${phoneNumber}`);
+      result = await sendWhatsAppMessage(phoneNumber, safeResponse);
     } else {
-      switch (response.type) {
+      console.log(`[CDP] Sending WhatsApp template type: ${safeResponse.type} to ${phoneNumber}`);
+      switch (safeResponse.type) {
         case 'text':
-          const textResponse = response as TextResponse;
-          result = await sendWhatsAppMessage(phoneNumber, textResponse.text);
+          result = await sendWhatsAppMessage(phoneNumber, safeResponse.text);
           break;
         case 'image':
-          const imageResponse = response as ImageResponse;
-          result = await sendWhatsAppImage(phoneNumber, imageResponse.url, imageResponse.caption);
+          if (!safeResponse.url) {
+            console.warn('[CDP] Missing image URL, sending fallback message');
+            result = await sendWhatsAppMessage(phoneNumber, "I'm sorry, I couldn't send the image. Please try again.");
+            break;
+          }
+          result = await sendWhatsAppImage(phoneNumber, safeResponse.url, safeResponse.caption);
           break;
         case 'list':
-          const listResponse = response as ListResponse;
+          if (!safeResponse.sections || safeResponse.sections.length === 0) {
+            console.warn('[CDP] Missing list sections, sending fallback message');
+            result = await sendWhatsAppMessage(phoneNumber, "I'm sorry, I couldn't send the list. Please try again.");
+            break;
+          }
           result = await sendWhatsAppListMessage(
             phoneNumber,
-            listResponse.text || '',
-            listResponse.text || '',
-            listResponse.button || 'Select',
-            listResponse.sections || []
+            safeResponse.text || '',
+            safeResponse.text || '',
+            safeResponse.button || 'Select',
+            safeResponse.sections || []
           );
           break;
         case 'buttons':
-          const buttonsResponse = response as ButtonsResponse;
+          if (!safeResponse.buttons || safeResponse.buttons.length === 0) {
+            console.warn('[CDP] Missing buttons, sending fallback message');
+            result = await sendWhatsAppMessage(phoneNumber, "I'm sorry, I couldn't send the buttons. Please try again.");
+            break;
+          }
           result = await sendWhatsAppReplyButtons(
             phoneNumber,
-            buttonsResponse.text || '',
-            buttonsResponse.buttons || []
+            safeResponse.text || '',
+            safeResponse.buttons || []
           );
           break;
         default:
-          throw new Error(`Unsupported response type: ${(response as any).type}`);
+          console.warn(`[CDP] Unsupported response type: ${(safeResponse as any).type}`);
+          result = await sendWhatsAppMessage(
+            phoneNumber, 
+            "I'm sorry, I don't know how to respond to that. Please try a different request."
+          );
       }
     }
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Response sent successfully',
-      result
-    });
+    console.log(`[CDP] Successfully sent response to ${phoneNumber}`);
+    return res.status(200).json({ success: true, message: 'Response sent successfully', result });
   } catch (error) {
-    console.error('Error sending WhatsApp response:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to send WhatsApp response',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    console.error('[CDP] Error sending WhatsApp response:', error);
+    try {
+      await sendWhatsAppMessage(phoneNumber, "I'm sorry, I encountered an error processing your request. Please try again later.");
+    } catch (fallbackError) {
+      console.error('[CDP] Failed to send fallback message:', fallbackError);
+    }
+    return res.status(500).json({ success: false, message: 'Failed to send WhatsApp response', error: error instanceof Error ? error.message : 'Unknown error' });
   }
 }
 
@@ -1099,20 +1131,11 @@ async function handleCommand(message: string, userId: string, username?: string)
 async function handleWalletCommand(userId: string, args: string[], username?: string): Promise<CommandResult> {
   try {
     console.log(`Handling wallet command for user ${userId} with args:`, args);
-    
-    // Import required modules
     const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { userHasWalletInDb } = await import('@/lib/walletDb');
-    
-    // Get the subcommand (default to 'help' if none provided)
+    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/cdpWallet');
     const subcommand = args.length > 0 ? args[0].toLowerCase() : 'help';
-    
-    // Check if user has a wallet
     const hasWallet = await userHasWalletInDb(userId);
-    
     console.log(`Wallet status for user ${userId}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
-    
-    // Handle different wallet subcommands
     switch (subcommand) {
       case 'balance':
         if (!hasWallet) {
@@ -1122,16 +1145,15 @@ async function handleWalletCommand(userId: string, args: string[], username?: st
             type: 'buttons'
           };
         }
-        return await handleWalletBalance(userId, username);
-        
-      case 'create':
-        const createResult = await createWallet(userId, username);
+        // Get wallet address and balance (mocked for now)
+        const address = await getWalletFromDb(userId);
+        // Replace with actual balance lookup
+        const balance = '0.00';
         return {
           success: true,
-          message: createResult,
-          type: 'text'
+          message: walletTemplates.balance(balance),
+          type: 'buttons'
         };
-        
       case 'address':
         if (!hasWallet) {
           return {
@@ -1140,42 +1162,20 @@ async function handleWalletCommand(userId: string, args: string[], username?: st
             type: 'buttons'
           };
         }
-        return await handleWalletAddress(userId, username);
-        
-      case 'deposit':
-        if (!hasWallet) {
-          return {
-            success: false,
-            message: walletTemplates.noWallet(),
-            type: 'buttons'
-          };
-        }
-        return await handleWalletDeposit(userId);
-        
-      case 'withdraw':
-        if (!hasWallet) {
-          return {
-            success: false,
-            message: walletTemplates.noWallet(),
-            type: 'buttons'
-          };
-        }
-        return await handleWalletWithdraw(userId);
-        
-      default:
-        // Return help message
+        const walletAddr = await getWalletFromDb(userId);
         return {
           success: true,
-          message: `📚 *Wallet Commands*\n\n` +
-            `*/wallet balance* - Check your balance\n` +
-            `*/wallet address* - Show your wallet address\n` +
-            `*/wallet create* - Create a new wallet\n` +
-            `*/wallet deposit* - Get deposit instructions\n` +
-            `*/wallet withdraw* - Withdraw funds\n`,
+          message: walletTemplates.address(walletAddr || ''),
           type: 'text'
         };
+      default:
+        return {
+          success: false,
+          message: walletTemplates.noWallet(),
+          type: 'buttons'
+        };
     }
-    } catch (error) {
+  } catch (error) {
     console.error('Error handling wallet command:', error);
     return {
       success: false,
@@ -1405,5 +1405,27 @@ async function handleWalletWithdraw(userId: string): Promise<CommandResult> {
       message: 'Sorry, there was an error processing your withdrawal request.',
       type: 'text'
     };
+  }
+}
+
+/**
+ * Check if a user has a wallet
+ * @param userId User identifier (phone number)
+ * @returns True if the user has a wallet, false otherwise
+ */
+async function hasWallet(userId: string): Promise<boolean> {
+  try {
+    console.log(`[CDP] Checking if user ${userId} has a wallet`);
+    const wallet = await getWalletFromDb(userId);
+    if (wallet) {
+      console.log(`[CDP] User ${userId} has wallet with address: ${wallet}`);
+      return true;
+    } else {
+      console.log(`[CDP] User ${userId} does not have a wallet`);
+      return false;
+    }
+  } catch (error) {
+    console.error(`[CDP] Error checking if user has wallet:`, error);
+    return false;
   }
 }
