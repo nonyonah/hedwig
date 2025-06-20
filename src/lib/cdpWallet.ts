@@ -107,7 +107,7 @@ export async function getOrCreateWallet(
     
     // Generate a deterministic idempotency key based on the user ID
     // This ensures the same user always gets the same wallet
-    const idempotencyKey = `hedwig-${userId.slice(-8)}-${uuidv4().slice(0, 13)}`;
+    const idempotencyKey = uuidv4(); // Using full UUID to meet the 36 character requirement
     
     console.log(`[CDP] Creating new wallet for user ${userId} with idempotency key: ${idempotencyKey}`);
     
