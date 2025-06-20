@@ -180,15 +180,14 @@ function safeJsonStringify(obj: any, indent = 2): string {
  * Processes a WhatsApp message through the CDP agent
  */
 export async function processWithCDP(
-  user: string,
   message: string,
-  phone?: string,
+  phone: string,
   username?: string
 ): Promise<string> {
-  console.log(`[CDP] Processing message from user ${user}: ${message}`);
+  console.log(`[CDP] Processing message from user ${phone}: ${message}`);
   
-  // Use phone or username as the user identifier for wallet management
-  const userId = phone || username || user;
+  // Use phone as the primary user identifier for wallet management
+  const userId = phone;
   
   try {
     // Import the getAgentKit function
@@ -432,18 +431,21 @@ async function handleGetRequest(req: NextApiRequest, res: NextApiResponse) {
 // Handle POST requests
 async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { from, messageText, buttonId, buttonTitle, type, timestamp } = req.body;
+    const { from, messageText, phone, buttonId, buttonTitle, type, timestamp } = req.body;
 
+    // Use phone parameter if available, otherwise fall back to from
+    const userPhone = phone || from;
+    
     // Basic validation
-    if (!from || !messageText) {
+    if (!userPhone || !messageText) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: from and messageText',
+        message: 'Missing required fields: phone/from and messageText',
       });
     }
 
     // Validate phone number format
-    if (!validatePhoneNumber(from)) {
+    if (!validatePhoneNumber(userPhone)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid phone number format',
@@ -451,7 +453,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     }
 
     // Check rate limiting
-    const rateLimit = checkRateLimit(from);
+    const rateLimit = checkRateLimit(userPhone);
     if (rateLimit.isRateLimited) {
       return res.status(429).json({
         success: false,
@@ -461,7 +463,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     }
 
     // Log detailed information about the incoming request
-    console.log(`Processing message from ${from}:`, {
+    console.log(`Processing message from ${userPhone}:`, {
       messageText,
       buttonId,
       buttonTitle,
@@ -472,9 +474,9 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
 
     // --- Wallet gating logic: prompt for wallet creation if none exists ---
     const { userHasWallet, walletPromptAlreadyShown, markWalletPromptShown } = await import('./_walletUtils');
-    const hasWallet = await userHasWallet(from);
+    const hasWallet = await userHasWallet(userPhone);
     
-    console.log(`[process-cdp-message] Wallet check for ${from}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
+    console.log(`[process-cdp-message] Wallet check for ${userPhone}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
     
     // Check if it's a command (starts with /) or a wallet-related command
     const isCommand = messageText.trim().startsWith('/');
@@ -501,15 +503,15 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     // 1. User doesn't have a wallet
     // 2. Prompt hasn't been shown before
     // 3. This is not a wallet creation command or button click
-    const promptShown = await walletPromptAlreadyShown(from);
+    const promptShown = await walletPromptAlreadyShown(userPhone);
     
     if (!hasWallet && !promptShown && !isWalletCommand && !isWalletCreateButton) {
       // Show wallet creation prompt (one time)
-      console.log(`[process-cdp-message] Showing wallet prompt to user ${from}`);
-      await markWalletPromptShown(from);
+      console.log(`[process-cdp-message] Showing wallet prompt to user ${userPhone}`);
+      await markWalletPromptShown(userPhone);
       const { walletTemplates } = await import('@/lib/whatsappTemplates');
       const walletPrompt = walletTemplates.noWallet();
-      return handleResponse(from, walletPrompt, res);
+      return handleResponse(userPhone, walletPrompt, res);
     }
     
     // Handle both explicit commands and button clicks for wallet creation
@@ -522,7 +524,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
       // Handle command with custom context
       const commandContext: CustomCommandContext = {
         supabase,
-        phoneNumber: from,
+        phoneNumber: userPhone,
         message: effectiveMessage
       };
       
@@ -530,11 +532,11 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
         // Create a properly formatted CommandContext with the expected message structure
         const formattedContext = {
           ...commandContext,
-          userId: from, // Add userId explicitly
+          userId: userPhone, // Add userId explicitly
           message: {
             text: effectiveMessage,
             type: 'text',
-            from: from,
+            from: userPhone,
             timestamp: timestamp || new Date().toISOString(),
             id: `manual-${Date.now()}`,
             preview_url: false
@@ -546,7 +548,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
         
         // Handle the command with explicit typing and pass the formatted context
         console.log('Calling handleCommand with formatted context');
-        const commandResult = await handleCommand(effectiveMessage, from);
+        const commandResult = await handleCommand(effectiveMessage, userPhone);
         console.log('Command result:', typeof commandResult, commandResult);
         
         // Ensure we have a properly formatted CommandResult
@@ -695,14 +697,14 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
               
               if (isWalletCreated) {
                 // Send the wallet creation response first
-                await handleResponse(from, whatsAppResponse, res);
+                await handleResponse(userPhone, whatsAppResponse, res);
                 
                 // Then send the introduction message after a short delay
                 setTimeout(async () => {
                   const introMessage = `🎉 *Welcome to Hedwig!* 🎉\n\nNow that your wallet is ready, I can help you with:\n\n• Checking your wallet balance\n• Sending and receiving crypto\n• Getting testnet funds\n• Exploring blockchain data\n• Learning about Web3\n\nWhat would you like to do first?`;
                   
                   try {
-                    await sendWhatsAppMessage(from, introMessage);
+                    await sendWhatsAppMessage(userPhone, introMessage);
                     console.log('Sent introduction message after wallet creation');
                   } catch (introError) {
                     console.error('Failed to send introduction message:', introError);
@@ -722,7 +724,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
           }
           
           // Normal response handling for non-wallet creation commands
-          return handleResponse(from, whatsAppResponse, res);
+          return handleResponse(userPhone, whatsAppResponse, res);
         } else if (formattedResult) {
           console.log(`Command failed: ${typeof formattedResult.message === 'string' ? formattedResult.message : 'Command processing failed'}`);
           return res.status(200).json({
@@ -746,13 +748,14 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
     
     // Process with CDP for non-command messages
     try {
-      const response = await processWithCDP(messageText, from);
+      // Call processWithCDP with the correct parameters
+      const response = await processWithCDP(messageText, userPhone);
       
       if (response) {
-        const result = await sendWhatsAppMessage(from, response);
+        const result = await sendWhatsAppMessage(userPhone, response);
         return res.status(200).json({
           success: true,
-          message: 'Message processed successfully',
+          message: 'Response sent successfully',
           result
         });
       } else {
@@ -767,7 +770,7 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
       
       // Send a fallback message
       try {
-        await sendWhatsAppMessage(from, "I'm having trouble processing your message. Please try again later or type /help for available commands.");
+        await sendWhatsAppMessage(userPhone, "I'm having trouble processing your message. Please try again later or type /help for available commands.");
       } catch (whatsappError) {
         console.error('Failed to send fallback message:', whatsappError);
       }

@@ -167,6 +167,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                       body: JSON.stringify({ 
                         from, 
                         messageText,
+                        phone: from,
                         timestamp: new Date().toISOString()
                       }),
                     });
@@ -229,6 +230,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                         },
                         body: JSON.stringify({
                           from,
+                          phone: from,
                           buttonId,
                           timestamp: message.timestamp
                         }),
@@ -267,6 +269,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                         body: JSON.stringify({ 
                           from, 
                           messageText: commandText,
+                          phone: from,
                           timestamp: new Date().toISOString(),
                           source: 'button_click',
                           buttonId
@@ -303,6 +306,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                         body: JSON.stringify({ 
                           from, 
                           messageText: '/wallet deposit',
+                          phone: from,
                           timestamp: new Date().toISOString(),
                           source: 'button_click',
                           buttonId
@@ -339,6 +343,7 @@ async function handleWebhookMessage(req: NextApiRequest, res: NextApiResponse) {
                         body: JSON.stringify({ 
                           from, 
                           messageText: '/wallet withdraw',
+                          phone: from,
                           timestamp: new Date().toISOString(),
                           source: 'button_click',
                           buttonId
