@@ -95,7 +95,7 @@ export async function getOrCreateCdpWallet(
  * Store a wallet in the database
  * @param userId User identifier
  * @param address Wallet address
- * @param network Network the wallet is on
+ * @param network Network the wallet is on (not stored in DB)
  */
 export async function storeWalletInDb(
   userId: string, 
@@ -119,13 +119,12 @@ export async function storeWalletInDb(
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Insert wallet into database
+    // Insert wallet into database - omitting network column
     const { error } = await supabase
       .from('wallets')
       .insert({
         user_id: userId,
         address,
-        network,
         wallet_type: 'cdp',
         created_at: new Date().toISOString()
       });
@@ -144,7 +143,7 @@ export async function storeWalletInDb(
 /**
  * Check if a user has a wallet in the database
  * @param userId User identifier
- * @param network Network to check for wallet on
+ * @param network Network to check for wallet on (not used for filtering)
  * @returns True if user has a wallet, false otherwise
  */
 export async function userHasWalletInDb(
@@ -163,7 +162,7 @@ export async function userHasWalletInDb(
 /**
  * Get a wallet from the database
  * @param userId User identifier
- * @param network Network to get wallet from
+ * @param network Network to get wallet from (not used for filtering)
  * @returns Wallet data or null if not found
  */
 export async function getWalletFromDb(
@@ -171,7 +170,7 @@ export async function getWalletFromDb(
   network: string = 'base-sepolia'
 ): Promise<WalletData | null> {
   try {
-    console.log(`[CDP] Getting wallet from database for user ${userId} on network ${network}`);
+    console.log(`[CDP] Getting wallet from database for user ${userId}`);
     
     // Import Supabase client dynamically to avoid SSR issues
     const { createClient } = await import('@supabase/supabase-js');
@@ -187,12 +186,11 @@ export async function getWalletFromDb(
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Query for wallet
+    // Query for wallet - only filter by user_id
     const { data, error } = await supabase
       .from('wallets')
       .select('*')
       .eq('user_id', userId)
-      .eq('network', network)
       .single();
     
     if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is expected
@@ -204,8 +202,14 @@ export async function getWalletFromDb(
       return null;
     }
     
-    console.log(`[CDP] Found wallet in database for user ${userId}: ${data.address}`);
-    return data as WalletData;
+    // Add network to the returned data since it's expected in the WalletData interface
+    const walletData = {
+      ...data,
+      network: network // Add default network since it's not stored in DB
+    };
+    
+    console.log(`[CDP] Found wallet in database for user ${userId}: ${walletData.address}`);
+    return walletData as WalletData;
   } catch (error) {
     console.error(`[CDP] Error getting wallet from database:`, error);
     return null;
