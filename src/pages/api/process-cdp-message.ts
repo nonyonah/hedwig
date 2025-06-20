@@ -60,6 +60,7 @@ interface CommandResult {
   body?: string;
   bodyText?: string;
   buttonText?: string;
+  button?: string;
   sections?: any[];
   buttons?: any[];
 }
@@ -178,179 +179,98 @@ function safeJsonStringify(obj: any, indent = 2): string {
 /**
  * Processes a WhatsApp message through the CDP agent
  */
-async function processWithCDP(message: string, userId: string): Promise<string | null> {
+export async function processWithCDP(
+  user: string,
+  message: string,
+  phone?: string,
+  username?: string
+): Promise<string> {
+  console.log(`[CDP] Processing message from user ${user}: ${message}`);
+  
+  // Use phone or username as the user identifier for wallet management
+  const userId = phone || username || user;
+  
   try {
-    // Dynamically import necessary modules
-    const { getAgentKit, registerUserWallet, getUserWalletProvider } = await import('@/lib/agentkit');
-    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/walletDb');
-    const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { sendWhatsAppReplyButtons } = await import('@/lib/whatsappUtils');
-
-    console.log(`Starting CDP processing for user ${userId} with message: ${message}`);
-
+    // Import the getAgentKit function
+    const { getAgentKit } = await import('@/lib/agentkit');
+    
+    // Initialize AgentKit with the user's wallet if available
+    const agentKit = await getAgentKit(userId);
+    
     // Check if this is a blockchain-related query
-    const blockchainKeywords = [
-      'wallet', 'balance', 'crypto', 'token', 'transfer', 'blockchain', 'eth', 'bitcoin', 
-      'transaction', 'nft', 'web3', 'defi', 'swap', 'trade', 'exchange', 'send', 'receive'
-    ];
-    const isBlockchainQuery = blockchainKeywords.some(keyword => message.toLowerCase().includes(keyword));
-
-    // IMPORTANT: Check if user has a wallet from previous operations, but NEVER create one automatically
-    console.log(`Checking if user ${userId} has a wallet already`);
-    let wallet = null;
-    let hasWallet = false;
+    const isBlockchainQuery = message.toLowerCase().includes('wallet') || 
+      message.toLowerCase().includes('token') || 
+      message.toLowerCase().includes('nft') || 
+      message.toLowerCase().includes('crypto') ||
+      message.toLowerCase().includes('balance') ||
+      message.toLowerCase().includes('transfer');
     
-    // Check the database for a wallet
-    console.log(`Checking database for wallet for user ${userId}`);
-    const hasWalletInDb = await userHasWalletInDb(userId);
-    
-    if (hasWalletInDb) {
-      console.log(`Found wallet in database for user ${userId}`);
-      hasWallet = true;
-      
-      try {
-        // Get the wallet from the database
-        const walletFromDb = await getWalletFromDb(userId);
-        
-        if (walletFromDb) {
-          console.log(`Successfully retrieved wallet from database for user ${userId}`);
-          
-          // Try to get the initialized wallet provider
-          wallet = await getUserWalletProvider(userId);
-          
-          if (!wallet) {
-            // Initialize the wallet provider if it doesn't exist
-            const { getOrCreateWallet } = await import('@/lib/wallet');
-            const result = await getOrCreateWallet(userId);
-            wallet = result.provider;
-            
-            // Register with AgentKit
-            await registerUserWallet(userId, wallet);
-            console.log(`Registered wallet with AgentKit for user ${userId}`);
-          }
-        }
-      } catch (dbWalletError) {
-        console.error('Error initializing wallet from database:', dbWalletError);
-        wallet = null;
-      }
-    }
-    
-    // Final wallet status
-    console.log(`Wallet status for user ${userId}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
-    
-    // If this is a blockchain query but user has no wallet, prompt them to create one
-    if (isBlockchainQuery && !hasWallet) {
-      // Check if this message is already a wallet command to avoid circular prompting
-      const isWalletCommand = message.trim().toLowerCase().startsWith('/wallet');
-      
-      if (!isWalletCommand) {
-        console.log(`[processWithCDP] Blockchain query detected but user ${userId} has no wallet. Showing wallet creation button.`);
-        
-        // Always show the wallet creation template for blockchain queries when no wallet exists
-        try {
-          // Create the wallet creation button template
-          const noWalletTemplate = walletTemplates.noWallet();
-          
-          // Send the template with the Create Wallet button
-          await sendWhatsAppReplyButtons(userId, noWalletTemplate.text, noWalletTemplate.buttons);
-          console.log(`[processWithCDP] Sent wallet creation button template to user ${userId}`);
-          
-          // Return a message that will be sent after the template
-          return "You need a wallet to perform blockchain operations. Click the 'Create Wallet' button to get started.";
-        } catch (templateError) {
-          console.error('[processWithCDP] Error sending wallet template:', templateError);
-          // Fallback to text-only response if template fails
-          return "You need a wallet to perform blockchain operations. Send '/wallet create' to create one.";
-        }
-      } else {
-        console.log(`[processWithCDP] Allowing wallet command to proceed: ${message}`);
-      }
-    }
-
-    // Initialize AgentKit - if we have a wallet, use it; otherwise use default
-    let agentKit;
-    try {
-      // Only pass userId if we have a wallet for that user
-      agentKit = await getAgentKit(hasWallet ? userId : undefined);
-      // Verify AgentKit is properly initialized
-      const actions = await agentKit.getActions();
-      console.log(`AgentKit initialized with ${actions.length} available actions${hasWallet ? ` for user ${userId}` : ' (default instance)'}`);
-    } catch (agentKitError) {
-      console.error('Error initializing AgentKit:', agentKitError);
-      return "I'm having trouble with my blockchain tools. Is there anything else I can help you with?";
-    }
-
-    // Initialize LangChain agent
-    let langchainAgent;
-    try {
-      const { getLangChainAgent } = await import('@/lib/langchain');
-      langchainAgent = await getLangChainAgent(agentKit);
-    } catch (langchainError) {
-      console.error('Error initializing LangChain agent:', langchainError);
-      return "I'm experiencing technical difficulties with my AI capabilities. Can I help you with something simpler?";
-    }
-
-    console.log('Processing message with CDP:', message);
-
-    // Prepare a more blockchain-focused prompt if the message seems to be about blockchain
-    let enhancedMessage = message;
     if (isBlockchainQuery) {
-      if (hasWallet) {
-        enhancedMessage = `[BLOCKCHAIN QUERY WITH WALLET] ${message} [User has a wallet. Use blockchain tools to answer this]`;
-      } else {
-        enhancedMessage = `[BLOCKCHAIN QUERY WITHOUT WALLET] ${message} [User does NOT have a wallet yet. Provide educational information only]`;
-      }
-    } else {
-      // Even for non-blockchain queries, indicate wallet status to avoid confusion
-      if (hasWallet) {
-        enhancedMessage = `[User has a wallet] ${message}`;
-      }
-    }
-
-    // Invoke the agent with proper error handling
-    let result;
-    try {
-      // Import the necessary message type
-      const { HumanMessage } = await import('@langchain/core/messages');
+      console.log(`[CDP] Detected blockchain query: ${message}`);
       
-      // Pass the message in the format expected by the agent
-      result = await langchainAgent.invoke({
-        messages: [new HumanMessage({ content: enhancedMessage })]
+      // If the message is about creating a wallet, handle it directly
+      if (message.toLowerCase().includes('create wallet') || 
+          message.toLowerCase().includes('make wallet') || 
+          message.toLowerCase().includes('new wallet')) {
+        const result = await createWallet(userId);
+        return result;
+      }
+      
+      // For other blockchain queries, check if user has a wallet
+      try {
+        // Try to get the wallet from our API
+        // Use absolute URL for server-side execution
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        const response = await fetch(`${baseUrl}/api/user-wallet`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            phone: userId,
+            network: 'base-sepolia'
+          }),
+        });
+        
+        if (!response.ok) {
+          console.log(`[CDP] User ${userId} doesn't have a wallet yet. Prompting to create one.`);
+          return "You don't have a wallet yet. Say 'create wallet' to create one.";
+        }
+        
+        // User has a wallet, continue with the query
+        console.log(`[CDP] User ${userId} has a wallet. Processing blockchain query.`);
+      } catch (error) {
+        console.error(`[CDP] Error checking wallet status:`, error);
+        return "I'm having trouble checking your wallet status. Please try again later.";
+      }
+      
+      // Handle specific wallet commands
+      if (message.toLowerCase().includes('wallet balance')) {
+        const result = await handleWalletBalance(userId);
+        return result.message.toString();
+      }
+      
+      if (message.toLowerCase().includes('wallet address')) {
+        const result = await handleWalletAddress(userId);
+        return result.message.toString();
+      }
+    }
+    
+    // Process the message with AgentKit
+    try {
+      // Use type assertion to bypass TypeScript error
+      const response = await (agentKit as any).process({
+        messages: [{ role: 'user', content: message }],
       });
-      console.log('CDP agent response:', safeJsonStringify(result, 2));
-    } catch (invokeError) {
-      console.error('Error invoking LangChain agent:', invokeError);
-      return "I encountered an error while processing your request. Could you try again with a simpler query?";
+      
+      return response.content || response.message || "I don't have a response for that.";
+    } catch (error) {
+      console.error('[CDP] Error processing message with AgentKit:', error);
+      return "I'm sorry, I couldn't process your message. Please try again later.";
     }
-
-    // Handle different response formats
-    if (typeof result === 'string') {
-      return result;
-    } 
-    
-    if (result?.messages?.length > 0) {
-      const lastMsg = result.messages[result.messages.length - 1];
-      if (typeof lastMsg.content === 'string') {
-        return lastMsg.content;
-      }
-      if (Array.isArray(lastMsg.content)) {
-        return lastMsg.content
-          .map((c: unknown) => {
-            if (typeof c === 'string') return c;
-            if (c && typeof c === 'object' && 'text' in c) return (c as { text: string }).text;
-            return '';
-          })
-          .join(' ')
-          .trim();
-      }
-    }
-    
-    // If we couldn't extract a proper response, provide a fallback
-    return "I've processed your request, but I'm having trouble formulating a response. Could you please try rephrasing your question?";
   } catch (error) {
-    console.error('Error in processWithCDP:', error);
-    // Return a user-friendly error message instead of null
-    return "I encountered an error while processing your request. Let me try to help you in another way.";
+    console.error('[CDP] Error in processWithCDP:', error);
+    return "I'm sorry, I encountered an error. Please try again later.";
   }
 }
 
@@ -719,9 +639,8 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
               
               const listResponse: ListResponse = {
                 type: 'list',
-                header: 'header' in commandResult ? String(commandResult.header || '') : '',
-                body: 'body' in commandResult ? String(commandResult.body || '') : '',
-                buttonText: 'buttonText' in commandResult ? String(commandResult.buttonText || 'Select') : 'Select',
+                text: 'body' in commandResult ? String(commandResult.body || '') : '',
+                button: 'buttonText' in commandResult ? String(commandResult.buttonText || 'Select') : 'Select',
                 sections: validSections
               };
               
@@ -729,9 +648,8 @@ async function handlePostRequest(req: NextApiRequest, res: NextApiResponse) {
                 success: true,
                 message: listResponse,
                 type: 'list',
-                header: listResponse.header,
-                body: listResponse.body,
-                buttonText: listResponse.buttonText,
+                text: listResponse.text || '',
+                button: listResponse.button || 'Select',
                 sections: validSections
               };
             } else {
@@ -937,11 +855,17 @@ function convertCommandResultToWhatsAppResponse(result: CommandResult): WhatsApp
         };
       });
       
+      const listResponse: ListResponse = {
+        type: 'list',
+        text: 'body' in result ? String(result.body || '') : '',
+        button: 'buttonText' in result ? String(result.buttonText || 'Select') : 'Select',
+        sections: validSections
+      };
+      
       return {
         type: 'list',
-        header: result.header || '',
-        body: result.body || result.bodyText || '',
-        buttonText: result.buttonText || 'Select',
+        text: result.body || result.bodyText || '',
+        button: result.buttonText || 'Select',
         sections: validSections
       } as ListResponse;
       
@@ -1013,9 +937,9 @@ async function handleResponse(phoneNumber: string, response: WhatsAppResponse, r
           const listResponse = response as ListResponse;
           result = await sendWhatsAppListMessage(
             phoneNumber,
-            listResponse.header || '',
-            listResponse.body || '',
-            listResponse.buttonText || 'Select',
+            listResponse.text || '',
+            listResponse.text || '',
+            listResponse.button || 'Select',
             listResponse.sections || []
           );
           break;
@@ -1117,7 +1041,12 @@ async function handleWalletCommand(userId: string, args: string[]): Promise<Comm
         return await handleWalletBalance(userId);
         
       case 'create':
-        return await createWallet(userId);
+        const createResult = await createWallet(userId);
+        return {
+          success: true,
+          message: createResult,
+          type: 'text'
+        };
         
       case 'address':
         if (!hasWallet) {
@@ -1173,173 +1102,159 @@ async function handleWalletCommand(userId: string, args: string[]): Promise<Comm
 }
 
 async function handleWalletBalance(userId: string): Promise<CommandResult> {
+  console.log(`[CDP] Getting wallet balance for user ${userId}`);
+  
   try {
-    console.log(`Handling wallet balance request for user ${userId}`);
+    // Get the wallet from our API
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/user-wallet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        phone: userId,
+        network: 'base-sepolia'
+      }),
+    });
     
-    // Import required modules
-    const { getOrCreateWallet } = await import('@/lib/wallet');
-    const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { ethers } = await import('ethers');
-    
-    // Get wallet provider
-    const walletResult = await getOrCreateWallet(userId);
-    const provider = walletResult.provider;
-    
-    if (!provider) {
-      console.error(`Could not retrieve wallet for user ${userId}`);
+    if (!response.ok) {
+      console.log(`[CDP] User ${userId} doesn't have a wallet yet.`);
       return {
         success: false,
-        message: 'Could not access your wallet. Please try creating a new one with /wallet create.',
-        type: 'buttons'
+        message: "You don't have a wallet yet. Say 'create wallet' to create one."
       };
     }
     
-    // Get wallet address
-    const address = await provider.getAddress();
-    console.log(`Retrieved wallet address for user ${userId}: ${address}`);
+    const walletData = await response.json();
     
-    // Get provider for Base Sepolia
+    if (!walletData || !walletData.address) {
+      console.error(`[CDP] Invalid wallet data received:`, walletData);
+      return {
+        success: false,
+        message: "I couldn't retrieve your wallet information. Please try again later."
+      };
+    }
+    
+    // Get the wallet balance using ethers.js
+    const { ethers } = await import('ethers');
     const rpcProvider = new ethers.JsonRpcProvider('https://sepolia.base.org');
     
-    // Get balance
-    const balanceWei = await rpcProvider.getBalance(address);
+    // Get ETH balance
+    const balanceWei = await rpcProvider.getBalance(walletData.address);
     const balanceEth = ethers.formatEther(balanceWei);
-    console.log(`Retrieved balance for user ${userId}: ${balanceEth} ETH`);
+    console.log(`[CDP] Got ETH balance for ${walletData.address}: ${balanceEth}`);
     
-    // Format balance to 6 decimal places
+    // Format the balance
     const formattedBalance = parseFloat(balanceEth).toFixed(6);
     
     return {
       success: true,
-      message: walletTemplates.balance(formattedBalance, 'ETH'),
-      type: 'text'
+      message: `Your wallet (${walletData.address.substring(0, 6)}...${walletData.address.substring(38)}) has: ${formattedBalance} ETH`
     };
   } catch (error) {
-    console.error('Error handling wallet balance:', error);
+    console.error(`[CDP] Error getting wallet balance:`, error);
     return {
       success: false,
-      message: 'Sorry, there was an error retrieving your wallet balance.',
-      type: 'text'
+      message: "I couldn't get your wallet balance. Please try again later."
     };
   }
 }
 
 async function handleWalletAddress(userId: string): Promise<CommandResult> {
+  console.log(`[CDP] Getting wallet address for user ${userId}`);
+  
   try {
-    console.log(`Handling wallet address request for user ${userId}`);
+    // Get the wallet from our API
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/user-wallet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        phone: userId,
+        network: 'base-sepolia'
+      }),
+    });
     
-    // Import required modules
-    const { getOrCreateWallet, getWalletFromDb } = await import('@/lib/wallet');
-    const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    
-    // Get wallet address
-    let address = '';
-    
-    // Try getting address from database first
-    const walletFromDb = await getWalletFromDb(userId);
-    if (walletFromDb) {
-      console.log(`Retrieved wallet from database for user ${userId}`);
-      address = walletFromDb.address;
-    }
-    
-    // If no address found in database, get it from the provider
-    if (!address) {
-      try {
-        const walletResult = await getOrCreateWallet(userId);
-        const provider = walletResult.provider;
-        address = await provider.getAddress();
-  } catch (error) {
-        console.error('Error getting wallet provider:', error);
-      }
-    }
-    
-    if (!address) {
+    if (!response.ok) {
+      console.log(`[CDP] User ${userId} doesn't have a wallet yet.`);
       return {
         success: false,
-        message: 'Could not retrieve your wallet address. Please try creating a new wallet with /wallet create.',
-        type: 'buttons'
+        message: "You don't have a wallet yet. Say 'create wallet' to create one."
       };
     }
     
+    const walletData = await response.json();
+    
+    if (!walletData || !walletData.address) {
+      console.error(`[CDP] Invalid wallet data received:`, walletData);
+      return {
+        success: false,
+        message: "I couldn't retrieve your wallet information. Please try again later."
+      };
+    }
+    
+    // Format the address for display
+    const address = walletData.address;
+    const shortAddress = `${address.substring(0, 6)}...${address.substring(38)}`;
+    
     return {
       success: true,
-      message: walletTemplates.address(address),
-      type: 'text'
+      message: `Your wallet address is: ${address}\n\nYou can view your wallet on the Base Sepolia explorer: https://sepolia.basescan.org/address/${address}`
     };
   } catch (error) {
-    console.error('Error handling wallet address:', error);
+    console.error(`[CDP] Error getting wallet address:`, error);
     return {
       success: false,
-      message: 'Sorry, there was an error retrieving your wallet address.',
-      type: 'text'
+      message: "I couldn't get your wallet address. Please try again later."
     };
   }
 }
 
-async function createWallet(userId: string): Promise<CommandResult> {
+async function createWallet(userId: string): Promise<string> {
+  console.log(`[CDP] Creating wallet for user ${userId}`);
+  
   try {
-    console.log(`Creating wallet for user ${userId}`);
+    // Call our user-wallet API to create a wallet
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/user-wallet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        phone: userId,
+        network: 'base-sepolia'
+      }),
+    });
     
-    // Import necessary modules
-    const { userHasWalletInDb, getWalletFromDb } = await import('@/lib/wallet');
-    const { walletTemplates } = await import('@/lib/whatsappTemplates');
-    const { getOrCreateUser } = await import('@/lib/walletDb');
-    
-    // First ensure the user exists in the database
-    try {
-      console.log(`[createWallet] Ensuring user ${userId} exists in database`);
-      await getOrCreateUser(userId);
-      console.log(`[createWallet] User ${userId} exists or was created in database`);
-    } catch (userError) {
-      console.error(`[createWallet] Error ensuring user exists:`, userError);
-      return {
-        success: false,
-        message: 'Sorry, there was an error with your account. Please try again later.',
-        type: 'text'
-      };
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`[CDP] Error creating wallet:`, errorData);
+      return "I couldn't create a wallet for you right now. Please try again later.";
     }
     
-    // Check if the user already has a wallet
-    const hasWallet = await userHasWalletInDb(userId);
+    const walletData = await response.json();
     
-    if (hasWallet) {
-      const existingWallet = await getWalletFromDb(userId);
-      return {
-        success: true,
-        message: walletTemplates.walletExists(existingWallet?.address || 'Unknown address'),
-        type: 'buttons'
-      };
+    if (!walletData || !walletData.address) {
+      console.error(`[CDP] Invalid wallet data received:`, walletData);
+      return "There was a problem creating your wallet. Please try again later.";
     }
     
-    console.log(`No existing wallet found for user ${userId}, creating new one`);
-    
-    try {
-      // Create new wallet
-      const { getOrCreateWallet } = await import('@/lib/wallet');
-      const walletResult = await getOrCreateWallet(userId);
-      const provider = walletResult.provider;
-      const address = await provider.getAddress();
-      
-      return {
-        success: true,
-        message: walletTemplates.walletCreated(address),
-        type: 'buttons'
-      };
-    } catch (walletError) {
-      console.error('Error creating wallet:', walletError);
-      return {
-        success: false,
-        message: 'Sorry, there was an error creating your wallet. Please try again later.',
-        type: 'text'
-      };
+    // If the wallet was just created
+    if (walletData.created) {
+      console.log(`[CDP] Created new wallet for user ${userId}: ${walletData.address}`);
+      return `Great! I've created a new wallet for you. Your wallet address is: ${walletData.address}\n\nYou can view your wallet on the Base Sepolia explorer: https://sepolia.basescan.org/address/${walletData.address}`;
+    } else {
+      // If the wallet already existed
+      console.log(`[CDP] User ${userId} already has wallet: ${walletData.address}`);
+      return `You already have a wallet! Your wallet address is: ${walletData.address}\n\nYou can view your wallet on the Base Sepolia explorer: https://sepolia.basescan.org/address/${walletData.address}`;
     }
   } catch (error) {
-    console.error('Error in createWallet:', error);
-    return {
-      success: false,
-      message: 'Sorry, there was an error processing your wallet creation request.',
-      type: 'text'
-    };
+    console.error(`[CDP] Error creating wallet:`, error);
+    return "I couldn't create a wallet for you right now. Please try again later.";
   }
 }
 
