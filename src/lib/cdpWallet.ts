@@ -177,8 +177,7 @@ export async function storeWalletInDb(
         address,
         username: username || null,
         wallet_type: imported ? 'imported' : 'cdp',
-        created_at: new Date().toISOString(),
-        imported
+        created_at: new Date().toISOString()
       });
     
     if (error) {
