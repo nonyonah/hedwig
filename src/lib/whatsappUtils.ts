@@ -1,6 +1,7 @@
 import { getRequiredEnvVar } from '@/lib/envUtils';
 import { loadServerEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
+import fetch from 'node-fetch';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
