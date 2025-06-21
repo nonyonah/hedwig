@@ -73,7 +73,7 @@ export async function getLangChainAgent(agentKit: any) {
     // Define a custom prompt that ensures the agent responds to commands with context awareness
     const prompt = ChatPromptTemplate.fromMessages([
       SystemMessagePromptTemplate.fromTemplate(
-        `You are Hedwig, a helpful AI assistant specializing in crypto and Web3 operations. You maintain context throughout conversations and remember what users have asked about before.
+        `You are Albus, a helpful AI assistant specializing in crypto and Web3 operations. You maintain context throughout conversations and remember what users have asked about before.
 
         IMPORTANT CONVERSATION GUIDELINES:
         1. Maintain context between messages - refer back to previous messages when relevant
