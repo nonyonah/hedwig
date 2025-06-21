@@ -440,3 +440,50 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
     throw err;
   }
 }
+
+/**
+ * Helper to build WhatsApp template messages with named parameters for all approved templates
+ */
+export function buildNamedTemplateMessage(
+  to: string,
+  name: string,
+  params: Record<string, string>
+) {
+  // Map the template name to the order of parameter names as in the template
+  const paramOrder: Record<string, string[]> = {
+    wallet_balance_update: ['balance_amount', 'currency'],
+    wallet_created: ['address'],
+    wallet_address: ['address'],
+    no_wallet: [],
+    deposit_funds: ['wallet address'], // Add if you have parameters
+    withdraw_funds: [], // Add if you have parameters
+    confirm_transaction: ['amount', 'recipient_address', 'network_fee'],
+    transaction_success: ['amount', 'recipient_address'],
+    faucet_request_submitted: ['amount', 'wallet_address', 'estimated_time'],
+    faucet_request_success: ['amount', 'wallet_address'],
+    faucet_request_failed: ['failure_reason'],
+    faucet_daily_limit: ['wallet_address'],
+    tokens_list: ['tokens_list'], // Add if you have parameters
+    swap_successful: ['success_message', 'wallet_balance'],
+    swap_pending: [],
+    swap_failed: [],
+    // Add more as needed
+  };
+  const order = paramOrder[name] || [];
+  return {
+    to,
+    template: {
+      name,
+      language: { code: 'en_US' },
+      components: [
+        {
+          type: 'body',
+          parameters: order.map(paramName => ({
+            type: 'text',
+            text: params[paramName] || ''
+          }))
+        }
+      ]
+    }
+  };
+}
