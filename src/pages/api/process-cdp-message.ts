@@ -1010,42 +1010,28 @@ async function handleResponse(phoneNumber: string, response: WhatsAppResponse, r
     let result;
     let safeResponse = response;
     if (response === null || response === undefined) {
-      console.warn('[CDP] Received null/undefined response, using fallback message');
-      safeResponse = { type: 'text', text: "I'm sorry, I couldn't process your request. Please try again later." };
+      safeResponse = { type: 'text' as const, text: "I'm sorry, I couldn't process your request. Please try again later." };
     } else if (typeof response !== 'string' && !response.type) {
-      console.warn('[CDP] Received invalid response format:', response);
       try {
         const stringResponse = typeof response === 'object' ? JSON.stringify(response) : String(response);
-        safeResponse = { type: 'text', text: stringResponse.length > 1000 ? stringResponse.substring(0, 997) + '...' : stringResponse };
+        safeResponse = { type: 'text' as const, text: stringResponse.length > 1000 ? stringResponse.substring(0, 997) + '...' : stringResponse };
       } catch (e) {
-        console.error('[CDP] Error stringifying response:', e);
-        safeResponse = { type: 'text', text: "I'm sorry, I couldn't process your request. Please try again later." };
+        safeResponse = { type: 'text' as const, text: "I'm sorry, I couldn't process your request. Please try again later." };
       }
     }
-    // Pass through all template types
+    // Log the template object
+    console.log('[CDP] WhatsApp template to send:', JSON.stringify(safeResponse, null, 2));
     if (typeof safeResponse === 'string') {
-      console.log(`[CDP] Sending text message to ${phoneNumber}`);
       result = await sendWhatsAppMessage(phoneNumber, safeResponse);
     } else {
-      console.log(`[CDP] Sending WhatsApp template type: ${safeResponse.type} to ${phoneNumber}`);
       switch (safeResponse.type) {
         case 'text':
           result = await sendWhatsAppMessage(phoneNumber, safeResponse.text);
           break;
         case 'image':
-          if (!safeResponse.url) {
-            console.warn('[CDP] Missing image URL, sending fallback message');
-            result = await sendWhatsAppMessage(phoneNumber, "I'm sorry, I couldn't send the image. Please try again.");
-            break;
-          }
           result = await sendWhatsAppImage(phoneNumber, safeResponse.url, safeResponse.caption);
           break;
         case 'list':
-          if (!safeResponse.sections || safeResponse.sections.length === 0) {
-            console.warn('[CDP] Missing list sections, sending fallback message');
-            result = await sendWhatsAppMessage(phoneNumber, "I'm sorry, I couldn't send the list. Please try again.");
-            break;
-          }
           result = await sendWhatsAppListMessage(
             phoneNumber,
             safeResponse.text || '',
@@ -1055,11 +1041,6 @@ async function handleResponse(phoneNumber: string, response: WhatsAppResponse, r
           );
           break;
         case 'buttons':
-          if (!safeResponse.buttons || safeResponse.buttons.length === 0) {
-            console.warn('[CDP] Missing buttons, sending fallback message');
-            result = await sendWhatsAppMessage(phoneNumber, "I'm sorry, I couldn't send the buttons. Please try again.");
-            break;
-          }
           result = await sendWhatsAppReplyButtons(
             phoneNumber,
             safeResponse.text || '',
@@ -1067,22 +1048,17 @@ async function handleResponse(phoneNumber: string, response: WhatsAppResponse, r
           );
           break;
         default:
-          console.warn(`[CDP] Unsupported response type: ${(safeResponse as any).type}`);
           result = await sendWhatsAppMessage(
-            phoneNumber, 
+            phoneNumber,
             "I'm sorry, I don't know how to respond to that. Please try a different request."
           );
       }
     }
-    console.log(`[CDP] Successfully sent response to ${phoneNumber}`);
     return res.status(200).json({ success: true, message: 'Response sent successfully', result });
   } catch (error) {
-    console.error('[CDP] Error sending WhatsApp response:', error);
     try {
       await sendWhatsAppMessage(phoneNumber, "I'm sorry, I encountered an error processing your request. Please try again later.");
-    } catch (fallbackError) {
-      console.error('[CDP] Failed to send fallback message:', fallbackError);
-    }
+    } catch {}
     return res.status(500).json({ success: false, message: 'Failed to send WhatsApp response', error: error instanceof Error ? error.message : 'Unknown error' });
   }
 }
@@ -1136,24 +1112,37 @@ async function handleWalletCommand(userId: string, args: string[], username?: st
     const subcommand = args.length > 0 ? args[0].toLowerCase() : 'help';
     const hasWallet = await userHasWalletInDb(userId);
     console.log(`Wallet status for user ${userId}: ${hasWallet ? 'Has wallet' : 'No wallet'}`);
-    switch (subcommand) {
-      case 'balance':
-        if (!hasWallet) {
-          return {
-            success: false,
-            message: walletTemplates.noWallet(),
-            type: 'buttons'
-          };
-        }
-        // Get wallet address and balance (mocked for now)
-        const address = await getWalletFromDb(userId);
-        // Replace with actual balance lookup
-        const balance = '0.00';
+    // Enhanced matching for balance-related queries
+    if (
+      subcommand === 'balance' ||
+      (subcommand.includes('balance')) ||
+      (subcommand.includes('wallet') && subcommand.includes('balance'))
+    ) {
+      if (!hasWallet) {
         return {
-          success: true,
-          message: walletTemplates.balance(balance),
+          success: false,
+          message: walletTemplates.noWallet(),
           type: 'buttons'
         };
+      }
+      // Call the real balance function
+      const { getWalletBalances } = await import('@/lib/wallet');
+      console.log(`[CDP] Calling getWalletBalances for user ${userId}`);
+      const balances = await getWalletBalances(userId);
+      if (!balances) {
+        return {
+          success: false,
+          message: "Could not retrieve your wallet balance. Please try again later.",
+          type: 'text'
+        };
+      }
+      return {
+        success: true,
+        message: walletTemplates.balance(balances.nativeBalance),
+        type: 'buttons'
+      };
+    }
+    switch (subcommand) {
       case 'address':
         if (!hasWallet) {
           return {
@@ -1188,44 +1177,29 @@ async function handleWalletCommand(userId: string, args: string[], username?: st
 async function handleWalletBalance(userId: string, username?: string): Promise<CommandResult> {
   try {
     console.log(`[CDP] Getting wallet balance for user ${userId}${username ? ` (${username})` : ''}`);
-    
-    // Import required modules
-    const { getWalletBalances, getWalletFromDb } = await import('@/lib/wallet');
-    
-    // Get wallet data
-    const walletData = await getWalletFromDb(userId);
-    
-    if (!walletData || !walletData.address) {
+    const { getWalletBalances } = await import('@/lib/wallet');
+    const { getWalletFromDb } = await import('@/lib/cdpWallet');
+    const address = await getWalletFromDb(userId);
+    if (!address) {
       console.log(`[CDP] No wallet found for user ${userId}${username ? ` (${username})` : ''}`);
       return {
         success: false,
         message: "You don't have a wallet yet. Say 'create wallet' to create one."
       };
     }
-    
-    // Get wallet balances
     const balances = await getWalletBalances(userId);
-    
     if (!balances || balances.tokens.length === 0) {
       return {
         success: true,
-        message: `Your wallet (${walletData.address.substring(0, 6)}...${walletData.address.substring(38)}) has no tokens yet.\n\nYou can get free test tokens from the Base Sepolia faucet: https://www.coinbase.com/faucets/base-sepolia-faucet`
+        message: `Your wallet (${address.substring(0, 6)}...${address.substring(38)}) has no tokens yet.\n\nYou can get free test tokens from the Base Sepolia faucet: https://www.coinbase.com/faucets/base-sepolia-faucet`
       };
     }
-    
-    // Format the balance message
     let message = `Your wallet balances:\n\n`;
-    
-    // Add native balance
     message += `ETH: ${balances.nativeBalance}\n`;
-    
-    // Add token balances
-    balances.tokens.forEach((token) => {
+    balances.tokens.forEach((token: { symbol: string; formattedBalance: string }) => {
       message += `${token.symbol}: ${token.formattedBalance}\n`;
     });
-    
-    message += `\nView your wallet: https://sepolia.basescan.org/address/${walletData.address}`;
-    
+    message += `\nView your wallet: https://sepolia.basescan.org/address/${address}`;
     return {
       success: true,
       message
@@ -1242,25 +1216,15 @@ async function handleWalletBalance(userId: string, username?: string): Promise<C
 async function handleWalletAddress(userId: string, username?: string): Promise<CommandResult> {
   try {
     console.log(`[CDP] Getting wallet address for user ${userId}${username ? ` (${username})` : ''}`);
-    
-    // Import required modules
-    const { getWalletFromDb } = await import('@/lib/wallet');
-    
-    // Get wallet data
-    const walletData = await getWalletFromDb(userId);
-    
-    if (!walletData || !walletData.address) {
+    const { getWalletFromDb } = await import('@/lib/cdpWallet');
+    const address = await getWalletFromDb(userId);
+    if (!address) {
       console.log(`[CDP] No wallet found for user ${userId}${username ? ` (${username})` : ''}`);
       return {
         success: false,
         message: "I couldn't retrieve your wallet information. Please try again later."
       };
     }
-    
-    // Format the address for display
-    const address = walletData.address;
-    const shortAddress = `${address.substring(0, 6)}...${address.substring(38)}`;
-    
     return {
       success: true,
       message: `Your wallet address is: ${address}\n\nYou can view your wallet on the Base Sepolia explorer: https://sepolia.basescan.org/address/${address}`

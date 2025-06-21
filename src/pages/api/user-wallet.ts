@@ -36,15 +36,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(500).json({ error: 'Wallet exists but could not be retrieved' });
       }
       
-      console.log(`[User Wallet] Retrieved existing wallet for user ${userId}: ${wallet.address}`);
+      console.log(`[User Wallet] Retrieved existing wallet for user ${userId}: ${wallet}`);
       
       return res.status(200).json({
-        address: wallet.address,
+        address: wallet,
         userId,
-        username: wallet.username || username,
+        username,
         network,
         created: false,
-        imported: wallet.imported || false,
+        imported: false,
         message: 'Existing wallet retrieved successfully'
       });
     }

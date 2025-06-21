@@ -5,7 +5,7 @@ export const walletTemplates = {
   // Wallet balance template
   // Triggers: 'balance', 'wallet balance', 'show balance'
   balance: (balance: string, currency: string = 'ETH') => ({
-    type: 'buttons',
+    type: 'buttons' as const,
     text: `💰 *Wallet Balance*\n\nYour current balance is *${balance} ${currency}*`,
     buttons: [
       { id: 'send', title: 'Send' },
@@ -16,7 +16,7 @@ export const walletTemplates = {
   // Wallet address template
   // Triggers: 'address', 'wallet address', 'show address'
   address: (address: string) => ({
-    type: 'text',
+    type: 'text' as const,
     text: `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`
   }),
   
@@ -45,7 +45,7 @@ export const walletTemplates = {
   // No wallet template
   // Triggers: 'no wallet', 'create wallet', 'missing wallet'
   noWallet: () => ({
-    type: 'buttons',
+    type: 'buttons' as const,
     text: `You don't have a wallet yet. Would you like to create one?`,
     buttons: [
       { id: 'create_wallet', title: 'Create Wallet' }

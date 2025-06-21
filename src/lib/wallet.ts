@@ -5,6 +5,7 @@ import { getCdpEnvironment } from './serverEnv';
 import { supabase } from './supabaseClient';
 import { shouldAllowWalletCreation, recordWalletCreationAttempt } from '@/pages/api/_walletUtils';
 import { formatTokenBalance } from './utils';
+import { v4 as uuidv4 } from 'uuid';
 
 // Cache for storing wallet providers by user ID
 const walletCache: Map<string, WalletProvider> = new Map();
@@ -107,12 +108,9 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
       }
     }
     
-    // If no existing wallet, create a new one with a deterministic idempotency key
-    
-    // Generate a deterministic idempotency key based on user ID and a fixed salt
-    // This ensures the same wallet is created even after redeployment
-    const idempotencyKey = generateDeterministicIdempotencyKey(userId);
-    console.log(`Generated deterministic idempotency key for user ${userId}: ${idempotencyKey.substring(0, 8)}...${idempotencyKey.substring(idempotencyKey.length - 8)} (length: ${idempotencyKey.length})`);
+    // If no existing wallet, create a new one with a standard UUID v4 idempotency key
+    let idempotencyKey = uuidv4();
+    console.log(`[CDP] Generated idempotency key for wallet creation: ${idempotencyKey.substring(0, 8)}... (length: ${idempotencyKey.length})`);
     
     // Configuration for CDP wallet provider
     const config = {
@@ -131,24 +129,33 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
     
     // Create and initialize wallet provider with detailed error handling
     let provider;
-    try {
-      provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-    } catch (error) {
-      console.error('CDP wallet provider initialization error:', error);
-      
-      if (error instanceof Error) {
-        if (error.message.includes('idempotency')) {
-          // If there's an idempotency key issue, try with a new key
-          console.log('Retrying with a new idempotency key due to idempotency error');
-          config.idempotencyKey = generateWalletIdempotencyKey(userId + Date.now().toString());
-          console.log(`New idempotency key: ${config.idempotencyKey.substring(0, 8)}...${config.idempotencyKey.substring(config.idempotencyKey.length - 8)} (length: ${config.idempotencyKey.length})`);
-          provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
-        } else {
-          throw error;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount <= maxRetries) {
+      try {
+        console.log(`Attempting to create wallet (attempt ${retryCount + 1}/${maxRetries + 1})`);
+        provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
+        break; // Success, exit the retry loop
+      } catch (error) {
+        console.error(`CDP wallet provider initialization error (attempt ${retryCount + 1}):`, error);
+        
+        if (error instanceof Error && error.message.includes('idempotency')) {
+          if (retryCount < maxRetries) {
+            retryCount++;
+            // Generate a new UUID v4 idempotency key
+            config.idempotencyKey = uuidv4();
+            console.log(`Retrying with new idempotency key: ${config.idempotencyKey.substring(0, 8)}... (length: ${config.idempotencyKey.length})`);
+            continue; // Retry with new key
+          }
         }
-      } else {
+        // If not an idempotency error or max retries reached, rethrow
         throw error;
       }
+    }
+
+    if (!provider) {
+      throw new Error('Failed to create wallet provider after multiple attempts');
     }
     
     // Verify the wallet is working
@@ -178,46 +185,47 @@ export async function createDirectWalletProvider(userId: string): Promise<Wallet
 }
 
 /**
- * Generates a deterministic idempotency key for a user
- * This ensures the same wallet is created even after redeployment
- * @param userId Unique identifier for the user
- * @returns A deterministic idempotency key in UUID format
- */
-function generateDeterministicIdempotencyKey(userId: string): string {
-  // Use a fixed salt that doesn't change between deployments
-  const FIXED_SALT = 'hedwig-wallet-fixed-salt-v1';
-  
-  // Create a deterministic hash based on the user ID and fixed salt
-  const crypto = require('crypto');
-  const hash = crypto.createHash('sha256');
-  hash.update(userId + FIXED_SALT);
-  const hashHex = hash.digest('hex');
-  
-  // Format as a UUID-like string (for compatibility with CDP requirements)
-  return `${hashHex.slice(0, 8)}-${hashHex.slice(8, 12)}-${hashHex.slice(12, 16)}-${hashHex.slice(16, 20)}-${hashHex.slice(20, 32)}`;
-}
-
-/**
  * Checks if a user has a wallet in the database
  * @param userId Unique identifier for the user
  * @returns Boolean indicating if the user has a wallet
  */
 export async function userHasWalletInDb(userId: string): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from('wallets')
-      .select('address')
-      .eq('user_id', userId)
-      .maybeSingle();
+    console.log(`[CDP] Checking if user ${userId} has a wallet in database`);
     
-    if (error) {
-      console.error(`Error checking wallet for user ${userId}:`, error);
+    // First, find the user's UUID
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone_number', userId)
+      .single();
+    
+    if (userError || !user) {
+      console.log(`[CDP] User ${userId} not found in database`);
       return false;
     }
     
-    return !!data;
+    const userUuid = user.id;
+    console.log(`[CDP] Found user ${userId} with UUID ${userUuid}`);
+    
+    // Now check if there's a wallet for this user
+    const { data, error } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userUuid)
+      .maybeSingle();
+    
+    if (error) {
+      console.error(`[CDP] Error checking wallet:`, error);
+      return false;
+    }
+    
+    const hasWallet = !!data;
+    console.log(`[CDP] User ${userId} ${hasWallet ? 'has' : 'does not have'} a wallet in database`);
+    
+    return hasWallet;
   } catch (error) {
-    console.error(`Exception checking wallet in DB for user ${userId}:`, error);
+    console.error(`[CDP] Exception checking wallet in DB:`, error);
     return false;
   }
 }
@@ -246,7 +254,7 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
     
     // Get wallet from database and recreate provider
     const walletData = await getWalletFromDb(userId);
-    if (!walletData) {
+    if (!walletData || !walletData.address) {
       console.log(`Failed to retrieve wallet data for user: ${userId}`);
       return null;
     }
@@ -263,32 +271,21 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
     
     console.log(`Creating CDP wallet provider with existing address: ${walletData.address.substring(0, 8)}...`);
     
-    // IMPORTANT: For existing wallets, we need to use the correct configuration
-    // According to CDP docs, we should use walletId or address with the correct method
-    try {
     // Configuration for CDP wallet provider with existing wallet
     const config = {
       apiKeyId,
       apiKeySecret,
       walletSecret,
       networkId,
-        // We're using the address as the wallet identifier
-        address: walletData.address,
+      address: walletData.address,
     };
     
-      // Create and initialize wallet provider using the proper method for existing wallets
-      // This ensures we're using the same wallet and not creating a new one
+    // Create provider with existing wallet
     const provider = await CdpV2EvmWalletProvider.configureWithWallet(config);
     
     // Verify the wallet is working
     const address = await provider.getAddress();
     console.log(`Provider created for existing wallet ${userId} with address: ${address}`);
-      
-      // Verify the address matches what we have in the database
-      if (address.toLowerCase() !== walletData.address.toLowerCase()) {
-        console.error(`Address mismatch for user ${userId}! DB: ${walletData.address}, Provider: ${address}`);
-        throw new Error('Wallet address mismatch - possible wallet recreation issue');
-      }
     
     // Cache the provider for future use
     walletCache.set(userId, provider);
@@ -297,12 +294,8 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
     await registerUserWallet(userId, provider);
     
     return provider;
-    } catch (error) {
-      console.error(`Error creating provider for existing wallet: ${error}`);
-      throw error;
-    }
   } catch (error) {
-    console.error(`Failed to get wallet provider for user ${userId}:`, error);
+    console.error(`Error getting wallet provider for user ${userId}:`, error);
     return null;
   }
 }
@@ -314,23 +307,33 @@ export async function getWalletProvider(userId: string): Promise<WalletProvider 
  */
 export async function getOrCreateWallet(userId: string): Promise<{ provider: WalletProvider; created: boolean }> {
   try {
-    console.log(`Getting or creating wallet for user: ${userId}`);
+    console.log(`[CDP] Getting or creating wallet for user: ${userId}`);
     
     // First, check if wallet exists in the database
     const walletExists = await userHasWalletInDb(userId);
     
     if (walletExists) {
-      console.log(`Wallet exists in database for user: ${userId}, retrieving it`);
+      console.log(`[CDP] Wallet exists in database for user: ${userId}, retrieving it`);
       
       // Try to get the existing wallet provider
-    const existingProvider = await getWalletProvider(userId);
+      const existingProvider = await getWalletProvider(userId);
       
-    if (existingProvider) {
-        console.log(`Successfully retrieved existing wallet provider for user: ${userId}`);
-      return { provider: existingProvider, created: false };
+      if (existingProvider) {
+        console.log(`[CDP] Successfully retrieved existing wallet provider for user: ${userId}`);
+        
+        // Verify the wallet provider works
+        try {
+          const address = await existingProvider.getAddress();
+          console.log(`[CDP] Verified existing wallet with address: ${address}`);
+          return { provider: existingProvider, created: false };
+        } catch (verifyError) {
+          console.error(`[CDP] Error verifying existing wallet provider:`, verifyError);
+          console.log(`[CDP] Will attempt to recreate wallet provider`);
+          // Continue to wallet creation
+        }
       } else {
-        console.warn(`Failed to retrieve existing wallet provider for user: ${userId} despite wallet existing in DB`);
-        // We'll continue to try creating a wallet, but this should use the same address
+        console.warn(`[CDP] Failed to retrieve existing wallet provider despite wallet existing in DB`);
+        // Continue to wallet creation
       }
     }
     
@@ -338,18 +341,17 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
     try {
       await recordWalletCreationAttempt(userId);
     } catch (recordError) {
-      console.error(`[Wallet] Error recording wallet creation attempt for user ${userId}:`, recordError);
+      console.error(`[CDP] Error recording wallet creation attempt:`, recordError);
       // Continue with wallet creation even if recording fails
     }
     
     // Create or retrieve wallet using our enhanced provider function
-    // This will handle existing wallets correctly
-    console.log(`Creating wallet provider for user: ${userId}`);
+    console.log(`[CDP] Creating wallet provider for user: ${userId}`);
     const provider = await createDirectWalletProvider(userId);
     
     // Get the wallet address
     const address = await provider.getAddress();
-    console.log(`Got wallet with address ${address} for user ${userId}`);
+    console.log(`[CDP] Got wallet with address ${address} for user: ${userId}`);
     
     // Check if this wallet already exists in the database
     const existingWallet = await getWalletFromDb(userId);
@@ -357,16 +359,16 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
     
     if (existingWallet) {
       if (existingWallet.address.toLowerCase() === address.toLowerCase()) {
-        console.log(`Wallet address ${address} already exists in database for user ${userId}`);
+        console.log(`[CDP] Wallet address ${address} already exists in database`);
         isNewWallet = false;
       } else {
-        console.warn(`Different wallet address found in database for user ${userId}. DB: ${existingWallet.address}, New: ${address}`);
+        console.warn(`[CDP] Different wallet address found in database. DB: ${existingWallet.address}, New: ${address}`);
         // Update the wallet address in the database
         try {
           await storeWalletInDb(userId, address);
-          console.log(`Updated wallet address in database for user ${userId}`);
+          console.log(`[CDP] Updated wallet address in database for user: ${userId}`);
         } catch (updateError) {
-          console.error(`Error updating wallet address in database: ${updateError}`);
+          console.error(`[CDP] Error updating wallet address in database:`, updateError);
         }
       }
     }
@@ -374,17 +376,17 @@ export async function getOrCreateWallet(userId: string): Promise<{ provider: Wal
     // Store wallet in database if it's new
     if (isNewWallet) {
       try {
-    await storeWalletInDb(userId, address);
-        console.log(`New wallet address ${address} stored in database for user ${userId}`);
+        await storeWalletInDb(userId, address);
+        console.log(`[CDP] New wallet address ${address} stored in database`);
       } catch (storeError) {
-        console.error(`[Wallet] Error storing wallet in database for user ${userId}:`, storeError);
+        console.error(`[CDP] Error storing wallet in database:`, storeError);
         // Continue even if storing fails - the wallet was created successfully
       }
     }
     
     return { provider, created: isNewWallet };
   } catch (error) {
-    console.error(`Failed to get or create wallet for user ${userId}:`, error);
+    console.error(`[CDP] Failed to get or create wallet:`, error);
     throw new Error(`Wallet operation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -545,8 +547,13 @@ export async function getWalletBalances(userId: string): Promise<{
     
     // Get network ID from environment
     const { networkId } = getCdpEnvironment();
-    const network = networkId === 'base-mainnet' ? 'base' : 
-                   networkId === 'optimism-mainnet' ? 'optimism' : 'unknown';
+    const network = networkId === 'base-mainnet' || networkId === 'base-sepolia'
+      ? 'base'
+      : networkId === 'optimism-mainnet'
+      ? 'optimism'
+      : 'unknown';
+    // Add log to confirm invocation and show networkId/network
+    console.log(`[CDP] getWalletBalances called for user ${userId} with networkId: ${networkId}, mapped network: ${network}`);
     
     // Get native balance
     const nativeBalanceRaw = await provider.getBalance();
@@ -561,14 +568,9 @@ export async function getWalletBalances(userId: string): Promise<{
         if (symbol === 'ETH') continue; // Skip ETH as we already have native balance
         
         try {
-          // Get token balance - use getBalance for now since getTokenBalance isn't available
-          // Note: This is a temporary solution - in production we should use a proper token balance method
           const balance = await provider.getBalance();
-          
-          // Format balance with proper decimals
           const balanceStr = balance.toString();
           const formattedBalance = formatTokenBalance(balanceStr, tokenInfo.decimals);
-          
           tokens.push({
             symbol,
             name: tokenInfo.name,
@@ -581,6 +583,13 @@ export async function getWalletBalances(userId: string): Promise<{
       }
     }
     
+    // Add logging here
+    console.log(`[CDP] getWalletBalances for user ${userId}:`, {
+      address,
+      network,
+      nativeBalance,
+      tokens
+    });
     return {
       address,
       network,

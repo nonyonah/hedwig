@@ -19,7 +19,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getOrCreateWallet, getWalletBalances } from '@/lib/wallet';
 import { loadServerEnvironment } from '@/lib/serverEnv';
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from '@/lib/whatsappUtils';
-import { createWalletDetailsTemplate, createWalletImportTemplate, createSendCryptoTemplate, createReceiveCryptoTemplate } from '@/lib/whatsappTemplates';
+import { createWalletDetailsTemplate, createSendCryptoTemplate, createReceiveCryptoTemplate } from '@/lib/whatsappTemplates';
 import { formatTokenBalance } from '@/lib/utils';
 
 // Ensure environment variables are loaded
@@ -98,9 +98,6 @@ async function handleGetRequest(req: NextApiRequest, res: NextApiResponse<Wallet
         } else if (action === 'receive') {
           const receiveTemplate = createReceiveCryptoTemplate(balances.address);
           await sendWhatsAppTemplate(phone, receiveTemplate);
-        } else if (action === 'import') {
-          const importTemplate = createWalletImportTemplate();
-          await sendWhatsAppTemplate(phone, importTemplate);
         }
       } catch (sendError) {
         console.error('Error sending wallet template:', sendError);

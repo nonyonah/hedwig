@@ -52,7 +52,7 @@ export async function getOrCreateWallet(
     const existingWallet = await getWalletFromDb(userId);
     
     if (existingWallet) {
-      console.log(`[CDP] User ${userId} already has wallet with address: ${existingWallet.address}`);
+      console.log(`[CDP] User ${userId} already has wallet with address: ${existingWallet}`);
       
       // Get CDP environment variables
       const { apiKeyId, apiKeySecret, walletSecret } = getCdpEnvironment();
@@ -66,12 +66,12 @@ export async function getOrCreateWallet(
         apiKeyId,
         apiKeySecret,
         walletSecret,
-        address: existingWallet.address,
+        address: existingWallet,
         networkId: 'base-sepolia'
       });
       
       return { 
-        address: existingWallet.address, 
+        address: existingWallet, 
         created: false,
         provider
       };
@@ -187,54 +187,102 @@ export async function storeWalletInDb(
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Check if user exists, create if it doesn't
-    const { data: existingUser } = await supabase
+    // First, check if user exists
+    console.log(`[CDP] Checking if user ${userId} exists in database`);
+    const { data: existingUser, error: userError } = await supabase
       .from('users')
       .select('id')
       .eq('phone_number', userId)
       .single();
-      
-    if (!existingUser) {
-      console.log(`[CDP] User ${userId} doesn't exist, creating new user`);
-      const { error: userError } = await supabase
+    
+    let userUuid: string;
+    
+    if (userError || !existingUser) {
+      console.log(`[CDP] User ${userId} does not exist, creating new user`);
+      // Create user
+      const { data: newUser, error: createError } = await supabase
         .from('users')
-        .insert({
-          phone_number: userId
-        });
-        
-      if (userError) {
-        console.error(`[CDP] Error creating user:`, userError);
-        throw new Error(`Failed to create user: ${userError.message}`);
-      }
-    }
-    
-    // Get the user ID
-    const { data: user } = await supabase
-      .from('users')
-      .select('id')
-      .eq('phone_number', userId)
-      .single();
+        .insert([{ phone_number: userId }])
+        .select('id')
+        .single();
       
-    if (!user) {
-      throw new Error(`Failed to find or create user with phone number ${userId}`);
+      if (createError || !newUser) {
+        console.error(`[CDP] Error creating user:`, createError);
+        throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
+      }
+      
+      userUuid = newUser.id;
+      console.log(`[CDP] Created user ${userId} with UUID ${userUuid}`);
+    } else {
+      userUuid = existingUser.id;
+      console.log(`[CDP] Found existing user ${userId} with UUID ${userUuid}`);
     }
     
-    // Insert wallet into database
-    const { error } = await supabase
+    // Check if wallet already exists for this user
+    console.log(`[CDP] Checking if wallet exists for user ${userId} (UUID: ${userUuid})`);
+    const { data: existingWallet, error: walletError } = await supabase
       .from('wallets')
-      .insert({
-        user_id: user.id,
-        address,
-        username: username || null,
-        wallet_type: imported ? 'imported' : 'cdp',
-        created_at: new Date().toISOString()
-      });
+      .select('id')
+      .eq('user_id', userUuid)
+      .single();
     
-    if (error) {
-      throw new Error(`Database error: ${error.message}`);
+    if (!walletError && existingWallet) {
+      console.log(`[CDP] Wallet already exists for user ${userId}, updating`);
+      // Update existing wallet
+      const { error: updateError } = await supabase
+        .from('wallets')
+        .update({
+          address,
+          username: username || null,
+          wallet_type: imported ? 'imported' : 'cdp',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingWallet.id);
+      
+      if (updateError) {
+        console.error(`[CDP] Error updating wallet:`, updateError);
+        throw new Error(`Failed to update wallet: ${updateError.message}`);
+      }
+      
+      console.log(`[CDP] Successfully updated wallet for user ${userId}`);
+    } else {
+      console.log(`[CDP] No wallet found for user ${userId}, creating new wallet`);
+      // Upsert wallet (insert or update if exists)
+      const { error } = await supabase
+        .from('wallets')
+        .upsert([
+          {
+            user_id: userUuid,
+            address,
+            username: username || null,
+            wallet_type: imported ? 'imported' : 'cdp',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'user_id' });
+      
+      if (error) {
+        console.error(`[CDP] Error upserting wallet:`, error);
+        throw new Error(`Database error: ${error.message}`);
+      }
+      
+      console.log(`[CDP] Successfully upserted wallet for user ${userId}`);
     }
     
-    console.log(`[CDP] Successfully stored wallet in database for user ${userId}`);
+    // Verify wallet was stored correctly
+    console.log(`[CDP] Verifying wallet storage for user ${userId}`);
+    const { data: verifyWallet, error: verifyError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userUuid)
+      .single();
+    
+    if (verifyError || !verifyWallet) {
+      console.error(`[CDP] Error verifying wallet:`, verifyError);
+      throw new Error(`Failed to verify wallet storage: ${verifyError?.message || 'Wallet not found after insert/update'}`);
+    }
+    
+    console.log(`[CDP] Successfully verified wallet storage for user ${userId} with address ${verifyWallet.address}`);
   } catch (error) {
     console.error(`[CDP] Error storing wallet in database:`, error);
     throw new Error(`Failed to store wallet: ${error instanceof Error ? error.message : String(error)}`);
@@ -248,8 +296,8 @@ export async function storeWalletInDb(
  */
 export async function userHasWalletInDb(userId: string): Promise<boolean> {
   try {
-    const wallet = await getWalletFromDb(userId);
-    return !!wallet;
+  const wallet = await getWalletFromDb(userId);
+  return !!wallet;
   } catch (error) {
     console.error(`[CDP] Error checking if user has wallet:`, error);
     return false;
@@ -259,44 +307,50 @@ export async function userHasWalletInDb(userId: string): Promise<boolean> {
 /**
  * Get a wallet from the database
  * @param userId User identifier (phone number)
- * @returns Wallet data or null if not found
+ * @returns Wallet address or null if not found
  */
-export async function getWalletFromDb(userId: string): Promise<WalletData | null> {
+export async function getWalletFromDb(userId: string): Promise<string | null> {
   try {
-    console.log(`[CDP] Getting wallet from database for user ${userId}`);
-    
+    console.log(`[CDP] Looking up wallet for user ${userId}`);
     // Import Supabase client dynamically to avoid SSR issues
     const { createClient } = await import('@supabase/supabase-js');
-    
-    // Get Supabase credentials
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    
     if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('[CDP] Missing Supabase credentials');
       throw new Error('Missing Supabase credentials');
     }
-    
-    // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Query for wallet
-    const { data, error } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('user_id', userId)
+    // First, get the user ID
+    console.log(`[CDP] Finding user UUID for phone number ${userId}`);
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone_number', userId)
       .single();
-    
-    if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is expected
-      throw new Error(`Database error: ${error.message}`);
-    }
-    
-    if (!data) {
-      console.log(`[CDP] No wallet found in database for user ${userId}`);
+    if (userError || !user) {
+      console.log(`[CDP] User ${userId} not found in database`);
       return null;
     }
-    
-    console.log(`[CDP] Found wallet in database for user ${userId}: ${data.address}`);
-    return data as WalletData;
+    const userUuid = user.id;
+    console.log(`[CDP] Found user ${userId} with UUID ${userUuid}`);
+    // Now get the wallet
+    console.log(`[CDP] Looking up wallet for user UUID ${userUuid}`);
+    const { data: wallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userUuid)
+      .single();
+    if (walletError) {
+      console.log(`[CDP] Error looking up wallet for user UUID ${userUuid}: ${walletError.message}`);
+      return null;
+    }
+    if (!wallet) {
+      console.log(`[CDP] No wallet found for user UUID ${userUuid}`);
+      return null;
+    }
+    console.log(`[CDP] Found wallet for user UUID ${userUuid}: ${wallet.address}`);
+    return wallet.address;
   } catch (error) {
     console.error(`[CDP] Error getting wallet from database:`, error);
     return null;
