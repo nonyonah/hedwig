@@ -5,7 +5,15 @@ import {
   erc20ActionProvider,
   erc721ActionProvider,
   walletActionProvider,
-  WalletProvider
+  WalletProvider,
+  // acrossActionProvider,
+  onrampActionProvider,
+  // cdpWalletActionProvider,
+  alchemyTokenPricesActionProvider,
+  ActionProvider,
+  Network,
+  CreateAction,
+  EvmWalletProvider
 } from '@coinbase/agentkit';
 import { z, ZodType, ZodTypeDef } from 'zod';
 import { loadServerEnvironment, getCdpEnvironment } from './serverEnv';
@@ -30,6 +38,11 @@ const BASE_SEPOLIA_CONFIG = {
 
 // Base Sepolia faucet URL
 const BASE_SEPOLIA_FAUCET_URL = "https://faucet.base.org";
+
+// Base Mainnet configuration
+const BASE_MAINNET_CONFIG = {
+  networkId: "base-mainnet", // Base Mainnet network ID for CDP
+};
 
 /**
  * Generates a unique idempotency key that meets CDP requirements (exactly 36 characters)
@@ -70,7 +83,7 @@ export async function getUserWalletProvider(userId?: string): Promise<WalletProv
           },
           body: JSON.stringify({ 
             phone: userId,
-            network: 'base-sepolia'
+            network: 'base-mainnet'
           }),
         });
         
@@ -103,7 +116,7 @@ export async function getUserWalletProvider(userId?: string): Promise<WalletProv
           apiKeySecret,
           walletSecret,
           address: walletData.address,
-          networkId: 'base-sepolia'
+          networkId: 'base-mainnet'
         });
         
         // Verify the provider works
@@ -247,7 +260,7 @@ async function createDefaultWalletProvider(): Promise<WalletProvider> {
       apiKeyId,
       apiKeySecret,
       walletSecret,
-      networkId: networkId || BASE_SEPOLIA_CONFIG.networkId, // Ensure we have a fallback
+      networkId: networkId || BASE_MAINNET_CONFIG.networkId, // Ensure we have a fallback
       idempotencyKey,
     };
     
@@ -338,8 +351,20 @@ export async function getAgentKit(userId?: string, username?: string): Promise<A
     console.log('[AgentKit] Creating action providers');
     const erc20Provider = erc20ActionProvider();
     const erc721Provider = erc721ActionProvider();
-    
-    const actionProviders = [erc20Provider, erc721Provider];
+    const walletProviderAction = walletActionProvider();
+    // const acrossProvider = acrossActionProvider({
+    //   privateKey: process.env.ACROSS_PRIVATE_KEY as string,
+    // });
+    const alchemyProvider = alchemyTokenPricesActionProvider({
+      apiKey: process.env.ALCHEMY_API_KEY,
+    });
+    const actionProviders = [
+      erc20Provider,
+      erc721Provider,
+      walletProviderAction,
+      // acrossProvider,
+      alchemyProvider,
+    ];
     
     // Initialize AgentKit with the wallet provider and action providers
     console.log('[AgentKit] Creating AgentKit instance with action providers');
