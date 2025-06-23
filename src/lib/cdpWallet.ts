@@ -165,7 +165,7 @@ export async function getOrCreateWallet(
  * @param imported Whether the wallet was imported
  */
 export async function storeWalletInDb(
-  userId: string, 
+  userId: string,
   address: string,
   username?: string,
   imported: boolean = false
@@ -201,11 +201,11 @@ export async function storeWalletInDb(
       console.log(`[CDP] User ${userId} does not exist, creating new user`);
       // Create user
       const { data: newUser, error: createError } = await supabase
-        .from('users')
-        .insert([{ phone_number: userId }])
-        .select('id')
-        .single();
-      
+          .from('users')
+          .insert([{ phone_number: userId }])
+          .select('id')
+          .single();
+        
       if (createError || !newUser) {
         console.error(`[CDP] Error creating user:`, createError);
         throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
@@ -249,7 +249,7 @@ export async function storeWalletInDb(
       console.log(`[CDP] No wallet found for user ${userId}, creating new wallet`);
       // Upsert wallet (insert or update if exists)
       const { error } = await supabase
-        .from('wallets')
+          .from('wallets')
         .upsert([
           {
             user_id: userUuid,

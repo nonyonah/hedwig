@@ -59,6 +59,8 @@ const nextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     WALLET_ENCRYPTION_KEY: process.env.WALLET_ENCRYPTION_KEY,
+    CDP_PROJECT_ID: process.env.CDP_PROJECT_ID,
+    ALCHEMY_API_KEY: process.env.ALCHEMY_API_KEY,
   },
 
   reactStrictMode: true,

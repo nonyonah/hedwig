@@ -1118,30 +1118,30 @@ async function handleWalletCommand(userId: string, args: string[], username?: st
       (subcommand.includes('balance')) ||
       (subcommand.includes('wallet') && subcommand.includes('balance'))
     ) {
-      if (!hasWallet) {
-        return {
-          success: false,
-          message: walletTemplates.noWallet(),
-          type: 'buttons'
-        };
-      }
+        if (!hasWallet) {
+          return {
+            success: false,
+            message: walletTemplates.noWallet(),
+            type: 'buttons'
+          };
+        }
       // Call the real balance function
       const { getWalletBalances } = await import('@/lib/wallet');
       console.log(`[CDP] Calling getWalletBalances for user ${userId}`);
       const balances = await getWalletBalances(userId);
       if (!balances) {
-        return {
-          success: false,
+          return {
+            success: false,
           message: "Could not retrieve your wallet balance. Please try again later.",
           type: 'text'
-        };
-      }
-      return {
+          };
+        }
+          return {
         success: true,
         message: walletTemplates.balance(balances.nativeBalance),
-        type: 'buttons'
-      };
-    }
+            type: 'buttons'
+          };
+        }
     switch (subcommand) {
       case 'address':
         if (!hasWallet) {
@@ -1164,7 +1164,7 @@ async function handleWalletCommand(userId: string, args: string[], username?: st
           type: 'buttons'
         };
     }
-  } catch (error) {
+    } catch (error) {
     console.error('Error handling wallet command:', error);
     return {
       success: false,
@@ -1189,8 +1189,8 @@ async function handleWalletBalance(userId: string, username?: string): Promise<C
     }
     const balances = await getWalletBalances(userId);
     if (!balances || balances.tokens.length === 0) {
-      return {
-        success: true,
+    return {
+      success: true,
         message: `Your wallet (${address.substring(0, 6)}...${address.substring(38)}) has no tokens yet.\n\nYou can get free test tokens from the Base Sepolia faucet: https://www.coinbase.com/faucets/base-sepolia-faucet`
       };
     }
