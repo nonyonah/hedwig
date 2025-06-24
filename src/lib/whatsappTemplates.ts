@@ -42,16 +42,6 @@ export const walletTemplates = {
     ]
   }),
     
-  // No wallet template
-  // Triggers: 'no wallet', 'create wallet', 'missing wallet'
-  noWallet: () => ({
-    type: 'buttons' as const,
-    text: `You don't have a wallet yet. Would you like to create one?`,
-    buttons: [
-      { id: 'create_wallet', title: 'Create Wallet' }
-    ]
-  }),
-    
   // Deposit template with instructions and QR code option
   deposit: (address: string): import('../types/whatsapp').ButtonsResponse => ({
     type: 'buttons',
@@ -722,6 +712,14 @@ export function walletCreated({ address }: { address: string }) {
         type: 'body',
         parameters: [
           { type: 'text', text: address }
+        ]
+      },
+      {
+        type: 'button',
+        sub_type: 'quick_reply',
+        index: 0,
+        parameters: [
+          { type: 'payload', payload: 'CREATE_WALLET' }
         ]
       }
     ]

@@ -1,6 +1,17 @@
 import { getOrCreatePrivyWallet } from '@/lib/privy';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
+import {
+  walletTemplates,
+  walletAddress,
+  walletBalanceUpdate,
+  walletCreated,
+  swapPending,
+  swapSuccessful,
+  swapFailed,
+  transactionSuccess,
+  confirmTransaction
+} from '@/lib/whatsappTemplates';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -10,8 +21,22 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Minimal fallback error template
+function errorTemplate(message: string) {
+  return {
+    template: 'error',
+    language: { code: 'en' },
+    components: [
+      { type: 'body', parameters: [{ type: 'text', text: message }] },
+      { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'HELP' }] }
+    ]
+  };
+}
+
 export async function handleAction(intent: string, params: ActionParams, userId: string) {
   switch (intent) {
+    case 'welcome':
+      return await handleWelcome(userId);
     case 'create_wallet':
       return await handleCreateWallet(params, userId);
     case 'get_balance':
@@ -24,9 +49,10 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       return await handleGetPrice(params, userId);
     case 'get_news':
       return await handleGetNews(params, userId);
-    // Add more as needed
+    case 'clarification':
+      return errorTemplate(params.message || 'Can you clarify your request?');
     default:
-      return { type: 'text', text: `Sorry, I don't know how to handle the action: ${intent}` };
+      return errorTemplate(`Sorry, I don't know how to handle the action: ${intent}`);
   }
 }
 
@@ -43,15 +69,9 @@ async function handleCreateWallet(params: ActionParams, userId: string) {
       chain,
     });
 
-    return {
-      type: 'text',
-      text: `✅ Your ${chain === 'solana' ? 'Solana' : 'EVM'} wallet is ready!\nAddress: ${wallet.address}`,
-    };
+    return walletCreated({ address: wallet.address });
   } catch (error) {
-    return {
-      type: 'text',
-      text: `❌ Failed to create wallet: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
+    return errorTemplate('Failed to create wallet.');
   }
 }
 
@@ -66,7 +86,7 @@ async function handleGetBalance(params: ActionParams, userId: string) {
       .eq('chain', chain)
       .single();
     if (error || !wallet) {
-      return { type: 'text', text: `❌ No wallet found for user. Please create a wallet first.` };
+      return errorTemplate('No wallet found. Create one to get started.');
     }
     // 2. Call CDP API to get balance
     const cdpApiKey = process.env.CDP_API_KEY_ID;
@@ -83,21 +103,16 @@ async function handleGetBalance(params: ActionParams, userId: string) {
       },
     });
     if (!response.ok) {
-      return { type: 'text', text: `❌ Failed to fetch balance from CDP.` };
+      return errorTemplate('Failed to fetch balance.');
     }
     const data = await response.json();
     // 3. Format balance (assume native token is first in list)
     const native = data.balances?.[0];
-    const balance = native ? `${native.amount} ${native.symbol}` : '0';
-    return {
-      type: 'text',
-      text: `💰 Your balance: ${balance}\nAddress: ${address}`,
-    };
+    const balance = native ? `${native.amount}` : '0';
+    const currency = native ? native.symbol : (chain === 'solana' ? 'SOL' : 'ETH');
+    return walletBalanceUpdate({ balance_amount: balance, currency });
   } catch (error) {
-    return {
-      type: 'text',
-      text: `❌ Failed to get balance: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
+    return errorTemplate('Failed to get balance.');
   }
 }
 
@@ -132,7 +147,7 @@ async function handleSend(params: ActionParams, userId: string) {
       .eq('chain', chain)
       .single();
     if (error || !wallet) {
-      return { type: 'text', text: `❌ No wallet found for user. Please create a wallet first.` };
+      return errorTemplate('No wallet found. Create one to get started.');
     }
     // 2. Multi-step: check for missing recipient or amount
     const to = params.to;
@@ -149,11 +164,11 @@ async function handleSend(params: ActionParams, userId: string) {
       context.push({ role: 'system', content: JSON.stringify({ pending }) });
       await supabase.from('sessions').upsert([{ user_id: userId, context, last_active: new Date().toISOString() }], { onConflict: 'user_id' });
       if (!to && !amount) {
-        return { type: 'text', text: 'Who do you want to send tokens to, and how much?' };
+        return errorTemplate('Specify recipient and amount.');
       } else if (!to) {
-        return { type: 'text', text: 'Who do you want to send tokens to?' };
+        return errorTemplate('Specify recipient.');
       } else {
-        return { type: 'text', text: 'How much do you want to send?' };
+        return errorTemplate('Specify amount.');
       }
     }
     // 3. Call CDP API to send transaction
@@ -181,7 +196,7 @@ async function handleSend(params: ActionParams, userId: string) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Send error:', errorText);
-      return { type: 'text', text: `❌ Failed to send transaction: ${errorText}` };
+      return errorTemplate('Failed to send transaction.');
     }
     const data = await response.json();
     const txHash = data.txHash || data.transactionHash || data.hash;
@@ -197,16 +212,10 @@ async function handleSend(params: ActionParams, userId: string) {
     }]);
     // Explorer link
     const explorerUrl = getExplorerUrl(chain, txHash);
-    return {
-      type: 'text',
-      text: `✅ Transaction sent!\nAmount: ${amount} ${body.asset}\nTo: ${to}\nTx Hash: ${txHash ? txHash : 'N/A'}\n${explorerUrl ? `View on Explorer: ${explorerUrl}` : ''}`,
-    };
+    return transactionSuccess({ amount: amount, recipient_address: to, transaction_hash: txHash });
   } catch (error) {
     console.error('Send error:', error);
-    return {
-      type: 'text',
-      text: `❌ Failed to send: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
+    return errorTemplate('Failed to send.');
   }
 }
 
@@ -221,7 +230,7 @@ async function handleSwap(params: ActionParams, userId: string) {
       .eq('chain', chain)
       .single();
     if (error || !wallet) {
-      return { type: 'text', text: `❌ No wallet found for user. Please create a wallet first.` };
+      return errorTemplate('No wallet found. Create one to get started.');
     }
     const address = wallet.address;
     // 2. Validate swap params
@@ -229,35 +238,52 @@ async function handleSwap(params: ActionParams, userId: string) {
     const toToken = params.toToken;
     const amount = params.amount;
     if (!fromToken || !toToken || !amount) {
-      return { type: 'text', text: `❌ Please specify fromToken, toToken, and amount.` };
+      return errorTemplate('Specify fromToken, toToken, and amount.');
     }
-    if (chain === 'evm') {
-      // Use Uniswap API for EVM swaps
-      const uniswapApiUrl = 'https://api.uniswap.org/v1/quote';
-      const res = await fetch(`${uniswapApiUrl}?protocols=v3&tokenIn=${fromToken}&tokenOut=${toToken}&amount=${amount}&type=exactIn&recipient=${address}`);
+    if (chain === 'evm' || chain === 'base') {
+      // Use 0x Swap API v2 for EVM and Base swaps
+      // See: https://0x.org/docs/upgrading/upgrading_to_swap_v2
+      const zeroExApiUrl = 'https://api.0x.org/swap/permit2/quote';
+      const swapFeeRecipient = process.env.ZEROEX_FEE_RECIPIENT || address; // Set your fee recipient address in env
+      const swapFeeBps = process.env.ZEROEX_FEE_BPS || '100'; // 100 = 1%
+      const chainId = chain === 'base' ? 8453 : 1; // Base = 8453, Ethereum = 1
+      const paramsObj = new URLSearchParams({
+        sellToken: fromToken,
+        buyToken: toToken,
+        sellAmount: amount,
+        taker: address,
+        swapFeeBps,
+        swapFeeRecipient,
+        chainId: chainId.toString(),
+      });
+      const res = await fetch(`${zeroExApiUrl}?${paramsObj.toString()}`, {
+        headers: {
+          '0x-api-key': process.env.ZEROEX_API_KEY || '',
+          '0x-version': 'v2',
+        },
+      });
       if (!res.ok) {
         const errorText = await res.text();
-        console.error('Swap error:', errorText);
-        return { type: 'text', text: `❌ Uniswap API error: ${errorText}` };
+        console.error('0x Swap v2 error:', errorText);
+        return errorTemplate('Swap failed.');
       }
       const data = await res.json();
-      const quote = data.quote || data;
-      const txHash = quote.txHash || quote.transactionHash || quote.hash;
-      // Log transaction
+      // Log transaction (no txHash yet, as 0x only provides quote)
       await supabase.from('transactions').insert([{
         user_id: userId,
         wallet_id: wallet.id,
         chain,
-        tx_hash: txHash,
+        tx_hash: null,
         action: 'swap',
         status: 'pending',
-        metadata: { fromToken, toToken, amount }
+        metadata: { fromToken, toToken, amount, zeroExQuote: data }
       }]);
-      const explorerUrl = txHash ? getExplorerUrl(chain, txHash) : '';
-      return {
-        type: 'text',
-        text: `🔄 Uniswap Swap Quote:\nFrom: ${fromToken}\nTo: ${toToken}\nAmount: ${amount}\nEstimated Out: ${quote.amountOut || quote.quote || 'N/A'}\n${txHash ? `Tx Hash: ${txHash}\n` : ''}${explorerUrl ? `View on Explorer: ${explorerUrl}` : ''}\n\nTo execute this swap, sign and send the transaction data provided by Uniswap.`,
-      };
+      // TODO: Implement transaction execution and status tracking
+      return swapSuccessful({
+        success_message: `Swap successful!`,
+        wallet_balance: `${data.buyAmount || 'N/A'} ${toToken}`,
+        tx_hash: data.txHash || ''
+      });
     } else if (chain === 'solana') {
       // Use Jupiter API for Solana swaps
       const jupiterApiUrl = 'https://quote-api.jup.ag/v6/quote';
@@ -265,7 +291,7 @@ async function handleSwap(params: ActionParams, userId: string) {
       if (!res.ok) {
         const errorText = await res.text();
         console.error('Swap error:', errorText);
-        return { type: 'text', text: `❌ Jupiter API error: ${errorText}` };
+        return errorTemplate('Swap failed.');
       }
       const data = await res.json();
       const route = data.data?.[0];
@@ -279,19 +305,17 @@ async function handleSwap(params: ActionParams, userId: string) {
         status: 'pending',
         metadata: { fromToken, toToken, amount, route }
       }]);
-      return {
-        type: 'text',
-        text: `🔄 Jupiter Swap Quote (Solana):\nFrom: ${fromToken}\nTo: ${toToken}\nAmount: ${amount}\nEstimated Out: ${route?.outAmount || 'N/A'}\n\nTo execute this swap, sign and send the transaction data provided by Jupiter.`,
-      };
+      return swapSuccessful({
+        success_message: `Swap successful!`,
+        wallet_balance: `${route?.outAmount || 'N/A'} ${toToken}`,
+        tx_hash: route?.txid || ''
+      });
     } else {
-      return { type: 'text', text: `❌ Unsupported chain for swap.` };
+      return errorTemplate('Unsupported chain for swap.');
     }
   } catch (error) {
     console.error('Swap error:', error);
-    return {
-      type: 'text',
-      text: `❌ Failed to swap: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
+    return errorTemplate('Failed to swap.');
   }
 }
 
@@ -300,23 +324,23 @@ async function handleGetPrice(params: ActionParams, userId: string) {
     const token = (params.token || 'ethereum').toLowerCase();
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${token}&vs_currencies=usd`);
     if (!res.ok) {
-      const errorText = await res.text();
-      return { type: 'text', text: `❌ Failed to fetch price: ${errorText}` };
+      return errorTemplate('Failed to fetch price.');
     }
     const data = await res.json();
     const price = data[token]?.usd;
     if (!price) {
-      return { type: 'text', text: `❌ Could not fetch price for ${token}` };
+      return errorTemplate(`No price for ${token}`);
     }
     return {
-      type: 'text',
-      text: `💲 ${token.charAt(0).toUpperCase() + token.slice(1)} price: $${price}`,
+      template: 'price',
+      language: { code: 'en' },
+      components: [
+        { type: 'body', parameters: [{ type: 'text', text: `${token.toUpperCase()}: $${price}` }] },
+        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_BALANCE' }] }
+      ]
     };
   } catch (error) {
-    return {
-      type: 'text',
-      text: `❌ Failed to get price: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
+    return errorTemplate('Failed to get price.');
   }
 }
 
@@ -326,19 +350,41 @@ async function handleGetNews(params: ActionParams, userId: string) {
     const apiKey = process.env.CRYPTOPANIC_API_KEY;
     const res = await fetch(`https://cryptopanic.com/api/v1/posts/?auth_token=${apiKey}&public=true`);
     if (!res.ok) {
-      const errorText = await res.text();
-      return { type: 'text', text: `❌ Failed to fetch news: ${errorText}` };
+      return errorTemplate('Failed to fetch news.');
     }
     const data = await res.json();
     const news = data.results?.slice(0, 3).map((n: any) => `• ${n.title}`).join('\n');
     return {
-      type: 'text',
-      text: news ? `📰 Latest blockchain news:\n${news}` : '❌ Could not fetch news.',
+      template: 'news',
+      language: { code: 'en' },
+      components: [
+        { type: 'body', parameters: [{ type: 'text', text: news || 'No news.' }] },
+        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_PRICE' }] }
+      ]
     };
   } catch (error) {
-    return {
-      type: 'text',
-      text: `❌ Failed to get news: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
+    return errorTemplate('Failed to get news.');
   }
+}
+
+// Welcome handler: greets user, lists capabilities, and shows create wallet template if new
+async function handleWelcome(userId: string) {
+  // Check if user has a wallet
+  const { data: wallet } = await supabase
+    .from('wallets')
+    .select('address')
+    .eq('user_id', userId)
+    .maybeSingle();
+  const greeting = {
+    template: 'welcome',
+    language: { code: 'en' },
+    components: [
+      { type: 'body', parameters: [{ type: 'text', text: '👋 Welcome to Hedwig!'}] },
+      { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'CREATE_WALLET' }] }
+    ]
+  };
+  if (!wallet) {
+    return [greeting];
+  }
+  return greeting;
 } 

@@ -89,4 +89,24 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RAISE EXCEPTION 'Error in create_user_and_wallet: %', SQLERRM;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER; 
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Ensure users table has both id and phone_number set and unique
+ALTER TABLE public.users
+  ALTER COLUMN id SET NOT NULL,
+  ALTER COLUMN phone_number SET NOT NULL;
+
+-- Add unique constraint on (id, phone_number) if not present
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE table_name = 'users' AND constraint_type = 'UNIQUE' AND constraint_name = 'users_id_phone_number_key'
+  ) THEN
+    ALTER TABLE public.users ADD CONSTRAINT users_id_phone_number_key UNIQUE (id, phone_number);
+  END IF;
+END $$;
+
+-- Add comment for clarity
+COMMENT ON COLUMN public.users.id IS 'User UUID, primary key';
+COMMENT ON COLUMN public.users.phone_number IS 'User phone number, unique and not null'; 

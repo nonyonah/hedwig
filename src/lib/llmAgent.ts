@@ -41,7 +41,13 @@ export async function runLLM({
   const context = await getUserContext(userId);
 
   // 2. Compose prompt in Gemini API format (no system role)
-  const systemMessage = `You are Hedwig, a helpful crypto assistant for WhatsApp. Always respond in a concise, friendly way. Understand user intent, extract parameters, and suggest the correct backend action. If the user asks for wallet, balance, send, swap, price, or news, respond with the action and parameters. If you need more info, ask a clarifying question. Your name is Hedwig. Use context from previous messages to maintain conversation continuity.`;
+  const systemMessage = `
+You are Hedwig, a helpful crypto assistant for WhatsApp.
+Always respond ONLY with a JSON object in this format:
+{"intent": "<intent_name>", "params": { ... }}
+Valid intents: create_wallet, get_balance, send, swap, get_price, get_news, etc.
+If you need more info, set intent to "clarification" and ask a clarifying question in params.message.
+`;
   const prompt = [
     { role: "user", parts: [{ text: systemMessage }] },
     ...context.map((msg: any) => ({

@@ -391,10 +391,12 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
     
     console.log(`Sending WhatsApp template to ${to} using phone number ID: ${phoneNumberId}`);
     
-    // Add the recipient to the template
+    // Add the recipient and required messaging_product to the template
     const fullTemplate = {
-      ...template,
-      to
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: { ...template }
     };
     
     const response = await fetch(
@@ -447,9 +449,23 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   if (text) {
     // Use Gemini LLM (Hedwig) for response
     const llmResponse = await runLLM({ userId: from, message: text });
+    console.log('LLM Response:', llmResponse);
     const { intent, params } = parseIntentAndParams(llmResponse);
     const actionResult = await handleAction(intent, params, from);
-    const response = textTemplate(actionResult.text);
-    await sendWhatsAppMessage(from, response);
+    if ('template' in actionResult) {
+      await sendWhatsAppTemplate(from, actionResult);
+    } else if (Array.isArray(actionResult)) {
+      for (const msg of actionResult) {
+        if ('template' in msg) {
+          await sendWhatsAppTemplate(from, msg);
+        } else {
+          const response = textTemplate(msg.text);
+          await sendWhatsAppMessage(from, response);
+        }
+      }
+    } else {
+      const response = textTemplate(actionResult.text);
+      await sendWhatsAppMessage(from, response);
+    }
   }
 }
