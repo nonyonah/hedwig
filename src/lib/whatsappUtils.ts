@@ -2,6 +2,10 @@ import { getRequiredEnvVar } from '@/lib/envUtils';
 import { loadServerEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
+import { textTemplate } from './whatsappTemplates';
+import { runLLM } from './llmAgent';
+import { parseIntentAndParams } from './intentParser';
+import { handleAction } from '../api/actions';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -35,7 +39,10 @@ interface WhatsAppMessageResponse {
   messages: Array<{ id: string }>;
 }
 
-export async function sendWhatsAppMessage(to: string, message: string): Promise<WhatsAppMessageResponse> {
+/**
+ * Sends a text message via WhatsApp (template or string)
+ */
+export async function sendWhatsAppMessage(to: string, message: string | { text: string }): Promise<WhatsAppMessageResponse> {
   try {
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -43,24 +50,18 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     // Check if we have valid credentials before attempting to send
     if (!accessToken || accessToken.includes('dev-') || accessToken === 'EAABBC') {
       console.warn(`[WhatsApp] Missing valid WhatsApp access token. Message to ${to} will not be sent.`);
-      
-      // In development, return a fake success response
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[DEV MODE] Would have sent WhatsApp message to ${to}: ${message}`);
+        console.log(`[DEV MODE] Would have sent WhatsApp message to ${to}:`, message);
         return {
           messaging_product: 'whatsapp',
           contacts: [{ input: to, wa_id: to }],
           messages: [{ id: `mock-${Date.now()}` }]
         };
       }
-      
       throw new Error('Missing valid WhatsApp access token');
     }
-    
     if (!phoneNumberId || phoneNumberId.includes('dev-')) {
       console.warn(`[WhatsApp] Missing valid WhatsApp phone number ID. Message to ${to} will not be sent.`);
-      
-      // In development, return a fake success response
       if (process.env.NODE_ENV === 'development') {
         console.log(`[DEV MODE] Would have sent WhatsApp message to ${to} using phone ID: ${phoneNumberId}`);
         return {
@@ -69,12 +70,10 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
           messages: [{ id: `mock-${Date.now()}` }]
         };
       }
-      
       throw new Error('Missing valid WhatsApp phone number ID');
     }
-    
     console.log(`Sending WhatsApp message to ${to} using phone number ID: ${phoneNumberId}`);
-    
+    const text = typeof message === 'string' ? message : message.text;
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
@@ -88,26 +87,22 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
           to,
           type: 'text',
           text: { 
-            body: message,
+            body: text,
             preview_url: false,
           },
         }),
       }
     );
-
     if (!response.ok) {
       const errorData = await response.text();
       console.error('Error sending WhatsApp message:', response.status, errorData);
       throw new Error(`Failed to send WhatsApp message: ${errorData}`);
     }
-    
     const result = await response.json();
     console.log('WhatsApp message sent successfully to:', to);
     return result;
   } catch (err) {
     console.error('Exception in sendWhatsAppMessage:', err);
-    
-    // In development, provide a mock response instead of throwing
     if (process.env.NODE_ENV === 'development') {
       console.warn('[DEV MODE] Providing mock WhatsApp response due to error');
       return {
@@ -116,7 +111,6 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
         messages: [{ id: `error-mock-${Date.now()}` }]
       };
     }
-    
     throw err;
   }
 }
@@ -438,5 +432,24 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
     }
     
     throw err;
+  }
+}
+
+// Handle incoming WhatsApp messages
+export async function handleIncomingWhatsAppMessage(body: any) {
+  // Parse the incoming WhatsApp message
+  const entry = body.entry?.[0];
+  const change = entry?.changes?.[0];
+  const message = change?.value?.messages?.[0];
+  const from = message?.from;
+  const text = message?.text?.body;
+
+  if (text) {
+    // Use Gemini LLM (Hedwig) for response
+    const llmResponse = await runLLM({ userId: from, message: text });
+    const { intent, params } = parseIntentAndParams(llmResponse);
+    const actionResult = await handleAction(intent, params, from);
+    const response = textTemplate(actionResult.text);
+    await sendWhatsAppMessage(from, response);
   }
 }

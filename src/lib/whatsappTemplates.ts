@@ -506,3 +506,11 @@ export function createTransactionNotificationTemplate(
     }
   };
 }
+
+// Simple text template for WhatsApp responses
+export function textTemplate(text: string) {
+  return {
+    type: 'text',
+    text,
+  };
+}
