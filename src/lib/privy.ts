@@ -4,8 +4,12 @@ const appId = process.env.PRIVY_APP_ID!;
 const appSecret = process.env.PRIVY_APP_SECRET!;
 const privyApiUrl = 'https://api.privy.io/v1/wallets';
 
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in your environment variables.');
+}
+
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
