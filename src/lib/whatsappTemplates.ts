@@ -514,3 +514,216 @@ export function textTemplate(text: string) {
     text,
   };
 }
+
+// WhatsApp approved templates
+
+// Faucet request submitted
+export function faucetRequestSubmitted({ amount, wallet_address, estimated_time }: { amount: string, wallet_address: string, estimated_time: string }) {
+  return {
+    template: 'faucet_request_submitted',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: wallet_address },
+          { type: 'text', text: estimated_time }
+        ]
+      }
+    ]
+  };
+}
+
+// Swap failed
+export function swapFailed() {
+  return {
+    template: 'swap_failed',
+    language: { code: 'en' },
+    components: []
+  };
+}
+
+// Wallet address
+export function walletAddress({ address }: { address: string }) {
+  return {
+    template: 'wallet_address',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: address }
+        ]
+      }
+    ]
+  };
+}
+
+// Wallet balance update
+export function walletBalanceUpdate({ balance_amount, currency }: { balance_amount: string, currency: string }) {
+  return {
+    template: 'wallet_balance_update',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: balance_amount },
+          { type: 'text', text: currency }
+        ]
+      }
+    ]
+  };
+}
+
+// Withdraw funds
+export function withdrawFunds() {
+  return {
+    template: 'withdraw_funds',
+    language: { code: 'en' },
+    components: []
+  };
+}
+
+// Confirm transaction
+export function confirmTransaction({ amount, recipient_address, network_fee }: { amount: string, recipient_address: string, network_fee: string }) {
+  return {
+    template: 'confirm_transaction',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: recipient_address },
+          { type: 'text', text: network_fee }
+        ]
+      }
+    ]
+  };
+}
+
+// Swap pending
+export function swapPending() {
+  return {
+    template: 'swap_pending',
+    language: { code: 'en' },
+    components: []
+  };
+}
+
+// Swap successful
+export function swapSuccessful({ success_message, wallet_balance, tx_hash }: { success_message: string, wallet_balance: string, tx_hash: string }) {
+  return {
+    template: 'swap_successful',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: success_message },
+          { type: 'text', text: wallet_balance }
+        ]
+      },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: 0,
+        parameters: [
+          { type: 'text', text: tx_hash }
+        ]
+      }
+    ]
+  };
+}
+
+// Faucet daily limit
+export function faucetDailyLimit({ wallet_address }: { wallet_address: string }) {
+  return {
+    template: 'faucet_daily_limit',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: wallet_address }
+        ]
+      }
+    ]
+  };
+}
+
+// Faucet request failed
+export function faucetRequestFailed({ failure_reason }: { failure_reason: string }) {
+  return {
+    template: 'faucet_request_failed',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: failure_reason }
+        ]
+      }
+    ]
+  };
+}
+
+// Faucet request success
+export function faucetRequestSuccess({ amount, wallet_address }: { amount: string, wallet_address: string }) {
+  return {
+    template: 'faucet_request_success',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: wallet_address }
+        ]
+      }
+    ]
+  };
+}
+
+// Transaction success
+export function transactionSuccess({ amount, recipient_address, transaction_hash }: { amount: string, recipient_address: string, transaction_hash: string }) {
+  return {
+    template: 'transaction_success',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: recipient_address }
+        ]
+      },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: 0,
+        parameters: [
+          { type: 'text', text: transaction_hash }
+        ]
+      }
+    ]
+  };
+}
+
+// Wallet created
+export function walletCreated({ address }: { address: string }) {
+  return {
+    template: 'wallet_created',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: address }
+        ]
+      }
+    ]
+  };
+}
