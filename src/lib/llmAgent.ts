@@ -2,10 +2,13 @@ import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/ge
 import { createClient } from "@supabase/supabase-js";
 
 const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Supabase environment variables are missing: SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY');
+}
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MODEL = "gemini-2.0-flash";
 
