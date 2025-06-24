@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 import { createClient } from "@supabase/supabase-js";
 
-const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const gemini = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -40,14 +40,15 @@ export async function runLLM({
   // 1. Get last N messages for context
   const context = await getUserContext(userId);
 
-  // 2. Compose prompt
+  // 2. Compose prompt in Gemini API format (no system role)
+  const systemMessage = `You are Hedwig, a helpful crypto assistant for WhatsApp. Always respond in a concise, friendly way. Understand user intent, extract parameters, and suggest the correct backend action. If the user asks for wallet, balance, send, swap, price, or news, respond with the action and parameters. If you need more info, ask a clarifying question. Your name is Hedwig. Use context from previous messages to maintain conversation continuity.`;
   const prompt = [
-    {
-      role: "system",
-      content: `You are Hedwig, a helpful crypto assistant for WhatsApp. Always respond in a concise, friendly way. Understand user intent, extract parameters, and suggest the correct backend action. If the user asks for wallet, balance, send, swap, price, or news, respond with the action and parameters. If you need more info, ask a clarifying question. Your name is Hedwig. Use context from previous messages to maintain conversation continuity.`
-    },
-    ...context,
-    { role: "user", content: message }
+    { role: "user", parts: [{ text: systemMessage }] },
+    ...context.map((msg: any) => ({
+      role: msg.role,
+      parts: [{ text: msg.content }]
+    })),
+    { role: "user", parts: [{ text: message }] }
   ];
 
   // 3. Call Gemini
