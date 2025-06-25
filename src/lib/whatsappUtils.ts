@@ -551,20 +551,26 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
         
         // Handle parameters if present
         if (Array.isArray(comp.parameters)) {
+          // Check if this is a positional or named parameter template
+          const isPositionalTemplate = ['wallet_balance', 'users_wallet_addresses', 'no_wallet_yet'].includes(template.name);
+          
+          // For positional templates, remove the name property
+          // For named templates, keep the name property
           cleanComponent.parameters = comp.parameters.map((param: any) => {
-            // Keep the name property - it's required by WhatsApp API
-            // Just ensure the parameter has the correct structure
-            const cleanParam: any = { 
-              type: param.type || 'text',
-              text: param.text || ''
-            };
-            
-            // Add name if present (required for NAMED parameter format templates)
-            if (param.name) {
-              cleanParam.name = param.name;
+            if (isPositionalTemplate) {
+              // For positional templates, remove name property
+              return {
+                type: param.type || 'text',
+                text: param.text || ''
+              };
+            } else {
+              // For named templates, keep name property
+              return {
+                type: param.type || 'text',
+                text: param.text || '',
+                name: param.name
+              };
             }
-            
-            return cleanParam;
           });
         }
         

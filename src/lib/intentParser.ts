@@ -29,6 +29,17 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return { intent: 'create_wallets', params: {} };
     }
     
+    // Wallet address keywords
+    if (text.includes('wallet address') || 
+        text.includes('my address') || 
+        text.includes('show address') || 
+        text.includes('view address') ||
+        text.includes('what is my address') ||
+        text.includes('what are my addresses') ||
+        text.includes('what are my wallet addresses')) {
+      return { intent: 'get_wallet_address', params: {} };
+    }
+    
     // Balance check keywords
     if (text.includes('balance') || 
         text.includes('how much') && (text.includes('have') || text.includes('own')) ||
