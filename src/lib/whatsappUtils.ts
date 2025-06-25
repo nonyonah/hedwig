@@ -396,7 +396,11 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       messaging_product: 'whatsapp',
       to,
       type: 'template',
-      template
+      template: {
+        name: template.name,
+        language: template.language,
+        components: template.components
+      }
     };
     
     const response = await fetch(
