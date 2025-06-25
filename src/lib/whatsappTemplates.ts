@@ -725,3 +725,167 @@ export function walletCreated({ address }: { address: string }) {
     ]
   };
 }
+
+// WhatsApp Templates (approved by Meta)
+
+export function txPending() {
+  return {
+    name: 'tx_pending',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: []
+      }
+    ]
+  };
+}
+
+export function tokenReceived({ amount, network, balance }: { amount: string, network: string, balance: string }) {
+  return {
+    name: 'token_received',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: network },
+          { type: 'text', text: balance }
+        ]
+      }
+    ]
+  };
+}
+
+export function bridgeFailed({ reason }: { reason: string }) {
+  return {
+    name: 'bridge_failed',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: reason }
+        ]
+      }
+    ]
+  };
+}
+
+export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
+  return {
+    name: 'send_success',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: token },
+          { type: 'text', text: recipient },
+          { type: 'text', text: balance }
+        ]
+      },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: 0,
+        parameters: [
+          { type: 'text', text: explorerUrl }
+        ]
+      }
+    ]
+  };
+}
+
+export function swapSuccess({ from_amount, to_amount, network, balance, explorerUrl }: { from_amount: string, to_amount: string, network: string, balance: string, explorerUrl: string }) {
+  return {
+    name: 'swap_success',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: from_amount },
+          { type: 'text', text: to_amount },
+          { type: 'text', text: network },
+          { type: 'text', text: balance }
+        ]
+      },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: 0,
+        parameters: [
+          { type: 'text', text: explorerUrl }
+        ]
+      }
+    ]
+  };
+}
+
+export function bridgeSuccess({ amount, from_network, to_network, balance }: { amount: string, from_network: string, to_network: string, balance: string }) {
+  return {
+    name: 'bridge_success',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: from_network },
+          { type: 'text', text: to_network },
+          { type: 'text', text: balance }
+        ]
+      }
+    ]
+  };
+}
+
+export function sendFailed({ reason }: { reason: string }) {
+  return {
+    name: 'send_failed',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: reason }
+        ]
+      }
+    ]
+  };
+}
+
+export function walletBalance({ network, balances_list }: { network: string, balances_list: string }) {
+  return {
+    name: 'wallet_balance',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: network },
+          { type: 'text', text: balances_list }
+        ]
+      }
+    ]
+  };
+}
+
+export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
+  return {
+    name: 'wallet_created_multi',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: evm_wallet },
+          { type: 'text', text: solana_wallet }
+        ]
+      }
+    ]
+  };
+}
