@@ -405,7 +405,108 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       throw new Error('Template must include a name property');
     }
 
+    // Add very detailed logging for components
+    if (Array.isArray(template.components)) {
+      console.log('Components count:', template.components.length);
+      template.components.forEach((comp: any, idx: number) => {
+        console.log(`Component ${idx}:`, JSON.stringify(comp, null, 2));
+        if (comp.parameters) {
+          console.log(`Parameters for component ${idx}:`, JSON.stringify(comp.parameters, null, 2));
+        }
+      });
+    }
+
     // Add the recipient and required messaging_product to the template
+    // Hard-code a known working template for tx_pending to test the API
+    if (template.name === 'tx_pending') {
+      const fullTemplate = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'template',
+        template: {
+          name: 'tx_pending',
+          language: {
+            code: 'en'
+          }
+        }
+      };
+      
+      console.log('Using hard-coded template for tx_pending:', JSON.stringify(fullTemplate, null, 2));
+      
+      const response = await fetch(
+        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(fullTemplate),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Error sending WhatsApp template:', response.status, errorData);
+        throw new Error(`Failed to send WhatsApp template: ${errorData}`);
+      }
+      
+      const result = await response.json();
+      console.log('WhatsApp template sent successfully to:', to);
+      return result;
+    }
+
+    // Hard-code a known working template for send_failed to test the API
+    if (template.name === 'send_failed') {
+      const fullTemplate = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'template',
+        template: {
+          name: 'send_failed',
+          language: {
+            code: 'en'
+          },
+          components: [
+            {
+              type: 'BODY',
+              parameters: [
+                {
+                  type: 'text',
+                  text: 'Error message'
+                }
+              ]
+            }
+          ]
+        }
+      };
+      
+      console.log('Using hard-coded template for send_failed:', JSON.stringify(fullTemplate, null, 2));
+      
+      const response = await fetch(
+        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(fullTemplate),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Error sending WhatsApp template:', response.status, errorData);
+        throw new Error(`Failed to send WhatsApp template: ${errorData}`);
+      }
+      
+      const result = await response.json();
+      console.log('WhatsApp template sent successfully to:', to);
+      return result;
+    }
+
+    // For all other templates, use our dynamic approach
     const fullTemplate = {
       messaging_product: 'whatsapp',
       to,
