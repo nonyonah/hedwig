@@ -398,7 +398,9 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       type: 'template',
       template: {
         name: template.name,
-        language: template.language,
+        language: {
+          code: template.language
+        },
         components: template.components
       }
     };
