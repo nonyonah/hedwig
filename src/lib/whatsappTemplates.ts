@@ -12,8 +12,7 @@ export function txPending() {
     language: 'en',
     components: [
       {
-        type: 'BODY',
-        text: "⏳ Transaction is pending confirmation...\n\nWe'll notify you when it's done."
+        type: 'BODY'
       }
     ]
   };
@@ -27,7 +26,11 @@ export function tokenReceived({ amount, network, balance }: { amount: string, ne
     components: [
       {
         type: 'BODY',
-        text: `🪙 You received ${amount} on ${network}!\n\n🔗 Your new balance is:  \n${balance}`
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: network },
+          { type: 'text', text: balance }
+        ]
       }
     ]
   };
@@ -41,7 +44,9 @@ export function bridgeFailed({ reason }: { reason: string }) {
     components: [
       {
         type: 'BODY',
-        text: `❌ Bridge failed: ${reason}.\n\nPlease try again later.`
+        parameters: [
+          { type: 'text', text: reason }
+        ]
       }
     ]
   };
@@ -55,7 +60,12 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
     components: [
       {
         type: 'BODY',
-        text: `✅ You sent ${amount} ${token} to:\n\n${recipient}\n\n🔗 Your new balance is:\n${balance}`
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: token },
+          { type: 'text', text: recipient },
+          { type: 'text', text: balance }
+        ]
       },
       {
         type: 'BUTTONS',
@@ -79,7 +89,12 @@ export function swapSuccess({ from_amount, to_amount, network, balance, explorer
     components: [
       {
         type: 'BODY',
-        text: `🔄 Swap complete!\n\nYou swapped ${from_amount}  \n→ ${to_amount} on ${network}.\n\n🔗 Your new balance is\n${balance}`
+        parameters: [
+          { type: 'text', text: from_amount },
+          { type: 'text', text: to_amount },
+          { type: 'text', text: network },
+          { type: 'text', text: balance }
+        ]
       },
       {
         type: 'BUTTONS',
@@ -103,7 +118,12 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
     components: [
       {
         type: 'BODY',
-        text: `🌉 Bridge complete!\n\nYou sent ${amount}  \nfrom ${from_network} to ${to_network}.\n\n🔗 Your new balance is:  \n${balance}`
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: from_network },
+          { type: 'text', text: to_network },
+          { type: 'text', text: balance }
+        ]
       }
     ]
   };
@@ -117,7 +137,9 @@ export function sendFailed({ reason }: { reason: string }) {
     components: [
       {
         type: 'BODY',
-        text: `❌ Your send failed: ${reason}.\n\nTry again or contact support.`
+        parameters: [
+          { type: 'text', text: reason || 'Unknown error' }
+        ]
       }
     ]
   };
@@ -131,7 +153,10 @@ export function walletBalance({ network, balances_list }: { network: string, bal
     components: [
       {
         type: 'BODY',
-        text: `💼 Balance on ${network}:\n\n${balances_list}\n\nThese are your funds!`
+        parameters: [
+          { type: 'text', text: network },
+          { type: 'text', text: balances_list }
+        ]
       }
     ]
   };
@@ -145,7 +170,10 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
     components: [
       {
         type: 'BODY',
-        text: `🪪 Your wallets have been created:\n\n🔹 EVM Wallet: *${evm_wallet}*  \n🔸 Solana Wallet: *${solana_wallet}*`
+        parameters: [
+          { type: 'text', text: evm_wallet },
+          { type: 'text', text: solana_wallet }
+        ]
       }
     ]
   };
@@ -159,7 +187,9 @@ export function walletAddress({ address }: { address: string }) {
     components: [
       {
         type: 'BODY',
-        text: `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`
+        parameters: [
+          { type: 'text', text: address }
+        ]
       }
     ]
   };
@@ -173,7 +203,10 @@ export function walletBalanceUpdate({ balance_amount, currency }: { balance_amou
     components: [
       {
         type: 'BODY',
-        text: `💰 *Wallet Balance*\n\nYour current balance is *${balance_amount} ${currency}*`
+        parameters: [
+          { type: 'text', text: balance_amount },
+          { type: 'text', text: currency }
+        ]
       }
     ]
   };
@@ -187,7 +220,9 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
     components: [
       {
         type: 'BODY',
-        text: `🔐 Wallet export requested.\n\nAccess your keys securely using the link below:\n${privy_link}\n\nSupports:  \n🔹 EVM wallet  \n🔸 Solana wallet`
+        parameters: [
+          { type: 'text', text: privy_link }
+        ]
       }
     ]
   };
@@ -200,8 +235,7 @@ export function noWalletYet() {
     language: 'en',
     components: [
       {
-        type: 'BODY',
-        text: "👋 Welcome!\n\nYou're almost ready to start.\n\nTap below to create your wallets:\n🔹 EVM (Base, Ethereum, etc.)\n🔸 Solana (fast + low fees)"
+        type: 'BODY'
       },
       {
         type: 'BUTTONS',
@@ -215,17 +249,6 @@ export function noWalletYet() {
           }
         ]
       }
-    ]
-  };
-}
-
-// Minimal fallback template for wallet_created
-export function walletCreated({ address }: { address: string }) {
-  return {
-    type: 'buttons',
-    text: `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${address}\`\n\nYou can now receive and send crypto.`,
-    buttons: [
-      { id: 'view_wallet', title: 'View Wallet' }
     ]
   };
 }
@@ -275,12 +298,14 @@ export function transactionSuccess({ amount, recipient_address, transaction_hash
 // WhatsApp template for confirmTransaction
 export function confirmTransaction({ amount, recipient_address, network_fee }: { amount: string, recipient_address: string, network_fee: string }) {
   return {
-    name: 'hello_world', // Using an approved template as fallback
+    name: 'send_failed', // Using an approved template
     language: 'en',
     components: [
       {
         type: 'BODY',
-        text: `⚠️ *Confirm Transaction*\n\n*Amount:* ${amount} ETH\n*To:* ${recipient_address}\n*Network Fee:* ${network_fee} ETH\n\nPlease confirm this transaction.`
+        parameters: [
+          { type: 'text', text: `Confirm Transaction: ${amount} ETH to ${recipient_address}. Fee: ${network_fee} ETH` }
+        ]
       }
     ]
   };
@@ -294,7 +319,9 @@ export function swapFailed() {
     components: [
       {
         type: 'BODY',
-        text: '❌ Your swap failed.\n\nTry again or contact support.'
+        parameters: [
+          { type: 'text', text: 'Swap failed' }
+        ]
       }
     ]
   };
@@ -307,9 +334,19 @@ export function swapPending() {
     language: 'en',
     components: [
       {
-        type: 'BODY',
-        text: "⏳ Swap is pending confirmation...\n\nWe'll notify you when it's done."
+        type: 'BODY'
       }
+    ]
+  };
+}
+
+// Minimal fallback template for wallet_created
+export function walletCreated({ address }: { address: string }) {
+  return {
+    type: 'buttons',
+    text: `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${address}\`\n\nYou can now receive and send crypto.`,
+    buttons: [
+      { id: 'view_wallet', title: 'View Wallet' }
     ]
   };
 } 

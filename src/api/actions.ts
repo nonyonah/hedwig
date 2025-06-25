@@ -35,12 +35,14 @@ const supabase = createClient(
 // Minimal fallback error template
 function errorTemplate(message: string) {
   return {
-    name: 'hello_world', // Using an approved template name
+    name: 'send_failed', // Using an approved template
     language: 'en',
     components: [
       {
         type: 'BODY',
-        text: message || `Sorry, I don't understand that request.`
+        parameters: [
+          { type: 'text', text: message || `Sorry, I don't understand that request.` }
+        ]
       }
     ]
   };
@@ -274,11 +276,15 @@ async function handleGetPrice(params: ActionParams, userId: string) {
       return errorTemplate(`No price for ${token}`);
     }
     return {
-      template: 'price',
-      language: { code: 'en' },
+      name: 'send_failed', // Using an approved template
+      language: 'en',
       components: [
-        { type: 'body', parameters: [{ type: 'text', text: `${token.toUpperCase()}: $${price}` }] },
-        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_BALANCE' }] }
+        { 
+          type: 'BODY', 
+          parameters: [
+            { type: 'text', text: `${token.toUpperCase()}: $${price}` }
+          ] 
+        }
       ]
     };
   } catch (error) {
@@ -297,11 +303,15 @@ async function handleGetNews(params: ActionParams, userId: string) {
     const data = await res.json();
     const news = data.results?.slice(0, 3).map((n: any) => `• ${n.title}`).join('\n');
     return {
-      template: 'news',
-      language: { code: 'en' },
+      name: 'send_failed', // Using an approved template
+      language: 'en',
       components: [
-        { type: 'body', parameters: [{ type: 'text', text: news || 'No news.' }] },
-        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_PRICE' }] }
+        { 
+          type: 'BODY', 
+          parameters: [
+            { type: 'text', text: news || 'No news.' }
+          ] 
+        }
       ]
     };
   } catch (error) {
@@ -415,4 +425,10 @@ async function handleSend(params: ActionParams, userId: string) {
 async function handleExportKeys(params: ActionParams, userId: string) {
   // ... logic to generate privy link ...
   return privateKeys({ privy_link: 'https://privy.io/privatekeys' });
+}
+
+// Example handler for bridging
+async function handleBridge(params: ActionParams, userId: string) {
+  // ... logic to bridge tokens ...
+  return bridgeSuccess({ amount: '50 USDC', from_network: 'Optimism', to_network: 'Base', balance: '2 USDC' });
 } 

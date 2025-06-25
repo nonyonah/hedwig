@@ -412,9 +412,7 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       type: 'template',
       template: {
         name: String(template.name),
-        language: {
-          code: String(template.language || 'en')
-        },
+        language: String(template.language || 'en'),
         components: Array.isArray(template.components) ? template.components : []
       }
     };
@@ -487,16 +485,24 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       // Legacy template format with nested template property
       await sendWhatsAppTemplate(from, actionResult.template);
     } else if (Array.isArray(actionResult)) {
-      for (const msg of actionResult) {
-        if ('template' in msg && msg.template) {
-          // Legacy format with nested template property
-          await sendWhatsAppTemplate(from, msg.template);
-        } else if ('name' in msg && msg.name) {
-          // Direct template format
-          await sendWhatsAppTemplate(from, msg);
-        } else {
-          const response = textTemplate(msg.text);
-          await sendWhatsAppMessage(from, response);
+      // Safely handle array of messages
+      for (let i = 0; i < actionResult.length; i++) {
+        const msg = actionResult[i];
+        try {
+          if (msg && typeof msg === 'object') {
+            if ('template' in msg && msg.template) {
+              await sendWhatsAppTemplate(from, msg.template);
+            } else if ('name' in msg && msg.name) {
+              await sendWhatsAppTemplate(from, msg);
+            } else if ('text' in msg && typeof msg.text === 'string') {
+              const response = textTemplate(msg.text);
+              await sendWhatsAppMessage(from, response);
+            } else {
+              console.warn('Unrecognized message format in array:', msg);
+            }
+          }
+        } catch (err) {
+          console.error('Error processing message in array:', err);
         }
       }
     } else if ('name' in actionResult) {
