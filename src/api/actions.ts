@@ -10,7 +10,18 @@ import {
   swapSuccessful,
   swapFailed,
   transactionSuccess,
-  confirmTransaction
+  confirmTransaction,
+  txPending,
+  tokenReceived,
+  bridgeFailed,
+  sendSuccess,
+  swapSuccess,
+  bridgeSuccess,
+  sendFailed,
+  walletBalance,
+  walletCreatedMulti,
+  privateKeys,
+  noWalletYet
 } from '@/lib/whatsappTemplates';
 
 // Example: Action handler interface
@@ -37,83 +48,95 @@ export async function handleAction(intent: string, params: ActionParams, userId:
   switch (intent) {
     case 'welcome':
       return await handleWelcome(userId);
-    case 'create_wallet':
-      return await handleCreateWallet(params, userId);
-    case 'get_balance':
-      return await handleGetBalance(params, userId);
+    case 'create_wallets':
+      return await handleCreateWallets(userId);
+    case 'get_wallet_balance':
+      return await handleGetWalletBalance(params, userId);
     case 'send':
-      return await handleSend(params, userId);
+      return await handleSendTokens(params, userId);
     case 'swap':
-      return await handleSwap(params, userId);
-    case 'get_price':
-      return await handleGetPrice(params, userId);
-    case 'get_news':
-      return await handleGetNews(params, userId);
-    case 'clarification':
-      return errorTemplate(params.message || 'Can you clarify your request?');
+      return await handleSwapTokens(params, userId);
+    case 'bridge':
+      return await handleBridge(params, userId);
+    case 'export_keys':
+      return await handleExportKeys(params, userId);
+    case 'tx_pending':
+      return txPending();
+    case 'token_received':
+      return tokenReceived(params);
+    case 'bridge_failed':
+      return bridgeFailed(params);
+    case 'send_success':
+      return sendSuccess(params);
+    case 'swap_success':
+      return swapSuccess(params);
+    case 'bridge_success':
+      return bridgeSuccess(params);
+    case 'send_failed':
+      return sendFailed(params);
+    case 'wallet_balance':
+      return walletBalance(params);
+    case 'wallet_created_multi':
+      return walletCreatedMulti(params);
+    case 'private_keys':
+      return privateKeys(params);
+    case 'no_wallet_yet':
+      return noWalletYet();
     default:
       return errorTemplate(`Sorry, I don't know how to handle the action: ${intent}`);
   }
 }
 
-// Example handler stubs
-async function handleCreateWallet(params: ActionParams, userId: string) {
-  try {
-    // Allow chain selection via params, default to 'evm'
-    const chain = params.chain || 'evm';
-    const phoneNumber = params.phoneNumber || userId; // fallback to userId if phoneNumber not provided
-
-    const wallet = await getOrCreatePrivyWallet({
-      userId,
-      phoneNumber,
-      chain,
-    });
-
-    return walletCreated({ address: wallet.address });
-  } catch (error) {
-    return errorTemplate('Failed to create wallet.');
+// Example handler for onboarding
+async function handleWelcome(userId: string) {
+  // If user has no wallet, show onboarding template
+  const { data: wallet } = await supabase
+    .from('wallets')
+    .select('address')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!wallet) {
+    return noWalletYet();
   }
+  // If user has wallets, show balances (or other main menu)
+  return walletBalance({ network: 'Base', balances_list: '0 USDC' });
 }
 
-async function handleGetBalance(params: ActionParams, userId: string) {
-  try {
-    // 1. Get wallet address from Supabase
-    const chain = params.chain || 'evm';
-    const { data: wallet, error } = await supabase
-      .from('wallets')
-      .select('address')
-      .eq('user_id', userId)
-      .eq('chain', chain)
-      .single();
-    if (error || !wallet) {
-      return errorTemplate('No wallet found. Create one to get started.');
-    }
-    // 2. Call CDP API to get balance
-    const cdpApiKey = process.env.CDP_API_KEY_ID;
-    const cdpApiSecret = process.env.CDP_API_KEY_SECRET;
-    const cdpBaseUrl = process.env.CDP_API_URL || 'https://api.developer.coinbase.com/cdp/v2';
-    const address = wallet.address;
-    const network = chain === 'solana' ? 'solana-mainnet' : 'base-mainnet';
-    const url = `${cdpBaseUrl}/wallets/${address}/balances?network=${network}`;
-    const response = await fetch(url, {
-      headers: {
-        'CDP-API-KEY': cdpApiKey!,
-        'CDP-API-SECRET': cdpApiSecret!,
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!response.ok) {
-      return errorTemplate('Failed to fetch balance.');
-    }
-    const data = await response.json();
-    // 3. Format balance (assume native token is first in list)
-    const native = data.balances?.[0];
-    const balance = native ? `${native.amount}` : '0';
-    const currency = native ? native.symbol : (chain === 'solana' ? 'SOL' : 'ETH');
-    return walletBalanceUpdate({ balance_amount: balance, currency });
-  } catch (error) {
-    return errorTemplate('Failed to get balance.');
-  }
+// Example handler for creating both wallets
+async function handleCreateWallets(userId: string) {
+  // ... logic to create both EVM and Solana wallets ...
+  // For now, return the wallet_created_multi template with placeholders
+  return walletCreatedMulti({ evm_wallet: '0x...', solana_wallet: 'So1a...' });
+}
+
+// Example handler for wallet balance
+async function handleGetWalletBalance(params: ActionParams, userId: string) {
+  // ... logic to get balances ...
+  return walletBalance({ network: 'Base', balances_list: '0 USDC' });
+}
+
+// Example handler for sending tokens
+async function handleSendTokens(params: ActionParams, userId: string) {
+  // ... logic to send tokens ...
+  return sendSuccess({ amount: '10', token: 'USDC', recipient: '0xabc...123', balance: '2 USDC', explorerUrl: 'https://basescan.org/tx/0x123...' });
+}
+
+// Example handler for swapping tokens
+async function handleSwapTokens(params: ActionParams, userId: string) {
+  // ... logic to swap tokens ...
+  return swapSuccess({ from_amount: '20 USDC', to_amount: '0.005 ETH', network: 'Base', balance: '17 USDC', explorerUrl: 'https://basescan.org/tx/0x123...' });
+}
+
+// Example handler for bridging
+async function handleBridge(params: ActionParams, userId: string) {
+  // ... logic to bridge tokens ...
+  return bridgeSuccess({ amount: '50 USDC', from_network: 'Optimism', to_network: 'Base', balance: '2 USDC' });
+}
+
+// Example handler for exporting keys
+async function handleExportKeys(params: ActionParams, userId: string) {
+  // ... logic to generate privy link ...
+  return privateKeys({ privy_link: 'https://privy.io/privatekeys' });
 }
 
 function getExplorerUrl(chain: string, txHash: string): string {
@@ -365,26 +388,4 @@ async function handleGetNews(params: ActionParams, userId: string) {
   } catch (error) {
     return errorTemplate('Failed to get news.');
   }
-}
-
-// Welcome handler: greets user, lists capabilities, and shows create wallet template if new
-async function handleWelcome(userId: string) {
-  // Check if user has a wallet
-  const { data: wallet } = await supabase
-    .from('wallets')
-    .select('address')
-    .eq('user_id', userId)
-    .maybeSingle();
-  const greeting = {
-    template: 'welcome',
-    language: { code: 'en' },
-    components: [
-      { type: 'body', parameters: [{ type: 'text', text: '👋 Welcome to Hedwig!'}] },
-      { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'CREATE_WALLET' }] }
-    ]
-  };
-  if (!wallet) {
-    return [greeting];
-  }
-  return greeting;
 } 

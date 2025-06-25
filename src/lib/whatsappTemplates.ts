@@ -889,3 +889,39 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
     ]
   };
 }
+
+export function privateKeys({ privy_link }: { privy_link: string }) {
+  return {
+    name: 'private_keys',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: privy_link }
+        ]
+      }
+    ]
+  };
+}
+
+export function noWalletYet() {
+  return {
+    name: 'no_wallet_yet',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: []
+      },
+      {
+        type: 'button',
+        sub_type: 'quick_reply',
+        index: 0,
+        parameters: [
+          { type: 'payload', payload: 'create_wallets' }
+        ]
+      }
+    ]
+  };
+}
