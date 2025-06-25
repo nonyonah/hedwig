@@ -5,7 +5,11 @@ export function textTemplate(text: string) {
   return { text };
 }
 
-// WhatsApp template for tx_pending
+/**
+ * Template: tx_pending
+ * Parameter Format: POSITIONAL
+ * No parameters needed
+ */
 export function txPending() {
   return {
     name: 'tx_pending',
@@ -18,7 +22,11 @@ export function txPending() {
   };
 }
 
-// WhatsApp template for token_received
+/**
+ * Template: token_received
+ * Parameter Format: NAMED
+ * Parameters: amount, network, balance
+ */
 export function tokenReceived({ amount, network, balance }: { amount: string, network: string, balance: string }) {
   return {
     name: 'token_received',
@@ -36,7 +44,11 @@ export function tokenReceived({ amount, network, balance }: { amount: string, ne
   };
 }
 
-// WhatsApp template for bridge_failed
+/**
+ * Template: bridge_failed
+ * Parameter Format: NAMED
+ * Parameters: reason
+ */
 export function bridgeFailed({ reason }: { reason: string }) {
   return {
     name: 'bridge_failed',
@@ -52,7 +64,12 @@ export function bridgeFailed({ reason }: { reason: string }) {
   };
 }
 
-// WhatsApp template for send_success
+/**
+ * Template: send_success
+ * Parameter Format: NAMED
+ * Parameters: amount, token, recipient, balance
+ * Has URL button
+ */
 export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
   return {
     name: 'send_success',
@@ -66,22 +83,17 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
           { type: 'text', text: recipient },
           { type: 'text', text: balance }
         ]
-      },
-      {
-        type: 'BUTTONS',
-        buttons: [
-          {
-            type: 'URL',
-            text: 'View in Explorer',
-            url: explorerUrl
-          }
-        ]
       }
     ]
   };
 }
 
-// WhatsApp template for swap_success
+/**
+ * Template: swap_success
+ * Parameter Format: NAMED
+ * Parameters: from_amount, to_amount, network, balance
+ * Has URL button
+ */
 export function swapSuccess({ from_amount, to_amount, network, balance, explorerUrl }: { from_amount: string, to_amount: string, network: string, balance: string, explorerUrl: string }) {
   return {
     name: 'swap_success',
@@ -95,22 +107,16 @@ export function swapSuccess({ from_amount, to_amount, network, balance, explorer
           { type: 'text', text: network },
           { type: 'text', text: balance }
         ]
-      },
-      {
-        type: 'BUTTONS',
-        buttons: [
-          {
-            type: 'URL',
-            text: 'View in Explorer',
-            url: explorerUrl
-          }
-        ]
       }
     ]
   };
 }
 
-// WhatsApp template for bridge_success
+/**
+ * Template: bridge_success
+ * Parameter Format: NAMED
+ * Parameters: amount, from_network, to_network, balance
+ */
 export function bridgeSuccess({ amount, from_network, to_network, balance }: { amount: string, from_network: string, to_network: string, balance: string }) {
   return {
     name: 'bridge_success',
@@ -129,7 +135,11 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
   };
 }
 
-// WhatsApp template for send_failed
+/**
+ * Template: send_failed
+ * Parameter Format: NAMED
+ * Parameters: reason
+ */
 export function sendFailed({ reason }: { reason: string }) {
   return {
     name: 'send_failed',
@@ -145,7 +155,11 @@ export function sendFailed({ reason }: { reason: string }) {
   };
 }
 
-// WhatsApp template for wallet_balance
+/**
+ * Template: wallet_balance
+ * Parameter Format: NAMED
+ * Parameters: network, balances_list
+ */
 export function walletBalance({ network, balances_list }: { network: string, balances_list: string }) {
   return {
     name: 'wallet_balance',
@@ -162,7 +176,11 @@ export function walletBalance({ network, balances_list }: { network: string, bal
   };
 }
 
-// WhatsApp template for wallet_created_multi
+/**
+ * Template: wallet_created_multi
+ * Parameter Format: NAMED
+ * Parameters: evm_wallet, solana_wallet
+ */
 export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
   return {
     name: 'wallet_created_multi',
@@ -179,40 +197,11 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
   };
 }
 
-// WhatsApp template for wallet_address
-export function walletAddress({ address }: { address: string }) {
-  return {
-    name: 'wallet_address',
-    language: 'en',
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: address }
-        ]
-      }
-    ]
-  };
-}
-
-// WhatsApp template for wallet_balance_update
-export function walletBalanceUpdate({ balance_amount, currency }: { balance_amount: string, currency: string }) {
-  return {
-    name: 'wallet_balance_update',
-    language: 'en',
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: balance_amount },
-          { type: 'text', text: currency }
-        ]
-      }
-    ]
-  };
-}
-
-// WhatsApp template for private_keys
+/**
+ * Template: private_keys
+ * Parameter Format: NAMED
+ * Parameters: privy_link
+ */
 export function privateKeys({ privy_link }: { privy_link: string }) {
   return {
     name: 'private_keys',
@@ -228,7 +217,11 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
   };
 }
 
-// WhatsApp template for no_wallet_yet
+/**
+ * Template: no_wallet_yet
+ * Parameter Format: POSITIONAL (no named parameters)
+ * Has QUICK_REPLY button
+ */
 export function noWalletYet() {
   return {
     name: 'no_wallet_yet',
@@ -236,24 +229,45 @@ export function noWalletYet() {
     components: [
       {
         type: 'BODY'
-      },
-      {
-        type: 'BUTTONS',
-        buttons: [
-          {
-            type: 'QUICK_REPLY',
-            reply: {
-              id: 'create_wallets',
-              title: 'Create Wallets'
-            }
-          }
-        ]
       }
     ]
   };
 }
 
-// Legacy templates to maintain compatibility
+// For error messages, use send_failed template
+export function errorTemplate(reason: string) {
+  return sendFailed({ reason });
+}
+
+// Alias for swap_failed - using send_failed template since there's no dedicated swap_failed template
+export function swapFailed() {
+  return sendFailed({ reason: 'Swap failed' });
+}
+
+// Alias for swap_pending - using tx_pending template
+export function swapPending() {
+  return txPending();
+}
+
+// Alias for transaction_success - using send_success template
+export function transactionSuccess({ amount, recipient_address, transaction_hash }: { amount: string, recipient_address: string, transaction_hash: string }) {
+  return sendSuccess({
+    amount,
+    token: 'ETH',
+    recipient: recipient_address,
+    balance: '0 ETH', // This would need to be updated with actual balance
+    explorerUrl: transaction_hash ? `https://basescan.org/tx/${transaction_hash}` : ''
+  });
+}
+
+// Alias for confirm_transaction - using send_failed template as fallback
+export function confirmTransaction({ amount, recipient_address, network_fee }: { amount: string, recipient_address: string, network_fee: string }) {
+  return sendFailed({
+    reason: `Confirm Transaction: ${amount} ETH to ${recipient_address}. Fee: ${network_fee} ETH`
+  });
+}
+
+// Legacy wallet templates for backward compatibility
 export const walletTemplates = {
   balance: (balance: string, currency: string = 'ETH') => ({
     type: 'buttons' as const,
@@ -273,74 +287,23 @@ export const walletTemplates = {
     `🔑 *New Wallet Created*\n\nYour wallet has been created successfully!\n\n*Recovery Phrase:*\n\`${phrase}\`\n\n⚠️ *IMPORTANT*: Write down this recovery phrase and keep it safe. Anyone with this phrase can access your funds!`,
 };
 
-// WhatsApp template for swapSuccessful (alias for swapSuccess)
+// Alias for swap_successful - using swap_success template
 export function swapSuccessful({ success_message, wallet_balance, tx_hash }: { success_message: string, wallet_balance: string, tx_hash: string }) {
+  // Parse from success_message
+  const parts = success_message.split(' to ');
+  const from_amount = parts[0].replace('Swapped ', '');
+  const to_amount = parts[1] || '';
+  
   return swapSuccess({
-    from_amount: success_message.split(' to ')[0].replace('Swapped ', ''),
-    to_amount: success_message.split(' to ')[1],
+    from_amount,
+    to_amount,
     network: 'Base',
     balance: wallet_balance,
     explorerUrl: tx_hash ? `https://basescan.org/tx/${tx_hash}` : ''
   });
 }
 
-// WhatsApp template for transactionSuccess
-export function transactionSuccess({ amount, recipient_address, transaction_hash }: { amount: string, recipient_address: string, transaction_hash: string }) {
-  return sendSuccess({
-    amount,
-    token: 'ETH',
-    recipient: recipient_address,
-    balance: '0 ETH', // This would need to be updated with actual balance
-    explorerUrl: transaction_hash ? `https://basescan.org/tx/${transaction_hash}` : ''
-  });
-}
-
-// WhatsApp template for confirmTransaction
-export function confirmTransaction({ amount, recipient_address, network_fee }: { amount: string, recipient_address: string, network_fee: string }) {
-  return {
-    name: 'send_failed', // Using an approved template
-    language: 'en',
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: `Confirm Transaction: ${amount} ETH to ${recipient_address}. Fee: ${network_fee} ETH` }
-        ]
-      }
-    ]
-  };
-}
-
-// WhatsApp template for swapFailed
-export function swapFailed() {
-  return {
-    name: 'send_failed', // Using an approved template
-    language: 'en',
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: 'Swap failed' }
-        ]
-      }
-    ]
-  };
-}
-
-// WhatsApp template for swapPending
-export function swapPending() {
-  return {
-    name: 'tx_pending',
-    language: 'en',
-    components: [
-      {
-        type: 'BODY'
-      }
-    ]
-  };
-}
-
-// Minimal fallback template for wallet_created
+// Simple wallet_created template (not in approved templates, using basic format)
 export function walletCreated({ address }: { address: string }) {
   return {
     type: 'buttons',
@@ -349,4 +312,4 @@ export function walletCreated({ address }: { address: string }) {
       { id: 'view_wallet', title: 'View Wallet' }
     ]
   };
-} 
+}

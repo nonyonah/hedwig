@@ -392,7 +392,7 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
     console.log(`Sending WhatsApp template to ${to} using phone number ID: ${phoneNumberId}`);
     
     // Debug the template
-    console.log('Template before formatting:', JSON.stringify(template, null, 2));
+    console.log('Template before processing:', JSON.stringify(template, null, 2));
     
     // Validate template structure
     if (!template || typeof template !== 'object') {
@@ -400,6 +400,129 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       throw new Error('Template must be a valid object');
     }
 
+    // Special case: handle no_wallet_yet as interactive message with buttons
+    if (template.name === 'no_wallet_yet') {
+      const interactiveMessage = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text: "👋 Welcome!\n\nYou're almost ready to start.\n\nTap below to create your wallets:\n🔹 EVM (Base, Ethereum, etc.)\n🔸 Solana (fast + low fees)"
+          },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: {
+                  id: 'create_wallets',
+                  title: 'Create Wallets'
+                }
+              }
+            ]
+          }
+        }
+      };
+      
+      console.log('Sending interactive message for no_wallet_yet:', JSON.stringify(interactiveMessage, null, 2));
+      
+      const response = await fetch(
+        `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(interactiveMessage),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Error sending WhatsApp interactive message:', response.status, errorData);
+        throw new Error(`Failed to send WhatsApp interactive message: ${errorData}`);
+      }
+      
+      const result = await response.json();
+      console.log('WhatsApp interactive message sent successfully to:', to);
+      return result;
+    }
+    
+    // Special case: handle templates with URL buttons (send_success, swap_success)
+    if (template.name === 'send_success' || template.name === 'swap_success') {
+      // Extract the URL from the explorerUrl parameter if available
+      const explorerUrl = template.explorerUrl || '';
+      
+      if (explorerUrl && explorerUrl.startsWith('http')) {
+        // Find the body text based on template type
+        let bodyText = '';
+        if (template.name === 'send_success' && template.components?.[0]?.parameters) {
+          const params = template.components[0].parameters;
+          const amount = params[0]?.text || '';
+          const token = params[1]?.text || '';
+          const recipient = params[2]?.text || '';
+          const balance = params[3]?.text || '';
+          bodyText = `✅ You sent ${amount} ${token} to:\n\n${recipient}\n\n🔗 Your new balance is:\n${balance}`;
+        } else if (template.name === 'swap_success' && template.components?.[0]?.parameters) {
+          const params = template.components[0].parameters;
+          const from_amount = params[0]?.text || '';
+          const to_amount = params[1]?.text || '';
+          const network = params[2]?.text || '';
+          const balance = params[3]?.text || '';
+          bodyText = `🔄 Swap complete!\n\nYou swapped ${from_amount}\n→ ${to_amount} on ${network}.\n\n🔗 Your new balance is\n${balance}`;
+        }
+        
+        // Create interactive message with button
+        const interactiveMessage = {
+          messaging_product: 'whatsapp',
+          to,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: {
+              text: bodyText
+            },
+            action: {
+              buttons: [
+                {
+                  type: 'url',
+                  url: explorerUrl,
+                  text: 'View in Explorer'
+                }
+              ]
+            }
+          }
+        };
+        
+        console.log('Sending interactive message with URL button:', JSON.stringify(interactiveMessage, null, 2));
+        
+        const response = await fetch(
+          `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(interactiveMessage),
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.text();
+          console.error('Error sending WhatsApp interactive message:', response.status, errorData);
+          throw new Error(`Failed to send WhatsApp interactive message: ${errorData}`);
+        }
+        
+        const result = await response.json();
+        console.log('WhatsApp interactive message sent successfully to:', to);
+        return result;
+      }
+    }
+
+    // For all other templates, use standard template format
     if (!template.name) {
       console.error('Template missing name:', template);
       throw new Error('Template must include a name property');
@@ -423,11 +546,6 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
             const { name, ...cleanParam } = param;
             return cleanParam;
           });
-        }
-        
-        // Copy other properties
-        if (comp.buttons) {
-          cleanComponent.buttons = comp.buttons;
         }
         
         return cleanComponent;
