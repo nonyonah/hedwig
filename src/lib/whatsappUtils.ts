@@ -552,8 +552,18 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
         // Handle parameters if present
         if (Array.isArray(comp.parameters)) {
           cleanComponent.parameters = comp.parameters.map((param: any) => {
-            // Remove 'name' property if present
-            const { name, ...cleanParam } = param;
+            // Keep the name property - it's required by WhatsApp API
+            // Just ensure the parameter has the correct structure
+            const cleanParam: any = { 
+              type: param.type || 'text',
+              text: param.text || ''
+            };
+            
+            // Add name if present (required for NAMED parameter format templates)
+            if (param.name) {
+              cleanParam.name = param.name;
+            }
+            
             return cleanParam;
           });
         }
@@ -617,6 +627,8 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
 
 // Handle incoming WhatsApp messages
 export async function handleIncomingWhatsAppMessage(body: any) {
+  console.log('Received WhatsApp webhook payload:', JSON.stringify(body, null, 2));
+  
   // Parse the incoming WhatsApp message
   const entry = body.entry?.[0];
   const change = entry?.changes?.[0];
@@ -629,18 +641,20 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   const interactive = message?.interactive;
   const buttonReply = interactive?.button_reply;
   
-  // Get the sender
-  const from = message?.from;
+  // Get the sender - could be in different places depending on message type
+  const from = message?.from || value?.contacts?.[0]?.wa_id || value?.metadata?.phone_number_id;
   
   // No sender, no processing
   if (!from) {
-    console.log('No sender found in the message');
+    console.log('No sender found in the message. Full payload:', JSON.stringify(body, null, 2));
     return;
   }
   
+  console.log(`Processing message from: ${from}`);
+  
   // Detect duplicate messages using a simple timestamp-based approach
   // This helps prevent processing the same message twice
-  const messageId = message?.id;
+  const messageId = message?.id || (interactive ? `interactive_${Date.now()}` : `unknown_${Date.now()}`);
   const timestamp = value?.timestamp || Date.now();
   
   // Use a static cache for simplicity (in production, use Redis or similar)
@@ -672,6 +686,10 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   }
 
   try {
+    // Generate a proper UUID for the user based on the phone number
+    // This ensures we have a valid UUID for database operations
+    const userId = await getUserIdFromPhone(from);
+    
     // Handle button clicks
     if (buttonReply) {
       console.log('Button clicked:', buttonReply);
@@ -680,7 +698,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       // Handle specific button actions
       if (buttonId === 'create_wallets') {
         console.log('Create wallets button clicked by:', from);
-        const actionResult = await handleAction('create_wallets', {}, from);
+        const actionResult = await handleAction('create_wallets', {}, userId);
         
         if (!actionResult) {
           console.error('No action result returned from create_wallets');
@@ -708,10 +726,10 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     const text = message?.text?.body;
     if (text) {
       // Use Gemini LLM (Hedwig) for response
-      const llmResponse = await runLLM({ userId: from, message: text });
+      const llmResponse = await runLLM({ userId, message: text });
       console.log('LLM Response:', llmResponse);
       const { intent, params } = parseIntentAndParams(llmResponse);
-      const actionResult = await handleAction(intent, params, from);
+      const actionResult = await handleAction(intent, params, userId);
       console.log('Action result:', JSON.stringify(actionResult, null, 2));
       
       // Handle different result types
@@ -758,5 +776,56 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   } catch (error) {
     console.error('Error handling WhatsApp message:', error);
     await sendWhatsAppMessage(from, { text: "Sorry, I encountered an error processing your request." });
+  }
+}
+
+/**
+ * Get or create a UUID for a user based on their phone number
+ * @param phoneNumber The user's phone number
+ * @returns A valid UUID for the user
+ */
+async function getUserIdFromPhone(phoneNumber: string): Promise<string> {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    // Check if user exists with this phone number
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone_number', phoneNumber)
+      .maybeSingle();
+    
+    if (existingUser?.id) {
+      console.log(`Found existing user ID ${existingUser.id} for phone ${phoneNumber}`);
+      return existingUser.id;
+    }
+    
+    // Create a new user with a valid UUID
+    const newUserId = uuidv4();
+    const { error } = await supabase
+      .from('users')
+      .insert([{ 
+        id: newUserId, 
+        phone_number: phoneNumber,
+        created_at: new Date().toISOString()
+      }]);
+    
+    if (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
+    
+    console.log(`Created new user ID ${newUserId} for phone ${phoneNumber}`);
+    return newUserId;
+  } catch (error) {
+    console.error('Error in getUserIdFromPhone:', error);
+    // Return a valid UUID as fallback
+    const fallbackId = uuidv4();
+    console.log(`Using fallback UUID ${fallbackId} for phone ${phoneNumber} due to error`);
+    return fallbackId;
   }
 }

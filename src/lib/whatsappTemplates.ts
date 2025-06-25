@@ -35,9 +35,9 @@ export function tokenReceived({ amount, network, balance }: { amount: string, ne
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: network },
-          { type: 'text', text: balance }
+          { type: 'text', text: amount, name: 'amount' },
+          { type: 'text', text: network, name: 'network' },
+          { type: 'text', text: balance, name: 'balance' }
         ]
       }
     ]
@@ -57,7 +57,7 @@ export function bridgeFailed({ reason }: { reason: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: reason }
+          { type: 'text', text: reason, name: 'reason' }
         ]
       }
     ]
@@ -78,10 +78,10 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: token },
-          { type: 'text', text: recipient },
-          { type: 'text', text: balance }
+          { type: 'text', text: amount, name: 'amount' },
+          { type: 'text', text: token, name: 'token' },
+          { type: 'text', text: recipient, name: 'recipient' },
+          { type: 'text', text: balance, name: 'balance' }
         ]
       }
     ]
@@ -102,10 +102,10 @@ export function swapSuccess({ from_amount, to_amount, network, balance, explorer
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: from_amount },
-          { type: 'text', text: to_amount },
-          { type: 'text', text: network },
-          { type: 'text', text: balance }
+          { type: 'text', text: from_amount, name: 'from_amount' },
+          { type: 'text', text: to_amount, name: 'to_amount' },
+          { type: 'text', text: network, name: 'network' },
+          { type: 'text', text: balance, name: 'balance' }
         ]
       }
     ]
@@ -125,10 +125,10 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: from_network },
-          { type: 'text', text: to_network },
-          { type: 'text', text: balance }
+          { type: 'text', text: amount, name: 'amount' },
+          { type: 'text', text: from_network, name: 'from_network' },
+          { type: 'text', text: to_network, name: 'to_network' },
+          { type: 'text', text: balance, name: 'balance' }
         ]
       }
     ]
@@ -148,7 +148,7 @@ export function sendFailed({ reason }: { reason: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: reason || 'Unknown error' }
+          { type: 'text', text: reason || 'Unknown error', name: 'reason' }
         ]
       }
     ]
@@ -168,8 +168,8 @@ export function walletBalance({ network, balances_list }: { network: string, bal
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: network },
-          { type: 'text', text: balances_list }
+          { type: 'text', text: network, name: 'network' },
+          { type: 'text', text: balances_list, name: 'balances_list' }
         ]
       }
     ]
@@ -189,8 +189,8 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: evm_wallet },
-          { type: 'text', text: solana_wallet }
+          { type: 'text', text: evm_wallet, name: 'evm_wallet' },
+          { type: 'text', text: solana_wallet, name: 'solana_wallet' }
         ]
       }
     ]
@@ -210,7 +210,7 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: privy_link }
+          { type: 'text', text: privy_link, name: 'privy_link' }
         ]
       }
     ]
