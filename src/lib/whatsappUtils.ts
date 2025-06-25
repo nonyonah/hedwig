@@ -396,7 +396,7 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       messaging_product: 'whatsapp',
       to,
       type: 'template',
-      template: { ...template }
+      template
     };
     
     const response = await fetch(
@@ -463,9 +463,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           await sendWhatsAppMessage(from, response);
         }
       }
-    } else {
-      const response = textTemplate(actionResult.text);
-      await sendWhatsAppMessage(from, response);
+    } else if ('name' in actionResult) {
+      await sendWhatsAppTemplate(from, actionResult);
     }
   }
 }

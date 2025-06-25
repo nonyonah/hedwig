@@ -63,23 +63,56 @@ export async function handleAction(intent: string, params: ActionParams, userId:
     case 'tx_pending':
       return txPending();
     case 'token_received':
-      return tokenReceived(params);
+      return tokenReceived({
+        amount: params.amount,
+        network: params.network,
+        balance: params.balance
+      });
     case 'bridge_failed':
-      return bridgeFailed(params);
+      return bridgeFailed({
+        reason: params.reason
+      });
     case 'send_success':
-      return sendSuccess(params);
+      return sendSuccess({
+        amount: params.amount,
+        token: params.token,
+        recipient: params.recipient,
+        balance: params.balance,
+        explorerUrl: params.explorerUrl
+      });
     case 'swap_success':
-      return swapSuccess(params);
+      return swapSuccess({
+        from_amount: params.from_amount,
+        to_amount: params.to_amount,
+        network: params.network,
+        balance: params.balance,
+        explorerUrl: params.explorerUrl
+      });
     case 'bridge_success':
-      return bridgeSuccess(params);
+      return bridgeSuccess({
+        amount: params.amount,
+        from_network: params.from_network,
+        to_network: params.to_network,
+        balance: params.balance
+      });
     case 'send_failed':
-      return sendFailed(params);
+      return sendFailed({
+        reason: params.reason
+      });
     case 'wallet_balance':
-      return walletBalance(params);
+      return walletBalance({
+        network: params.network,
+        balances_list: params.balances_list
+      });
     case 'wallet_created_multi':
-      return walletCreatedMulti(params);
+      return walletCreatedMulti({
+        evm_wallet: params.evm_wallet,
+        solana_wallet: params.solana_wallet
+      });
     case 'private_keys':
-      return privateKeys(params);
+      return privateKeys({
+        privy_link: params.privy_link
+      });
     case 'no_wallet_yet':
       return noWalletYet();
     default:
