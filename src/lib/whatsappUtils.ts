@@ -425,9 +425,7 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
         type: 'template',
         template: {
           name: 'tx_pending',
-          language: {
-            code: 'en'
-          }
+          language: 'en'
         }
       };
       
@@ -464,9 +462,7 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
         type: 'template',
         template: {
           name: 'send_failed',
-          language: {
-            code: 'en'
-          },
+          language: 'en',
           components: [
             {
               type: 'BODY',
@@ -513,9 +509,7 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       type: 'template',
       template: {
         name: String(template.name),
-        language: {
-          code: String(template.language || 'en')
-        },
+        language: String(template.language || 'en'),
         components: Array.isArray(template.components) ? template.components : []
       }
     };
