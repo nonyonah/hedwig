@@ -7,6 +7,16 @@ import { runLLM } from './llmAgent';
 import { parseIntentAndParams } from './intentParser';
 import { handleAction } from '../api/actions';
 
+// Extend the global object to include our message cache
+declare global {
+  var processedMessages: Record<string, number>;
+}
+
+// Initialize the global message cache if it doesn't exist
+if (typeof global.processedMessages === 'undefined') {
+  global.processedMessages = {};
+}
+
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
@@ -610,12 +620,93 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   // Parse the incoming WhatsApp message
   const entry = body.entry?.[0];
   const change = entry?.changes?.[0];
-  const message = change?.value?.messages?.[0];
+  const value = change?.value;
+  
+  // Check if this is a message
+  const message = value?.messages?.[0];
+  
+  // Check if this is a button click
+  const interactive = message?.interactive;
+  const buttonReply = interactive?.button_reply;
+  
+  // Get the sender
   const from = message?.from;
-  const text = message?.text?.body;
+  
+  // No sender, no processing
+  if (!from) {
+    console.log('No sender found in the message');
+    return;
+  }
+  
+  // Detect duplicate messages using a simple timestamp-based approach
+  // This helps prevent processing the same message twice
+  const messageId = message?.id;
+  const timestamp = value?.timestamp || Date.now();
+  
+  // Use a static cache for simplicity (in production, use Redis or similar)
+  if (!global.processedMessages) {
+    global.processedMessages = {};
+  }
+  
+  // Check if we've seen this message before
+  if (messageId && global.processedMessages[messageId]) {
+    console.log(`Skipping duplicate message ${messageId}`);
+    return;
+  }
+  
+  // Mark this message as processed
+  if (messageId) {
+    global.processedMessages[messageId] = timestamp;
+    
+    // Clean up old messages (keep last 100)
+    const messageIds = Object.keys(global.processedMessages);
+    if (messageIds.length > 100) {
+      const oldestKeys = messageIds
+        .sort((a, b) => global.processedMessages[a] - global.processedMessages[b])
+        .slice(0, messageIds.length - 100);
+      
+      oldestKeys.forEach(key => {
+        delete global.processedMessages[key];
+      });
+    }
+  }
 
-  if (text) {
-    try {
+  try {
+    // Handle button clicks
+    if (buttonReply) {
+      console.log('Button clicked:', buttonReply);
+      const buttonId = buttonReply.id;
+      
+      // Handle specific button actions
+      if (buttonId === 'create_wallets') {
+        console.log('Create wallets button clicked by:', from);
+        const actionResult = await handleAction('create_wallets', {}, from);
+        
+        if (!actionResult) {
+          console.error('No action result returned from create_wallets');
+          await sendWhatsAppMessage(from, { text: "I couldn't create your wallets. Please try again." });
+          return;
+        }
+        
+        if ('name' in actionResult) {
+          await sendWhatsAppTemplate(from, actionResult);
+        } else if ('text' in actionResult && typeof actionResult.text === 'string') {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+        } else {
+          console.error('Unknown action result format from create_wallets:', actionResult);
+          await sendWhatsAppMessage(from, { text: "I couldn't process your wallet creation properly." });
+        }
+        
+        return;
+      }
+      
+      // For other buttons, we can handle them here
+      // ...
+    }
+    
+    // Handle text messages
+    const text = message?.text?.body;
+    if (text) {
       // Use Gemini LLM (Hedwig) for response
       const llmResponse = await runLLM({ userId: from, message: text });
       console.log('LLM Response:', llmResponse);
@@ -663,9 +754,9 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         console.error('Unknown action result format:', actionResult);
         await sendWhatsAppMessage(from, { text: "I couldn't process that request properly." });
       }
-    } catch (error) {
-      console.error('Error handling WhatsApp message:', error);
-      await sendWhatsAppMessage(from, { text: "Sorry, I encountered an error processing your request." });
     }
+  } catch (error) {
+    console.error('Error handling WhatsApp message:', error);
+    await sendWhatsAppMessage(from, { text: "Sorry, I encountered an error processing your request." });
   }
 }
