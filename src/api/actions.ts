@@ -73,9 +73,16 @@ async function verifyWalletExists(userId: string) {
 }
 
 export async function handleAction(intent: string, params: ActionParams, userId: string) {
+  console.log(`Handling intent: ${intent} with params:`, params);
+  
   // Special case for clarification intent
   if (intent === 'clarification') {
     return { text: "I'm not sure what you're asking. Could you please rephrase your question?" };
+  }
+  
+  // Handle unknown intent
+  if (intent === 'unknown') {
+    return { text: "I didn't understand your request. You can ask about creating a wallet, checking balance, sending crypto, swapping tokens, or getting crypto prices." };
   }
 
   // For blockchain-related intents, verify wallet first
