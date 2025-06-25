@@ -412,7 +412,9 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       type: 'template',
       template: {
         name: String(template.name),
-        language: String(template.language || 'en'),
+        language: {
+          code: String(template.language || 'en')
+        },
         components: Array.isArray(template.components) ? template.components : []
       }
     };
@@ -510,7 +512,11 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       await sendWhatsAppTemplate(from, actionResult);
     } else if ('text' in actionResult) {
       // Plain text response
-      const response = textTemplate(String(actionResult.text || ''));
+      // Use type assertion to handle the never type
+      const textContent = typeof actionResult === 'object' && actionResult !== null && 'text' in actionResult 
+        ? String((actionResult as {text: unknown}).text || '') 
+        : 'No content';
+      const response = textTemplate(textContent);
       await sendWhatsAppMessage(from, response);
     } else {
       console.error('Unknown action result format:', actionResult);
