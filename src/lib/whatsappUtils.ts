@@ -405,112 +405,44 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       throw new Error('Template must include a name property');
     }
 
-    // Add very detailed logging for components
+    // Ensure language is in the correct format
+    const language = typeof template.language === 'string' 
+      ? { code: template.language } 
+      : template.language || { code: 'en' };
+
+    // Clean up components if present
+    let components = [];
     if (Array.isArray(template.components)) {
-      console.log('Components count:', template.components.length);
-      template.components.forEach((comp: any, idx: number) => {
-        console.log(`Component ${idx}:`, JSON.stringify(comp, null, 2));
-        if (comp.parameters) {
-          console.log(`Parameters for component ${idx}:`, JSON.stringify(comp.parameters, null, 2));
+      components = template.components.map((comp: any) => {
+        const cleanComponent: any = { type: comp.type };
+        
+        // Handle parameters if present
+        if (Array.isArray(comp.parameters)) {
+          cleanComponent.parameters = comp.parameters.map((param: any) => {
+            // Remove 'name' property if present
+            const { name, ...cleanParam } = param;
+            return cleanParam;
+          });
         }
+        
+        // Copy other properties
+        if (comp.buttons) {
+          cleanComponent.buttons = comp.buttons;
+        }
+        
+        return cleanComponent;
       });
     }
 
-    // Add the recipient and required messaging_product to the template
-    // Hard-code a known working template for tx_pending to test the API
-    if (template.name === 'tx_pending') {
-      const fullTemplate = {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'template',
-        template: {
-          name: 'tx_pending',
-          language: 'en'
-        }
-      };
-      
-      console.log('Using hard-coded template for tx_pending:', JSON.stringify(fullTemplate, null, 2));
-      
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(fullTemplate),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Error sending WhatsApp template:', response.status, errorData);
-        throw new Error(`Failed to send WhatsApp template: ${errorData}`);
-      }
-      
-      const result = await response.json();
-      console.log('WhatsApp template sent successfully to:', to);
-      return result;
-    }
-
-    // Hard-code a known working template for send_failed to test the API
-    if (template.name === 'send_failed') {
-      const fullTemplate = {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'template',
-        template: {
-          name: 'send_failed',
-          language: 'en',
-          components: [
-            {
-              type: 'BODY',
-              parameters: [
-                {
-                  type: 'text',
-                  text: 'Error message'
-                }
-              ]
-            }
-          ]
-        }
-      };
-      
-      console.log('Using hard-coded template for send_failed:', JSON.stringify(fullTemplate, null, 2));
-      
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(fullTemplate),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Error sending WhatsApp template:', response.status, errorData);
-        throw new Error(`Failed to send WhatsApp template: ${errorData}`);
-      }
-      
-      const result = await response.json();
-      console.log('WhatsApp template sent successfully to:', to);
-      return result;
-    }
-
-    // For all other templates, use our dynamic approach
+    // Create the final template payload
     const fullTemplate = {
       messaging_product: 'whatsapp',
       to,
       type: 'template',
       template: {
         name: String(template.name),
-        language: String(template.language || 'en'),
-        components: Array.isArray(template.components) ? template.components : []
+        language,
+        components
       }
     };
     
@@ -518,7 +450,7 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
     console.log('Final template payload:', JSON.stringify(fullTemplate, null, 2));
     
     const response = await fetch(
-      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
@@ -565,56 +497,57 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   const text = message?.text?.body;
 
   if (text) {
-    // Use Gemini LLM (Hedwig) for response
-    const llmResponse = await runLLM({ userId: from, message: text });
-    console.log('LLM Response:', llmResponse);
-    const { intent, params } = parseIntentAndParams(llmResponse);
-    const actionResult = await handleAction(intent, params, from);
-    console.log('Action result:', JSON.stringify(actionResult, null, 2));
-    
-    // Handle different result types
-    if (!actionResult) {
-      console.error('No action result returned');
-      return;
-    }
-    
-    if ('template' in actionResult && actionResult.template) {
-      // Legacy template format with nested template property
-      await sendWhatsAppTemplate(from, actionResult.template);
-    } else if (Array.isArray(actionResult)) {
-      // Safely handle array of messages
-      for (let i = 0; i < actionResult.length; i++) {
-        const msg = actionResult[i];
-        try {
-          if (msg && typeof msg === 'object') {
-            if ('template' in msg && msg.template) {
-              await sendWhatsAppTemplate(from, msg.template);
-            } else if ('name' in msg && msg.name) {
-              await sendWhatsAppTemplate(from, msg);
-            } else if ('text' in msg && typeof msg.text === 'string') {
-              const response = textTemplate(msg.text);
-              await sendWhatsAppMessage(from, response);
-            } else {
-              console.warn('Unrecognized message format in array:', msg);
-            }
-          }
-        } catch (err) {
-          console.error('Error processing message in array:', err);
-        }
+    try {
+      // Use Gemini LLM (Hedwig) for response
+      const llmResponse = await runLLM({ userId: from, message: text });
+      console.log('LLM Response:', llmResponse);
+      const { intent, params } = parseIntentAndParams(llmResponse);
+      const actionResult = await handleAction(intent, params, from);
+      console.log('Action result:', JSON.stringify(actionResult, null, 2));
+      
+      // Handle different result types
+      if (!actionResult) {
+        console.error('No action result returned');
+        await sendWhatsAppMessage(from, { text: "I couldn't process that request." });
+        return;
       }
-    } else if ('name' in actionResult) {
-      // Direct template format
-      await sendWhatsAppTemplate(from, actionResult);
-    } else if ('text' in actionResult) {
-      // Plain text response
-      // Use type assertion to handle the never type
-      const textContent = typeof actionResult === 'object' && actionResult !== null && 'text' in actionResult 
-        ? String((actionResult as {text: unknown}).text || '') 
-        : 'No content';
-      const response = textTemplate(textContent);
-      await sendWhatsAppMessage(from, response);
-    } else {
-      console.error('Unknown action result format:', actionResult);
+      
+      if ('template' in actionResult && actionResult.template) {
+        // Legacy template format with nested template property
+        await sendWhatsAppTemplate(from, actionResult.template);
+      } else if (Array.isArray(actionResult)) {
+        // Safely handle array of messages
+        for (let i = 0; i < actionResult.length; i++) {
+          const msg = actionResult[i];
+          try {
+            if (msg && typeof msg === 'object') {
+              if ('template' in msg && msg.template) {
+                await sendWhatsAppTemplate(from, msg.template);
+              } else if ('name' in msg && msg.name) {
+                await sendWhatsAppTemplate(from, msg);
+              } else if ('text' in msg && typeof msg.text === 'string') {
+                await sendWhatsAppMessage(from, { text: msg.text });
+              } else {
+                console.warn('Unrecognized message format in array:', msg);
+              }
+            }
+          } catch (err) {
+            console.error('Error processing message in array:', err);
+          }
+        }
+      } else if ('name' in actionResult) {
+        // Direct template format
+        await sendWhatsAppTemplate(from, actionResult);
+      } else if ('text' in actionResult && typeof actionResult.text === 'string') {
+        // Plain text response
+        await sendWhatsAppMessage(from, { text: actionResult.text });
+      } else {
+        console.error('Unknown action result format:', actionResult);
+        await sendWhatsAppMessage(from, { text: "I couldn't process that request properly." });
+      }
+    } catch (error) {
+      console.error('Error handling WhatsApp message:', error);
+      await sendWhatsAppMessage(from, { text: "Sorry, I encountered an error processing your request." });
     }
   }
 }
