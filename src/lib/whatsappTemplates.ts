@@ -248,4 +248,68 @@ export const walletTemplates = {
     `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`,
   createWallet: (phrase: string): string =>
     `🔑 *New Wallet Created*\n\nYour wallet has been created successfully!\n\n*Recovery Phrase:*\n\`${phrase}\`\n\n⚠️ *IMPORTANT*: Write down this recovery phrase and keep it safe. Anyone with this phrase can access your funds!`,
-}; 
+};
+
+// WhatsApp template for swapSuccessful (alias for swapSuccess)
+export function swapSuccessful({ success_message, wallet_balance, tx_hash }: { success_message: string, wallet_balance: string, tx_hash: string }) {
+  return swapSuccess({
+    from_amount: success_message.split(' to ')[0].replace('Swapped ', ''),
+    to_amount: success_message.split(' to ')[1],
+    network: 'Base',
+    balance: wallet_balance,
+    explorerUrl: tx_hash ? `https://basescan.org/tx/${tx_hash}` : ''
+  });
+}
+
+// WhatsApp template for transactionSuccess
+export function transactionSuccess({ amount, recipient_address, transaction_hash }: { amount: string, recipient_address: string, transaction_hash: string }) {
+  return sendSuccess({
+    amount,
+    token: 'ETH',
+    recipient: recipient_address,
+    balance: '0 ETH', // This would need to be updated with actual balance
+    explorerUrl: transaction_hash ? `https://basescan.org/tx/${transaction_hash}` : ''
+  });
+}
+
+// WhatsApp template for confirmTransaction
+export function confirmTransaction({ amount, recipient_address, network_fee }: { amount: string, recipient_address: string, network_fee: string }) {
+  return {
+    name: 'hello_world', // Using an approved template as fallback
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        text: `⚠️ *Confirm Transaction*\n\n*Amount:* ${amount} ETH\n*To:* ${recipient_address}\n*Network Fee:* ${network_fee} ETH\n\nPlease confirm this transaction.`
+      }
+    ]
+  };
+}
+
+// WhatsApp template for swapFailed
+export function swapFailed() {
+  return {
+    name: 'send_failed', // Using an approved template
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        text: '❌ Your swap failed.\n\nTry again or contact support.'
+      }
+    ]
+  };
+}
+
+// WhatsApp template for swapPending
+export function swapPending() {
+  return {
+    name: 'tx_pending',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        text: "⏳ Swap is pending confirmation...\n\nWe'll notify you when it's done."
+      }
+    ]
+  };
+} 

@@ -391,19 +391,36 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
     
     console.log(`Sending WhatsApp template to ${to} using phone number ID: ${phoneNumberId}`);
     
+    // Debug the template
+    console.log('Template before formatting:', JSON.stringify(template, null, 2));
+    
+    // Validate template structure
+    if (!template || typeof template !== 'object') {
+      console.error('Invalid template object:', template);
+      throw new Error('Template must be a valid object');
+    }
+
+    if (!template.name) {
+      console.error('Template missing name:', template);
+      throw new Error('Template must include a name property');
+    }
+
     // Add the recipient and required messaging_product to the template
     const fullTemplate = {
       messaging_product: 'whatsapp',
       to,
       type: 'template',
       template: {
-        name: template.name,
+        name: String(template.name),
         language: {
-          code: template.language
+          code: String(template.language || 'en')
         },
-        components: template.components
+        components: Array.isArray(template.components) ? template.components : []
       }
     };
+    
+    // Debug the final template
+    console.log('Final template payload:', JSON.stringify(fullTemplate, null, 2));
     
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
@@ -458,11 +475,24 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     console.log('LLM Response:', llmResponse);
     const { intent, params } = parseIntentAndParams(llmResponse);
     const actionResult = await handleAction(intent, params, from);
-    if ('template' in actionResult) {
-      await sendWhatsAppTemplate(from, actionResult);
+    console.log('Action result:', JSON.stringify(actionResult, null, 2));
+    
+    // Handle different result types
+    if (!actionResult) {
+      console.error('No action result returned');
+      return;
+    }
+    
+    if ('template' in actionResult && actionResult.template) {
+      // Legacy template format with nested template property
+      await sendWhatsAppTemplate(from, actionResult.template);
     } else if (Array.isArray(actionResult)) {
       for (const msg of actionResult) {
-        if ('template' in msg) {
+        if ('template' in msg && msg.template) {
+          // Legacy format with nested template property
+          await sendWhatsAppTemplate(from, msg.template);
+        } else if ('name' in msg && msg.name) {
+          // Direct template format
           await sendWhatsAppTemplate(from, msg);
         } else {
           const response = textTemplate(msg.text);
@@ -470,7 +500,14 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         }
       }
     } else if ('name' in actionResult) {
+      // Direct template format
       await sendWhatsAppTemplate(from, actionResult);
+    } else if ('text' in actionResult) {
+      // Plain text response
+      const response = textTemplate(String(actionResult.text || ''));
+      await sendWhatsAppMessage(from, response);
+    } else {
+      console.error('Unknown action result format:', actionResult);
     }
   }
 }

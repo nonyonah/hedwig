@@ -35,11 +35,13 @@ const supabase = createClient(
 // Minimal fallback error template
 function errorTemplate(message: string) {
   return {
-    template: 'error',
-    language: { code: 'en' },
+    name: 'hello_world', // Using an approved template name
+    language: 'en',
     components: [
-      { type: 'body', parameters: [{ type: 'text', text: message }] },
-      { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'HELP' }] }
+      {
+        type: 'BODY',
+        text: message || `Sorry, I don't understand that request.`
+      }
     ]
   };
 }
@@ -156,20 +158,155 @@ async function handleSendTokens(params: ActionParams, userId: string) {
 
 // Example handler for swapping tokens
 async function handleSwapTokens(params: ActionParams, userId: string) {
-  // ... logic to swap tokens ...
-  return swapSuccess({ from_amount: '20 USDC', to_amount: '0.005 ETH', network: 'Base', balance: '17 USDC', explorerUrl: 'https://basescan.org/tx/0x123...' });
+  try {
+    // 1. Get wallet address from Supabase
+    const chain = params.chain || 'evm';
+    const { data: wallet, error } = await supabase
+      .from('wallets')
+      .select('address, id')
+      .eq('user_id', userId)
+      .eq('chain', chain)
+      .single();
+    if (error || !wallet) {
+      return errorTemplate('No wallet found. Create one to get started.');
+    }
+    const address = wallet.address;
+    // 2. Validate swap params
+    const fromToken = params.fromToken;
+    const toToken = params.toToken;
+    const amount = params.amount;
+    if (!fromToken || !toToken || !amount) {
+      return errorTemplate('Specify fromToken, toToken, and amount.');
+    }
+    if (chain === 'evm' || chain === 'base') {
+      // Use 0x Swap API v2 for EVM and Base swaps
+      // See: https://0x.org/docs/upgrading/upgrading_to_swap_v2
+      const zeroExApiUrl = 'https://api.0x.org/swap/permit2/quote';
+      const swapFeeRecipient = process.env.ZEROEX_FEE_RECIPIENT || address; // Set your fee recipient address in env
+      const swapFeeBps = process.env.ZEROEX_FEE_BPS || '100'; // 100 = 1%
+      const chainId = chain === 'base' ? 8453 : 1; // Base = 8453, Ethereum = 1
+      const paramsObj = new URLSearchParams({
+        sellToken: fromToken,
+        buyToken: toToken,
+        sellAmount: amount,
+        taker: address,
+        swapFeeBps,
+        swapFeeRecipient,
+        chainId: chainId.toString(),
+      });
+      const res = await fetch(`${zeroExApiUrl}?${paramsObj.toString()}`, {
+        headers: {
+          '0x-api-key': process.env.ZEROEX_API_KEY || '',
+          '0x-version': 'v2',
+        },
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('0x Swap v2 error:', errorText);
+        return errorTemplate('Swap failed.');
+      }
+      const data = await res.json();
+      // Log transaction (no txHash yet, as 0x only provides quote)
+      await supabase.from('transactions').insert([{
+        user_id: userId,
+        wallet_id: wallet.id,
+        chain,
+        tx_hash: null,
+        action: 'swap',
+        status: 'pending',
+        metadata: { fromToken, toToken, amount, zeroExQuote: data }
+      }]);
+      // TODO: Implement transaction execution and status tracking
+      return swapSuccess({
+        from_amount: `${amount} ${fromToken}`,
+        to_amount: `${data.buyAmount || 'N/A'} ${toToken}`,
+        network: 'Base',
+        balance: `${data.buyAmount || 'N/A'} ${toToken}`,
+        explorerUrl: data.txHash ? `https://basescan.org/tx/${data.txHash}` : ''
+      });
+    } else if (chain === 'solana') {
+      // Use Jupiter API for Solana swaps
+      const jupiterApiUrl = 'https://quote-api.jup.ag/v6/quote';
+      const res = await fetch(`${jupiterApiUrl}?inputMint=${fromToken}&outputMint=${toToken}&amount=${amount}&slippageBps=50`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Swap error:', errorText);
+        return errorTemplate('Swap failed.');
+      }
+      const data = await res.json();
+      const route = data.data?.[0];
+      // Log transaction (no txHash yet, as Jupiter only provides quote)
+      await supabase.from('transactions').insert([{
+        user_id: userId,
+        wallet_id: wallet.id,
+        chain,
+        tx_hash: null,
+        action: 'swap',
+        status: 'pending',
+        metadata: { fromToken, toToken, amount, route }
+      }]);
+      return swapSuccess({
+        from_amount: `${amount} ${fromToken}`,
+        to_amount: `${route?.outAmount || 'N/A'} ${toToken}`,
+        network: 'Base',
+        balance: `${route?.outAmount || 'N/A'} ${toToken}`,
+        explorerUrl: route?.txid ? `https://basescan.org/tx/${route?.txid}` : ''
+      });
+    } else {
+      return errorTemplate('Unsupported chain for swap.');
+    }
+  } catch (error) {
+    console.error('Swap error:', error);
+    return errorTemplate('Failed to swap.');
+  }
 }
 
-// Example handler for bridging
-async function handleBridge(params: ActionParams, userId: string) {
-  // ... logic to bridge tokens ...
-  return bridgeSuccess({ amount: '50 USDC', from_network: 'Optimism', to_network: 'Base', balance: '2 USDC' });
+async function handleGetPrice(params: ActionParams, userId: string) {
+  try {
+    const token = (params.token || 'ethereum').toLowerCase();
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${token}&vs_currencies=usd`);
+    if (!res.ok) {
+      return errorTemplate('Failed to fetch price.');
+    }
+    const data = await res.json();
+    const price = data[token]?.usd;
+    if (!price) {
+      return errorTemplate(`No price for ${token}`);
+    }
+    return {
+      template: 'price',
+      language: { code: 'en' },
+      components: [
+        { type: 'body', parameters: [{ type: 'text', text: `${token.toUpperCase()}: $${price}` }] },
+        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_BALANCE' }] }
+      ]
+    };
+  } catch (error) {
+    return errorTemplate('Failed to get price.');
+  }
 }
 
-// Example handler for exporting keys
-async function handleExportKeys(params: ActionParams, userId: string) {
-  // ... logic to generate privy link ...
-  return privateKeys({ privy_link: 'https://privy.io/privatekeys' });
+async function handleGetNews(params: ActionParams, userId: string) {
+  try {
+    // You need to set your CryptoPanic API key in .env as CRYPTOPANIC_API_KEY
+    const apiKey = process.env.CRYPTOPANIC_API_KEY;
+    const res = await fetch(`https://cryptopanic.com/api/v1/posts/?auth_token=${apiKey}&public=true`);
+    if (!res.ok) {
+      return errorTemplate('Failed to fetch news.');
+    }
+    const data = await res.json();
+    const news = data.results?.slice(0, 3).map((n: any) => `• ${n.title}`).join('\n');
+    return {
+      template: 'news',
+      language: { code: 'en' },
+      components: [
+        { type: 'body', parameters: [{ type: 'text', text: news || 'No news.' }] },
+        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_PRICE' }] }
+      ]
+    };
+  } catch (error) {
+    return errorTemplate('Failed to get news.');
+  }
 }
 
 function getExplorerUrl(chain: string, txHash: string): string {
@@ -275,150 +412,7 @@ async function handleSend(params: ActionParams, userId: string) {
   }
 }
 
-async function handleSwap(params: ActionParams, userId: string) {
-  try {
-    // 1. Get wallet address from Supabase
-    const chain = params.chain || 'evm';
-    const { data: wallet, error } = await supabase
-      .from('wallets')
-      .select('address, id')
-      .eq('user_id', userId)
-      .eq('chain', chain)
-      .single();
-    if (error || !wallet) {
-      return errorTemplate('No wallet found. Create one to get started.');
-    }
-    const address = wallet.address;
-    // 2. Validate swap params
-    const fromToken = params.fromToken;
-    const toToken = params.toToken;
-    const amount = params.amount;
-    if (!fromToken || !toToken || !amount) {
-      return errorTemplate('Specify fromToken, toToken, and amount.');
-    }
-    if (chain === 'evm' || chain === 'base') {
-      // Use 0x Swap API v2 for EVM and Base swaps
-      // See: https://0x.org/docs/upgrading/upgrading_to_swap_v2
-      const zeroExApiUrl = 'https://api.0x.org/swap/permit2/quote';
-      const swapFeeRecipient = process.env.ZEROEX_FEE_RECIPIENT || address; // Set your fee recipient address in env
-      const swapFeeBps = process.env.ZEROEX_FEE_BPS || '100'; // 100 = 1%
-      const chainId = chain === 'base' ? 8453 : 1; // Base = 8453, Ethereum = 1
-      const paramsObj = new URLSearchParams({
-        sellToken: fromToken,
-        buyToken: toToken,
-        sellAmount: amount,
-        taker: address,
-        swapFeeBps,
-        swapFeeRecipient,
-        chainId: chainId.toString(),
-      });
-      const res = await fetch(`${zeroExApiUrl}?${paramsObj.toString()}`, {
-        headers: {
-          '0x-api-key': process.env.ZEROEX_API_KEY || '',
-          '0x-version': 'v2',
-        },
-      });
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('0x Swap v2 error:', errorText);
-        return errorTemplate('Swap failed.');
-      }
-      const data = await res.json();
-      // Log transaction (no txHash yet, as 0x only provides quote)
-      await supabase.from('transactions').insert([{
-        user_id: userId,
-        wallet_id: wallet.id,
-        chain,
-        tx_hash: null,
-        action: 'swap',
-        status: 'pending',
-        metadata: { fromToken, toToken, amount, zeroExQuote: data }
-      }]);
-      // TODO: Implement transaction execution and status tracking
-      return swapSuccessful({
-        success_message: `Swap successful!`,
-        wallet_balance: `${data.buyAmount || 'N/A'} ${toToken}`,
-        tx_hash: data.txHash || ''
-      });
-    } else if (chain === 'solana') {
-      // Use Jupiter API for Solana swaps
-      const jupiterApiUrl = 'https://quote-api.jup.ag/v6/quote';
-      const res = await fetch(`${jupiterApiUrl}?inputMint=${fromToken}&outputMint=${toToken}&amount=${amount}&slippageBps=50`);
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Swap error:', errorText);
-        return errorTemplate('Swap failed.');
-      }
-      const data = await res.json();
-      const route = data.data?.[0];
-      // Log transaction (no txHash yet, as Jupiter only provides quote)
-      await supabase.from('transactions').insert([{
-        user_id: userId,
-        wallet_id: wallet.id,
-        chain,
-        tx_hash: null,
-        action: 'swap',
-        status: 'pending',
-        metadata: { fromToken, toToken, amount, route }
-      }]);
-      return swapSuccessful({
-        success_message: `Swap successful!`,
-        wallet_balance: `${route?.outAmount || 'N/A'} ${toToken}`,
-        tx_hash: route?.txid || ''
-      });
-    } else {
-      return errorTemplate('Unsupported chain for swap.');
-    }
-  } catch (error) {
-    console.error('Swap error:', error);
-    return errorTemplate('Failed to swap.');
-  }
-}
-
-async function handleGetPrice(params: ActionParams, userId: string) {
-  try {
-    const token = (params.token || 'ethereum').toLowerCase();
-    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${token}&vs_currencies=usd`);
-    if (!res.ok) {
-      return errorTemplate('Failed to fetch price.');
-    }
-    const data = await res.json();
-    const price = data[token]?.usd;
-    if (!price) {
-      return errorTemplate(`No price for ${token}`);
-    }
-    return {
-      template: 'price',
-      language: { code: 'en' },
-      components: [
-        { type: 'body', parameters: [{ type: 'text', text: `${token.toUpperCase()}: $${price}` }] },
-        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_BALANCE' }] }
-      ]
-    };
-  } catch (error) {
-    return errorTemplate('Failed to get price.');
-  }
-}
-
-async function handleGetNews(params: ActionParams, userId: string) {
-  try {
-    // You need to set your CryptoPanic API key in .env as CRYPTOPANIC_API_KEY
-    const apiKey = process.env.CRYPTOPANIC_API_KEY;
-    const res = await fetch(`https://cryptopanic.com/api/v1/posts/?auth_token=${apiKey}&public=true`);
-    if (!res.ok) {
-      return errorTemplate('Failed to fetch news.');
-    }
-    const data = await res.json();
-    const news = data.results?.slice(0, 3).map((n: any) => `• ${n.title}`).join('\n');
-    return {
-      template: 'news',
-      language: { code: 'en' },
-      components: [
-        { type: 'body', parameters: [{ type: 'text', text: news || 'No news.' }] },
-        { type: 'button', sub_type: 'quick_reply', index: 0, parameters: [{ type: 'payload', payload: 'GET_PRICE' }] }
-      ]
-    };
-  } catch (error) {
-    return errorTemplate('Failed to get news.');
-  }
+async function handleExportKeys(params: ActionParams, userId: string) {
+  // ... logic to generate privy link ...
+  return privateKeys({ privy_link: 'https://privy.io/privatekeys' });
 } 
