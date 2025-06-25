@@ -552,7 +552,15 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
         // Handle parameters if present
         if (Array.isArray(comp.parameters)) {
           // Check if this is a positional or named parameter template
-          const isPositionalTemplate = ['wallet_balance', 'users_wallet_addresses', 'no_wallet_yet'].includes(template.name);
+          // These templates use positional parameters (no 'name' property)
+          const positionalTemplates = [
+            'wallet_balance',
+            'users_wallet_addresses',
+            'no_wallet_yet',
+            'private_keys'  // Add private_keys to positional templates
+          ];
+          
+          const isPositionalTemplate = positionalTemplates.includes(template.name);
           
           // For positional templates, remove the name property
           // For named templates, keep the name property
@@ -734,7 +742,34 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       // Use Gemini LLM (Hedwig) for response
       const llmResponse = await runLLM({ userId, message: text });
       console.log('LLM Response:', llmResponse);
+      
+      // Add detailed logging for intent detection
+      console.log('User message:', text);
+      
       const { intent, params } = parseIntentAndParams(llmResponse);
+      console.log('Detected intent:', intent);
+      console.log('Detected params:', params);
+      
+      // Add extra check for wallet address requests
+      if (text.toLowerCase().includes('wallet address') || 
+          text.toLowerCase().includes('my address') || 
+          text.toLowerCase().includes('show address') || 
+          text.toLowerCase().includes('view address')) {
+        console.log('Wallet address request detected, overriding intent');
+        const actionResult = await handleAction('get_wallet_address', {}, userId);
+        console.log('Action result for get_wallet_address:', JSON.stringify(actionResult, null, 2));
+        
+        if (actionResult) {
+          if ('name' in actionResult) {
+            await sendWhatsAppTemplate(from, actionResult);
+            return;
+          } else if ('text' in actionResult) {
+            await sendWhatsAppMessage(from, { text: actionResult.text });
+            return;
+          }
+        }
+      }
+      
       const actionResult = await handleAction(intent, params, userId);
       console.log('Action result:', JSON.stringify(actionResult, null, 2));
       

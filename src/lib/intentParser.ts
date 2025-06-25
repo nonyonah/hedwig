@@ -29,14 +29,17 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return { intent: 'create_wallets', params: {} };
     }
     
-    // Wallet address keywords
+    // Wallet address keywords - make this check more prominent
     if (text.includes('wallet address') || 
         text.includes('my address') || 
         text.includes('show address') || 
         text.includes('view address') ||
         text.includes('what is my address') ||
         text.includes('what are my addresses') ||
-        text.includes('what are my wallet addresses')) {
+        text.includes('what are my wallet addresses') ||
+        text.includes('address') && text.includes('wallet') ||
+        text.includes('show me my') && text.includes('address')) {
+      console.log('Intent parser detected wallet address request');
       return { intent: 'get_wallet_address', params: {} };
     }
     
@@ -45,6 +48,15 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('how much') && (text.includes('have') || text.includes('own')) ||
         text.includes('check wallet')) {
       return { intent: 'get_wallet_balance', params: {} };
+    }
+    
+    // Export keys keywords - make this more specific to avoid false positives
+    if ((text.includes('export') && text.includes('key')) || 
+        text.includes('private key') || 
+        text.includes('seed phrase') ||
+        text.includes('recovery phrase') ||
+        text.includes('backup') && text.includes('key')) {
+      return { intent: 'export_keys', params: {} };
     }
     
     // Send transaction keywords
@@ -66,15 +78,6 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('cross chain') || 
         text.includes('move between chains')) {
       return { intent: 'bridge', params: {} };
-    }
-    
-    // Export keys keywords
-    if (text.includes('export') || 
-        text.includes('private key') || 
-        text.includes('seed phrase') ||
-        text.includes('recovery phrase') ||
-        text.includes('backup')) {
-      return { intent: 'export_keys', params: {} };
     }
     
     // Price check keywords

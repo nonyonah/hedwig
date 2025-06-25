@@ -211,7 +211,7 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
 
 /**
  * Template: private_keys
- * Parameter Format: NAMED
+ * Parameter Format: POSITIONAL
  * Parameters: privy_link
  */
 export function privateKeys({ privy_link }: { privy_link: string }) {
@@ -222,7 +222,7 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: privy_link, name: 'privy_link' }
+          { type: 'text', text: privy_link }
         ]
       }
     ]
@@ -327,22 +327,11 @@ export function walletCreated({ address }: { address: string }) {
 }
 
 /**
- * Template: users_wallet_addresses
- * Parameter Format: POSITIONAL
- * Parameters: evm_wallet, solana_wallet
+ * Function: users_wallet_addresses
+ * Returns a text message with wallet addresses since this template doesn't exist in WhatsApp
  */
 export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
   return {
-    name: 'users_wallet_addresses',
-    language: 'en',
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: evm_wallet },
-          { type: 'text', text: solana_wallet }
-        ]
-      }
-    ]
+    text: `📬 *Your Wallet Addresses*\n\n*EVM Wallet (Base, Ethereum):*\n\`${evm_wallet}\`\n\n*Solana Wallet:*\n\`${solana_wallet}\`\n\nUse these addresses to receive funds.`
   };
 }
