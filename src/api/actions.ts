@@ -20,7 +20,8 @@ import {
   walletCreatedMulti,
   privateKeys,
   noWalletYet,
-  textTemplate
+  textTemplate,
+  usersWalletAddresses
 } from '@/lib/whatsappTemplates';
 
 // Example: Action handler interface
@@ -87,7 +88,7 @@ export async function handleAction(intent: string, params: ActionParams, userId:
 
   // For blockchain-related intents, verify wallet first
   const blockchainIntents = [
-    'get_wallet_balance', 'send', 'swap', 'bridge', 'export_keys'
+    'get_wallet_balance', 'get_wallet_address', 'send', 'swap', 'bridge', 'export_keys'
   ];
   
   if (blockchainIntents.includes(intent)) {
@@ -104,6 +105,8 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       return await handleCreateWallets(userId);
     case 'get_wallet_balance':
       return await handleGetWalletBalance(params, userId);
+    case 'get_wallet_address':
+      return await handleGetWalletAddress(userId);
     case 'send':
       return await handleSendTokens(params, userId);
     case 'swap':
@@ -153,8 +156,10 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       });
     case 'wallet_balance':
       return walletBalance({
-        network: params.network,
-        balances_list: params.balances_list
+        eth_balance: params.eth_balance || '0',
+        usdc_base_balance: params.usdc_base_balance || '0',
+        sol_balance: params.sol_balance || '0',
+        usdc_solana_balance: params.usdc_solana_balance || '0'
       });
     case 'wallet_created_multi':
       return walletCreatedMulti({
@@ -180,7 +185,12 @@ async function handleWelcome(userId: string) {
     return noWalletYet();
   }
   // If user has wallets, show balances (or other main menu)
-  return walletBalance({ network: 'Base', balances_list: '0 USDC' });
+  return walletBalance({
+    eth_balance: '0',
+    usdc_base_balance: '0',
+    sol_balance: '0',
+    usdc_solana_balance: '0'
+  });
 }
 
 // Handler for creating both EVM and Solana wallets simultaneously
@@ -239,28 +249,82 @@ async function handleCreateWallets(userId: string) {
   }
 }
 
-// Example handler for wallet balance
-async function handleGetWalletBalance(params: ActionParams, userId: string) {
+// Handler for getting wallet addresses
+async function handleGetWalletAddress(userId: string) {
   try {
-    const chain = params.chain || 'evm';
+    console.log(`Getting wallet addresses for user ${userId}`);
     
-    // Get wallet address from Supabase
-    const { data: wallet, error } = await supabase
+    // Get EVM wallet
+    const { data: evmWallet, error: evmError } = await supabase
       .from('wallets')
       .select('address')
       .eq('user_id', userId)
-      .eq('chain', chain)
+      .eq('chain', 'evm')
       .single();
       
-    if (error || !wallet) {
-      return { text: 'No wallet found for the specified chain.' };
+    if (evmError) {
+      console.error('Error fetching EVM wallet:', evmError);
+    }
+    
+    // Get Solana wallet
+    const { data: solanaWallet, error: solanaError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', 'solana')
+      .single();
+      
+    if (solanaError) {
+      console.error('Error fetching Solana wallet:', solanaError);
+    }
+    
+    // Return wallet addresses template
+    return usersWalletAddresses({
+      evm_wallet: evmWallet?.address || 'Not created yet',
+      solana_wallet: solanaWallet?.address || 'Not created yet'
+    });
+  } catch (error) {
+    console.error('Error in handleGetWalletAddress:', error);
+    return { text: 'Failed to get wallet addresses.' };
+  }
+}
+
+// Example handler for wallet balance
+async function handleGetWalletBalance(params: ActionParams, userId: string) {
+  try {
+    console.log(`Getting wallet balances for user ${userId}`);
+    
+    // Get EVM wallet
+    const { data: evmWallet, error: evmError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', 'evm')
+      .single();
+      
+    if (evmError) {
+      console.error('Error fetching EVM wallet:', evmError);
+    }
+    
+    // Get Solana wallet
+    const { data: solanaWallet, error: solanaError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', 'solana')
+      .single();
+      
+    if (solanaError) {
+      console.error('Error fetching Solana wallet:', solanaError);
     }
     
     // TODO: Implement actual balance fetching from blockchain
-    // For now, return placeholder
-    return walletBalance({ 
-      network: chain === 'solana' ? 'Solana' : 'Base', 
-      balances_list: '0 USDC' 
+    // For now, return placeholder balances
+    return walletBalance({
+      eth_balance: '0.007',
+      usdc_base_balance: '21.22',
+      sol_balance: '0.03',
+      usdc_solana_balance: '24'
     });
   } catch (error) {
     console.error('Error in handleGetWalletBalance:', error);

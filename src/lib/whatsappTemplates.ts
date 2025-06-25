@@ -157,10 +157,20 @@ export function sendFailed({ reason }: { reason: string }) {
 
 /**
  * Template: wallet_balance
- * Parameter Format: NAMED
- * Parameters: network, balances_list
+ * Parameter Format: POSITIONAL
+ * Parameters: eth_balance, usdc_base_balance, sol_balance, usdc_solana_balance
  */
-export function walletBalance({ network, balances_list }: { network: string, balances_list: string }) {
+export function walletBalance({ 
+  eth_balance, 
+  usdc_base_balance, 
+  sol_balance, 
+  usdc_solana_balance 
+}: { 
+  eth_balance: string, 
+  usdc_base_balance: string, 
+  sol_balance: string, 
+  usdc_solana_balance: string 
+}) {
   return {
     name: 'wallet_balance',
     language: 'en',
@@ -168,8 +178,10 @@ export function walletBalance({ network, balances_list }: { network: string, bal
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: network, name: 'network' },
-          { type: 'text', text: balances_list, name: 'balances_list' }
+          { type: 'text', text: eth_balance },
+          { type: 'text', text: usdc_base_balance },
+          { type: 'text', text: sol_balance },
+          { type: 'text', text: usdc_solana_balance }
         ]
       }
     ]
@@ -310,6 +322,27 @@ export function walletCreated({ address }: { address: string }) {
     text: `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${address}\`\n\nYou can now receive and send crypto.`,
     buttons: [
       { id: 'view_wallet', title: 'View Wallet' }
+    ]
+  };
+}
+
+/**
+ * Template: users_wallet_addresses
+ * Parameter Format: POSITIONAL
+ * Parameters: evm_wallet, solana_wallet
+ */
+export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
+  return {
+    name: 'users_wallet_addresses',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: evm_wallet },
+          { type: 'text', text: solana_wallet }
+        ]
+      }
     ]
   };
 }
