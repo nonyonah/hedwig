@@ -848,6 +848,15 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     // Handle text messages
     const text = message?.text?.body;
     if (text) {
+      // Check for greetings before anything else
+      const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'];
+      if (greetings.some(greet => text.trim().toLowerCase().startsWith(greet))) {
+        await sendWhatsAppMessage(from, {
+          text: "Hi! I'm Hedwig, your crypto assistant. I can help you create wallets, check balances, send, swap, and bridge tokens, and more. How can I help you today?"
+        });
+        return;
+      }
+      
       // Check if the user is asking about the bot's identity
       const lowerText = text.toLowerCase();
       if ((lowerText.includes('who are you') || 
