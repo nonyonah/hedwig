@@ -563,7 +563,11 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
             'swap_quote_confirm',
             'quote_pending',
             'swap_prompt',
-            'send_token_prompt'
+            'send_token_prompt',
+            'bridge_deposit_notification',
+            'bridge_processing',
+            'bridge_quote_confirm',
+            'bridge_quote_pending'
           ];
           
           const isPositionalTemplate = positionalTemplates.includes(template.name);

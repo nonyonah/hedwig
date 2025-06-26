@@ -23,6 +23,102 @@ export function txPending() {
 }
 
 /**
+ * Template: bridge_deposit_notification
+ * Parameter Format: POSITIONAL
+ * Parameters: amount, token, network, balance
+ */
+export function bridgeDepositNotification({ amount, token, network, balance }: { amount: string, token: string, network: string, balance: string }) {
+  return {
+    name: 'bridge_deposit_notification',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: token },
+          { type: 'text', text: network },
+          { type: 'text', text: balance }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: bridge_processing
+ * Parameter Format: POSITIONAL
+ * No parameters needed
+ */
+export function bridgeProcessing() {
+  return {
+    name: 'bridge_processing',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY'
+      }
+    ]
+  };
+}
+
+/**
+ * Template: bridge_quote_confirm
+ * Parameter Format: POSITIONAL
+ * Parameters: from_amount, to_amount, from_chain, to_chain, fee, est_time
+ */
+export function bridgeQuoteConfirm({ 
+  from_amount, 
+  to_amount, 
+  from_chain, 
+  to_chain, 
+  fee, 
+  est_time 
+}: { 
+  from_amount: string, 
+  to_amount: string, 
+  from_chain: string, 
+  to_chain: string, 
+  fee: string, 
+  est_time: string 
+}) {
+  return {
+    name: 'bridge_quote_confirm',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: from_amount },
+          { type: 'text', text: to_amount },
+          { type: 'text', text: from_chain },
+          { type: 'text', text: to_chain },
+          { type: 'text', text: fee },
+          { type: 'text', text: est_time }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: bridge_quote_pending
+ * Parameter Format: POSITIONAL
+ * No parameters needed
+ */
+export function bridgeQuotePending() {
+  return {
+    name: 'bridge_quote_pending',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY'
+      }
+    ]
+  };
+}
+
+/**
  * Template: crypto_deposit_notification
  * Parameter Format: POSITIONAL
  * Parameters: amount, token, network, balance

@@ -28,7 +28,11 @@ import {
   swapQuoteConfirm,
   quotePending,
   swapPrompt,
-  sendTokenPrompt
+  sendTokenPrompt,
+  bridgeDepositNotification,
+  bridgeProcessing,
+  bridgeQuoteConfirm,
+  bridgeQuotePending
 } from '@/lib/whatsappTemplates';
 
 // Example: Action handler interface
@@ -185,6 +189,14 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       });
     case 'no_wallet_yet':
       return noWalletYet();
+    case 'bridge_deposit_notification':
+      return await handleBridgeDeposit(params, userId);
+    case 'bridge_processing':
+      return bridgeProcessing();
+    case 'bridge_quote_confirm':
+      return await handleBridgeQuote(params, userId);
+    case 'bridge_quote_pending':
+      return bridgeQuotePending();
     default:
       return { text: `Sorry, I don't know how to handle the action: ${intent}` };
   }
@@ -580,8 +592,39 @@ async function handleExportKeys(params: ActionParams, userId: string) {
 
 // Example handler for bridging
 async function handleBridge(params: ActionParams, userId: string) {
-  // ... logic to bridge tokens ...
-  return bridgeSuccess({ amount: '50 USDC', from_network: 'Optimism', to_network: 'Base', balance: '2 USDC' });
+  try {
+    // Check if we're in the quote phase or execution phase
+    const isQuote = params.isQuote === true || params.phase === 'quote';
+    const isExecute = params.isExecute === true || params.phase === 'execute';
+    
+    // If no specific phase is set, get a quote
+    if (!isQuote && !isExecute) {
+      // Get bridge parameters
+      const fromAmount = params.from_amount || params.fromAmount || params.amount || '0.01';
+      const fromToken = params.from_token || params.fromToken || params.token || 'ETH';
+      const fromChain = params.from_chain || params.fromChain || params.source || 'Base';
+      const toChain = params.to_chain || params.toChain || params.destination || 'Solana';
+      
+      // Show the bridge quote pending message
+      return bridgeQuotePending();
+    }
+    
+    // If we're in quote phase, get a quote
+    if (isQuote) {
+      return handleBridgeQuote(params, userId);
+    }
+    
+    // If we're in execute phase, process the bridge
+    if (isExecute) {
+      return handleBridgeInit(params, userId);
+    }
+    
+    // Fallback
+    return { text: 'Please specify bridge details (amount, token, source chain, destination chain).' };
+  } catch (error) {
+    console.error('Bridge error:', error);
+    return bridgeFailed({ reason: 'Failed to bridge tokens.' });
+  }
 }
 
 // Handler for crypto deposit notification
@@ -745,5 +788,114 @@ async function handleSendInit(params: ActionParams, userId: string) {
   } catch (error) {
     console.error('Error initiating send:', error);
     return { text: 'Failed to initiate send.' };
+  }
+}
+
+// Handler for bridge deposit notification
+async function handleBridgeDeposit(params: ActionParams, userId: string) {
+  try {
+    console.log(`Notifying user ${userId} about bridge deposit`);
+    
+    // Check if we have all required parameters
+    const amount = params.amount || '0';
+    const token = params.token || 'ETH';
+    const network = params.network || 'Base';
+    
+    // Get user's current balance
+    const { data: wallet, error } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', network.toLowerCase() === 'solana' ? 'solana' : 'evm')
+      .single();
+    
+    if (error) {
+      console.error('Error fetching wallet for bridge deposit notification:', error);
+    }
+    
+    // TODO: Implement real balance fetching from blockchain
+    // For now use placeholder or provided balance
+    const balance = params.balance || `${Number(amount) + 50} ${token}`;
+    
+    return bridgeDepositNotification({
+      amount,
+      token,
+      network,
+      balance
+    });
+  } catch (error) {
+    console.error('Error handling bridge deposit notification:', error);
+    return { text: 'Failed to process bridge deposit notification.' };
+  }
+}
+
+// Handler for bridge quote
+async function handleBridgeQuote(params: ActionParams, userId: string) {
+  try {
+    console.log(`Getting bridge quote for user ${userId}`);
+    
+    // First show pending message
+    await supabase.from('messages').insert([{
+      user_id: userId,
+      content: JSON.stringify(bridgeQuotePending()),
+      role: 'assistant',
+      created_at: new Date().toISOString()
+    }]);
+    
+    // Get bridge parameters
+    const fromAmount = params.from_amount || params.fromAmount || '0.01 ETH';
+    const toAmount = params.to_amount || params.toAmount || '0.01 ETH';
+    const fromChain = params.from_chain || params.fromChain || 'Base';
+    const toChain = params.to_chain || params.toChain || 'Solana';
+    const fee = params.fee || '0.0001 ETH';
+    const estTime = params.est_time || params.estTime || '5-10 mins';
+    
+    return bridgeQuoteConfirm({
+      from_amount: fromAmount,
+      to_amount: toAmount,
+      from_chain: fromChain,
+      to_chain: toChain,
+      fee,
+      est_time: estTime
+    });
+  } catch (error) {
+    console.error('Error getting bridge quote:', error);
+    return { text: 'Failed to get bridge quote.' };
+  }
+}
+
+// Handler for initiating a bridge
+async function handleBridgeInit(params: ActionParams, userId: string) {
+  try {
+    console.log(`Initiating bridge for user ${userId}`);
+    
+    // Get bridge parameters
+    const fromAmount = params.from_amount || params.fromAmount || '0.01 ETH';
+    const toAmount = params.to_amount || params.toAmount || '0.01 ETH';
+    const fromChain = params.from_chain || params.fromChain || 'Base';
+    const toChain = params.to_chain || params.toChain || 'Solana';
+    
+    // First show the bridge processing message
+    await supabase.from('messages').insert([{
+      user_id: userId,
+      content: JSON.stringify(bridgeProcessing()),
+      role: 'assistant',
+      created_at: new Date().toISOString()
+    }]);
+    
+    // In a real app, you would submit the bridge transaction and wait for confirmation
+    // This is a placeholder that simulates a successful bridge after a delay
+    
+    // For demonstration, we'll return the success message directly
+    // In a real app, you would set up a webhook or polling mechanism
+    return bridgeSuccess({
+      amount: fromAmount.split(' ')[0],
+      from_network: fromChain,
+      to_network: toChain,
+      balance: toAmount
+    });
+  } catch (error) {
+    console.error('Error initiating bridge:', error);
+    return { text: 'Failed to initiate bridge.' };
   }
 } 
