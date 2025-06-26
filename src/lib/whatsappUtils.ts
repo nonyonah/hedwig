@@ -760,14 +760,76 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       console.log('Detected intent:', intent);
       console.log('Detected params:', params);
       
+      // Direct keyword detection for certain operations
+      // This helps catch specific user requests even if LLM parsing fails
+      const lowerText = text.toLowerCase();
+      
+      // Check for deposit-related keywords
+      if (lowerText.includes('deposit') || 
+          lowerText.includes('receive') || 
+          (lowerText.includes('wallet') && lowerText.includes('address'))) {
+        console.log('Deposit request detected, overriding intent');
+        const actionResult = await handleAction('instruction_deposit', {}, userId);
+        console.log('Action result for instruction_deposit:', JSON.stringify(actionResult, null, 2));
+        
+        if (actionResult && 'text' in actionResult) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+          return;
+        }
+      }
+      
+      // Check for swap instruction keywords
+      if ((lowerText.includes('swap') || lowerText.includes('exchange') || lowerText.includes('convert')) &&
+          (lowerText.includes('how') || lowerText.includes('help') || 
+           lowerText.includes('instruct') || lowerText.includes('want to'))) {
+        console.log('Swap instruction request detected, overriding intent');
+        const actionResult = await handleAction('instruction_swap', {}, userId);
+        console.log('Action result for instruction_swap:', JSON.stringify(actionResult, null, 2));
+        
+        if (actionResult && 'text' in actionResult) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+          return;
+        }
+      }
+      
+      // Check for bridge instruction keywords
+      if ((lowerText.includes('bridge') || 
+           lowerText.includes('cross chain') || 
+           lowerText.includes('move between chains')) &&
+          (lowerText.includes('how') || lowerText.includes('help') || 
+           lowerText.includes('instruct') || lowerText.includes('want to'))) {
+        console.log('Bridge instruction request detected, overriding intent');
+        const actionResult = await handleAction('instruction_bridge', {}, userId);
+        console.log('Action result for instruction_bridge:', JSON.stringify(actionResult, null, 2));
+        
+        if (actionResult && 'text' in actionResult) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+          return;
+        }
+      }
+      
+      // Check for send instruction keywords
+      if ((lowerText.includes('send') || lowerText.includes('withdraw') || lowerText.includes('transfer')) &&
+          (lowerText.includes('how') || lowerText.includes('help') || 
+           lowerText.includes('instruct') || lowerText.includes('want to'))) {
+        console.log('Send instruction request detected, overriding intent');
+        const actionResult = await handleAction('instruction_send', {}, userId);
+        console.log('Action result for instruction_send:', JSON.stringify(actionResult, null, 2));
+        
+        if (actionResult && 'text' in actionResult) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+          return;
+        }
+      }
+      
       // Add extra check for wallet address requests
-      if (text.toLowerCase().includes('wallet address') || 
-          text.toLowerCase().includes('my address') || 
-          text.toLowerCase().includes('show address') || 
-          text.toLowerCase().includes('view address')) {
+      if (lowerText.includes('wallet address') || 
+          lowerText.includes('my address') || 
+          lowerText.includes('show address') || 
+          lowerText.includes('view address')) {
         console.log('Wallet address request detected, overriding intent');
-        const actionResult = await handleAction('get_wallet_address', {}, userId);
-        console.log('Action result for get_wallet_address:', JSON.stringify(actionResult, null, 2));
+        const actionResult = await handleAction('instruction_deposit', {}, userId);
+        console.log('Action result for instruction_deposit:', JSON.stringify(actionResult, null, 2));
         
         if (actionResult) {
           if ('name' in actionResult) {

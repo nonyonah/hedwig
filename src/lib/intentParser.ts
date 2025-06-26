@@ -38,9 +38,11 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('what are my addresses') ||
         text.includes('what are my wallet addresses') ||
         text.includes('address') && text.includes('wallet') ||
-        text.includes('show me my') && text.includes('address')) {
+        text.includes('show me my') && text.includes('address') ||
+        text.includes('deposit') && !text.includes('how') ||
+        text.includes('receive') && text.includes('crypto')) {
       console.log('Intent parser detected wallet address request');
-      return { intent: 'get_wallet_address', params: {} };
+      return { intent: 'instruction_deposit', params: {} };
     }
     
     // Balance check keywords
@@ -59,21 +61,43 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return { intent: 'export_keys', params: {} };
     }
     
-    // Send transaction keywords
+    // Swap instruction keywords
+    if ((text.includes('swap') || text.includes('exchange') || text.includes('convert')) &&
+        (text.includes('help') || text.includes('how') || text.includes('instruct') || 
+         text.includes('guide') || text.includes('would like to') || text.includes('want to'))) {
+      return { intent: 'instruction_swap', params: {} };
+    }
+    
+    // Bridge instruction keywords
+    if ((text.includes('bridge') || text.includes('transfer between chains') || 
+        text.includes('move between chains') || text.includes('cross chain')) &&
+        (text.includes('help') || text.includes('how') || text.includes('instruct') || 
+         text.includes('guide') || text.includes('would like to') || text.includes('want to'))) {
+      return { intent: 'instruction_bridge', params: {} };
+    }
+    
+    // Send/withdraw instruction keywords
+    if ((text.includes('send') || text.includes('withdraw') || text.includes('transfer')) &&
+        (text.includes('help') || text.includes('how') || text.includes('instruct') || 
+         text.includes('guide') || text.includes('would like to') || text.includes('want to'))) {
+      return { intent: 'instruction_send', params: {} };
+    }
+    
+    // Actual send transaction keywords - if the user is actually trying to send
     if ((text.includes('send') || text.includes('transfer')) && 
         (text.includes('crypto') || text.includes('token') || text.includes('eth') || 
          text.includes('sol') || text.includes('usdc'))) {
       return { intent: 'send', params: {} };
     }
     
-    // Swap keywords
+    // Actual swap keywords - if the user is actually trying to swap
     if (text.includes('swap') || 
         (text.includes('exchange') && (text.includes('token') || text.includes('crypto'))) ||
         text.includes('convert')) {
       return { intent: 'swap', params: {} };
     }
     
-    // Bridge keywords
+    // Actual bridge keywords - if the user is actually trying to bridge
     if (text.includes('bridge') || 
         text.includes('cross chain') || 
         text.includes('move between chains')) {

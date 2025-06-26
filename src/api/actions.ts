@@ -11,7 +11,6 @@ import {
   transactionSuccess,
   confirmTransaction,
   txPending,
-  tokenReceived,
   bridgeFailed,
   sendSuccess,
   swapSuccess,
@@ -140,12 +139,6 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       return await handleSendInit(params, userId);
     case 'tx_pending':
       return txPending();
-    case 'token_received':
-      return tokenReceived({
-        amount: params.amount,
-        network: params.network,
-        balance: params.balance
-      });
     case 'bridge_failed':
       return bridgeFailed({
         reason: params.reason
@@ -197,6 +190,14 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       return await handleBridgeQuote(params, userId);
     case 'bridge_quote_pending':
       return bridgeQuotePending();
+    case 'instruction_swap':
+      return handleSwapInstructions();
+    case 'instruction_bridge':
+      return handleBridgeInstructions();
+    case 'instruction_deposit':
+      return await handleDepositInstructions(userId);
+    case 'instruction_send':
+      return handleSendInstructions();
     default:
       return { text: `Sorry, I don't know how to handle the action: ${intent}` };
   }
@@ -898,4 +899,68 @@ async function handleBridgeInit(params: ActionParams, userId: string) {
     console.error('Error initiating bridge:', error);
     return { text: 'Failed to initiate bridge.' };
   }
+}
+
+// Handler for providing swap instructions
+function handleSwapInstructions() {
+  return {
+    text: `💱 *How to Swap Tokens*\n\nTo swap tokens, simply type a message like:\n\n"Swap 0.001 SOL to USDC on Solana"\n\nor\n\n"Swap 0.01 ETH to USDC on Base"\n\nI'll then search for the best quote and show you the details for confirmation.`
+  };
+}
+
+// Handler for providing bridge instructions
+function handleBridgeInstructions() {
+  return {
+    text: `🌉 *How to Bridge Tokens*\n\nTo bridge tokens between chains, simply type a message like:\n\n"Bridge 0.001 SOL on Solana to ETH on Base"\n\nor\n\n"Bridge 0.01 ETH on Base to Solana"\n\nI'll then search for the best route and show you the details for confirmation.`
+  };
+}
+
+// Handler for providing deposit instructions
+async function handleDepositInstructions(userId: string) {
+  try {
+    // Get wallet addresses to show the user where to deposit
+    const { data: evmWallet, error: evmError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', 'evm')
+      .single();
+      
+    if (evmError) {
+      console.error('Error fetching EVM wallet:', evmError);
+    }
+    
+    const { data: solanaWallet, error: solanaError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', 'solana')
+      .single();
+      
+    if (solanaError) {
+      console.error('Error fetching Solana wallet:', solanaError);
+    }
+    
+    // If the user doesn't have wallets yet, prompt them to create wallets
+    if ((!evmWallet || !solanaWallet) && (!evmWallet?.address && !solanaWallet?.address)) {
+      return {
+        text: `💼 *Deposit Instructions*\n\nBefore you can deposit funds, you need to create a wallet first. Type "create wallet" to get started.`
+      };
+    }
+    
+    // Return wallet addresses as deposit instructions
+    return {
+      text: `📥 *How to Deposit Funds*\n\nYou can deposit funds to your wallets using these addresses:\n\n*EVM Wallet (Base, Ethereum):*\n\`${evmWallet?.address || 'Not created yet'}\`\n\n*Solana Wallet:*\n\`${solanaWallet?.address || 'Not created yet'}\`\n\nOnce your deposit is confirmed on the blockchain, I'll send you a notification.`
+    };
+  } catch (error) {
+    console.error('Error in handleDepositInstructions:', error);
+    return { text: 'Failed to get deposit instructions. Please try again.' };
+  }
+}
+
+// Handler for providing send/withdraw instructions
+function handleSendInstructions() {
+  return {
+    text: `📤 *How to Send or Withdraw Tokens*\n\nTo send tokens to another wallet, simply type a message like:\n\n"Send 0.001 ETH to 0x1234...5678 on Base"\n\nor\n\n"Send 0.1 SOL to address 8rUW...ZjqP on Solana"\n\nI'll then show you a confirmation with the details before proceeding.`
+  };
 } 
