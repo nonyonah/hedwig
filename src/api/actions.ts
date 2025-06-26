@@ -1,6 +1,7 @@
 import { getOrCreatePrivyWallet } from '@/lib/privy';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
+import { formatAddress } from '@/lib/utils';
 import {
   walletTemplates,
   walletCreated,
@@ -21,7 +22,13 @@ import {
   privateKeys,
   noWalletYet,
   textTemplate,
-  usersWalletAddresses
+  usersWalletAddresses,
+  cryptoDepositNotification,
+  swapProcessing,
+  swapQuoteConfirm,
+  quotePending,
+  swapPrompt,
+  sendTokenPrompt
 } from '@/lib/whatsappTemplates';
 
 // Example: Action handler interface
@@ -115,6 +122,18 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       return await handleBridge(params, userId);
     case 'export_keys':
       return await handleExportKeys(params, userId);
+    case 'crypto_deposit_notification':
+      return await handleCryptoDeposit(params, userId);
+    case 'swap_processing':
+      return swapProcessing();
+    case 'swap_quote_confirm':
+      return await handleSwapQuote(params, userId);
+    case 'quote_pending':
+      return quotePending();
+    case 'swap_prompt':
+      return await handleSwapInit(params, userId);
+    case 'send_token_prompt':
+      return await handleSendInit(params, userId);
     case 'tx_pending':
       return txPending();
     case 'token_received':
@@ -136,13 +155,7 @@ export async function handleAction(intent: string, params: ActionParams, userId:
         explorerUrl: params.explorerUrl
       });
     case 'swap_success':
-      return swapSuccess({
-        from_amount: params.from_amount,
-        to_amount: params.to_amount,
-        network: params.network,
-        balance: params.balance,
-        explorerUrl: params.explorerUrl
-      });
+      return await handleSwapProcess(params, userId);
     case 'bridge_success':
       return bridgeSuccess({
         amount: params.amount,
@@ -334,109 +347,89 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
 
 // Example handler for sending tokens
 async function handleSendTokens(params: ActionParams, userId: string) {
-  // ... logic to send tokens ...
-  return sendSuccess({ amount: '10', token: 'USDC', recipient: '0xabc...123', balance: '2 USDC', explorerUrl: 'https://basescan.org/tx/0x123...' });
+  try {
+    // Check if we're in the prompt phase or execution phase
+    const isExecute = params.isExecute === true || params.phase === 'execute';
+    
+    // If not in execute phase, show the send prompt
+    if (!isExecute) {
+      const token = params.token || 'ETH';
+      const amount = params.amount || '0.01';
+      const recipient = params.recipient || params.to || formatAddress(params.address || '0x123...456');
+      const network = params.network || params.chain || 'Base';
+      
+      return handleSendInit({
+        amount,
+        token,
+        recipient,
+        network
+      }, userId);
+    }
+    
+    // If in execute phase, process the send
+    // In a real implementation, you would call your backend service to submit the transaction
+    // For now, return a placeholder success message
+    return sendSuccess({ 
+      amount: params.amount || '0.01', 
+      token: params.token || 'ETH', 
+      recipient: params.recipient || formatAddress(params.to || '0x123...456'), 
+      balance: '0.05 ETH', 
+      explorerUrl: 'https://basescan.org/tx/0x123...' 
+    });
+  } catch (error) {
+    console.error('Error sending tokens:', error);
+    return sendFailed({ reason: 'Transaction failed' });
+  }
 }
 
 // Example handler for swapping tokens
 async function handleSwapTokens(params: ActionParams, userId: string) {
   try {
-    // 1. Get wallet address from Supabase
-    const chain = params.chain || 'evm';
-    const { data: wallet, error } = await supabase
-      .from('wallets')
-      .select('address, id')
-      .eq('user_id', userId)
-      .eq('chain', chain)
-      .single();
-    if (error || !wallet) {
-      return { text: 'No wallet found. Create one to get started.' };
-    }
-    const address = wallet.address;
-    // 2. Validate swap params
-    const fromToken = params.fromToken;
-    const toToken = params.toToken;
-    const amount = params.amount;
-    if (!fromToken || !toToken || !amount) {
-      return { text: 'Specify fromToken, toToken, and amount.' };
-    }
-    if (chain === 'evm' || chain === 'base') {
-      // Use 0x Swap API v2 for EVM and Base swaps
-      // See: https://0x.org/docs/upgrading/upgrading_to_swap_v2
-      const zeroExApiUrl = 'https://api.0x.org/swap/permit2/quote';
-      const swapFeeRecipient = process.env.ZEROEX_FEE_RECIPIENT || address; // Set your fee recipient address in env
-      const swapFeeBps = process.env.ZEROEX_FEE_BPS || '100'; // 100 = 1%
-      const chainId = chain === 'base' ? 8453 : 1; // Base = 8453, Ethereum = 1
-      const paramsObj = new URLSearchParams({
-        sellToken: fromToken,
-        buyToken: toToken,
-        sellAmount: amount,
-        taker: address,
-        swapFeeBps,
-        swapFeeRecipient,
-        chainId: chainId.toString(),
-      });
-      const res = await fetch(`${zeroExApiUrl}?${paramsObj.toString()}`, {
-        headers: {
-          '0x-api-key': process.env.ZEROEX_API_KEY || '',
-          '0x-version': 'v2',
-        },
-      });
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('0x Swap v2 error:', errorText);
-        return { text: 'Swap failed.' };
+    // First, check if we're in the quote phase or execution phase
+    const isQuote = params.isQuote === true || params.phase === 'quote';
+    const isExecute = params.isExecute === true || params.phase === 'execute';
+    
+    // If no specific phase is set, start with a swap prompt
+    if (!isQuote && !isExecute) {
+      // 1. Get wallet address from Supabase
+      const chain = params.chain || 'evm';
+      const { data: wallet, error } = await supabase
+        .from('wallets')
+        .select('address, id')
+        .eq('user_id', userId)
+        .eq('chain', chain)
+        .single();
+      if (error || !wallet) {
+        return { text: 'No wallet found. Create one to get started.' };
       }
-      const data = await res.json();
-      // Log transaction (no txHash yet, as 0x only provides quote)
-      await supabase.from('transactions').insert([{
-        user_id: userId,
-        wallet_id: wallet.id,
-        chain,
-        tx_hash: null,
-        action: 'swap',
-        status: 'pending',
-        metadata: { fromToken, toToken, amount, zeroExQuote: data }
-      }]);
-      // TODO: Implement transaction execution and status tracking
-      return swapSuccess({
-        from_amount: `${amount} ${fromToken}`,
-        to_amount: `${data.buyAmount || 'N/A'} ${toToken}`,
-        network: 'Base',
-        balance: `${data.buyAmount || 'N/A'} ${toToken}`,
-        explorerUrl: data.txHash ? `https://basescan.org/tx/${data.txHash}` : ''
-      });
-    } else if (chain === 'solana') {
-      // Use Jupiter API for Solana swaps
-      const jupiterApiUrl = 'https://quote-api.jup.ag/v6/quote';
-      const res = await fetch(`${jupiterApiUrl}?inputMint=${fromToken}&outputMint=${toToken}&amount=${amount}&slippageBps=50`);
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Swap error:', errorText);
-        return { text: 'Swap failed.' };
-      }
-      const data = await res.json();
-      const route = data.data?.[0];
-      // Log transaction (no txHash yet, as Jupiter only provides quote)
-      await supabase.from('transactions').insert([{
-        user_id: userId,
-        wallet_id: wallet.id,
-        chain,
-        tx_hash: null,
-        action: 'swap',
-        status: 'pending',
-        metadata: { fromToken, toToken, amount, route }
-      }]);
-      return swapSuccess({
-        from_amount: `${amount} ${fromToken}`,
-        to_amount: `${route?.outAmount || 'N/A'} ${toToken}`,
-        network: 'Base',
-        balance: `${route?.outAmount || 'N/A'} ${toToken}`,
-        explorerUrl: route?.txid ? `https://basescan.org/tx/${route?.txid}` : ''
-      });
-    } else {
-      return { text: 'Unsupported chain for swap.' };
+      
+      // 2. Validate and prepare swap parameters
+      const fromToken = params.fromToken || params.from_token || 'ETH';
+      const toToken = params.toToken || params.to_token || 'USDC';
+      const amount = params.amount || '0.01';
+      const network = params.network || chain === 'solana' ? 'Solana' : 'Base';
+      
+      // 3. Show the swap prompt
+      return handleSwapInit({
+        from_token: fromToken,
+        to_token: toToken,
+        amount,
+        network
+      }, userId);
     }
+    
+    // If we're in quote phase, get a quote
+    if (isQuote) {
+      return handleSwapQuote(params, userId);
+    }
+    
+    // If we're in execute phase, process the swap
+    if (isExecute) {
+      return handleSwapProcess(params, userId);
+    }
+    
+    // Fallback
+    return { text: 'Please specify swap details (amount, from token, to token).' };
   } catch (error) {
     console.error('Swap error:', error);
     return { text: 'Failed to swap.' };
@@ -589,4 +582,168 @@ async function handleExportKeys(params: ActionParams, userId: string) {
 async function handleBridge(params: ActionParams, userId: string) {
   // ... logic to bridge tokens ...
   return bridgeSuccess({ amount: '50 USDC', from_network: 'Optimism', to_network: 'Base', balance: '2 USDC' });
+}
+
+// Handler for crypto deposit notification
+async function handleCryptoDeposit(params: ActionParams, userId: string) {
+  try {
+    console.log(`Notifying user ${userId} about crypto deposit`);
+    
+    // Check if we have all required parameters
+    const amount = params.amount || '0';
+    const token = params.token || 'USDC';
+    const network = params.network || 'Base';
+    
+    // Get user's current balance
+    const { data: wallet, error } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', network.toLowerCase() === 'solana' ? 'solana' : 'evm')
+      .single();
+    
+    if (error) {
+      console.error('Error fetching wallet for deposit notification:', error);
+    }
+    
+    // TODO: Implement real balance fetching from blockchain
+    // For now use placeholder or provided balance
+    const balance = params.balance || `${Number(amount) + 50} ${token}`;
+    
+    return cryptoDepositNotification({
+      amount,
+      token,
+      network,
+      balance
+    });
+  } catch (error) {
+    console.error('Error handling crypto deposit notification:', error);
+    return { text: 'Failed to process deposit notification.' };
+  }
+}
+
+// Handler for swap quote
+async function handleSwapQuote(params: ActionParams, userId: string) {
+  try {
+    console.log(`Getting swap quote for user ${userId}`);
+    
+    // First show pending message
+    await supabase.from('messages').insert([{
+      user_id: userId,
+      content: JSON.stringify(quotePending()),
+      role: 'assistant',
+      created_at: new Date().toISOString()
+    }]);
+    
+    // Get swap parameters
+    const fromToken = params.from_token || params.fromToken || 'ETH';
+    const toToken = params.to_token || params.toToken || 'USDC';
+    const amount = params.amount || '0.01';
+    const chain = params.chain || params.network || 'Base';
+    
+    // Simulate getting a quote (in a real app, you'd call a DEX API)
+    // This is a placeholder for demonstration purposes
+    const fromAmount = `${amount} ${fromToken}`;
+    const rate = fromToken === 'ETH' ? '2000' : fromToken === 'SOL' ? '150' : '1';
+    const toAmount = `${Number(amount) * Number(rate)} ${toToken}`;
+    const networkFee = chain.toLowerCase() === 'solana' ? '0.00001 SOL' : '0.0003 ETH';
+    const estTime = '1-3 mins';
+    
+    return swapQuoteConfirm({
+      from_amount: fromAmount,
+      to_amount: toAmount,
+      chain,
+      rate: `1 ${fromToken} = $${rate}`,
+      network_fee: networkFee,
+      est_time: estTime
+    });
+  } catch (error) {
+    console.error('Error getting swap quote:', error);
+    return { text: 'Failed to get swap quote.' };
+  }
+}
+
+// Handler for initiating a swap
+async function handleSwapInit(params: ActionParams, userId: string) {
+  try {
+    console.log(`Initiating swap for user ${userId}`);
+    
+    // Get swap parameters
+    const fromToken = params.from_token || params.fromToken || 'ETH';
+    const toToken = params.to_token || params.toToken || 'USDC';
+    const amount = params.amount || '0.01';
+    const network = params.network || params.chain || 'Base';
+    
+    return swapPrompt({
+      amount,
+      from_token: fromToken,
+      to_token: toToken,
+      network
+    });
+  } catch (error) {
+    console.error('Error initiating swap:', error);
+    return { text: 'Failed to initiate swap.' };
+  }
+}
+
+// Handler for processing a swap
+async function handleSwapProcess(params: ActionParams, userId: string) {
+  try {
+    console.log(`Processing swap for user ${userId}`);
+    
+    // First show the processing message
+    await supabase.from('messages').insert([{
+      user_id: userId,
+      content: JSON.stringify(swapProcessing()),
+      role: 'assistant',
+      created_at: new Date().toISOString()
+    }]);
+    
+    // In a real app, you would submit the swap to a DEX and wait for confirmation
+    // This is a placeholder that simulates a successful swap after a delay
+    
+    // For demonstration, we'll return the success message directly
+    // In a real app, you would set up a webhook or polling mechanism
+    const fromToken = params.from_token || params.fromToken || 'ETH';
+    const toToken = params.to_token || params.toToken || 'USDC';
+    const amount = params.amount || '0.01';
+    const network = params.network || params.chain || 'Base';
+    
+    const rate = fromToken === 'ETH' ? '2000' : fromToken === 'SOL' ? '150' : '1';
+    const toAmount = `${Number(amount) * Number(rate)} ${toToken}`;
+    
+    return swapSuccess({
+      from_amount: `${amount} ${fromToken}`,
+      to_amount: toAmount,
+      network,
+      balance: `${toAmount}`,
+      explorerUrl: 'https://basescan.org/tx/0x' // Placeholder
+    });
+  } catch (error) {
+    console.error('Error processing swap:', error);
+    return { text: 'Failed to process swap.' };
+  }
+}
+
+// Handler for initiating a token send
+async function handleSendInit(params: ActionParams, userId: string) {
+  try {
+    console.log(`Initiating send for user ${userId}`);
+    
+    // Get send parameters
+    const token = params.token || 'ETH';
+    const amount = params.amount || '0.01';
+    const recipient = params.recipient || params.to || '0x...';
+    const network = params.network || params.chain || 'Base';
+    
+    return sendTokenPrompt({
+      amount,
+      token,
+      recipient,
+      network
+    });
+  } catch (error) {
+    console.error('Error initiating send:', error);
+    return { text: 'Failed to initiate send.' };
+  }
 } 

@@ -557,7 +557,13 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
             'wallet_balance',
             'users_wallet_addresses',
             'no_wallet_yet',
-            'private_keys'  // Add private_keys to positional templates
+            'private_keys',
+            'crypto_deposit_notification',
+            'swap_processing',
+            'swap_quote_confirm',
+            'quote_pending',
+            'swap_prompt',
+            'send_token_prompt'
           ];
           
           const isPositionalTemplate = positionalTemplates.includes(template.name);

@@ -23,6 +23,169 @@ export function txPending() {
 }
 
 /**
+ * Template: crypto_deposit_notification
+ * Parameter Format: POSITIONAL
+ * Parameters: amount, token, network, balance
+ */
+export function cryptoDepositNotification({ amount, token, network, balance }: { amount: string, token: string, network: string, balance: string }) {
+  return {
+    name: 'crypto_deposit_notification',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: token },
+          { type: 'text', text: network },
+          { type: 'text', text: balance }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: swap_processing
+ * Parameter Format: POSITIONAL
+ * No parameters needed
+ */
+export function swapProcessing() {
+  return {
+    name: 'swap_processing',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY'
+      }
+    ]
+  };
+}
+
+/**
+ * Template: swap_quote_confirm
+ * Parameter Format: POSITIONAL
+ * Parameters: from_amount, to_amount, chain, rate, network_fee, est_time
+ */
+export function swapQuoteConfirm({ 
+  from_amount, 
+  to_amount, 
+  chain, 
+  rate, 
+  network_fee, 
+  est_time 
+}: { 
+  from_amount: string, 
+  to_amount: string, 
+  chain: string, 
+  rate: string, 
+  network_fee: string, 
+  est_time: string 
+}) {
+  return {
+    name: 'swap_quote_confirm',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: from_amount },
+          { type: 'text', text: to_amount },
+          { type: 'text', text: chain },
+          { type: 'text', text: rate },
+          { type: 'text', text: network_fee },
+          { type: 'text', text: est_time }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: quote_pending
+ * Parameter Format: POSITIONAL
+ * No parameters needed
+ */
+export function quotePending() {
+  return {
+    name: 'quote_pending',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY'
+      }
+    ]
+  };
+}
+
+/**
+ * Template: swap_prompt
+ * Parameter Format: POSITIONAL
+ * Parameters: amount, from_token, to_token, network
+ */
+export function swapPrompt({ 
+  amount, 
+  from_token, 
+  to_token, 
+  network 
+}: { 
+  amount: string, 
+  from_token: string, 
+  to_token: string, 
+  network: string 
+}) {
+  return {
+    name: 'swap_prompt',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: from_token },
+          { type: 'text', text: to_token },
+          { type: 'text', text: network }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: send_token_prompt
+ * Parameter Format: POSITIONAL
+ * Parameters: amount, token, recipient, network
+ * Has QUICK_REPLY buttons
+ */
+export function sendTokenPrompt({ 
+  amount, 
+  token, 
+  recipient, 
+  network 
+}: { 
+  amount: string, 
+  token: string, 
+  recipient: string, 
+  network: string 
+}) {
+  return {
+    name: 'send_token_prompt',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: amount },
+          { type: 'text', text: token },
+          { type: 'text', text: recipient },
+          { type: 'text', text: network }
+        ]
+      }
+    ]
+  };
+}
+
+/**
  * Template: token_received
  * Parameter Format: NAMED
  * Parameters: amount, network, balance
