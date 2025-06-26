@@ -404,89 +404,105 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
 // Example handler for sending tokens
 async function handleSendTokens(params: ActionParams, userId: string) {
   try {
-    // Check if we're in the prompt phase or execution phase
     const isExecute = params.isExecute === true || params.phase === 'execute';
-    
-    // If not in execute phase, show the send prompt
-    if (!isExecute) {
-      const token = params.token || 'ETH';
-      const amount = params.amount || '0.01';
-      const recipient = params.recipient || params.to || formatAddress(params.address || '0x123...456');
-      const network = params.network || params.chain || 'Base Sepolia';
-      
-      // Store the pending transaction in the session
-      const { data: session } = await supabase
-        .from('sessions')
-        .select('context')
-        .eq('user_id', userId)
-        .single();
-      
-      const context = session?.context || [];
-      const pending = { 
-        action: 'send',
-        token,
-        amount,
-        recipient,
-        network
-      };
-      
-      // Add or update the pending transaction in the context
-      const existingPendingIndex = context.findIndex((item: any) => 
-        item.role === 'system' && JSON.parse(item.content)?.pending?.action === 'send'
-      );
-      
-      if (existingPendingIndex >= 0) {
-        context[existingPendingIndex] = { role: 'system', content: JSON.stringify({ pending }) };
+    const token = params.token;
+    const amount = params.amount;
+    const recipient = params.recipient || params.to;
+    const network = params.network || params.chain;
+
+    // If any required parameter is missing, prompt and store pending context
+    const missing: string[] = [];
+    if (!token) missing.push('token');
+    if (!amount) missing.push('amount');
+    if (!recipient) missing.push('recipient');
+    if (!network) missing.push('network');
+
+    if (missing.length > 0) {
+      let promptText = 'To send tokens, please specify: ';
+      if (missing.length === 4) {
+        promptText = 'What token do you want to send, how much, to which address, and on which chain?';
       } else {
-        context.push({ role: 'system', content: JSON.stringify({ pending }) });
+        promptText += missing.join(', ');
       }
-      
-      await supabase.from('sessions').upsert([{ 
-        user_id: userId, 
-        context, 
-        last_active: new Date().toISOString() 
-      }], { onConflict: 'user_id' });
-      
-      return handleSendInit({
-        amount,
-        token,
-        recipient,
-        network
-      }, userId);
+      // Store pending context in session
+      await supabase.from('sessions').upsert([
+        {
+          user_id: userId,
+          context: [{
+            role: 'system',
+            content: JSON.stringify({ pending: { action: 'send', ...params } })
+          }],
+          updated_at: new Date().toISOString()
+        }
+      ], { onConflict: 'user_id' });
+      return { text: promptText };
     }
-    
-    // If in execute phase, process the send
-    // First show the pending message
-    console.log('Executing send transaction with params:', params);
-    
-    // In a real implementation, you would call your backend service to submit the transaction
-    // For now, generate a mock transaction hash and calculate remaining balance
-    const mockTxHash = `0x${Math.random().toString(16).substring(2, 10)}${Date.now().toString(16)}`;
-    const sentAmount = parseFloat(params.amount) || 0.01;
-    const initialBalance = 0.1; // This would be fetched from blockchain in production
-    const remainingBalance = Math.max(0, initialBalance - sentAmount).toFixed(4);
-    
-    // Return a success message with live data
-    return sendSuccess({ 
-      amount: params.amount || '0.01', 
-      token: params.token || 'ETH', 
-      recipient: params.recipient || formatAddress(params.to || '0x123...456'), 
-      balance: `${remainingBalance} ${params.token || 'ETH'}`, 
-      explorerUrl: `https://sepolia.basescan.org/tx/${mockTxHash}` 
-    });
+
+    // If in execution phase, process the send
+    if (isExecute) {
+      // ... existing code ...
+    }
+
+    // If all details are present, clear pending context
+    await supabase.from('sessions').upsert([
+      {
+        user_id: userId,
+        context: [],
+        updated_at: new Date().toISOString()
+      }
+    ], { onConflict: 'user_id' });
+
+    // ... existing code ...
   } catch (error) {
-    console.error('Error sending tokens:', error);
-    return sendFailed({ reason: 'Transaction failed' });
+    console.error('Send error:', error);
+    return { text: 'Failed to send.' };
   }
 }
 
 // Example handler for swapping tokens
 async function handleSwapTokens(params: ActionParams, userId: string) {
   try {
-    // First, check if we're in the quote phase or execution phase
     const isQuote = params.isQuote === true || params.phase === 'quote';
     const isExecute = params.isExecute === true || params.phase === 'execute';
-    
+    const fromToken = params.from_token || params.fromToken;
+    const toToken = params.to_token || params.toToken;
+    const amount = params.amount;
+
+    // If any required parameter is missing, prompt and store pending context
+    if (!fromToken || !toToken || !amount) {
+      let prompt = 'To swap tokens, please specify:';
+      if (!amount && !fromToken && !toToken) {
+        prompt = 'What token do you want to swap, how much, and to which token?';
+      } else if (!amount) {
+        prompt = `How much ${fromToken || ''} do you want to swap to ${toToken || ''}?`;
+      } else if (!fromToken) {
+        prompt = `Which token do you want to swap from? (e.g. ETH, SOL)`;
+      } else if (!toToken) {
+        prompt = `Which token do you want to swap to? (e.g. USDC, ETH)`;
+      }
+      // Store pending context in session
+      await supabase.from('sessions').upsert([
+        {
+          user_id: userId,
+          context: [{
+            role: 'system',
+            content: JSON.stringify({ pending: { action: 'swap', ...params } })
+          }],
+          updated_at: new Date().toISOString()
+        }
+      ], { onConflict: 'user_id' });
+      return { text: prompt };
+    }
+
+    // If all details are present, clear pending context
+    await supabase.from('sessions').upsert([
+      {
+        user_id: userId,
+        context: [],
+        updated_at: new Date().toISOString()
+      }
+    ], { onConflict: 'user_id' });
+
     // If no specific phase is set, start with a swap prompt
     if (!isQuote && !isExecute) {
       // 1. Get wallet address from Supabase
@@ -500,14 +516,8 @@ async function handleSwapTokens(params: ActionParams, userId: string) {
       if (error || !wallet) {
         return { text: 'No wallet found. Create one to get started.' };
       }
-      
-      // 2. Validate and prepare swap parameters
-      const fromToken = params.fromToken || params.from_token || 'ETH';
-      const toToken = params.toToken || params.to_token || 'USDC';
-      const amount = params.amount || '0.01';
+      // 2. Show the swap prompt
       const network = params.network || chain === 'solana' ? 'Solana Devnet' : 'Base Sepolia';
-      
-      // 3. Show the swap prompt
       return handleSwapInit({
         from_token: fromToken,
         to_token: toToken,
@@ -515,17 +525,17 @@ async function handleSwapTokens(params: ActionParams, userId: string) {
         network
       }, userId);
     }
-    
+
     // If we're in quote phase, get a quote
     if (isQuote) {
       return handleSwapQuote(params, userId);
     }
-    
+
     // If we're in execute phase, process the swap
     if (isExecute) {
       return handleSwapProcess(params, userId);
     }
-    
+
     // Fallback
     return { text: 'Please specify swap details (amount, from token, to token).' };
   } catch (error) {
@@ -681,32 +691,69 @@ async function handleExportKeys(params: ActionParams, userId: string) {
 // Example handler for bridging
 async function handleBridge(params: ActionParams, userId: string) {
   try {
-    // Check if we're in the quote phase or execution phase
     const isQuote = params.isQuote === true || params.phase === 'quote';
     const isExecute = params.isExecute === true || params.phase === 'execute';
-    
+    const amount = params.from_amount || params.amount;
+    const token = params.from_token || params.token;
+    const fromChain = params.from_chain || params.fromChain || params.source;
+    const toChain = params.to_chain || params.toChain || params.destination;
+
+    // If any required parameter is missing, prompt and store pending context
+    if (!amount || !token || !fromChain || !toChain) {
+      let prompt = 'To bridge tokens, please specify:';
+      if (!amount && !token && !fromChain && !toChain) {
+        prompt = 'Which token and chain do you want to bridge from, and to which chain?';
+      } else if (!amount) {
+        prompt = `How much ${token || ''} do you want to bridge from ${fromChain || ''} to ${toChain || ''}?`;
+      } else if (!token) {
+        prompt = `Which token do you want to bridge? (e.g. ETH, SOL)`;
+      } else if (!fromChain) {
+        prompt = `Which chain do you want to bridge from? (e.g. Base, Solana)`;
+      } else if (!toChain) {
+        prompt = `Which chain do you want to bridge to? (e.g. Base, Solana)`;
+      }
+      // Store pending context in session
+      await supabase.from('sessions').upsert([
+        {
+          user_id: userId,
+          context: [{
+            role: 'system',
+            content: JSON.stringify({ pending: { action: 'bridge', ...params } })
+          }],
+          updated_at: new Date().toISOString()
+        }
+      ], { onConflict: 'user_id' });
+      return { text: prompt };
+    }
+
+    // If all details are present, clear pending context
+    await supabase.from('sessions').upsert([
+      {
+        user_id: userId,
+        context: [],
+        updated_at: new Date().toISOString()
+      }
+    ], { onConflict: 'user_id' });
+
     // If no specific phase is set, get a quote
     if (!isQuote && !isExecute) {
       // Get bridge parameters
-      const fromAmount = params.from_amount || params.fromAmount || params.amount || '0.01';
-      const fromToken = params.from_token || params.fromToken || params.token || 'ETH';
-      const fromChain = params.from_chain || params.fromChain || params.source || 'Base Sepolia';
-      const toChain = params.to_chain || params.toChain || params.destination || 'Solana Devnet';
-      
-      // Show the bridge quote pending message
+      const fromAmount = amount;
+      const fromToken = token;
+      // 2. Show the bridge quote pending message
       return bridgeQuotePending();
     }
-    
+
     // If we're in quote phase, get a quote
     if (isQuote) {
       return handleBridgeQuote(params, userId);
     }
-    
+
     // If we're in execute phase, process the bridge
     if (isExecute) {
       return handleBridgeInit(params, userId);
     }
-    
+
     // Fallback
     return { text: 'Please specify bridge details (amount, token, source chain, destination chain).' };
   } catch (error) {

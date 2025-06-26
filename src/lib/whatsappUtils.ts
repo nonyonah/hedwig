@@ -874,6 +874,78 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       console.log('Detected intent:', intent);
       console.log('Detected params:', params);
       
+      // Check for pending action in session
+      const { data: session } = await supabase
+        .from('sessions')
+        .select('context')
+        .eq('user_id', userId)
+        .single();
+      let pending = null;
+      if (session?.context) {
+        pending = session.context.find((item: any) => item.role === 'system' && JSON.parse(item.content)?.pending);
+      }
+      let mergedParams = { ...params };
+      if (pending) {
+        const pendingObj = JSON.parse(pending.content).pending;
+        mergedParams = { ...pendingObj, ...params };
+        // If all required fields are present for the pending action, proceed
+        if (pendingObj.action === 'send') {
+          const hasAll = mergedParams.token && mergedParams.amount && mergedParams.recipient && mergedParams.network;
+          if (hasAll) {
+            await handleAction('send', mergedParams, userId);
+            // Clear pending context
+            await supabase.from('sessions').upsert([
+              {
+                user_id: userId,
+                context: [],
+                updated_at: new Date().toISOString()
+              }
+            ], { onConflict: 'user_id' });
+            return;
+          }
+        } else if (pendingObj.action === 'swap') {
+          const hasAll = mergedParams.amount && mergedParams.from_token && mergedParams.to_token;
+          if (hasAll) {
+            await handleAction('swap', mergedParams, userId);
+            await supabase.from('sessions').upsert([
+              {
+                user_id: userId,
+                context: [],
+                updated_at: new Date().toISOString()
+              }
+            ], { onConflict: 'user_id' });
+            return;
+          }
+        } else if (pendingObj.action === 'bridge') {
+          const hasAll = mergedParams.amount && mergedParams.token && mergedParams.from_chain && mergedParams.to_chain;
+          if (hasAll) {
+            await handleAction('bridge', mergedParams, userId);
+            await supabase.from('sessions').upsert([
+              {
+                user_id: userId,
+                context: [],
+                updated_at: new Date().toISOString()
+              }
+            ], { onConflict: 'user_id' });
+            return;
+          }
+        }
+        // If still missing, update pending context with mergedParams
+        await supabase.from('sessions').upsert([
+          {
+            user_id: userId,
+            context: [{
+              role: 'system',
+              content: JSON.stringify({ pending: { ...mergedParams, action: pendingObj.action } })
+            }],
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'user_id' });
+        // Prompt for missing info (let the action handler do it)
+        await handleAction(pendingObj.action, mergedParams, userId);
+        return;
+      }
+      
       // Direct keyword detection for certain operations
       // This helps catch specific user requests even if LLM parsing fails
       

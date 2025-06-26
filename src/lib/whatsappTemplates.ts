@@ -591,7 +591,7 @@ export function walletCreated({ address }: { address: string }) {
   return {
     type: 'buttons',
     text: `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${address}\`\n\nYou can now receive and send crypto.`,
-    buttons: [
+        buttons: [
       { id: 'view_wallet', title: 'View Wallet' }
     ]
   };

@@ -22,8 +22,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    try {
-      const body = req.body;
+  try {
+    const body = req.body;
       await handleIncomingWhatsAppMessage(body);
       return res.status(200).json({ success: true });
     } catch (error) {
