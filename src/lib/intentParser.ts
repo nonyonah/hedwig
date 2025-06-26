@@ -7,6 +7,22 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       try {
         const obj = JSON.parse(match[0]);
         if (obj.intent && typeof obj.intent === 'string') {
+          // Special handling for specific intents
+          if (obj.intent === 'deposit_received' || obj.intent === 'token_received') {
+            return {
+              intent: 'crypto_received',
+              params: obj.params || {}
+            };
+          }
+          
+          if (obj.intent === 'bridge_completed' || obj.intent === 'bridge_received') {
+            // Ensure that this is handled as a bridge deposit notification
+            return {
+              intent: 'bridge',
+              params: { ...obj.params, isExecute: true } // Force execution phase
+            };
+          }
+          
           return { 
             intent: obj.intent, 
             params: obj.params || {} 
@@ -20,6 +36,19 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
     // If JSON parsing fails, use keyword-based intent detection
     const text = llmResponse.toLowerCase();
     
+    // Check for crypto received or bridge completed keywords
+    if ((text.includes('received') || text.includes('deposit')) && 
+        (text.includes('token') || text.includes('crypto') || text.includes('eth') || 
+         text.includes('sol') || text.includes('usdc'))) {
+      if (text.includes('bridge') || text.includes('cross chain') || text.includes('between chains')) {
+        // Bridge deposit notification
+        return { intent: 'bridge', params: { isExecute: true } };
+      } else {
+        // Regular crypto deposit notification
+        return { intent: 'crypto_received', params: {} };
+      }
+    }
+    
     // Wallet creation keywords
     if (text.includes('create wallet') || 
         text.includes('new wallet') || 
@@ -29,8 +58,8 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return { intent: 'create_wallets', params: {} };
     }
     
-    // Wallet address keywords - make this check more prominent
-    if (text.includes('wallet address') || 
+    // Wallet address keywords for deposit instructions
+    if ((text.includes('wallet address') || 
         text.includes('my address') || 
         text.includes('show address') || 
         text.includes('view address') ||
@@ -38,11 +67,21 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('what are my addresses') ||
         text.includes('what are my wallet addresses') ||
         text.includes('address') && text.includes('wallet') ||
-        text.includes('show me my') && text.includes('address') ||
-        text.includes('deposit') && !text.includes('how') ||
-        text.includes('receive') && text.includes('crypto')) {
-      console.log('Intent parser detected wallet address request');
+        text.includes('show me my') && text.includes('address')) &&
+        (text.includes('how') || text.includes('instruct') || text.includes('help') || text.includes('want'))) {
+      console.log('Intent parser detected deposit instruction request');
       return { intent: 'instruction_deposit', params: {} };
+    }
+    
+    // Simple deposit keywords (without asking for instructions)
+    if (text.includes('deposit') || text.includes('receive crypto')) {
+      if (text.includes('how') || text.includes('instruct') || text.includes('help') || text.includes('want')) {
+        // User is asking for deposit instructions
+        return { intent: 'instruction_deposit', params: {} };
+      } else {
+        // User is just mentioning deposits, show addresses
+        return { intent: 'get_wallet_address', params: {} };
+      }
     }
     
     // Balance check keywords

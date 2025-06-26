@@ -586,11 +586,22 @@ export function walletCreated({ address }: { address: string }) {
 }
 
 /**
- * Function: users_wallet_addresses
- * Returns a text message with wallet addresses since this template doesn't exist in WhatsApp
+ * Template: users_wallet_addresses
+ * Parameter Format: POSITIONAL
+ * Parameters: evm_wallet, solana_wallet
  */
 export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
   return {
-    text: `📬 *Your Wallet Addresses*\n\n*EVM Wallet (Base, Ethereum):*\n\`${evm_wallet}\`\n\n*Solana Wallet:*\n\`${solana_wallet}\`\n\nUse these addresses to receive funds.`
+    name: 'users_wallet_addresses',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: evm_wallet },
+          { type: 'text', text: solana_wallet }
+        ]
+      }
+    ]
   };
 }

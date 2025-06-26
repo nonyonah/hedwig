@@ -198,6 +198,8 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       return await handleDepositInstructions(userId);
     case 'instruction_send':
       return handleSendInstructions();
+    case 'crypto_received':
+      return await handleCryptoReceived(params, userId);
     default:
       return { text: `Sorry, I don't know how to handle the action: ${intent}` };
   }
@@ -887,17 +889,60 @@ async function handleBridgeInit(params: ActionParams, userId: string) {
     // In a real app, you would submit the bridge transaction and wait for confirmation
     // This is a placeholder that simulates a successful bridge after a delay
     
-    // For demonstration, we'll return the success message directly
-    // In a real app, you would set up a webhook or polling mechanism
-    return bridgeSuccess({
-      amount: fromAmount.split(' ')[0],
-      from_network: fromChain,
-      to_network: toChain,
+    // Extract the token and amount from the parameters
+    const [amountValue, tokenSymbol] = fromAmount.split(' ');
+    const token = tokenSymbol || 'ETH';
+    
+    // For demonstration, show the bridge deposit notification instead of bridge success
+    // This simulates receiving tokens on the destination chain
+    return bridgeDepositNotification({
+      amount: amountValue,
+      token: token,
+      network: toChain,
       balance: toAmount
     });
   } catch (error) {
     console.error('Error initiating bridge:', error);
     return { text: 'Failed to initiate bridge.' };
+  }
+}
+
+// Add a handler for crypto deposits (when tokens are received)
+async function handleCryptoReceived(params: ActionParams, userId: string) {
+  try {
+    console.log(`Notifying user ${userId} about crypto deposit`);
+    
+    // Check if we have all required parameters
+    const amount = params.amount || '0';
+    const token = params.token || 'USDC';
+    const network = params.network || 'Base';
+    
+    // Get user's current balance
+    const { data: wallet, error } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .eq('chain', network.toLowerCase() === 'solana' ? 'solana' : 'evm')
+      .single();
+    
+    if (error) {
+      console.error('Error fetching wallet for crypto deposit notification:', error);
+    }
+    
+    // TODO: Implement real balance fetching from blockchain
+    // For now use placeholder or provided balance
+    const balance = params.balance || `${Number(amount) + 50} ${token}`;
+    
+    // Send a crypto deposit notification
+    return cryptoDepositNotification({
+      amount,
+      token,
+      network,
+      balance
+    });
+  } catch (error) {
+    console.error('Error handling crypto deposit notification:', error);
+    return { text: 'Failed to process deposit notification.' };
   }
 }
 
