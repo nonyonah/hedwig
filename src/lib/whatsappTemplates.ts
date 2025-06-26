@@ -264,9 +264,27 @@ export function sendTokenPrompt({
   recipient: string, 
   network: string 
 }) {
+  // Format the recipient address for better display
+  const formattedRecipient = recipient.length > 15 
+    ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
+    : recipient;
+    
+  // Calculate estimated fee (would be replaced with actual fee calculation in production)
+  const estimatedFee = token === 'SOL' ? '0.000005 SOL' : '0.0001 ETH';
+  
+  // Format current time for transaction timestamp
+  const now = new Date();
+  const timestamp = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  
   // Return an interactive message with buttons instead of a template
   return {
-    text: `💸 *Send Transaction*\n\nYou're about to send *${amount} ${token}* to:\n\n\`${recipient}\`\n\non ${network}.\n\nPlease confirm this transaction.`,
+    text: `💸 *Send Transaction*\n\n` +
+          `You're about to send *${amount} ${token}* to:\n\n` +
+          `\`${recipient}\`\n\n` +
+          `Network: ${network}\n` +
+          `Estimated Fee: ${estimatedFee}\n` +
+          `Time: ${timestamp}\n\n` +
+          `Please confirm this transaction.`,
     buttons: [
       { id: 'confirm_send', title: 'Confirm' },
       { id: 'cancel_send', title: 'Cancel' }

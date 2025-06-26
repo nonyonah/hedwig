@@ -899,14 +899,22 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         
         // Get the detected parameters
         const token = params.token || 'ETH';
-        const amount = params.amount || '0.01';
+        const amount = params.amount || '';
         const recipient = params.recipient || params.to || '';
         
-        if (!recipient) {
-          // If no recipient is specified, prompt the user
-          await sendWhatsAppMessage(from, { 
-            text: `I can help you send ${amount} ${token}. Please specify the recipient address you want to send to.` 
-          });
+        // If we're missing details, ask for them
+        if (!amount || !recipient) {
+          let promptText = `I can help you send ${token}. `;
+          
+          if (!amount && !recipient) {
+            promptText += "Please specify how much you want to send and to which address.";
+          } else if (!amount) {
+            promptText += `Please specify how much ${token} you want to send to ${recipient}.`;
+          } else if (!recipient) {
+            promptText += `Please specify the recipient address for sending ${amount} ${token}.`;
+          }
+          
+          await sendWhatsAppMessage(from, { text: promptText });
           return;
         }
         
