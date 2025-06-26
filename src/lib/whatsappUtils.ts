@@ -915,7 +915,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           amount, 
           token, 
           recipient,
-          network: params.network || 'Base Testnet' 
+          network: params.network || 'Base Sepolia' 
         }, userId);
         
         if (actionResult) {

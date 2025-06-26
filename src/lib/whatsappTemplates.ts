@@ -521,7 +521,7 @@ export function transactionSuccess({ amount, recipient_address, transaction_hash
     token: 'ETH',
     recipient: recipient_address,
     balance: '0 ETH', // This would need to be updated with actual balance
-    explorerUrl: transaction_hash ? `https://basescan.org/tx/${transaction_hash}` : ''
+    explorerUrl: transaction_hash ? `https://sepolia.basescan.org/tx/${transaction_hash}` : ''
   });
 }
 
@@ -562,9 +562,9 @@ export function swapSuccessful({ success_message, wallet_balance, tx_hash }: { s
   return swapSuccess({
     from_amount,
     to_amount,
-    network: 'Base',
+    network: 'Base Sepolia',
     balance: wallet_balance,
-    explorerUrl: tx_hash ? `https://basescan.org/tx/${tx_hash}` : ''
+    explorerUrl: tx_hash ? `https://sepolia.basescan.org/tx/${tx_hash}` : ''
   });
 }
 
