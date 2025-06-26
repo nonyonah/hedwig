@@ -264,20 +264,14 @@ export function sendTokenPrompt({
   recipient: string, 
   network: string 
 }) {
+  // Return an interactive message with buttons instead of a template
   return {
-    name: 'send_token_prompt',
-    language: 'en',
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: token },
-          { type: 'text', text: recipient },
-          { type: 'text', text: network }
-        ]
-      }
-    ]
+    text: `💸 *Send Transaction*\n\nYou're about to send *${amount} ${token}* to:\n\n\`${recipient}\`\n\non ${network}.\n\nPlease confirm this transaction.`,
+    buttons: [
+      { id: 'confirm_send', title: 'Confirm' },
+      { id: 'cancel_send', title: 'Cancel' }
+    ],
+    type: 'buttons'
   };
 }
 
@@ -605,3 +599,37 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
     ]
   };
 }
+
+/**
+ * Template: price_alert
+ * Parameter Format: POSITIONAL
+ * Parameters: token, price, change_percentage
+ * 
+ * Note: This template is currently commented out as it will be enabled later
+ */
+/*
+export function priceAlert({ 
+  token, 
+  price, 
+  change_percentage 
+}: { 
+  token: string, 
+  price: string, 
+  change_percentage: string 
+}) {
+  return {
+    name: 'price_alert',
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: token },
+          { type: 'text', text: price },
+          { type: 'text', text: change_percentage }
+        ]
+      }
+    ]
+  };
+}
+*/

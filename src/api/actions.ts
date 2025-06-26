@@ -108,6 +108,15 @@ export async function handleAction(intent: string, params: ActionParams, userId:
     }
   }
 
+  // Handle price and news requests with placeholder responses since we've commented out the actual handlers
+  if (intent === 'get_price') {
+    return { text: "Price information is currently unavailable. This feature will be enabled soon." };
+  }
+  
+  if (intent === 'get_news') {
+    return { text: "News updates are currently unavailable. This feature will be enabled soon." };
+  }
+
   switch (intent) {
     case 'welcome':
       return await handleWelcome(userId);
@@ -371,7 +380,40 @@ async function handleSendTokens(params: ActionParams, userId: string) {
       const token = params.token || 'ETH';
       const amount = params.amount || '0.01';
       const recipient = params.recipient || params.to || formatAddress(params.address || '0x123...456');
-      const network = params.network || params.chain || 'Base';
+      const network = params.network || params.chain || 'Base Testnet';
+      
+      // Store the pending transaction in the session
+      const { data: session } = await supabase
+        .from('sessions')
+        .select('context')
+        .eq('user_id', userId)
+        .single();
+      
+      const context = session?.context || [];
+      const pending = { 
+        action: 'send',
+        token,
+        amount,
+        recipient,
+        network
+      };
+      
+      // Add or update the pending transaction in the context
+      const existingPendingIndex = context.findIndex((item: any) => 
+        item.role === 'system' && JSON.parse(item.content)?.pending?.action === 'send'
+      );
+      
+      if (existingPendingIndex >= 0) {
+        context[existingPendingIndex] = { role: 'system', content: JSON.stringify({ pending }) };
+      } else {
+        context.push({ role: 'system', content: JSON.stringify({ pending }) });
+      }
+      
+      await supabase.from('sessions').upsert([{ 
+        user_id: userId, 
+        context, 
+        last_active: new Date().toISOString() 
+      }], { onConflict: 'user_id' });
       
       return handleSendInit({
         amount,
@@ -382,6 +424,9 @@ async function handleSendTokens(params: ActionParams, userId: string) {
     }
     
     // If in execute phase, process the send
+    // First show the pending message
+    console.log('Executing send transaction with params:', params);
+    
     // In a real implementation, you would call your backend service to submit the transaction
     // For now, return a placeholder success message
     return sendSuccess({ 
@@ -389,7 +434,7 @@ async function handleSendTokens(params: ActionParams, userId: string) {
       token: params.token || 'ETH', 
       recipient: params.recipient || formatAddress(params.to || '0x123...456'), 
       balance: '0.05 ETH', 
-      explorerUrl: 'https://basescan.org/tx/0x123...' 
+      explorerUrl: 'https://goerli.basescan.org/tx/0x123...' 
     });
   } catch (error) {
     console.error('Error sending tokens:', error);
@@ -422,7 +467,7 @@ async function handleSwapTokens(params: ActionParams, userId: string) {
       const fromToken = params.fromToken || params.from_token || 'ETH';
       const toToken = params.toToken || params.to_token || 'USDC';
       const amount = params.amount || '0.01';
-      const network = params.network || chain === 'solana' ? 'Solana' : 'Base';
+      const network = params.network || chain === 'solana' ? 'Solana Devnet' : 'Base Testnet';
       
       // 3. Show the swap prompt
       return handleSwapInit({
@@ -451,6 +496,7 @@ async function handleSwapTokens(params: ActionParams, userId: string) {
   }
 }
 
+/*
 async function handleGetPrice(params: ActionParams, userId: string) {
   try {
     const token = (params.token || 'ethereum').toLowerCase();
@@ -484,16 +530,17 @@ async function handleGetNews(params: ActionParams, userId: string) {
     return { text: 'Failed to get news.' };
   }
 }
+*/
 
 function getExplorerUrl(chain: string, txHash: string): string {
   switch (chain) {
     case 'evm':
     case 'base':
     case 'base-mainnet':
-      return `https://basescan.org/tx/${txHash}`;
+      return `https://goerli.basescan.org/tx/${txHash}`;
     case 'solana':
     case 'solana-mainnet':
-      return `https://solscan.io/tx/${txHash}`;
+      return `https://explorer.solana.com/tx/${txHash}?cluster=devnet`;
     default:
       return '';
   }
@@ -545,7 +592,7 @@ async function handleSend(params: ActionParams, userId: string) {
     const cdpApiSecret = process.env.CDP_API_KEY_SECRET;
     const cdpBaseUrl = process.env.CDP_API_URL || 'https://api.developer.coinbase.com/cdp/v2';
     const fromAddress = wallet.address;
-    const network = chain === 'solana' ? 'solana-mainnet' : 'base-mainnet';
+    const network = chain === 'solana' ? 'solana-devnet' : 'base-goerli';
     const url = `${cdpBaseUrl}/transactions/send?network=${network}`;
     const body = {
       from: fromAddress,
@@ -605,8 +652,8 @@ async function handleBridge(params: ActionParams, userId: string) {
       // Get bridge parameters
       const fromAmount = params.from_amount || params.fromAmount || params.amount || '0.01';
       const fromToken = params.from_token || params.fromToken || params.token || 'ETH';
-      const fromChain = params.from_chain || params.fromChain || params.source || 'Base';
-      const toChain = params.to_chain || params.toChain || params.destination || 'Solana';
+      const fromChain = params.from_chain || params.fromChain || params.source || 'Base Testnet';
+      const toChain = params.to_chain || params.toChain || params.destination || 'Solana Devnet';
       
       // Show the bridge quote pending message
       return bridgeQuotePending();
@@ -753,7 +800,7 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
     const fromToken = params.from_token || params.fromToken || 'ETH';
     const toToken = params.to_token || params.toToken || 'USDC';
     const amount = params.amount || '0.01';
-    const network = params.network || params.chain || 'Base';
+    const network = params.network || params.chain || 'Base Testnet';
     
     const rate = fromToken === 'ETH' ? '2000' : fromToken === 'SOL' ? '150' : '1';
     const toAmount = `${Number(amount) * Number(rate)} ${toToken}`;
@@ -763,7 +810,7 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
       to_amount: toAmount,
       network,
       balance: `${toAmount}`,
-      explorerUrl: 'https://basescan.org/tx/0x' // Placeholder
+      explorerUrl: 'https://goerli.basescan.org/tx/0x' // Testnet explorer URL
     });
   } catch (error) {
     console.error('Error processing swap:', error);
@@ -780,8 +827,9 @@ async function handleSendInit(params: ActionParams, userId: string) {
     const token = params.token || 'ETH';
     const amount = params.amount || '0.01';
     const recipient = params.recipient || params.to || '0x...';
-    const network = params.network || params.chain || 'Base';
+    const network = params.network || params.chain || 'Base Testnet';
     
+    // Return the interactive message with confirm/cancel buttons
     return sendTokenPrompt({
       amount,
       token,

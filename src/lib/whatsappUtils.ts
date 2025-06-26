@@ -2,10 +2,11 @@ import { getRequiredEnvVar } from '@/lib/envUtils';
 import { loadServerEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
-import { textTemplate } from './whatsappTemplates';
+import { textTemplate, txPending } from './whatsappTemplates';
 import { runLLM } from './llmAgent';
 import { parseIntentAndParams } from './intentParser';
 import { handleAction } from '../api/actions';
+import { createClient } from '@supabase/supabase-js';
 
 // Extend the global object to include our message cache
 declare global {
@@ -16,6 +17,12 @@ declare global {
 if (typeof global.processedMessages === 'undefined') {
   global.processedMessages = {};
 }
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -410,6 +417,54 @@ export async function sendWhatsAppTemplate(to: string, template: any): Promise<W
       throw new Error('Template must be a valid object');
     }
 
+    // Special case: handle interactive buttons
+    if (template.type === 'buttons' && template.text && Array.isArray(template.buttons)) {
+      const interactiveMessage = {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text: template.text
+          },
+          action: {
+            buttons: template.buttons.map((button: any) => ({
+              type: 'reply',
+              reply: {
+                id: button.id,
+                title: button.title
+              }
+            }))
+          }
+        }
+      };
+      
+      console.log('Sending interactive message with buttons:', JSON.stringify(interactiveMessage, null, 2));
+      
+      const response = await fetch(
+        `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(interactiveMessage),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Error sending WhatsApp interactive message:', response.status, errorData);
+        throw new Error(`Failed to send WhatsApp interactive message: ${errorData}`);
+      }
+      
+      const result = await response.json();
+      console.log('WhatsApp interactive message sent successfully to:', to);
+      return result;
+    }
+
     // Special case: handle no_wallet_yet as interactive message with buttons
     if (template.name === 'no_wallet_yet') {
       const interactiveMessage = {
@@ -742,6 +797,50 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         return;
       }
       
+      // Handle send confirmation buttons
+      if (buttonId === 'confirm_send') {
+        console.log('Send confirmation button clicked by:', from);
+        
+        // First show pending message
+        await sendWhatsAppTemplate(from, txPending());
+        
+        // Get transaction details from the session
+        const { data: session } = await supabase
+          .from('sessions')
+          .select('context')
+          .eq('user_id', userId)
+          .single();
+          
+        const pendingTx = session?.context?.find((item: { role: string, content: string }) => 
+          item.role === 'system' && 
+          JSON.parse(item.content)?.pending?.action === 'send'
+        );
+        
+        let txParams = {};
+        if (pendingTx) {
+          txParams = JSON.parse(pendingTx.content)?.pending || {};
+        }
+        
+        // Execute the send transaction
+        const actionResult = await handleAction('send', { ...txParams, isExecute: true }, userId);
+        
+        if (actionResult) {
+          if ('name' in actionResult) {
+            await sendWhatsAppTemplate(from, actionResult);
+          } else if ('text' in actionResult) {
+            await sendWhatsAppMessage(from, { text: actionResult.text });
+          }
+        }
+        
+        return;
+      }
+      
+      if (buttonId === 'cancel_send') {
+        console.log('Send canceled by:', from);
+        await sendWhatsAppMessage(from, { text: "Transaction canceled. Your funds have not been sent." });
+        return;
+      }
+      
       // For other buttons, we can handle them here
       // ...
     }
@@ -749,6 +848,21 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     // Handle text messages
     const text = message?.text?.body;
     if (text) {
+      // Check if the user is asking about the bot's identity
+      const lowerText = text.toLowerCase();
+      if ((lowerText.includes('who are you') || 
+           lowerText.includes('what are you') || 
+           lowerText.includes('what is your name') ||
+           lowerText.includes('what do you do') ||
+           (lowerText.includes('your') && lowerText.includes('name')) ||
+           (lowerText.includes('what') && lowerText.includes('hedwig')))) {
+        
+        await sendWhatsAppMessage(from, { 
+          text: "I'm Hedwig, your crypto assistant bot! I can help you manage your crypto wallets, send and receive tokens, swap between different cryptocurrencies, and bridge tokens between chains. Just let me know what you'd like to do!" 
+        });
+        return;
+      }
+      
       // Use Gemini LLM (Hedwig) for response
       const llmResponse = await runLLM({ userId, message: text });
       console.log('LLM Response:', llmResponse);
@@ -762,7 +876,6 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       
       // Direct keyword detection for certain operations
       // This helps catch specific user requests even if LLM parsing fails
-      const lowerText = text.toLowerCase();
       
       // Check for deposit-related keywords
       if (lowerText.includes('deposit') || 
@@ -776,6 +889,43 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           await sendWhatsAppMessage(from, { text: actionResult.text });
           return;
         }
+      }
+      
+      // Check for send-related keywords to provide guidance
+      if ((lowerText.includes('send') || lowerText.includes('transfer')) && 
+          (lowerText.includes('token') || lowerText.includes('eth') || 
+           lowerText.includes('sol') || lowerText.includes('usdc'))) {
+        console.log('Send request detected, providing guidance');
+        
+        // Get the detected parameters
+        const token = params.token || 'ETH';
+        const amount = params.amount || '0.01';
+        const recipient = params.recipient || params.to || '';
+        
+        if (!recipient) {
+          // If no recipient is specified, prompt the user
+          await sendWhatsAppMessage(from, { 
+            text: `I can help you send ${amount} ${token}. Please specify the recipient address you want to send to.` 
+          });
+          return;
+        }
+        
+        // If we have all parameters, proceed with the send prompt
+        const actionResult = await handleAction('send_token_prompt', { 
+          amount, 
+          token, 
+          recipient,
+          network: params.network || 'Base Testnet' 
+        }, userId);
+        
+        if (actionResult) {
+          if ('name' in actionResult) {
+            await sendWhatsAppTemplate(from, actionResult);
+          } else if ('text' in actionResult) {
+            await sendWhatsAppMessage(from, { text: actionResult.text });
+          }
+        }
+        return;
       }
       
       // Check for swap instruction keywords
