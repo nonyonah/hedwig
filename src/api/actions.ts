@@ -574,34 +574,41 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         // Convert amount to hex format (required by Privy)
         const amountInHex = '0x' + Number(amount).toString(16);
         
-        // Prepare transaction object
-        const transactionObject = chain === 'solana' 
-          ? {
-              to: recipient,
-              value: amountInHex
+        // Prepare request based on chain type
+        let method, body;
+
+        if (chain === 'solana') {
+          // For Solana, use the format from Privy docs for Solana
+          method = 'solana_sendTransaction';
+          body = JSON.stringify({
+            method,
+            caip2: 'solana:11155111',
+            chain_type: 'solana',
+            params: {
+              transaction: {
+                to: recipient,
+                value: amountInHex
+              }
             }
-          : {
-              to: recipient,
-              value: amountInHex,
-              from: senderAddress,
-              gas: '0x5208' // 21000 gas for simple transfer
-            };
+          });
+        } else {
+          // For EVM chains, use the format from Privy docs for Ethereum
+          method = 'eth_sendTransaction';
+          body = JSON.stringify({
+            method,
+            caip2: 'eip155:11155111',
+            chain_type: 'ethereum',
+            params: {
+              transaction: {
+                to: recipient,
+                value: amountInHex,
+                from: senderAddress
+              }
+            }
+          });
+        }
         
-        // Serialize the transaction to base64 string for Privy
-        const serializedTx = Buffer.from(JSON.stringify(transactionObject)).toString('base64');
-        
-        // Use standard Ethereum RPC method
-        const method = chain === 'solana' ? 'solana_sendTransaction' : 'eth_sendTransaction';
-        const caip2 = chain === 'solana' ? 'solana:11155111' : 'eip155:11155111'; // Chain IDs
-        
-        // Prepare request payload
-        const params = {
-          transaction: serializedTx,
-          encoding: "base64"
-        };
-        
-        // Prepare request
-        const body = JSON.stringify({ method, params, caip2 });
+        // Prepare auth headers
         const auth = Buffer.from(`${privyAppId}:${privyAppSecret}`).toString('base64');
         const headers = {
           'Authorization': `Basic ${auth}`,
