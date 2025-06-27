@@ -250,19 +250,21 @@ export function swapPrompt({
 /**
  * Template: send_token_prompt
  * Parameter Format: POSITIONAL
- * Parameters: amount, token, recipient, network
+ * Parameters: amount, token, recipient, network, gasFee
  * Has QUICK_REPLY buttons
  */
 export function sendTokenPrompt({ 
   amount, 
   token, 
   recipient, 
-  network 
+  network, 
+  gasFee
 }: { 
   amount: string, 
   token: string, 
   recipient: string, 
-  network: string 
+  network: string, 
+  gasFee?: string
 }) {
   // Format the recipient address for better display
   const formattedRecipient = recipient.length > 15 
@@ -270,11 +272,10 @@ export function sendTokenPrompt({
     : recipient;
     
   // Calculate estimated fee (would be replaced with actual fee calculation in production)
-  const estimatedFee = token === 'SOL' ? '0.000005 SOL' : '0.0001 ETH';
+  const estimatedFee = gasFee || (token === 'SOL' ? '0.000005 SOL' : '0.0001 ETH');
   
-  // Format current time for transaction timestamp
-  const now = new Date();
-  const timestamp = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  // Only show estimated time
+  const estimatedTime = '1-5 mins';
   
   // Return an interactive message with buttons instead of a template
   return {
@@ -283,7 +284,7 @@ export function sendTokenPrompt({
           `\`${recipient}\`\n\n` +
           `Network: ${network}\n` +
           `Estimated Fee: ${estimatedFee}\n` +
-          `Time: ${timestamp}\n\n` +
+          `Estimated Time: ${estimatedTime}\n\n` +
           `Please confirm this transaction.`,
     buttons: [
       { id: 'confirm_send', title: 'Confirm' },

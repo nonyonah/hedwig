@@ -2,7 +2,7 @@ import { getRequiredEnvVar } from '@/lib/envUtils';
 import { loadServerEnvironment } from './serverEnv';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
-import { textTemplate, txPending } from './whatsappTemplates';
+import { textTemplate, txPending, sendTokenPrompt } from './whatsappTemplates';
 import { runLLM } from './llmAgent';
 import { parseIntentAndParams } from './intentParser';
 import { handleAction } from '../api/actions';
@@ -798,32 +798,26 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       }
       
       // Handle send confirmation buttons
-      if (buttonId === 'confirm_send') {
+      if (buttonId === 'confirm_send' || buttonReply.title.toLowerCase() === 'yes') {
         console.log('Send confirmation button clicked by:', from);
-        
-        // First show pending message
+        // Show pending message
         await sendWhatsAppTemplate(from, txPending());
-        
         // Get transaction details from the session
         const { data: session } = await supabase
           .from('sessions')
           .select('context')
           .eq('user_id', userId)
           .single();
-          
         const pendingTx = session?.context?.find((item: { role: string, content: string }) => 
           item.role === 'system' && 
           JSON.parse(item.content)?.pending?.action === 'send'
         );
-        
         let txParams = {};
         if (pendingTx) {
           txParams = JSON.parse(pendingTx.content)?.pending || {};
         }
-        
         // Execute the send transaction
         const actionResult = await handleAction('send', { ...txParams, isExecute: true }, userId);
-        
         if (actionResult) {
           if ('name' in actionResult) {
             await sendWhatsAppTemplate(from, actionResult);
@@ -831,7 +825,6 @@ export async function handleIncomingWhatsAppMessage(body: any) {
             await sendWhatsAppMessage(from, { text: actionResult.text });
           }
         }
-        
         return;
       }
       
@@ -883,6 +876,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       console.log('Detected intent:', intent);
       console.log('Detected params:', params);
       
+      // Normalize token field in params
+      params.token = params.token || params.asset || params.symbol;
       // Check for pending action in session
       const { data: session } = await supabase
         .from('sessions')
@@ -893,66 +888,36 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       if (session?.context) {
         pending = session.context.find((item: any) => item.role === 'system' && JSON.parse(item.content)?.pending);
       }
-      let mergedParams = { ...params };
+      // Intercept 'yes' for send confirmation if pending send flow is ready
       if (pending) {
         const pendingObj = JSON.parse(pending.content).pending;
-        mergedParams = { ...pendingObj, ...params };
-        // If all required fields are present for the pending action, proceed
-        if (pendingObj.action === 'send') {
-          const hasAll = mergedParams.token && mergedParams.amount && mergedParams.recipient && mergedParams.network;
-          if (hasAll) {
-            await handleAction('send', mergedParams, userId);
-            // Clear pending context
-            await supabase.from('sessions').upsert([
-              {
-                user_id: userId,
-                context: [],
-                updated_at: new Date().toISOString()
-              }
-            ], { onConflict: 'user_id' });
-            return;
+        // Normalize token in pendingObj
+        pendingObj.token = pendingObj.token || pendingObj.asset || pendingObj.symbol;
+        const mergedParams = { ...pendingObj, ...params };
+        mergedParams.token = mergedParams.token || mergedParams.asset || mergedParams.symbol;
+        const hasAll = mergedParams.token && mergedParams.amount && mergedParams.recipient && mergedParams.network;
+        if (hasAll && (text.trim().toLowerCase() === 'yes' || text.trim().toLowerCase() === 'confirm')) {
+          // Show tx_pending
+          await sendWhatsAppTemplate(from, txPending());
+          // Execute the send transaction
+          const actionResult = await handleAction('send', { ...mergedParams, isExecute: true }, userId);
+          if (actionResult) {
+            if ('name' in actionResult) {
+              await sendWhatsAppTemplate(from, actionResult);
+            } else if ('text' in actionResult) {
+              await sendWhatsAppMessage(from, { text: actionResult.text });
+            }
           }
-        } else if (pendingObj.action === 'swap') {
-          const hasAll = mergedParams.amount && mergedParams.from_token && mergedParams.to_token;
-          if (hasAll) {
-            await handleAction('swap', mergedParams, userId);
-            await supabase.from('sessions').upsert([
-              {
-                user_id: userId,
-                context: [],
-                updated_at: new Date().toISOString()
-              }
-            ], { onConflict: 'user_id' });
-            return;
-          }
-        } else if (pendingObj.action === 'bridge') {
-          const hasAll = mergedParams.amount && mergedParams.token && mergedParams.from_chain && mergedParams.to_chain;
-          if (hasAll) {
-            await handleAction('bridge', mergedParams, userId);
-            await supabase.from('sessions').upsert([
-              {
-                user_id: userId,
-                context: [],
-                updated_at: new Date().toISOString()
-              }
-            ], { onConflict: 'user_id' });
-            return;
-          }
+          // Clear pending context
+          await supabase.from('sessions').upsert([
+            {
+              user_id: userId,
+              context: [],
+              updated_at: new Date().toISOString()
+            }
+          ], { onConflict: 'user_id' });
+          return;
         }
-        // If still missing, update pending context with mergedParams
-        await supabase.from('sessions').upsert([
-          {
-            user_id: userId,
-            context: [{
-              role: 'system',
-              content: JSON.stringify({ pending: { ...mergedParams, action: pendingObj.action } })
-            }],
-            updated_at: new Date().toISOString()
-          }
-        ], { onConflict: 'user_id' });
-        // Prompt for missing info (let the action handler do it)
-        await handleAction(pendingObj.action, mergedParams, userId);
-        return;
       }
       
       // Direct keyword detection for certain operations
@@ -975,38 +940,65 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       // Check for send-related keywords to provide guidance
       if ((lowerText.includes('send') || lowerText.includes('transfer')) && 
           (lowerText.includes('token') || lowerText.includes('eth') || 
-           lowerText.includes('sol') || lowerText.includes('usdc'))) {
+           lowerText.includes('sol') || lowerText.includes('usdc') || lowerText === 'send' || lowerText === 'send tokens')) {
         console.log('Send request detected, providing guidance');
-        
+        // If this is a generic send request, prompt for all fields with an example
+        if (lowerText === 'send' || lowerText === 'send tokens' || lowerText === 'i want to send tokens' || lowerText === 'i want to send') {
+          await sendWhatsAppMessage(from, {
+            text: 'Sure! What token would you like to send? For example: "Send 0.1 USDC to 0x123... on Base Sepolia"'
+          });
+          // Store pending context for send
+          await supabase.from('sessions').upsert([
+            {
+              user_id: userId,
+              context: [{
+                role: 'system',
+                content: JSON.stringify({ pending: { action: 'send' } })
+              }],
+              updated_at: new Date().toISOString()
+            }
+          ], { onConflict: 'user_id' });
+          return;
+        }
         // Get the detected parameters
-        const token = params.token || 'ETH';
+        const token = params.token || params.asset || params.symbol;
         const amount = params.amount || '';
         const recipient = params.recipient || params.to || '';
-        
+        const network = params.network || params.chain || '';
         // If we're missing details, ask for them
-        if (!amount || !recipient) {
-          let promptText = `I can help you send ${token}. `;
-          
-          if (!amount && !recipient) {
-            promptText += "Please specify how much you want to send and to which address.";
-          } else if (!amount) {
-            promptText += `Please specify how much ${token} you want to send to ${recipient}.`;
-          } else if (!recipient) {
-            promptText += `Please specify the recipient address for sending ${amount} ${token}.`;
+        const missing: string[] = [];
+        if (!token) missing.push('token');
+        if (!amount) missing.push('amount');
+        if (!recipient) missing.push('recipient');
+        if (!network) missing.push('network');
+        if (missing.length > 0) {
+          let promptText = 'To send tokens, please specify: ';
+          if (missing.length === 4) {
+            promptText = 'What token would you like to send? For example: "Send 0.1 USDC to 0x123... on Base Sepolia"';
+          } else {
+            promptText += missing.join(', ');
           }
-          
+          // Store pending context in session
+          await supabase.from('sessions').upsert([
+            {
+              user_id: userId,
+              context: [{
+                role: 'system',
+                content: JSON.stringify({ pending: { action: 'send', ...params } })
+              }],
+              updated_at: new Date().toISOString()
+            }
+          ], { onConflict: 'user_id' });
           await sendWhatsAppMessage(from, { text: promptText });
           return;
         }
-        
         // If we have all parameters, proceed with the send prompt
         const actionResult = await handleAction('send_token_prompt', { 
           amount, 
           token, 
           recipient,
-          network: params.network || 'Base Sepolia' 
+          network
         }, userId);
-        
         if (actionResult) {
           if ('name' in actionResult) {
             await sendWhatsAppTemplate(from, actionResult);

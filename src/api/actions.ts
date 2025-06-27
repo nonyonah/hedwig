@@ -1,4 +1,4 @@
-import { getOrCreatePrivyWallet } from '@/lib/privy';
+import { getOrCreatePrivyWallet, getPrivyAuthHeader } from '@/lib/privy';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
 import { formatAddress } from '@/lib/utils';
@@ -33,6 +33,7 @@ import {
   bridgeQuoteConfirm,
   bridgeQuotePending
 } from '@/lib/whatsappTemplates';
+import { PrivyClient } from '@privy-io/server-auth';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -41,6 +42,14 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const privyClient = new PrivyClient(
+  process.env.PRIVY_APP_ID!,
+  process.env.PRIVY_APP_SECRET!
+);
+
+const appId = process.env.PRIVY_APP_ID!;
+const appSecret = process.env.PRIVY_APP_SECRET!;
 
 /**
  * Check if a user has wallets
@@ -524,65 +533,70 @@ async function handleSendTokens(params: ActionParams, userId: string) {
 
     // If in execution phase, process the send
     if (isExecute) {
-      // Get sender wallet address from DB
+      // Get sender wallet address and privy_wallet_id from DB
       let senderAddress = '';
-      let chain = '';
+      let privyWalletId = '';
+      let chain: 'evm' | 'solana' = 'evm';
       if (network.toLowerCase().includes('solana')) {
         chain = 'solana';
         const { data: solanaWallet } = await supabase
           .from('wallets')
-          .select('address')
+          .select('address, privy_wallet_id')
           .eq('user_id', userId)
           .eq('chain', 'solana')
           .single();
         senderAddress = solanaWallet?.address;
+        privyWalletId = solanaWallet?.privy_wallet_id;
       } else {
         chain = 'evm';
         const { data: evmWallet } = await supabase
           .from('wallets')
-          .select('address')
+          .select('address, privy_wallet_id')
           .eq('user_id', userId)
           .eq('chain', 'evm')
           .single();
         senderAddress = evmWallet?.address;
+        privyWalletId = evmWallet?.privy_wallet_id;
       }
-      if (!senderAddress) {
+      if (!senderAddress || !privyWalletId) {
         return sendFailed({ reason: 'Sender wallet not found.' });
       }
-      // Get Privy wallet provider (assume available as getPrivyProvider)
-      const { getPrivyProvider } = await import('@/lib/privy');
-      const provider = await getPrivyProvider(userId, chain);
       let txHash = '';
       let explorerUrl = '';
       try {
-        if (chain === 'evm') {
-          // EVM: amount in wei (hex), Sepolia chainId
-          const valueWei = BigInt(Math.floor(Number(amount) * 1e18)).toString(16);
-          const tx = {
-            from: senderAddress,
-            to: recipient,
-            value: '0x' + valueWei,
-            chainId: '0xaa36a7', // Sepolia
-          };
-          txHash = await provider.request({
+        const valueWei = BigInt(Math.floor(Number(amount) * 1e18)).toString(16);
+        const tx = {
+          from: senderAddress,
+          to: recipient,
+          value: '0x' + valueWei,
+          chainId: '0xaa36a7', // Sepolia
+        };
+        
+        // Use direct REST API call instead of client.rpc
+        const rpcEndpoint = `https://api.privy.io/v1/wallets/${privyWalletId}/rpc`;
+        const rpcResponse = await fetch(rpcEndpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': getPrivyAuthHeader(),
+            'Content-Type': 'application/json',
+            'privy-app-id': appId,
+          },
+          body: JSON.stringify({
             method: 'eth_sendTransaction',
             params: [tx],
-          });
-          explorerUrl = `https://sepolia.basescan.org/tx/${txHash}`;
-        } else if (chain === 'solana') {
-          // Solana: amount in lamports
-          const valueLamports = Math.floor(Number(amount) * 1e9);
-          const tx = {
-            from: senderAddress,
-            to: recipient,
-            value: valueLamports,
-          };
-          txHash = await provider.request({
-            method: 'solana_sendTransaction',
-            params: [tx],
-          });
-          explorerUrl = `https://explorer.solana.com/tx/${txHash}?cluster=devnet`;
+            caip2: 'eip155:11155111', // Sepolia
+          }),
+        });
+        
+        if (!rpcResponse.ok) {
+          const errorText = await rpcResponse.text();
+          console.error('Privy RPC call failed:', errorText);
+          throw new Error(`Transaction failed: ${errorText}`);
         }
+        
+        const rpcResult = await rpcResponse.json();
+        txHash = rpcResult.data?.hash || rpcResult.data || '';
+        explorerUrl = `https://sepolia.basescan.org/tx/${txHash}`;
         // Fetch new balance for template
         let newBalance = '0';
         if (chain === 'evm') {
@@ -616,7 +630,7 @@ async function handleSendTokens(params: ActionParams, userId: string) {
     return sendTokenPrompt({ amount, token, recipient, network });
   } catch (error) {
     console.error('Send error:', error);
-    return { text: 'Failed to send.' };
+    return sendFailed({ reason: 'Failed to send.' });
   }
 }
 
