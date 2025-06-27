@@ -888,6 +888,9 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       if (session?.context) {
         pending = session.context.find((item: any) => item.role === 'system' && JSON.parse(item.content)?.pending);
       }
+      // Add debug logging
+      console.log('Session context:', session?.context);
+      console.log('User text:', text);
       // Intercept 'yes' for send confirmation if pending send flow is ready
       if (pending) {
         const pendingObj = JSON.parse(pending.content).pending;
@@ -896,6 +899,10 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         const mergedParams = { ...pendingObj, ...params };
         mergedParams.token = mergedParams.token || mergedParams.asset || mergedParams.symbol;
         const hasAll = mergedParams.token && mergedParams.amount && mergedParams.recipient && mergedParams.network;
+        // More debug logging
+        console.log('Pending object:', pendingObj);
+        console.log('Merged params:', mergedParams);
+        console.log('Has all required fields:', hasAll);
         if (hasAll && (text.trim().toLowerCase() === 'yes' || text.trim().toLowerCase() === 'confirm')) {
           // Show tx_pending
           await sendWhatsAppTemplate(from, txPending());
