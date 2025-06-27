@@ -13,7 +13,7 @@ export function textTemplate(text: string) {
 export function txPending() {
   return {
     name: 'tx_pending',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY'
@@ -30,7 +30,7 @@ export function txPending() {
 export function bridgeDepositNotification({ amount, token, network, balance }: { amount: string, token: string, network: string, balance: string }) {
   return {
     name: 'bridge_deposit_notification',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -53,7 +53,7 @@ export function bridgeDepositNotification({ amount, token, network, balance }: {
 export function bridgeProcessing() {
   return {
     name: 'bridge_processing',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY'
@@ -84,7 +84,7 @@ export function bridgeQuoteConfirm({
 }) {
   return {
     name: 'bridge_quote_confirm',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -109,7 +109,7 @@ export function bridgeQuoteConfirm({
 export function bridgeQuotePending() {
   return {
     name: 'bridge_quote_pending',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY'
@@ -126,7 +126,7 @@ export function bridgeQuotePending() {
 export function cryptoDepositNotification({ amount, token, network, balance }: { amount: string, token: string, network: string, balance: string }) {
   return {
     name: 'crypto_deposit_notification',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -149,7 +149,7 @@ export function cryptoDepositNotification({ amount, token, network, balance }: {
 export function swapProcessing() {
   return {
     name: 'swap_processing',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY'
@@ -180,7 +180,7 @@ export function swapQuoteConfirm({
 }) {
   return {
     name: 'swap_quote_confirm',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -205,7 +205,7 @@ export function swapQuoteConfirm({
 export function quotePending() {
   return {
     name: 'quote_pending',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY'
@@ -232,7 +232,7 @@ export function swapPrompt({
 }) {
   return {
     name: 'swap_prompt',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -274,7 +274,7 @@ export function sendTokenPrompt({
   amount: string, 
   token: string, 
   recipient: string, 
-  network: string, 
+  network: string,
   gasFee?: string
 }) {
   // Format the recipient address for better display
@@ -300,22 +300,6 @@ export function sendTokenPrompt({
         { type: "text", text: network },
         { type: "text", text: feeAndTime }
       ]
-    },
-    {
-      type: "button",
-      sub_type: "quick_reply",
-      index: 0,
-      parameters: [
-        { type: "payload", payload: "confirm_send" }
-      ]
-    },
-    {
-      type: "button",
-      sub_type: "quick_reply",
-      index: 1,
-      parameters: [
-        { type: "payload", payload: "cancel_send" }
-      ]
     }
   ];
 
@@ -337,7 +321,7 @@ export function sendTokenPrompt({
 export function tokenReceived({ amount, network, balance }: { amount: string, network: string, balance: string }) {
   return {
     name: 'token_received',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -359,7 +343,7 @@ export function tokenReceived({ amount, network, balance }: { amount: string, ne
 export function bridgeFailed({ reason }: { reason: string }) {
   return {
     name: 'bridge_failed',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -383,7 +367,7 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
   
   return {
     name: 'send_success',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -406,7 +390,7 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
 export function swapSuccess({ from_amount, to_amount, network, balance, explorerUrl }: { from_amount: string, to_amount: string, network: string, balance: string, explorerUrl: string }) {
   return {
     name: 'swap_success',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -429,7 +413,7 @@ export function swapSuccess({ from_amount, to_amount, network, balance, explorer
 export function bridgeSuccess({ amount, from_network, to_network, balance }: { amount: string, from_network: string, to_network: string, balance: string }) {
   return {
     name: 'bridge_success',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -452,7 +436,7 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
 export function sendFailed({ reason }: { reason: string }) {
   return {
     name: 'send_failed',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -482,7 +466,7 @@ export function walletBalance({
 }) {
   return {
     name: 'wallet_balance',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -505,7 +489,7 @@ export function walletBalance({
 export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
   return {
     name: 'wallet_created_multi',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -526,7 +510,7 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
 export function privateKeys({ privy_link }: { privy_link: string }) {
   return {
     name: 'private_keys',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
@@ -546,7 +530,7 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
 export function noWalletYet() {
   return {
     name: 'no_wallet_yet',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY'
@@ -643,7 +627,7 @@ export function walletCreated({ address }: { address: string }) {
 export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
   return {
     name: 'users_wallet_addresses',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
