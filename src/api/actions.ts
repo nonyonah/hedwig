@@ -565,47 +565,60 @@ async function handleSendTokens(params: ActionParams, userId: string) {
       let txHash = '';
       let explorerUrl = '';
       try {
-        // CDP API call
-        const cdpApiKey = process.env.CDP_API_KEY_ID;
-        const cdpApiSecret = process.env.CDP_API_KEY_SECRET;
-        const cdpBaseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com/wallets';
-        const transferPath = '/transfers';
-        const transferUrl = `${cdpBaseUrl}${transferPath}`;
-        const transferBody = {
-          wallet_id: privyWalletId,
-          asset: token,
-          amount: amount,
-          to_address: recipient,
-          chain_id: 'eip155:11155111'
-        };
-        const bodyStr = JSON.stringify(transferBody);
-        const timestamp = Math.floor(Date.now() / 1000).toString();
-        const signature = cdpSign({
-          secret: cdpApiSecret,
-          timestamp,
-          method: 'POST',
-          requestPath: transferPath,
-          body: bodyStr
-        });
+        // Privy API call
+        const privyApiUrl = 'https://api.privy.io/v1/wallets';
+        const privyAppId = process.env.PRIVY_APP_ID!;
+        const privyAppSecret = process.env.PRIVY_APP_SECRET!;
+        const rpcUrl = `${privyApiUrl}/${privyWalletId}/rpc`;
+        let method = '';
+        let params: any = {};
+        if (chain === 'solana') {
+          method = 'solana_sendTransaction';
+          params = {
+            transaction: {
+              to: recipient,
+              value: amount,
+              // Add any other required Solana tx fields here
+            }
+          };
+        } else {
+          method = 'eth_sendTransaction';
+          params = {
+            transaction: {
+              to: recipient,
+              value: amount,
+              chain_id: 11155111, // Sepolia
+              // Add any other required EVM tx fields here
+            }
+          };
+        }
+        const body = JSON.stringify({ method, params });
+        const auth = Buffer.from(`${privyAppId}:${privyAppSecret}`).toString('base64');
         const headers = {
+          'Authorization': `Basic ${auth}`,
           'Content-Type': 'application/json',
-          'CB-ACCESS-KEY': cdpApiKey,
-          'CB-ACCESS-SIGN': signature,
-          'CB-ACCESS-TIMESTAMP': timestamp
+          'privy-app-id': privyAppId
         };
-        const transferRes = await fetch(transferUrl, {
+        // Extra logging
+        console.log('[Privy RPC] URL:', rpcUrl);
+        console.log('[Privy RPC] Headers:', headers);
+        console.log('[Privy RPC] Body:', body);
+        const rpcRes = await fetch(rpcUrl, {
           method: 'POST',
           headers,
-          body: bodyStr
+          body
         });
-        if (!transferRes.ok) {
-          const errorText = await transferRes.text();
-          console.error('CDP transfer error:', errorText);
-          return sendFailed({ reason: errorText });
+        const rpcResText = await rpcRes.text();
+        console.log('[Privy RPC] Response status:', rpcRes.status);
+        console.log('[Privy RPC] Response body:', rpcResText);
+        if (!rpcRes.ok) {
+          return sendFailed({ reason: rpcResText });
         }
-        const transfer = await transferRes.json();
-        txHash = transfer.data?.transaction?.hash || transfer.data?.hash || '';
-        explorerUrl = `https://sepolia.basescan.org/tx/${txHash}`;
+        const rpcResult = JSON.parse(rpcResText);
+        txHash = rpcResult.data?.hash || rpcResult.data?.transaction_hash || rpcResult.data || '';
+        explorerUrl = chain === 'solana'
+          ? `https://explorer.solana.com/tx/${txHash}?cluster=devnet`
+          : `https://sepolia.basescan.org/tx/${txHash}`;
         // Fetch new balance for template
         let newBalance = '0';
         if (chain === 'evm') {
@@ -824,7 +837,7 @@ async function handleSend(params: ActionParams, userId: string) {
     // 3. Call CDP API to send transaction
     const cdpApiKey = process.env.CDP_API_KEY_ID;
     const cdpApiSecret = process.env.CDP_API_KEY_SECRET;
-    const cdpBaseUrl = process.env.CDP_API_URL || 'https://api.developer.coinbase.com/cdp/v2';
+    const cdpBaseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com/v2';
     const fromAddress = wallet.address;
     const network = chain === 'solana' ? 'solana-devnet' : 'base-sepolia';
     const url = `${cdpBaseUrl}/transactions/send?network=${network}`;
@@ -1352,10 +1365,7 @@ function sendSuccessSanitized(args: any) {
   });
 }
 
-// Use sendSuccessSanitized instead of sendSuccess in the return statement
-
-// Helper for CDP signature
-function cdpSign({ secret, timestamp, method, requestPath, body }) {
+function cdpSign({ secret, timestamp, method, requestPath, body }: { secret: string, timestamp: string, method: string, requestPath: string, body: string }): string {
   const prehash = timestamp + method.toUpperCase() + requestPath + body;
   return crypto.createHmac('sha256', secret).update(prehash).digest('hex');
 }
