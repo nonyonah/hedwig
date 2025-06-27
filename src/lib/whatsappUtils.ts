@@ -370,337 +370,39 @@ export function formatPhoneNumber(phoneNumber: string): string {
  */
 export async function sendWhatsAppTemplate(to: string, template: any): Promise<WhatsAppMessageResponse> {
   try {
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-    
-    // Check if we have valid credentials before attempting to send
-    if (!accessToken || accessToken.includes('dev-') || accessToken === 'EAABBC') {
-      console.warn(`[WhatsApp] Missing valid WhatsApp access token. Template to ${to} will not be sent.`);
-      
-      // In development, return a fake success response
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[DEV MODE] Would have sent WhatsApp template to ${to}:`, JSON.stringify(template, null, 2));
-        return {
-          messaging_product: 'whatsapp',
-          contacts: [{ input: to, wa_id: to }],
-          messages: [{ id: `mock-${Date.now()}` }]
-        };
-      }
-      
-      throw new Error('Missing valid WhatsApp access token');
+    // Ensure template has required fields
+    if (!template || !template.name || !template.language) {
+      console.error('Invalid template format:', template);
+      throw new Error('Invalid template format');
     }
     
-    if (!phoneNumberId || phoneNumberId.includes('dev-')) {
-      console.warn(`[WhatsApp] Missing valid WhatsApp phone number ID. Template to ${to} will not be sent.`);
-      
-      // In development, return a fake success response
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[DEV MODE] Would have sent WhatsApp template to ${to} using phone ID: ${phoneNumberId}`);
-        return {
-          messaging_product: 'whatsapp',
-          contacts: [{ input: to, wa_id: to }],
-          messages: [{ id: `mock-${Date.now()}` }]
-        };
-      }
-      
-      throw new Error('Missing valid WhatsApp phone number ID');
-    }
+    // Create a deep copy of the template to avoid modifying the original
+    const templateCopy = JSON.parse(JSON.stringify(template));
     
-    console.log(`Sending WhatsApp template to ${to} using phone number ID: ${phoneNumberId}`);
-    
-    // Debug the template
-    console.log('Template before processing:', JSON.stringify(template, null, 2));
-    
-    // Validate template structure
-    if (!template || typeof template !== 'object') {
-      console.error('Invalid template object:', template);
-      throw new Error('Template must be a valid object');
-    }
-
-    // Special case: handle interactive buttons
-    if (template.type === 'buttons' && template.text && Array.isArray(template.buttons)) {
-      const interactiveMessage = {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: {
-            text: template.text
-          },
-          action: {
-            buttons: template.buttons.map((button: any) => ({
-              type: 'reply',
-              reply: {
-                id: button.id,
-                title: button.title
-              }
-            }))
-          }
-        }
-      };
-      
-      console.log('Sending interactive message with buttons:', JSON.stringify(interactiveMessage, null, 2));
-      
-      const response = await fetch(
-        `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(interactiveMessage),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Error sending WhatsApp interactive message:', response.status, errorData);
-        throw new Error(`Failed to send WhatsApp interactive message: ${errorData}`);
-      }
-      
-      const result = await response.json();
-      console.log('WhatsApp interactive message sent successfully to:', to);
-      return result;
-    }
-
-    // Special case: handle no_wallet_yet as interactive message with buttons
-    if (template.name === 'no_wallet_yet') {
-      const interactiveMessage = {
-        messaging_product: 'whatsapp',
-        to,
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: {
-            text: "👋 Welcome!\n\nYou're almost ready to start.\n\nTap below to create your wallets:\n🔹 EVM (Base, Ethereum, etc.)\n🔸 Solana (fast + low fees)"
-          },
-          action: {
-            buttons: [
-              {
-                type: 'reply',
-                reply: {
-                  id: 'create_wallets',
-                  title: 'Create Wallets'
-                }
-              }
-            ]
-          }
-        }
-      };
-      
-      console.log('Sending interactive message for no_wallet_yet:', JSON.stringify(interactiveMessage, null, 2));
-      
-      const response = await fetch(
-        `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(interactiveMessage),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Error sending WhatsApp interactive message:', response.status, errorData);
-        throw new Error(`Failed to send WhatsApp interactive message: ${errorData}`);
-      }
-      
-      const result = await response.json();
-      console.log('WhatsApp interactive message sent successfully to:', to);
-      return result;
-    }
-    
-    // Special case: handle templates with URL buttons (send_success, swap_success)
-    if (template.name === 'send_success' || template.name === 'swap_success') {
-      // Extract the URL from the explorerUrl parameter if available
-      const explorerUrl = template.explorerUrl || '';
-      
-      if (explorerUrl && explorerUrl.startsWith('http')) {
-        // Find the body text based on template type
-        let bodyText = '';
-        if (template.name === 'send_success' && template.components?.[0]?.parameters) {
-          const params = template.components[0].parameters;
-          const amount = params[0]?.text || '';
-          const token = params[1]?.text || '';
-          const recipient = params[2]?.text || '';
-          const balance = params[3]?.text || '';
-          bodyText = `✅ You sent ${amount} ${token} to:\n\n${recipient}\n\n🔗 Your new balance is:\n${balance}`;
-        } else if (template.name === 'swap_success' && template.components?.[0]?.parameters) {
-          const params = template.components[0].parameters;
-          const from_amount = params[0]?.text || '';
-          const to_amount = params[1]?.text || '';
-          const network = params[2]?.text || '';
-          const balance = params[3]?.text || '';
-          bodyText = `🔄 Swap complete!\n\nYou swapped ${from_amount}\n→ ${to_amount} on ${network}.\n\n🔗 Your new balance is\n${balance}`;
-        }
-        
-        // Create interactive message with button
-        const interactiveMessage = {
-          messaging_product: 'whatsapp',
-          to,
-          type: 'interactive',
-          interactive: {
-            type: 'button',
-            body: {
-              text: bodyText
-            },
-            action: {
-              buttons: [
-                {
-                  type: 'url',
-                  url: explorerUrl,
-                  text: 'View in Explorer'
-                }
-              ]
-            }
-          }
-        };
-        
-        console.log('Sending interactive message with URL button:', JSON.stringify(interactiveMessage, null, 2));
-        
-        const response = await fetch(
-          `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(interactiveMessage),
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.text();
-          console.error('Error sending WhatsApp interactive message:', response.status, errorData);
-          throw new Error(`Failed to send WhatsApp interactive message: ${errorData}`);
-        }
-        
-        const result = await response.json();
-        console.log('WhatsApp interactive message sent successfully to:', to);
-        return result;
-      }
-    }
-
-    // For all other templates, use standard template format
-    if (!template.name) {
-      console.error('Template missing name:', template);
-      throw new Error('Template must include a name property');
-    }
-
-    // Ensure language is in the correct format
-    const language = typeof template.language === 'string' 
-      ? { code: template.language } 
-      : template.language || { code: 'en' };
-
-    // Clean up components if present
-    let components = [];
-    if (Array.isArray(template.components)) {
-      components = template.components.map((comp: any) => {
-        const cleanComponent: any = { type: comp.type };
-        
-        // Handle parameters if present
-        if (Array.isArray(comp.parameters)) {
-          // Check if this is a positional or named parameter template
-          // These templates use positional parameters (no 'name' property)
-          const positionalTemplates = [
-            'wallet_balance',
-            'users_wallet_addresses',
-            'no_wallet_yet',
-            'private_keys',
-            'crypto_deposit_notification',
-            'swap_processing',
-            'swap_quote_confirm',
-            'quote_pending',
-            'swap_prompt',
-            'send_token_prompt',
-            'bridge_deposit_notification',
-            'bridge_processing',
-            'bridge_quote_confirm',
-            'bridge_quote_pending'
-          ];
-          
-          const isPositionalTemplate = positionalTemplates.includes(template.name);
-          
-          // For positional templates, remove the name property
-          // For named templates, keep the name property
-          cleanComponent.parameters = comp.parameters.map((param: any) => {
-            if (isPositionalTemplate) {
-              // For positional templates, remove name property
-              return {
-                type: param.type || 'text',
-                text: param.text || ''
-              };
-            } else {
-              // For named templates, keep name property
-              return {
-                type: param.type || 'text',
-                text: param.text || '',
-                name: param.name
-              };
-            }
+    // Clean all components to remove 'name' property from parameters
+    if (templateCopy.components) {
+      templateCopy.components = templateCopy.components.map((component: any) => {
+        if (component && component.parameters) {
+          component.parameters = component.parameters.map((param: any) => {
+            const { name, ...rest } = param; // Remove 'name' property
+            return rest;
           });
         }
-        
-        return cleanComponent;
+        return component;
       });
     }
-
-    // Create the final template payload
-    const fullTemplate = {
-      messaging_product: 'whatsapp',
+    
+    const message: WhatsAppTemplateMessage = {
       to,
-      type: 'template',
-      template: {
-        name: String(template.name),
-        language,
-        components
-      }
+      template: templateCopy
     };
     
-    // Debug the final template
-    console.log('Final template payload:', JSON.stringify(fullTemplate, null, 2));
-    
-    const response = await fetch(
-      `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(fullTemplate),
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Error sending WhatsApp template:', response.status, errorData);
-      throw new Error(`Failed to send WhatsApp template: ${errorData}`);
-    }
-    
-    const result = await response.json();
-    console.log('WhatsApp template sent successfully to:', to);
-    return result;
-  } catch (err) {
-    console.error('Exception in sendWhatsAppTemplate:', err);
-    
-    // In development, provide a mock response instead of throwing
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[DEV MODE] Providing mock WhatsApp response due to error');
-      return {
-        messaging_product: 'whatsapp',
-        contacts: [{ input: to, wa_id: to }],
-        messages: [{ id: `error-mock-${Date.now()}` }]
-      };
-    }
-    
-    throw err;
+    return await sendWhatsAppTemplateMessage(message);
+  } catch (error) {
+    console.error('Error sending WhatsApp template:', error);
+    // Fallback to text message
+    const fallbackText = template.fallbackText || 'Sorry, I couldn\'t send the template message.';
+    return await sendWhatsAppMessage(to, { text: fallbackText });
   }
 }
 
@@ -818,6 +520,14 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         }
         // Execute the send transaction
         const actionResult = await handleAction('send', { ...txParams, isExecute: true }, userId);
+        // Clear the session context after execution
+        await supabase.from('sessions').upsert([
+          {
+            user_id: userId,
+            context: [],
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'user_id' });
         if (actionResult) {
           if ('name' in actionResult) {
             await sendWhatsAppTemplate(from, actionResult);
@@ -830,6 +540,14 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       
       if (buttonId === 'cancel_send') {
         console.log('Send canceled by:', from);
+        // Clear the session context
+        await supabase.from('sessions').upsert([
+          {
+            user_id: userId,
+            context: [],
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'user_id' });
         await sendWhatsAppMessage(from, { text: "Transaction canceled. Your funds have not been sent." });
         return;
       }
@@ -896,7 +614,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         const pendingObj = JSON.parse(pending.content).pending;
         // Normalize token in pendingObj
         pendingObj.token = pendingObj.token || pendingObj.asset || pendingObj.symbol;
-        const mergedParams = { ...pendingObj, ...params };
+        // Fix merge order: params first, then pendingObj
+        const mergedParams = { ...params, ...pendingObj };
         mergedParams.token = mergedParams.token || mergedParams.asset || mergedParams.symbol;
         const hasAll = mergedParams.token && mergedParams.amount && mergedParams.recipient && mergedParams.network;
         // More debug logging
@@ -1010,6 +729,19 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           recipient,
           network
         }, userId);
+        // Store pending context for confirmation
+        const pendingSend = { action: 'send', token, amount, recipient, network };
+        console.log('Writing pending send context for user (confirmation):', userId, pendingSend);
+        await supabase.from('sessions').upsert([
+          {
+            user_id: userId,
+            context: [{
+              role: 'system',
+              content: JSON.stringify({ pending: pendingSend })
+            }],
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'user_id' });
         if (actionResult) {
           if ('name' in actionResult) {
             await sendWhatsAppTemplate(from, actionResult);

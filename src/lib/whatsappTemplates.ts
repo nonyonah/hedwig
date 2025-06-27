@@ -247,6 +247,17 @@ export function swapPrompt({
   };
 }
 
+// Helper function to clean component parameters by removing the 'name' property
+function cleanComponent(component: any) {
+  if (component && component.parameters) {
+    component.parameters = component.parameters.map((param: any) => {
+      const { name, ...rest } = param; // Remove 'name' property
+      return rest;
+    });
+  }
+  return component;
+}
+
 /**
  * Template: send_token_prompt
  * Parameter Format: POSITIONAL
@@ -274,23 +285,47 @@ export function sendTokenPrompt({
   // Calculate estimated fee (would be replaced with actual fee calculation in production)
   const estimatedFee = gasFee || (token === 'SOL' ? '0.000005 SOL' : '0.0001 ETH');
   
-  // Only show estimated time
-  const estimatedTime = '1-5 mins';
+  // Combine amount and token into one parameter
+  const amountWithToken = `${amount} ${token}`;
   
-  // Return an interactive message with buttons instead of a template
+  // Combine fee and time into one parameter
+  const feeAndTime = `Fee: ${estimatedFee} • Est. time: 1-5 mins`;
+  
+  const components = [
+    {
+      type: "body",
+      parameters: [
+        { type: "text", text: amountWithToken },
+        { type: "text", text: formattedRecipient },
+        { type: "text", text: network },
+        { type: "text", text: feeAndTime }
+      ]
+    },
+    {
+      type: "button",
+      sub_type: "quick_reply",
+      index: 0,
+      parameters: [
+        { type: "payload", payload: "confirm_send" }
+      ]
+    },
+    {
+      type: "button",
+      sub_type: "quick_reply",
+      index: 1,
+      parameters: [
+        { type: "payload", payload: "cancel_send" }
+      ]
+    }
+  ];
+
+  // Clean all components to remove 'name' properties
+  const cleanedComponents = components.map(cleanComponent);
+  
   return {
-    text: `💸 *Send Transaction*\n\n` +
-          `You're about to send *${amount} ${token}* to:\n\n` +
-          `\`${recipient}\`\n\n` +
-          `Network: ${network}\n` +
-          `Estimated Fee: ${estimatedFee}\n` +
-          `Estimated Time: ${estimatedTime}\n\n` +
-          `Please confirm this transaction.`,
-    buttons: [
-      { id: 'confirm_send', title: 'Confirm' },
-      { id: 'cancel_send', title: 'Cancel' }
-    ],
-    type: 'buttons'
+    name: "send_token_prompt",
+    language: { code: "en" },
+    components: cleanedComponents
   };
 }
 
@@ -343,6 +378,9 @@ export function bridgeFailed({ reason }: { reason: string }) {
  * Has URL button
  */
 export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
+  // Combine amount and token
+  const amountWithToken = `${amount} ${token}`;
+  
   return {
     name: 'send_success',
     language: 'en',
@@ -350,10 +388,9 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount, name: 'amount' },
-          { type: 'text', text: token, name: 'token' },
-          { type: 'text', text: recipient, name: 'recipient' },
-          { type: 'text', text: balance, name: 'balance' }
+          { type: 'text', text: amountWithToken },
+          { type: 'text', text: recipient },
+          { type: 'text', text: balance }
         ]
       }
     ]
@@ -374,10 +411,10 @@ export function swapSuccess({ from_amount, to_amount, network, balance, explorer
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: from_amount, name: 'from_amount' },
-          { type: 'text', text: to_amount, name: 'to_amount' },
-          { type: 'text', text: network, name: 'network' },
-          { type: 'text', text: balance, name: 'balance' }
+          { type: 'text', text: from_amount },
+          { type: 'text', text: to_amount },
+          { type: 'text', text: network },
+          { type: 'text', text: balance }
         ]
       }
     ]
@@ -397,10 +434,10 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount, name: 'amount' },
-          { type: 'text', text: from_network, name: 'from_network' },
-          { type: 'text', text: to_network, name: 'to_network' },
-          { type: 'text', text: balance, name: 'balance' }
+          { type: 'text', text: amount },
+          { type: 'text', text: from_network },
+          { type: 'text', text: to_network },
+          { type: 'text', text: balance }
         ]
       }
     ]
@@ -420,7 +457,7 @@ export function sendFailed({ reason }: { reason: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: reason || 'Unknown error', name: 'reason' }
+          { type: 'text', text: reason || 'Unknown error' }
         ]
       }
     ]
@@ -473,8 +510,8 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: evm_wallet, name: 'evm_wallet' },
-          { type: 'text', text: solana_wallet, name: 'solana_wallet' }
+          { type: 'text', text: evm_wallet },
+          { type: 'text', text: solana_wallet }
         ]
       }
     ]
