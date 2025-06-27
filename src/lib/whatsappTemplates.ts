@@ -278,12 +278,23 @@ export function sendTokenPrompt({
   fee: string,
   estimatedTime: string
 }) {
-  // Format the recipient address for better display
-  const formattedRecipient = recipient.length > 15
+  // Fallbacks for all parameters
+  const safe = (v: string, fallback = '-') => (v && v.trim() ? v : fallback);
+
+  const formattedRecipient = recipient && recipient.length > 15
     ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
-    : recipient;
-  // Combine amount and token for display
-  const amountWithToken = `${amount}`;
+    : safe(recipient);
+
+  // Log the values being sent
+  console.log('[sendTokenPrompt] Params:', {
+    amount: safe(amount),
+    token: safe(token),
+    formattedRecipient,
+    network: safe(network),
+    fee: safe(fee),
+    estimatedTime: safe(estimatedTime)
+  });
+
   return {
     name: "send_token_prompt",
     language: { code: "en" },
@@ -291,12 +302,12 @@ export function sendTokenPrompt({
       {
         type: "body",
         parameters: [
-          { type: "text", text: amountWithToken },
-          { type: "text", text: token },
+          { type: "text", text: safe(amount) },
+          { type: "text", text: safe(token) },
           { type: "text", text: formattedRecipient },
-          { type: "text", text: network },
-          { type: "text", text: fee },
-          { type: "text", text: estimatedTime }
+          { type: "text", text: safe(network) },
+          { type: "text", text: safe(fee) },
+          { type: "text", text: safe(estimatedTime) }
         ]
       }
     ]

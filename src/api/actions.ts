@@ -162,7 +162,7 @@ export async function handleAction(intent: string, params: ActionParams, userId:
         reason: params.reason
       });
     case 'send_success':
-      return sendSuccess({
+      return sendSuccessSanitized({
         amount: params.amount,
         token: params.token,
         recipient: params.recipient,
@@ -580,9 +580,12 @@ async function handleSendTokens(params: ActionParams, userId: string) {
             'privy-app-id': appId,
           },
           body: JSON.stringify({
-            method: 'eth_sendTransaction',
-            params: [tx],
-            caip2: 'eip155:11155111'
+            method: 'signAndSendTransaction',
+            params: {
+              transaction: tx,
+              address: senderAddress,
+              chainId: '0xaa36a7' // Sepolia
+            }
           }),
         });
         if (!rpcResponse.ok) {
@@ -623,7 +626,9 @@ async function handleSendTokens(params: ActionParams, userId: string) {
     ], { onConflict: 'user_id' });
 
     // Prompt for confirmation (not execution yet)
-    return sendTokenPrompt({ amount, token, recipient, network });
+    const fee = params.fee || (token === 'SOL' ? '0.000005 SOL' : '0.0001 ETH');
+    const estimatedTime = params.estimatedTime || '1-5 mins';
+    return sendTokenPrompt({ amount, token, recipient, network, fee, estimatedTime });
   } catch (error) {
     console.error('Send error:', error);
     return sendFailed({ reason: 'Failed to send.' });
@@ -1084,13 +1089,16 @@ async function handleSendInit(params: ActionParams, userId: string) {
     const amount = params.amount || '0.01';
     const recipient = params.recipient || params.to || '0x...';
     const network = params.network || params.chain || 'Base Sepolia';
-    
+    const fee = params.fee || (token === 'SOL' ? '0.000005 SOL' : '0.0001 ETH');
+    const estimatedTime = params.estimatedTime || '1-5 mins';
     // Return the interactive message with confirm/cancel buttons
     return sendTokenPrompt({
       amount,
       token,
       recipient,
-      network
+      network,
+      fee,
+      estimatedTime
     });
   } catch (error) {
     console.error('Error initiating send:', error);
@@ -1313,3 +1321,25 @@ function handleSendInstructions() {
     text: `📤 *How to Send or Withdraw Tokens*\n\nTo send tokens to another wallet, simply type a message like:\n\n"Send 0.001 ETH to 0x1234...5678 on Base"\n\nor\n\n"Send 0.1 SOL to address 8rUW...ZjqP on Solana"\n\nI'll then show you a confirmation with the details before proceeding.`
   };
 }
+
+// Helper to sanitize WhatsApp template parameters
+function sanitizeWhatsAppParam(text: string): string {
+  return text
+    .replace(/[\n\t]/g, ' ')
+    .replace(/ {5,}/g, '    ');
+}
+
+// Patch sendSuccess, sendFailed, sendTokenPrompt, etc. to sanitize parameters before sending
+// Example for sendSuccess:
+function sendSuccessSanitized(args: any) {
+  return sendSuccess({
+    ...args,
+    amount: sanitizeWhatsAppParam(args.amount),
+    token: sanitizeWhatsAppParam(args.token),
+    recipient: sanitizeWhatsAppParam(args.recipient),
+    balance: sanitizeWhatsAppParam(args.balance),
+    explorerUrl: sanitizeWhatsAppParam(args.explorerUrl)
+  });
+}
+
+// Use sendSuccessSanitized instead of sendSuccess in the return statement
