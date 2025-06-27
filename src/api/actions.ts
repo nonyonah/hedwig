@@ -570,33 +570,34 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         const privyAppId = process.env.PRIVY_APP_ID!;
         const privyAppSecret = process.env.PRIVY_APP_SECRET!;
         const rpcUrl = `${privyApiUrl}/${privyWalletId}/rpc`;
-        let method = '';
-        let params: any = {};
         
         // Convert amount to hex format (required by Privy)
         const amountInHex = '0x' + Number(amount).toString(16);
         
+        // Use signAndSendTransaction method directly as it's the most reliable
+        const method = 'signAndSendTransaction';
+        let params: any = {};
+        
         if (chain === 'solana') {
-          method = 'signAndSendTransaction';
           params = {
             address: senderAddress,
-            transaction: {
+            transaction: JSON.stringify({
               to: recipient,
               value: amountInHex
-              // Add any other required Solana tx fields here
-            }
+            })
           };
         } else {
-          method = 'signAndSendTransaction';
           params = {
             address: senderAddress,
-            transaction: {
+            transaction: JSON.stringify({
               to: recipient,
-              value: amountInHex
-              // Add any other required EVM tx fields here
-            }
+              value: amountInHex,
+              from: senderAddress
+            })
           };
         }
+        
+        // Prepare request
         const body = JSON.stringify({ method, params });
         const auth = Buffer.from(`${privyAppId}:${privyAppSecret}`).toString('base64');
         const headers = {
@@ -604,21 +605,26 @@ async function handleSendTokens(params: ActionParams, userId: string) {
           'Content-Type': 'application/json',
           'privy-app-id': privyAppId
         };
+        
         // Extra logging
         console.log('[Privy RPC] URL:', rpcUrl);
         console.log('[Privy RPC] Headers:', headers);
         console.log('[Privy RPC] Body:', body);
+        
         const rpcRes = await fetch(rpcUrl, {
           method: 'POST',
           headers,
           body
         });
+        
         const rpcResText = await rpcRes.text();
         console.log('[Privy RPC] Response status:', rpcRes.status);
         console.log('[Privy RPC] Response body:', rpcResText);
+        
         if (!rpcRes.ok) {
-          return sendFailed({ reason: rpcResText });
+          return sendFailed({ reason: `Transaction failed: ${rpcResText}` });
         }
+        
         const rpcResult = JSON.parse(rpcResText);
         txHash = rpcResult.data?.hash || rpcResult.data?.transaction_hash || rpcResult.data || '';
         explorerUrl = chain === 'solana'

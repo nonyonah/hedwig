@@ -362,47 +362,82 @@ export function formatPhoneNumber(phoneNumber: string): string {
   return `+1${digits}`;
 }
 
-/**
- * Sends a custom interactive template via WhatsApp
- * @param to Phone number to send to
- * @param template Template object with interactive content
- * @returns WhatsApp message response
- */
-export async function sendWhatsAppTemplate(to: string, template: any): Promise<WhatsAppMessageResponse> {
+// Update the existing sanitizeWhatsAppParam function
+export function sanitizeWhatsAppParam(text: string): string {
+  if (!text) return '';
+  
+  return String(text)
+    .replace(/[\n\r\t]/g, ' ')  // Replace newlines and tabs with spaces
+    .replace(/ {5,}/g, '    ')  // Replace 5+ consecutive spaces with 4 spaces
+    .trim();                    // Trim leading/trailing whitespace
+}
+
+// Add this function to clean WhatsApp template components
+export function cleanWhatsAppTemplate(template: any) {
+  if (!template) return template;
+  
+  // Create a deep copy to avoid modifying the original
+  const cleanTemplate = JSON.parse(JSON.stringify(template));
+  
+  // Clean components if they exist
+  if (cleanTemplate.components) {
+    cleanTemplate.components = cleanTemplate.components.map((component: any) => {
+      // Clean parameters if they exist
+      if (component.parameters) {
+        component.parameters = component.parameters.map((param: any) => {
+          // Remove 'name' property
+          const { name, ...rest } = param;
+          
+          // Sanitize text parameter
+          if (rest.type === 'text' && rest.text) {
+            rest.text = sanitizeWhatsAppParam(rest.text);
+          }
+          
+          return rest;
+        });
+      }
+      return component;
+    });
+  }
+  
+  return cleanTemplate;
+}
+
+// Update the sendWhatsAppTemplate function to use the cleanWhatsAppTemplate function
+export async function sendWhatsAppTemplate(
+  phoneNumber: string,
+  template: any
+): Promise<any> {
   try {
-    // Ensure template has required fields
+    // Validate template has required fields
     if (!template || !template.name || !template.language) {
       console.error('Invalid template format:', template);
-      throw new Error('Invalid template format');
+      return sendWhatsAppMessage(phoneNumber, { text: 'Sorry, there was an error with the message template.' });
     }
+
+    // Clean the template to remove 'name' property from parameters and sanitize text
+    const cleanTemplate = cleanWhatsAppTemplate(template);
     
-    // Create a deep copy of the template to avoid modifying the original
-    const templateCopy = JSON.parse(JSON.stringify(template));
-    
-    // Clean all components to remove 'name' property from parameters
-    if (templateCopy.components) {
-      templateCopy.components = templateCopy.components.map((component: any) => {
-        if (component && component.parameters) {
-          component.parameters = component.parameters.map((param: any) => {
-            const { name, ...rest } = param; // Remove 'name' property
-            return rest;
-          });
-        }
-        return component;
-      });
-    }
-    
+    // Construct the WhatsApp template message
     const message: WhatsAppTemplateMessage = {
-      to,
-      template: templateCopy
+      to: formatPhoneNumber(phoneNumber),
+      template: cleanTemplate
     };
-    
-    return await sendWhatsAppTemplateMessage(message);
+
+    // Log the actual message being sent for debugging
+    console.log('Sending WhatsApp template:', JSON.stringify(message, null, 2));
+
+    try {
+      return await sendWhatsAppTemplateMessage(message);
+    } catch (error) {
+      console.error('Error sending WhatsApp template:', error);
+      // Fallback to text message
+      const fallbackText = 'Sorry, there was an error sending the interactive message.';
+      return sendWhatsAppMessage(phoneNumber, { text: fallbackText });
+    }
   } catch (error) {
-    console.error('Error sending WhatsApp template:', error);
-    // Fallback to text message
-    const fallbackText = template.fallbackText || 'Sorry, I couldn\'t send the template message.';
-    return await sendWhatsAppMessage(to, { text: fallbackText });
+    console.error('Exception in sendWhatsAppTemplate:', error);
+    return sendWhatsAppMessage(phoneNumber, { text: 'Sorry, there was an error processing your request.' });
   }
 }
 
