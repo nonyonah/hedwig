@@ -574,31 +574,34 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         // Convert amount to hex format (required by Privy)
         const amountInHex = '0x' + Number(amount).toString(16);
         
-        // Use signAndSendTransaction method directly as it's the most reliable
-        const method = 'signAndSendTransaction';
-        let params: any = {};
-        
-        if (chain === 'solana') {
-          params = {
-            address: senderAddress,
-            transaction: JSON.stringify({
+        // Prepare transaction object
+        const transactionObject = chain === 'solana' 
+          ? {
               to: recipient,
               value: amountInHex
-            })
-          };
-        } else {
-          params = {
-            address: senderAddress,
-            transaction: JSON.stringify({
+            }
+          : {
               to: recipient,
               value: amountInHex,
-              from: senderAddress
-            })
-          };
-        }
+              from: senderAddress,
+              gas: '0x5208' // 21000 gas for simple transfer
+            };
+        
+        // Serialize the transaction to base64 string for Privy
+        const serializedTx = Buffer.from(JSON.stringify(transactionObject)).toString('base64');
+        
+        // Use standard Ethereum RPC method
+        const method = chain === 'solana' ? 'solana_sendTransaction' : 'eth_sendTransaction';
+        const caip2 = chain === 'solana' ? 'solana:11155111' : 'eip155:11155111'; // Chain IDs
+        
+        // Prepare request payload
+        const params = {
+          transaction: serializedTx,
+          encoding: "base64"
+        };
         
         // Prepare request
-        const body = JSON.stringify({ method, params });
+        const body = JSON.stringify({ method, params, caip2 });
         const auth = Buffer.from(`${privyAppId}:${privyAppSecret}`).toString('base64');
         const headers = {
           'Authorization': `Basic ${auth}`,
