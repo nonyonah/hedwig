@@ -1,5 +1,11 @@
 import { formatAddress } from './utils';
 
+function sanitizeWhatsAppParam(text: string): string {
+  return text
+    .replace(/[\n\t]/g, ' ')
+    .replace(/ {5,}/g, '    ');
+}
+
 // Basic text template function
 export function textTemplate(text: string) {
   return { text };
@@ -302,12 +308,12 @@ export function sendTokenPrompt({
       {
         type: "body",
         parameters: [
-          { type: "text", text: safe(amount) },
-          { type: "text", text: safe(token) },
-          { type: "text", text: formattedRecipient },
-          { type: "text", text: safe(network) },
-          { type: "text", text: safe(fee) },
-          { type: "text", text: safe(estimatedTime) }
+          { type: "text", text: sanitizeWhatsAppParam(safe(amount)) },
+          { type: "text", text: sanitizeWhatsAppParam(safe(token)) },
+          { type: "text", text: sanitizeWhatsAppParam(formattedRecipient) },
+          { type: "text", text: sanitizeWhatsAppParam(safe(network)) },
+          { type: "text", text: sanitizeWhatsAppParam(safe(fee)) },
+          { type: "text", text: sanitizeWhatsAppParam(safe(estimatedTime)) }
         ]
       }
     ]

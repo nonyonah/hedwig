@@ -34,6 +34,7 @@ import {
   bridgeQuotePending
 } from '@/lib/whatsappTemplates';
 import { PrivyClient } from '@privy-io/server-auth';
+import crypto from 'crypto';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -564,37 +565,46 @@ async function handleSendTokens(params: ActionParams, userId: string) {
       let txHash = '';
       let explorerUrl = '';
       try {
-        const valueWei = BigInt(Math.floor(Number(amount) * 1e18)).toString(16);
-        const tx = {
-          from: senderAddress,
-          to: recipient,
-          value: '0x' + valueWei,
-          chainId: '0xaa36a7' // Sepolia in hex
+        // CDP API call
+        const cdpApiKey = process.env.CDP_API_KEY_ID;
+        const cdpApiSecret = process.env.CDP_API_KEY_SECRET;
+        const cdpBaseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com/wallets';
+        const transferPath = '/transfers';
+        const transferUrl = `${cdpBaseUrl}${transferPath}`;
+        const transferBody = {
+          wallet_id: privyWalletId,
+          asset: token,
+          amount: amount,
+          to_address: recipient,
+          chain_id: 'eip155:11155111'
         };
-        const rpcEndpoint = `https://api.privy.io/v1/wallets/${privyWalletId}/rpc`;
-        const rpcResponse = await fetch(rpcEndpoint, {
+        const bodyStr = JSON.stringify(transferBody);
+        const timestamp = Math.floor(Date.now() / 1000).toString();
+        const signature = cdpSign({
+          secret: cdpApiSecret,
+          timestamp,
           method: 'POST',
-          headers: {
-            'Authorization': getPrivyAuthHeader(),
-            'Content-Type': 'application/json',
-            'privy-app-id': appId,
-          },
-          body: JSON.stringify({
-            method: 'signAndSendTransaction',
-            params: {
-              transaction: tx,
-              address: senderAddress,
-              chainId: '0xaa36a7' // Sepolia
-            }
-          }),
+          requestPath: transferPath,
+          body: bodyStr
         });
-        if (!rpcResponse.ok) {
-          const errorText = await rpcResponse.text();
-          console.error('Privy RPC call failed:', errorText);
-          throw new Error(`Transaction failed: ${errorText}`);
+        const headers = {
+          'Content-Type': 'application/json',
+          'CB-ACCESS-KEY': cdpApiKey,
+          'CB-ACCESS-SIGN': signature,
+          'CB-ACCESS-TIMESTAMP': timestamp
+        };
+        const transferRes = await fetch(transferUrl, {
+          method: 'POST',
+          headers,
+          body: bodyStr
+        });
+        if (!transferRes.ok) {
+          const errorText = await transferRes.text();
+          console.error('CDP transfer error:', errorText);
+          return sendFailed({ reason: errorText });
         }
-        const rpcResult = await rpcResponse.json();
-        txHash = rpcResult.data?.hash || rpcResult.data || '';
+        const transfer = await transferRes.json();
+        txHash = transfer.data?.transaction?.hash || transfer.data?.hash || '';
         explorerUrl = `https://sepolia.basescan.org/tx/${txHash}`;
         // Fetch new balance for template
         let newBalance = '0';
@@ -1343,3 +1353,9 @@ function sendSuccessSanitized(args: any) {
 }
 
 // Use sendSuccessSanitized instead of sendSuccess in the return statement
+
+// Helper for CDP signature
+function cdpSign({ secret, timestamp, method, requestPath, body }) {
+  const prehash = timestamp + method.toUpperCase() + requestPath + body;
+  return crypto.createHmac('sha256', secret).update(prehash).digest('hex');
+}
