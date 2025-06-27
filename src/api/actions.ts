@@ -524,7 +524,83 @@ async function handleSendTokens(params: ActionParams, userId: string) {
 
     // If in execution phase, process the send
     if (isExecute) {
-      // ... existing code ...
+      // Get sender wallet address from DB
+      let senderAddress = '';
+      let chain = '';
+      if (network.toLowerCase().includes('solana')) {
+        chain = 'solana';
+        const { data: solanaWallet } = await supabase
+          .from('wallets')
+          .select('address')
+          .eq('user_id', userId)
+          .eq('chain', 'solana')
+          .single();
+        senderAddress = solanaWallet?.address;
+      } else {
+        chain = 'evm';
+        const { data: evmWallet } = await supabase
+          .from('wallets')
+          .select('address')
+          .eq('user_id', userId)
+          .eq('chain', 'evm')
+          .single();
+        senderAddress = evmWallet?.address;
+      }
+      if (!senderAddress) {
+        return sendFailed({ reason: 'Sender wallet not found.' });
+      }
+      // Get Privy wallet provider (assume available as getPrivyProvider)
+      const { getPrivyProvider } = await import('@/lib/privy');
+      const provider = await getPrivyProvider(userId, chain);
+      let txHash = '';
+      let explorerUrl = '';
+      try {
+        if (chain === 'evm') {
+          // EVM: amount in wei (hex), Sepolia chainId
+          const valueWei = BigInt(Math.floor(Number(amount) * 1e18)).toString(16);
+          const tx = {
+            from: senderAddress,
+            to: recipient,
+            value: '0x' + valueWei,
+            chainId: '0xaa36a7', // Sepolia
+          };
+          txHash = await provider.request({
+            method: 'eth_sendTransaction',
+            params: [tx],
+          });
+          explorerUrl = `https://sepolia.basescan.org/tx/${txHash}`;
+        } else if (chain === 'solana') {
+          // Solana: amount in lamports
+          const valueLamports = Math.floor(Number(amount) * 1e9);
+          const tx = {
+            from: senderAddress,
+            to: recipient,
+            value: valueLamports,
+          };
+          txHash = await provider.request({
+            method: 'solana_sendTransaction',
+            params: [tx],
+          });
+          explorerUrl = `https://explorer.solana.com/tx/${txHash}?cluster=devnet`;
+        }
+        // Fetch new balance for template
+        let newBalance = '0';
+        if (chain === 'evm') {
+          newBalance = await getSepoliaEthBalanceViaRpc(senderAddress);
+        } else if (chain === 'solana') {
+          newBalance = await getSolanaSolBalanceViaRpc(senderAddress);
+        }
+        return sendSuccess({
+          amount,
+          token,
+          recipient,
+          balance: `${newBalance} ${token}`,
+          explorerUrl,
+        });
+      } catch (err: any) {
+        console.error('Send transaction error:', err);
+        return sendFailed({ reason: err?.message || 'Transaction failed.' });
+      }
     }
 
     // If all details are present, clear pending context
@@ -536,7 +612,8 @@ async function handleSendTokens(params: ActionParams, userId: string) {
       }
     ], { onConflict: 'user_id' });
 
-    // ... existing code ...
+    // Prompt for confirmation (not execution yet)
+    return sendTokenPrompt({ amount, token, recipient, network });
   } catch (error) {
     console.error('Send error:', error);
     return { text: 'Failed to send.' };

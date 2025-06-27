@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { PrivyClient } from '@privy-io/server-auth';
 
 const appId = process.env.PRIVY_APP_ID!;
 const appSecret = process.env.PRIVY_APP_SECRET!;
@@ -12,6 +13,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const privyClient = new PrivyClient({
+  appId: process.env.PRIVY_APP_ID!,
+  appSecret: process.env.PRIVY_APP_SECRET!,
+});
 
 function getPrivyAuthHeader() {
   // Basic Auth: base64(appId:appSecret)
@@ -191,4 +197,29 @@ export async function getOrCreatePrivyWallet({
     console.error(`Error in getOrCreatePrivyWallet for ${chain}:`, error);
     throw error;
   }
+}
+
+/**
+ * Get a Privy wallet provider for a user and chain (evm or solana)
+ * @param userId string
+ * @param chain 'evm' | 'solana'
+ * @returns provider instance for signing/sending transactions
+ */
+export async function getPrivyProvider(userId: string, chain: 'evm' | 'solana') {
+  // Look up wallet in Supabase
+  const { data: wallet, error } = await supabase
+    .from('wallets')
+    .select('privy_wallet_id')
+    .eq('user_id', userId)
+    .eq('chain', chain)
+    .single();
+  if (error || !wallet?.privy_wallet_id) {
+    throw new Error('Privy wallet not found for user');
+  }
+  // Get provider from Privy server SDK
+  const provider = await privyClient.getWalletProvider({
+    walletId: wallet.privy_wallet_id,
+    chainType: chain === 'evm' ? 'ethereum' : 'solana',
+  });
+  return provider;
 } 
