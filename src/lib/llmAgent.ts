@@ -65,10 +65,12 @@ For unknown requests that are clearly not blockchain-related, use intent "unknow
 `;
   const prompt = [
     { role: "user", parts: [{ text: systemMessage }] },
-    ...context.map((msg: any) => ({
-      role: msg.role,
-      parts: [{ text: msg.content }]
-    })),
+    ...context
+      .filter((msg: any) => msg.role !== 'system')
+      .map((msg: any) => ({
+        role: msg.role,
+        parts: [{ text: msg.content }]
+      })),
     { role: "user", parts: [{ text: message }] }
   ];
 

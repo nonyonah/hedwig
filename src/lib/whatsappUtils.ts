@@ -954,13 +954,15 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           await sendWhatsAppMessage(from, {
             text: 'Sure! What token would you like to send? For example: "Send 0.1 USDC to 0x123... on Base Sepolia"'
           });
-          // Store pending context for send
+          // Store pending context for send with all required fields as empty strings
+          const pendingSend = { action: 'send', token: '', amount: '', recipient: '', network: '' };
+          console.log('Writing pending send context for user:', userId, pendingSend);
           await supabase.from('sessions').upsert([
             {
               user_id: userId,
               context: [{
                 role: 'system',
-                content: JSON.stringify({ pending: { action: 'send' } })
+                content: JSON.stringify({ pending: pendingSend })
               }],
               updated_at: new Date().toISOString()
             }
@@ -968,7 +970,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           return;
         }
         // Get the detected parameters
-        const token = params.token || params.asset || params.symbol;
+        const token = params.token || params.asset || params.symbol || '';
         const amount = params.amount || '';
         const recipient = params.recipient || params.to || '';
         const network = params.network || params.chain || '';
@@ -985,13 +987,15 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           } else {
             promptText += missing.join(', ');
           }
-          // Store pending context in session
+          // Store pending context in session with all current params
+          const pendingSend = { action: 'send', token, amount, recipient, network };
+          console.log('Writing pending send context for user:', userId, pendingSend);
           await supabase.from('sessions').upsert([
             {
               user_id: userId,
               context: [{
                 role: 'system',
-                content: JSON.stringify({ pending: { action: 'send', ...params } })
+                content: JSON.stringify({ pending: pendingSend })
               }],
               updated_at: new Date().toISOString()
             }
