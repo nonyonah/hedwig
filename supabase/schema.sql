@@ -36,3 +36,17 @@ create table payments (
 -- Create indexes after tables are created
 create index idx_invoice_client on invoices(client_email);
 create index idx_payment_invoice on payments(invoice_id);
+
+-- Sessions table for user context and pending actions
+create table if not exists public.sessions (
+  user_id text primary key,
+  context jsonb,
+  updated_at timestamptz default now()
+);
+
+alter table public.sessions enable row level security;
+
+create policy "Allow service role" on public.sessions
+  for all
+  using (auth.role() = 'service_role')
+  with check (auth.role() = 'service_role');
