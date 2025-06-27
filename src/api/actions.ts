@@ -347,6 +347,50 @@ async function handleGetWalletAddress(userId: string) {
   }
 }
 
+// Helper to fetch Sepolia ETH balance via RPC
+async function getSepoliaEthBalanceViaRpc(address: string): Promise<string> {
+  const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/aAOzNl0p1r6KoYVHqbbMbcCuNKfEodLX';
+  const body = {
+    jsonrpc: '2.0',
+    method: 'eth_getBalance',
+    params: [address, 'latest'],
+    id: 1
+  };
+  const resp = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if (data.result) {
+    // Convert from hex wei to ETH
+    return (parseInt(data.result, 16) / 1e18).toString();
+  }
+  return '0';
+}
+
+// Helper to fetch Solana SOL balance via RPC
+async function getSolanaSolBalanceViaRpc(address: string): Promise<string> {
+  const rpcUrl = 'https://api.devnet.solana.com';
+  const body = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'getBalance',
+    params: [address]
+  };
+  const resp = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if (data.result && data.result.value) {
+    // Convert from lamports to SOL
+    return (data.result.value / 1e9).toString();
+  }
+  return '0';
+}
+
 // Example handler for wallet balance
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
@@ -373,37 +417,15 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     }
     const evmAddress = evmWallet?.address;
     const solanaAddress = solanaWallet?.address;
-    // Fetch balances from Coinbase Onchain Data API
-    const apiKey = process.env.ONCHAINKIT_API_KEY;
     let ethBalance = '0';
-    let usdcBaseBalance = '0';
     let solBalance = '0';
-    let usdcSolanaBalance = '0';
     // EVM (Sepolia)
     if (evmAddress) {
-      const resp = await fetch(`https://api.cdp.coinbase.com/onchain/v1/addresses/${evmAddress}/balances?chain=sepolia`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        const eth = data.balances.find((b: any) => b.asset.symbol === 'ETH');
-        const usdc = data.balances.find((b: any) => b.asset.symbol === 'USDC');
-        ethBalance = eth ? eth.amount : '0';
-        usdcBaseBalance = usdc ? usdc.amount : '0';
-      }
+      ethBalance = await getSepoliaEthBalanceViaRpc(evmAddress);
     }
     // Solana (Devnet)
     if (solanaAddress) {
-      const resp = await fetch(`https://api.cdp.coinbase.com/onchain/v1/addresses/${solanaAddress}/balances?chain=solana-devnet`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        const sol = data.balances.find((b: any) => b.asset.symbol === 'SOL');
-        const usdc = data.balances.find((b: any) => b.asset.symbol === 'USDC');
-        solBalance = sol ? sol.amount : '0';
-        usdcSolanaBalance = usdc ? usdc.amount : '0';
-      }
+      solBalance = await getSolanaSolBalanceViaRpc(solanaAddress);
     }
     // Compare with last known balances
     const { data: session } = await supabase
@@ -419,13 +441,9 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // If any balance changed, trigger deposit notification
     const changed =
       ethBalance !== (lastBalances.ethBalance || '0') ||
-      usdcBaseBalance !== (lastBalances.usdcBaseBalance || '0') ||
-      solBalance !== (lastBalances.solBalance || '0') ||
-      usdcSolanaBalance !== (lastBalances.usdcSolanaBalance || '0');
+      solBalance !== (lastBalances.solBalance || '0');
     if (changed) {
       // Send deposit notification (for both up and down)
-      // You can customize which token/chain to notify for
-      // Example: notify for ETH on Sepolia
       if (parseFloat(ethBalance) !== parseFloat(lastBalances.ethBalance || '0')) {
         await handleAction('crypto_deposit_notification', {
           amount: ethBalance,
@@ -434,7 +452,6 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
           balance: ethBalance
         }, userId);
       }
-      // Example: notify for SOL on Devnet
       if (parseFloat(solBalance) !== parseFloat(lastBalances.solBalance || '0')) {
         await handleAction('crypto_deposit_notification', {
           amount: solBalance,
@@ -443,7 +460,6 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
           balance: solBalance
         }, userId);
       }
-      // You can add USDC notifications similarly if needed
     }
     // Store new balances in session
     await supabase.from('sessions').upsert([
@@ -451,7 +467,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
         user_id: userId,
         context: [{
           role: 'system',
-          content: JSON.stringify({ lastBalances: { ethBalance, usdcBaseBalance, solBalance, usdcSolanaBalance } })
+          content: JSON.stringify({ lastBalances: { ethBalance, solBalance } })
         }],
         updated_at: new Date().toISOString()
       }
@@ -459,9 +475,9 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // Return balances with live data
     return walletBalance({
       eth_balance: ethBalance,
-      usdc_base_balance: usdcBaseBalance,
+      usdc_base_balance: '0',
       sol_balance: solBalance,
-      usdc_solana_balance: usdcSolanaBalance
+      usdc_solana_balance: '0'
     });
   } catch (error) {
     console.error('Error in handleGetWalletBalance:', error);
