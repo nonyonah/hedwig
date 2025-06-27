@@ -569,10 +569,8 @@ async function handleSendTokens(params: ActionParams, userId: string) {
           from: senderAddress,
           to: recipient,
           value: '0x' + valueWei,
-          chainId: '0xaa36a7', // Sepolia
+          chainId: '0xaa36a7' // Sepolia in hex
         };
-        
-        // Use direct REST API call instead of client.rpc
         const rpcEndpoint = `https://api.privy.io/v1/wallets/${privyWalletId}/rpc`;
         const rpcResponse = await fetch(rpcEndpoint, {
           method: 'POST',
@@ -584,16 +582,14 @@ async function handleSendTokens(params: ActionParams, userId: string) {
           body: JSON.stringify({
             method: 'eth_sendTransaction',
             params: [tx],
-            caip2: 'eip155:11155111', // Sepolia
+            caip2: 'eip155:11155111'
           }),
         });
-        
         if (!rpcResponse.ok) {
           const errorText = await rpcResponse.text();
           console.error('Privy RPC call failed:', errorText);
           throw new Error(`Transaction failed: ${errorText}`);
         }
-        
         const rpcResult = await rpcResponse.json();
         txHash = rpcResult.data?.hash || rpcResult.data || '';
         explorerUrl = `https://sepolia.basescan.org/tx/${txHash}`;
@@ -1316,4 +1312,4 @@ function handleSendInstructions() {
   return {
     text: `📤 *How to Send or Withdraw Tokens*\n\nTo send tokens to another wallet, simply type a message like:\n\n"Send 0.001 ETH to 0x1234...5678 on Base"\n\nor\n\n"Send 0.1 SOL to address 8rUW...ZjqP on Solana"\n\nI'll then show you a confirmation with the details before proceeding.`
   };
-} 
+}
