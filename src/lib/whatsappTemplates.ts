@@ -261,55 +261,45 @@ function cleanComponent(component: any) {
 /**
  * Template: send_token_prompt
  * Parameter Format: POSITIONAL
- * Parameters: amount, token, recipient, network, gasFee
- * Has QUICK_REPLY buttons
+ * Parameters: amount, token, recipient, network, fee, estimatedTime
  */
-export function sendTokenPrompt({ 
-  amount, 
-  token, 
-  recipient, 
-  network, 
-  gasFee
-}: { 
-  amount: string, 
-  token: string, 
-  recipient: string, 
+export function sendTokenPrompt({
+  amount,
+  token,
+  recipient,
+  network,
+  fee,
+  estimatedTime
+}: {
+  amount: string,
+  token: string,
+  recipient: string,
   network: string,
-  gasFee?: string
+  fee: string,
+  estimatedTime: string
 }) {
   // Format the recipient address for better display
-  const formattedRecipient = recipient.length > 15 
+  const formattedRecipient = recipient.length > 15
     ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
     : recipient;
-    
-  // Calculate estimated fee (would be replaced with actual fee calculation in production)
-  const estimatedFee = gasFee || (token === 'SOL' ? '0.000005 SOL' : '0.0001 ETH');
-  
-  // Combine amount and token into one parameter
-  const amountWithToken = `${amount} ${token}`;
-  
-  // Combine fee and time into one parameter
-  const feeAndTime = `Fee: ${estimatedFee} • Est. time: 1-5 mins`;
-  
-  const components = [
-    {
-      type: "body",
-      parameters: [
-        { type: "text", text: amountWithToken },
-        { type: "text", text: formattedRecipient },
-        { type: "text", text: network },
-        { type: "text", text: feeAndTime }
-      ]
-    }
-  ];
-
-  // Clean all components to remove 'name' properties
-  const cleanedComponents = components.map(cleanComponent);
-  
+  // Combine amount and token for display
+  const amountWithToken = `${amount}`;
   return {
     name: "send_token_prompt",
     language: { code: "en" },
-    components: cleanedComponents
+    components: [
+      {
+        type: "body",
+        parameters: [
+          { type: "text", text: amountWithToken },
+          { type: "text", text: token },
+          { type: "text", text: formattedRecipient },
+          { type: "text", text: network },
+          { type: "text", text: fee },
+          { type: "text", text: estimatedTime }
+        ]
+      }
+    ]
   };
 }
 
