@@ -572,22 +572,27 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         const rpcUrl = `${privyApiUrl}/${privyWalletId}/rpc`;
         let method = '';
         let params: any = {};
+        
+        // Convert amount to hex format (required by Privy)
+        const amountInHex = '0x' + Number(amount).toString(16);
+        
         if (chain === 'solana') {
-          method = 'solana_sendTransaction';
+          method = 'signAndSendTransaction';
           params = {
+            address: senderAddress,
             transaction: {
               to: recipient,
-              value: amount,
+              value: amountInHex
               // Add any other required Solana tx fields here
             }
           };
         } else {
-          method = 'eth_sendTransaction';
+          method = 'signAndSendTransaction';
           params = {
+            address: senderAddress,
             transaction: {
               to: recipient,
-              value: amount,
-              chain_id: 11155111, // Sepolia
+              value: amountInHex
               // Add any other required EVM tx fields here
             }
           };
