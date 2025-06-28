@@ -572,7 +572,8 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         const rpcUrl = `${privyApiUrl}/${privyWalletId}/rpc`;
         
         // Convert amount to hex format (required by Privy)
-        const amountInHex = '0x' + Number(amount).toString(16);
+        const amountInWei = Number(amount) * 1e18; // Convert ETH to wei
+        const amountInHex = '0x' + Math.floor(amountInWei).toString(16);
         
         // Prepare request based on chain type
         let method, body;
@@ -591,8 +592,16 @@ async function handleSendTokens(params: ActionParams, userId: string) {
               }
             }
           });
+          
+          // Calculate SOL fee for display in template
+          const solFee = 0.000005; // Typical SOL fee
+          params.fee = `${solFee.toFixed(6)} SOL`;
         } else {
           // For EVM chains, use the format from Privy docs for Ethereum
+          // Calculate gas price and gas limit
+          const gasPrice = '0x' + (5000000000).toString(16); // 5 gwei in hex
+          const gasLimit = '0x' + (21000).toString(16); // 21000 gas units for simple transfer
+          
           method = 'eth_sendTransaction';
           body = JSON.stringify({
             method,
@@ -602,10 +611,17 @@ async function handleSendTokens(params: ActionParams, userId: string) {
               transaction: {
                 to: recipient,
                 value: amountInHex,
-                from: senderAddress
+                from: senderAddress,
+                gasPrice: gasPrice,
+                gas: gasLimit
               }
             }
           });
+          
+          // Calculate actual fee for display in template
+          const gasFeeWei = 21000 * 5000000000; // gas units * gas price in wei
+          const gasFeeEth = gasFeeWei / 1e18; // Convert to ETH
+          params.fee = `${gasFeeEth.toFixed(6)} ETH`;
         }
         
         // Prepare auth headers

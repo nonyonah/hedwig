@@ -1,9 +1,16 @@
 import { formatAddress } from './utils';
 
-function sanitizeWhatsAppParam(text: string): string {
-  return text
-    .replace(/[\n\t]/g, ' ')
-    .replace(/ {5,}/g, '    ');
+// Export this function so it can be used in other files
+export function sanitizeWhatsAppParam(text: string | number | undefined | null): string {
+  if (text === undefined || text === null) {
+    return '';
+  }
+  
+  return String(text)
+    .replace(/[\n\r\t]/g, ' ')     // Replace newlines and tabs with spaces
+    .replace(/ {5,}/g, '    ')     // Replace 5+ consecutive spaces with 4 spaces
+    .replace(/\s+/g, ' ')          // Replace multiple spaces with a single space
+    .trim();                       // Trim leading/trailing whitespace
 }
 
 // Basic text template function
@@ -41,10 +48,10 @@ export function bridgeDepositNotification({ amount, token, network, balance }: {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: token },
-          { type: 'text', text: network },
-          { type: 'text', text: balance }
+          { type: 'text', text: sanitizeWhatsAppParam(amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(token) },
+          { type: 'text', text: sanitizeWhatsAppParam(network) },
+          { type: 'text', text: sanitizeWhatsAppParam(balance) }
         ]
       }
     ]
@@ -95,12 +102,12 @@ export function bridgeQuoteConfirm({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: from_amount },
-          { type: 'text', text: to_amount },
-          { type: 'text', text: from_chain },
-          { type: 'text', text: to_chain },
-          { type: 'text', text: fee },
-          { type: 'text', text: est_time }
+          { type: 'text', text: sanitizeWhatsAppParam(from_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(to_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(from_chain) },
+          { type: 'text', text: sanitizeWhatsAppParam(to_chain) },
+          { type: 'text', text: sanitizeWhatsAppParam(fee) },
+          { type: 'text', text: sanitizeWhatsAppParam(est_time) }
         ]
       }
     ]
@@ -137,10 +144,10 @@ export function cryptoDepositNotification({ amount, token, network, balance }: {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: token },
-          { type: 'text', text: network },
-          { type: 'text', text: balance }
+          { type: 'text', text: sanitizeWhatsAppParam(amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(token) },
+          { type: 'text', text: sanitizeWhatsAppParam(network) },
+          { type: 'text', text: sanitizeWhatsAppParam(balance) }
         ]
       }
     ]
@@ -191,12 +198,12 @@ export function swapQuoteConfirm({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: from_amount },
-          { type: 'text', text: to_amount },
-          { type: 'text', text: chain },
-          { type: 'text', text: rate },
-          { type: 'text', text: network_fee },
-          { type: 'text', text: est_time }
+          { type: 'text', text: sanitizeWhatsAppParam(from_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(to_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(chain) },
+          { type: 'text', text: sanitizeWhatsAppParam(rate) },
+          { type: 'text', text: sanitizeWhatsAppParam(network_fee) },
+          { type: 'text', text: sanitizeWhatsAppParam(est_time) }
         ]
       }
     ]
@@ -243,10 +250,10 @@ export function swapPrompt({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: from_token },
-          { type: 'text', text: to_token },
-          { type: 'text', text: network }
+          { type: 'text', text: sanitizeWhatsAppParam(amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(from_token) },
+          { type: 'text', text: sanitizeWhatsAppParam(to_token) },
+          { type: 'text', text: sanitizeWhatsAppParam(network) }
         ]
       }
     ]
@@ -333,9 +340,9 @@ export function tokenReceived({ amount, network, balance }: { amount: string, ne
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount, name: 'amount' },
-          { type: 'text', text: network, name: 'network' },
-          { type: 'text', text: balance, name: 'balance' }
+          { type: 'text', text: sanitizeWhatsAppParam(amount), name: 'amount' },
+          { type: 'text', text: sanitizeWhatsAppParam(network), name: 'network' },
+          { type: 'text', text: sanitizeWhatsAppParam(balance), name: 'balance' }
         ]
       }
     ]
@@ -355,7 +362,7 @@ export function bridgeFailed({ reason }: { reason: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: reason, name: 'reason' }
+          { type: 'text', text: sanitizeWhatsAppParam(reason), name: 'reason' }
         ]
       }
     ]
@@ -370,7 +377,7 @@ export function bridgeFailed({ reason }: { reason: string }) {
  */
 export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
   // Combine amount and token
-  const amountWithToken = `${amount} ${token}`;
+  const amountWithToken = `${sanitizeWhatsAppParam(amount)} ${sanitizeWhatsAppParam(token)}`;
   
   return {
     name: 'send_success',
@@ -380,8 +387,8 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
         type: 'BODY',
         parameters: [
           { type: 'text', text: amountWithToken },
-          { type: 'text', text: recipient },
-          { type: 'text', text: balance }
+          { type: 'text', text: sanitizeWhatsAppParam(recipient) },
+          { type: 'text', text: sanitizeWhatsAppParam(balance) }
         ]
       }
     ]
@@ -402,10 +409,10 @@ export function swapSuccess({ from_amount, to_amount, network, balance, explorer
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: from_amount },
-          { type: 'text', text: to_amount },
-          { type: 'text', text: network },
-          { type: 'text', text: balance }
+          { type: 'text', text: sanitizeWhatsAppParam(from_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(to_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(network) },
+          { type: 'text', text: sanitizeWhatsAppParam(balance) }
         ]
       }
     ]
@@ -425,10 +432,10 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: amount },
-          { type: 'text', text: from_network },
-          { type: 'text', text: to_network },
-          { type: 'text', text: balance }
+          { type: 'text', text: sanitizeWhatsAppParam(amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(from_network) },
+          { type: 'text', text: sanitizeWhatsAppParam(to_network) },
+          { type: 'text', text: sanitizeWhatsAppParam(balance) }
         ]
       }
     ]
@@ -448,7 +455,7 @@ export function sendFailed({ reason }: { reason: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: reason || 'Unknown error' }
+          { type: 'text', text: sanitizeWhatsAppParam(reason || 'Unknown error') }
         ]
       }
     ]
@@ -478,10 +485,10 @@ export function walletBalance({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: eth_balance },
-          { type: 'text', text: usdc_base_balance },
-          { type: 'text', text: sol_balance },
-          { type: 'text', text: usdc_solana_balance }
+          { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(sol_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(usdc_solana_balance) }
         ]
       }
     ]
@@ -501,8 +508,8 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: evm_wallet },
-          { type: 'text', text: solana_wallet }
+          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
+          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet) }
         ]
       }
     ]
@@ -522,7 +529,7 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: privy_link }
+          { type: 'text', text: sanitizeWhatsAppParam(privy_link) }
         ]
       }
     ]
@@ -575,7 +582,7 @@ export function transactionSuccess({ amount, recipient_address, transaction_hash
 // Alias for confirm_transaction - using send_failed template as fallback
 export function confirmTransaction({ amount, recipient_address, network_fee }: { amount: string, recipient_address: string, network_fee: string }) {
   return sendFailed({
-    reason: `Confirm Transaction: ${amount} ETH to ${recipient_address}. Fee: ${network_fee} ETH`
+    reason: `Confirm Transaction: ${sanitizeWhatsAppParam(amount)} ETH to ${sanitizeWhatsAppParam(recipient_address)}. Fee: ${sanitizeWhatsAppParam(network_fee)} ETH`
   });
 }
 
@@ -583,7 +590,7 @@ export function confirmTransaction({ amount, recipient_address, network_fee }: {
 export const walletTemplates = {
   balance: (balance: string, currency: string = 'ETH') => ({
     type: 'buttons' as const,
-    text: `💰 *Wallet Balance*\n\nYour current balance is *${balance} ${currency}*`,
+    text: `💰 *Wallet Balance*\n\nYour current balance is *${sanitizeWhatsAppParam(balance)} ${sanitizeWhatsAppParam(currency)}*`,
     buttons: [
       { id: 'send', title: 'Send' },
       { id: 'receive', title: 'Receive' }
@@ -591,12 +598,12 @@ export const walletTemplates = {
   }),
   address: (address: string) => ({
     type: 'text' as const,
-    text: `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`
+    text: `📬 *Wallet Address*\n\n\`${sanitizeWhatsAppParam(address)}\`\n\n_Use this address to receive funds_`
   }),
   walletAddress: (address: string): string =>
-    `📬 *Wallet Address*\n\n\`${address}\`\n\n_Use this address to receive funds_`,
+    `📬 *Wallet Address*\n\n\`${sanitizeWhatsAppParam(address)}\`\n\n_Use this address to receive funds_`,
   createWallet: (phrase: string): string =>
-    `🔑 *New Wallet Created*\n\nYour wallet has been created successfully!\n\n*Recovery Phrase:*\n\`${phrase}\`\n\n⚠️ *IMPORTANT*: Write down this recovery phrase and keep it safe. Anyone with this phrase can access your funds!`,
+    `🔑 *New Wallet Created*\n\nYour wallet has been created successfully!\n\n*Recovery Phrase:*\n\`${sanitizeWhatsAppParam(phrase)}\`\n\n⚠️ *IMPORTANT*: Write down this recovery phrase and keep it safe. Anyone with this phrase can access your funds!`,
 };
 
 // Alias for swap_successful - using swap_success template
@@ -610,7 +617,7 @@ export function swapSuccessful({ success_message, wallet_balance, tx_hash }: { s
     from_amount,
     to_amount,
     network: 'Base Sepolia',
-    balance: wallet_balance,
+    balance: sanitizeWhatsAppParam(wallet_balance),
     explorerUrl: tx_hash ? `https://sepolia.basescan.org/tx/${tx_hash}` : ''
   });
 }
@@ -619,7 +626,7 @@ export function swapSuccessful({ success_message, wallet_balance, tx_hash }: { s
 export function walletCreated({ address }: { address: string }) {
   return {
     type: 'buttons',
-    text: `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${address}\`\n\nYou can now receive and send crypto.`,
+    text: `✅ *Wallet Created*\n\nYour new wallet has been created!\n\n*Address:*\n\`${sanitizeWhatsAppParam(address)}\`\n\nYou can now receive and send crypto.`,
         buttons: [
       { id: 'view_wallet', title: 'View Wallet' }
     ]
@@ -639,8 +646,8 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: evm_wallet },
-          { type: 'text', text: solana_wallet }
+          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
+          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet) }
         ]
       }
     ]
@@ -671,9 +678,9 @@ export function priceAlert({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: token },
-          { type: 'text', text: price },
-          { type: 'text', text: change_percentage }
+          { type: 'text', text: sanitizeWhatsAppParam(token) },
+          { type: 'text', text: sanitizeWhatsAppParam(price) },
+          { type: 'text', text: sanitizeWhatsAppParam(change_percentage) }
         ]
       }
     ]
