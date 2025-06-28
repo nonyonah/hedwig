@@ -6,11 +6,17 @@ export function sanitizeWhatsAppParam(text: string | number | undefined | null):
     return '';
   }
   
-  return String(text)
+  // Convert to string and trim first
+  let sanitized = String(text).trim();
+  
+  // Replace problematic characters
+  sanitized = sanitized
     .replace(/[\n\r\t]/g, ' ')     // Replace newlines and tabs with spaces
-    .replace(/ {5,}/g, '    ')     // Replace 5+ consecutive spaces with 4 spaces
+    .replace(/ {4,}/g, '   ')      // Replace 4+ consecutive spaces with 3 (WhatsApp limit)
     .replace(/\s+/g, ' ')          // Replace multiple spaces with a single space
-    .trim();                       // Trim leading/trailing whitespace
+    .trim();                       // Final trim to remove any leading/trailing whitespace
+  
+  return sanitized;
 }
 
 // Basic text template function
@@ -371,24 +377,39 @@ export function bridgeFailed({ reason }: { reason: string }) {
 
 /**
  * Template: send_success
- * Parameter Format: NAMED
+ * Parameter Format: POSITIONAL (not NAMED)
  * Parameters: amount, token, recipient, balance
  * Has URL button
  */
 export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
-  // Combine amount and token
+  // Combine amount and token for better display
   const amountWithToken = `${sanitizeWhatsAppParam(amount)} ${sanitizeWhatsAppParam(token)}`;
+  
+  // Format recipient address for better display
+  const formattedRecipient = recipient && recipient.length > 15
+    ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
+    : recipient || '-';
+  
+  console.log('[sendSuccess] Params:', { amountWithToken, recipient: formattedRecipient, balance });
   
   return {
     name: 'send_success',
     language: { code: 'en' },
     components: [
       {
-        type: 'BODY',
+        type: 'body',
         parameters: [
-          { type: 'text', text: amountWithToken },
-          { type: 'text', text: sanitizeWhatsAppParam(recipient) },
+          { type: 'text', text: sanitizeWhatsAppParam(amountWithToken) },
+          { type: 'text', text: sanitizeWhatsAppParam(formattedRecipient) },
           { type: 'text', text: sanitizeWhatsAppParam(balance) }
+        ]
+      },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: 0,
+        parameters: [
+          { type: 'text', text: sanitizeWhatsAppParam(explorerUrl || '') }
         ]
       }
     ]
@@ -399,7 +420,6 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
  * Template: swap_success
  * Parameter Format: NAMED
  * Parameters: from_amount, to_amount, network, balance
- * Has URL button
  */
 export function swapSuccess({ from_amount, to_amount, network, balance, explorerUrl }: { from_amount: string, to_amount: string, network: string, balance: string, explorerUrl: string }) {
   return {
@@ -444,18 +464,21 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
 
 /**
  * Template: send_failed
- * Parameter Format: NAMED
+ * Parameter Format: POSITIONAL (not NAMED)
  * Parameters: reason
  */
 export function sendFailed({ reason }: { reason: string }) {
+  const safeReason = reason || 'Unknown error';
+  console.log('[sendFailed] Reason:', safeReason);
+  
   return {
     name: 'send_failed',
     language: { code: 'en' },
     components: [
       {
-        type: 'BODY',
+        type: 'body',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(reason || 'Unknown error') }
+          { type: 'text', text: sanitizeWhatsAppParam(safeReason) }
         ]
       }
     ]

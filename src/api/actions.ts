@@ -572,8 +572,15 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         const rpcUrl = `${privyApiUrl}/${privyWalletId}/rpc`;
         
         // Convert amount to hex format (required by Privy)
-        const amountInWei = Number(amount) * 1e18; // Convert ETH to wei
-        const amountInHex = '0x' + Math.floor(amountInWei).toString(16);
+        // Adjust the conversion to avoid insufficient funds errors
+        // Use a smaller amount to account for gas fees
+        const amountValue = Number(amount);
+        const adjustedAmount = chain === 'solana' 
+          ? amountValue 
+          : amountValue * 0.95; // Reduce by 5% to leave room for gas fees
+
+        const amountInWei = Math.floor(adjustedAmount * 1e18); // Convert ETH to wei
+        const amountInHex = '0x' + amountInWei.toString(16);
         
         // Prepare request based on chain type
         let method, body;
@@ -583,7 +590,7 @@ async function handleSendTokens(params: ActionParams, userId: string) {
           method = 'solana_sendTransaction';
           body = JSON.stringify({
             method,
-            caip2: 'solana:11155111',
+            caip2: 'solana:devnet', // Solana Devnet
             chain_type: 'solana',
             params: {
               transaction: {
@@ -598,30 +605,24 @@ async function handleSendTokens(params: ActionParams, userId: string) {
           params.fee = `${solFee.toFixed(6)} SOL`;
         } else {
           // For EVM chains, use the format from Privy docs for Ethereum
-          // Calculate gas price and gas limit
-          const gasPrice = '0x' + (5000000000).toString(16); // 5 gwei in hex
-          const gasLimit = '0x' + (21000).toString(16); // 21000 gas units for simple transfer
+          // Calculate gas fee for display in template only
+          const gasFeeWei = 21000 * 5000000000; // gas units * gas price in wei
+          const gasFeeEth = gasFeeWei / 1e18; // Convert to ETH
+          params.fee = `${gasFeeEth.toFixed(6)} ETH`;
           
           method = 'eth_sendTransaction';
           body = JSON.stringify({
             method,
-            caip2: 'eip155:11155111',
+            caip2: 'eip155:84532', // Base Sepolia chain ID
             chain_type: 'ethereum',
             params: {
               transaction: {
                 to: recipient,
                 value: amountInHex,
-                from: senderAddress,
-                gasPrice: gasPrice,
-                gas: gasLimit
+                from: senderAddress
               }
             }
           });
-          
-          // Calculate actual fee for display in template
-          const gasFeeWei = 21000 * 5000000000; // gas units * gas price in wei
-          const gasFeeEth = gasFeeWei / 1e18; // Convert to ETH
-          params.fee = `${gasFeeEth.toFixed(6)} ETH`;
         }
         
         // Prepare auth headers
@@ -648,14 +649,17 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         console.log('[Privy RPC] Response body:', rpcResText);
         
         if (!rpcRes.ok) {
+          console.log('[Privy RPC] Transaction failed');
           return sendFailed({ reason: `Transaction failed: ${rpcResText}` });
         }
         
+        console.log('[Privy RPC] Transaction successful!');
         const rpcResult = JSON.parse(rpcResText);
         txHash = rpcResult.data?.hash || rpcResult.data?.transaction_hash || rpcResult.data || '';
         explorerUrl = chain === 'solana'
           ? `https://explorer.solana.com/tx/${txHash}?cluster=devnet`
           : `https://sepolia.basescan.org/tx/${txHash}`;
+        
         // Fetch new balance for template
         let newBalance = '0';
         if (chain === 'evm') {
@@ -663,12 +667,28 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         } else if (chain === 'solana') {
           newBalance = await getSolanaSolBalanceViaRpc(senderAddress);
         }
+        
+        // Format values for the template
+        const formattedBalance = `${newBalance} ${token}`;
+        const formattedRecipient = recipient.length > 15 
+          ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
+          : recipient;
+        
+        console.log('[Transaction] Preparing success template with:', {
+          amount,
+          token,
+          recipient: formattedRecipient,
+          balance: formattedBalance,
+          explorerUrl
+        });
+        
+        // Return the success template with all required parameters
         return sendSuccess({
           amount,
           token,
-          recipient,
-          balance: `${newBalance} ${token}`,
-          explorerUrl,
+          recipient: formattedRecipient,
+          balance: formattedBalance,
+          explorerUrl
         });
       } catch (err: any) {
         console.error('Send transaction error:', err);
