@@ -140,20 +140,36 @@ export function bridgeQuotePending() {
 /**
  * Template: crypto_deposit_notification
  * Parameter Format: POSITIONAL
- * Parameters: amount, token, network, balance
+ * Parameters: amount, token, from, network, balance, txUrl
  */
-export function cryptoDepositNotification({ amount, token, network, balance }: { amount: string, token: string, network: string, balance: string }) {
+export function cryptoDepositNotification({
+  amount,
+  token,
+  from,
+  network,
+  balance,
+  txUrl
+}: {
+  amount: string,
+  token: string,
+  from: string,
+  network: string,
+  balance: string,
+  txUrl: string
+}) {
   return {
     name: 'crypto_deposit_notification',
     language: { code: 'en' },
     components: [
       {
-        type: 'BODY',
+        type: 'body',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(amount) },
-          { type: 'text', text: sanitizeWhatsAppParam(token) },
-          { type: 'text', text: sanitizeWhatsAppParam(network) },
-          { type: 'text', text: sanitizeWhatsAppParam(balance) }
+          { type: 'text', text: amount },
+          { type: 'text', text: token },
+          { type: 'text', text: from },
+          { type: 'text', text: network },
+          { type: 'text', text: balance },
+          { type: 'text', text: txUrl }
         ]
       }
     ]

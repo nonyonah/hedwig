@@ -147,7 +147,11 @@ export async function handleAction(intent: string, params: ActionParams, userId:
     case 'export_keys':
       return await handleExportKeys(params, userId);
     case 'crypto_deposit_notification':
-      return await handleCryptoDeposit(params, userId);
+      return await handleCryptoDeposit({
+        ...params,
+        from: params.from || '-',
+        txUrl: params.txUrl || '-'
+      }, userId);
     case 'swap_processing':
       return swapProcessing();
     case 'swap_quote_confirm':
@@ -1028,6 +1032,8 @@ async function handleCryptoDeposit(params: ActionParams, userId: string) {
     const amount = params.amount || '0';
     const token = params.token || 'USDC';
     const network = params.network || 'Base Sepolia';
+    const from = params.from || '-';
+    const txUrl = params.txUrl || '-';
     
     // Get user's current balance
     const { data: wallet, error } = await supabase
@@ -1048,8 +1054,10 @@ async function handleCryptoDeposit(params: ActionParams, userId: string) {
     return cryptoDepositNotification({
       amount,
       token,
+      from,
       network,
-      balance
+      balance,
+      txUrl
     });
   } catch (error) {
     console.error('Error handling crypto deposit notification:', error);
@@ -1309,6 +1317,8 @@ async function handleCryptoReceived(params: ActionParams, userId: string) {
     const amount = params.amount || '0';
     const token = params.token || 'USDC';
     const network = params.network || 'Base Sepolia';
+    const from = params.from || '-';
+    const txUrl = params.txUrl || '-';
     
     // Get user's current balance
     const { data: wallet, error } = await supabase
@@ -1330,8 +1340,10 @@ async function handleCryptoReceived(params: ActionParams, userId: string) {
     return cryptoDepositNotification({
       amount,
       token,
+      from,
       network,
-      balance
+      balance,
+      txUrl
     });
   } catch (error) {
     console.error('Error handling crypto deposit notification:', error);
@@ -1431,43 +1443,50 @@ function cdpSign({ secret, timestamp, method, requestPath, body }: { secret: str
 // This should be added to your API routes (e.g., /api/webhooks/alchemy)
 export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResponse) {
   try {
+    console.log('[Alchemy Webhook] Handler called:', JSON.stringify(req.body, null, 2));
     const event = req.body;
     const activities = event.event?.activity || [];
+    console.log('[Alchemy Webhook] Activities:', activities);
     for (const activity of activities) {
       if ((activity.category === 'token_transfer' || activity.category === 'external') && activity.toAddress) {
         const toAddress = activity.toAddress.toLowerCase();
-        // 1. Find the user by wallet address
+        console.log('[Alchemy Webhook] Looking up wallet for address:', toAddress);
         const { data: wallet } = await supabase
           .from('wallets')
           .select('user_id, chain')
           .eq('address', toAddress)
           .single();
         if (!wallet) {
-          console.log(`[Alchemy Webhook] No wallet found for address: ${toAddress}`);
+          const { data: allWallets } = await supabase.from('wallets').select('address');
+          console.log('[Alchemy Webhook] No wallet found. All wallet addresses in DB:', allWallets);
           continue;
         }
-        // 2. Find the user's phone number
         const { data: user } = await supabase
           .from('users')
           .select('phone_number')
           .eq('id', wallet.user_id)
           .single();
         if (!user) {
-          console.log(`[Alchemy Webhook] No user found for wallet: ${toAddress}`);
+          console.log('[Alchemy Webhook] No user found for wallet:', toAddress);
           continue;
         }
-        // 3. Compose and send the WhatsApp notification
         const amount = activity.value ? Number(activity.value).toFixed(6) : '0';
         const token = activity.asset || 'ETH';
+        const from = activity.fromAddress || '-';
         const network = wallet.chain === 'solana' ? 'Solana Devnet' : 'Base Sepolia';
-        // Fetch the new balance for the address
         let balance = amount + ' ' + token;
         if (wallet.chain === 'evm') {
           balance = (await getSepoliaEthBalanceViaRpc(toAddress)) + ' ' + token;
         } else if (wallet.chain === 'solana') {
           balance = (await getSolanaSolBalanceViaRpc(toAddress)) + ' ' + token;
         }
-        const templateParams = { amount, token, network, balance };
+        const txHash = activity.hash || '';
+        const txUrl = txHash
+          ? (wallet.chain === 'solana'
+              ? `https://explorer.solana.com/tx/${txHash}?cluster=devnet`
+              : `https://basescan.org/tx/${txHash}`)
+          : '-';
+        const templateParams = { amount, token, from, network, balance, txUrl };
         console.log('[Alchemy Webhook] Preparing to send WhatsApp template:', {
           phone: user.phone_number,
           params: templateParams
