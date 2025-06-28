@@ -378,7 +378,7 @@ export function bridgeFailed({ reason }: { reason: string }) {
 /**
  * Template: send_success
  * Parameter Format: POSITIONAL (not NAMED)
- * Parameters: amount, token, recipient, balance
+ * Parameters: amount_token, recipient, balance, tx_hash
  * Has URL button
  */
 export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
@@ -390,7 +390,15 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
     ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
     : recipient || '-';
   
-  console.log('[sendSuccess] Params:', { amountWithToken, recipient: formattedRecipient, balance });
+  // Extract transaction hash from explorer URL for the fourth parameter
+  const txHash = explorerUrl ? explorerUrl.split('/').pop() || 'Unknown' : 'Unknown';
+  
+  console.log('[sendSuccess] Params:', { 
+    amountWithToken, 
+    recipient: formattedRecipient, 
+    balance,
+    txHash
+  });
   
   return {
     name: 'send_success',
@@ -401,7 +409,8 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(amountWithToken) },
           { type: 'text', text: sanitizeWhatsAppParam(formattedRecipient) },
-          { type: 'text', text: sanitizeWhatsAppParam(balance) }
+          { type: 'text', text: sanitizeWhatsAppParam(balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(txHash) }
         ]
       },
       {
