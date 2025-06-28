@@ -381,7 +381,7 @@ export function bridgeFailed({ reason }: { reason: string }) {
  * Parameters: amount, token, recipient, balance
  * Has URL button
  */
-export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
+export function txSentSuccess({ amount, token, recipient, explorerUrl }: { amount: string, token: string, recipient: string, explorerUrl: string }) {
   // Defensive fallback for all parameters
   const safe = (v: string, fallback = '-') => (typeof v === 'string' && v.trim() ? v : fallback);
 
@@ -390,7 +390,7 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
     : safe(recipient);
 
   return {
-    name: 'send_success',
+    name: 'tx_sent_success',
     language: { code: 'en' },
     components: [
       {
@@ -399,14 +399,8 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
           { type: 'text', text: safe(amount) },
           { type: 'text', text: safe(token) },
           { type: 'text', text: safe(formattedRecipient) },
-          { type: 'text', text: safe(balance) }
+          { type: 'text', text: safe(explorerUrl) }
         ]
-      },
-      {
-        type: 'button',
-        sub_type: 'url',
-        index: 0
-        // Do NOT include parameters for static URL button
       }
     ]
   };
@@ -589,11 +583,10 @@ export function swapPending() {
 
 // Alias for transaction_success - using send_success template
 export function transactionSuccess({ amount, recipient_address, transaction_hash }: { amount: string, recipient_address: string, transaction_hash: string }) {
-  return sendSuccess({
+  return txSentSuccess({
     amount,
     token: 'ETH',
     recipient: recipient_address,
-    balance: '0 ETH', // This would need to be updated with actual balance
     explorerUrl: transaction_hash ? `https://sepolia.basescan.org/tx/${transaction_hash}` : ''
   });
 }
