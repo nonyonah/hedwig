@@ -1434,7 +1434,6 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
     const event = req.body;
     const activities = event.event?.activity || [];
     for (const activity of activities) {
-      // Only process incoming transfers
       if ((activity.category === 'token_transfer' || activity.category === 'external') && activity.toAddress) {
         const toAddress = activity.toAddress.toLowerCase();
         // 1. Find the user by wallet address
@@ -1458,10 +1457,16 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
           continue;
         }
         // 3. Compose and send the WhatsApp notification
-        const amount = String(activity.value);
+        const amount = activity.value ? Number(activity.value).toFixed(6) : '0';
         const token = activity.asset || 'ETH';
         const network = wallet.chain === 'solana' ? 'Solana Devnet' : 'Base Sepolia';
-        const balance = amount + ' ' + token;
+        // Fetch the new balance for the address
+        let balance = amount + ' ' + token;
+        if (wallet.chain === 'evm') {
+          balance = (await getSepoliaEthBalanceViaRpc(toAddress)) + ' ' + token;
+        } else if (wallet.chain === 'solana') {
+          balance = (await getSolanaSolBalanceViaRpc(toAddress)) + ' ' + token;
+        }
         await sendWhatsAppTemplate(user.phone_number, cryptoDepositNotification({
           amount,
           token,
