@@ -1467,12 +1467,17 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
         } else if (wallet.chain === 'solana') {
           balance = (await getSolanaSolBalanceViaRpc(toAddress)) + ' ' + token;
         }
-        await sendWhatsAppTemplate(user.phone_number, cryptoDepositNotification({
-          amount,
-          token,
-          network,
-          balance
-        }));
+        const templateParams = { amount, token, network, balance };
+        console.log('[Alchemy Webhook] Preparing to send WhatsApp template:', {
+          phone: user.phone_number,
+          params: templateParams
+        });
+        try {
+          const result = await sendWhatsAppTemplate(user.phone_number, cryptoDepositNotification(templateParams));
+          console.log('[Alchemy Webhook] WhatsApp API result:', result);
+        } catch (err) {
+          console.error('[Alchemy Webhook] WhatsApp send error:', err);
+        }
         console.log(`[Alchemy Webhook] Notified user ${user.phone_number} of deposit to ${toAddress}`);
       }
     }
