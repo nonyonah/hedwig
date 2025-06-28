@@ -382,19 +382,13 @@ export function bridgeFailed({ reason }: { reason: string }) {
  * Has URL button
  */
 export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
-  // Format recipient address for better display
+  // Defensive fallback for all parameters
+  const safe = (v: string, fallback = '-') => (typeof v === 'string' && v.trim() ? v : fallback);
+
   const formattedRecipient = recipient && recipient.length > 15
     ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
-    : recipient || '-';
-  
-  console.log('[sendSuccess] Params:', { 
-    amount, 
-    token,
-    recipient: formattedRecipient, 
-    balance,
-    explorerUrl
-  });
-  
+    : safe(recipient);
+
   return {
     name: 'send_success',
     language: { code: 'en' },
@@ -402,19 +396,17 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
       {
         type: 'body',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(amount), name: 'amount' },
-          { type: 'text', text: sanitizeWhatsAppParam(token), name: 'token' },
-          { type: 'text', text: sanitizeWhatsAppParam(formattedRecipient), name: 'recipient' },
-          { type: 'text', text: sanitizeWhatsAppParam(balance), name: 'balance' }
+          { type: 'text', text: safe(amount) },
+          { type: 'text', text: safe(token) },
+          { type: 'text', text: safe(formattedRecipient) },
+          { type: 'text', text: safe(balance) }
         ]
       },
       {
         type: 'button',
         sub_type: 'url',
-        index: 0,
-        parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(explorerUrl || '') }
-        ]
+        index: 0
+        // Do NOT include parameters for static URL button
       }
     ]
   };
