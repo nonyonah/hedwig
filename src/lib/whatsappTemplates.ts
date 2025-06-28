@@ -377,27 +377,22 @@ export function bridgeFailed({ reason }: { reason: string }) {
 
 /**
  * Template: send_success
- * Parameter Format: POSITIONAL (not NAMED)
- * Parameters: amount_token, recipient, balance, tx_hash
+ * Parameter Format: NAMED (not POSITIONAL)
+ * Parameters: amount, token, recipient, balance
  * Has URL button
  */
 export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: { amount: string, token: string, recipient: string, balance: string, explorerUrl: string }) {
-  // Combine amount and token for better display
-  const amountWithToken = `${sanitizeWhatsAppParam(amount)} ${sanitizeWhatsAppParam(token)}`;
-  
   // Format recipient address for better display
   const formattedRecipient = recipient && recipient.length > 15
     ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
     : recipient || '-';
   
-  // Extract transaction hash from explorer URL for the fourth parameter
-  const txHash = explorerUrl ? explorerUrl.split('/').pop() || 'Unknown' : 'Unknown';
-  
   console.log('[sendSuccess] Params:', { 
-    amountWithToken, 
+    amount, 
+    token,
     recipient: formattedRecipient, 
     balance,
-    txHash
+    explorerUrl
   });
   
   return {
@@ -407,10 +402,10 @@ export function sendSuccess({ amount, token, recipient, balance, explorerUrl }: 
       {
         type: 'body',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(amountWithToken) },
-          { type: 'text', text: sanitizeWhatsAppParam(formattedRecipient) },
-          { type: 'text', text: sanitizeWhatsAppParam(balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(txHash) }
+          { type: 'text', text: sanitizeWhatsAppParam(amount), name: 'amount' },
+          { type: 'text', text: sanitizeWhatsAppParam(token), name: 'token' },
+          { type: 'text', text: sanitizeWhatsAppParam(formattedRecipient), name: 'recipient' },
+          { type: 'text', text: sanitizeWhatsAppParam(balance), name: 'balance' }
         ]
       },
       {
@@ -473,7 +468,7 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
 
 /**
  * Template: send_failed
- * Parameter Format: POSITIONAL (not NAMED)
+ * Parameter Format: NAMED (not POSITIONAL)
  * Parameters: reason
  */
 export function sendFailed({ reason }: { reason: string }) {
@@ -487,7 +482,7 @@ export function sendFailed({ reason }: { reason: string }) {
       {
         type: 'body',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(safeReason) }
+          { type: 'text', text: sanitizeWhatsAppParam(safeReason), name: 'reason' }
         ]
       }
     ]
