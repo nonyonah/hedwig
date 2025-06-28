@@ -12,7 +12,7 @@ import {
   confirmTransaction,
   txPending,
   bridgeFailed,
-  sendSuccess,
+  txSentSuccess,
   swapSuccess,
   bridgeSuccess,
   sendFailed,
@@ -683,11 +683,10 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         });
         
         // Return the success template with all required parameters
-        return sendSuccess({
+        return txSentSuccess({
           amount,
           token,
           recipient: formattedRecipient,
-          balance: formattedBalance,
           explorerUrl
         });
       } catch (err: any) {
@@ -1412,12 +1411,11 @@ function sanitizeWhatsAppParam(text: string): string {
 // Patch sendSuccess, sendFailed, sendTokenPrompt, etc. to sanitize parameters before sending
 // Example for sendSuccess:
 function sendSuccessSanitized(args: any) {
-  return sendSuccess({
+  return txSentSuccess({
     ...args,
     amount: sanitizeWhatsAppParam(args.amount),
     token: sanitizeWhatsAppParam(args.token),
     recipient: sanitizeWhatsAppParam(args.recipient),
-    balance: sanitizeWhatsAppParam(args.balance),
     explorerUrl: sanitizeWhatsAppParam(args.explorerUrl)
   });
 }
@@ -1425,4 +1423,57 @@ function sendSuccessSanitized(args: any) {
 function cdpSign({ secret, timestamp, method, requestPath, body }: { secret: string, timestamp: string, method: string, requestPath: string, body: string }): string {
   const prehash = timestamp + method.toUpperCase() + requestPath + body;
   return crypto.createHmac('sha256', secret).update(prehash).digest('hex');
+}
+
+// --- Alchemy Webhook Handler for Deposit Notifications ---
+// This should be added to your API routes (e.g., /api/webhooks/alchemy)
+export async function handleAlchemyWebhook(req, res) {
+  try {
+    const event = req.body;
+    // Alchemy sends an array of activity items
+    const activities = event.activity || [];
+    for (const activity of activities) {
+      // Only process incoming transfers
+      if ((activity.category === 'token_transfer' || activity.category === 'external') && activity.to) {
+        const toAddress = activity.to.toLowerCase();
+        // 1. Find the user by wallet address
+        const { data: wallet } = await supabase
+          .from('wallets')
+          .select('user_id, chain')
+          .eq('address', toAddress)
+          .single();
+        if (!wallet) {
+          console.log(`[Alchemy Webhook] No wallet found for address: ${toAddress}`);
+          continue;
+        }
+        // 2. Find the user's phone number
+        const { data: user } = await supabase
+          .from('users')
+          .select('phone_number')
+          .eq('id', wallet.user_id)
+          .single();
+        if (!user) {
+          console.log(`[Alchemy Webhook] No user found for wallet: ${toAddress}`);
+          continue;
+        }
+        // 3. Compose and send the WhatsApp notification
+        const amount = activity.value || activity.erc20Value || '1';
+        const token = activity.asset || activity.tokenSymbol || 'ETH';
+        const network = wallet.chain === 'solana' ? 'Solana Devnet' : 'Base Sepolia';
+        // Optionally fetch new balance here if needed
+        const balance = amount + ' ' + token;
+        await sendWhatsAppTemplate(user.phone_number, cryptoDepositNotification({
+          amount,
+          token,
+          network,
+          balance
+        }));
+        console.log(`[Alchemy Webhook] Notified user ${user.phone_number} of deposit to ${toAddress}`);
+      }
+    }
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[Alchemy Webhook] Error:', err);
+    res.status(500).json({ error: 'Webhook handler error' });
+  }
 }
