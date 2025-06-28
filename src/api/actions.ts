@@ -35,6 +35,8 @@ import {
 } from '@/lib/whatsappTemplates';
 import { PrivyClient } from '@privy-io/server-auth';
 import crypto from 'crypto';
+import { sendWhatsAppTemplate } from '@/lib/whatsappUtils';
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -1427,15 +1429,14 @@ function cdpSign({ secret, timestamp, method, requestPath, body }: { secret: str
 
 // --- Alchemy Webhook Handler for Deposit Notifications ---
 // This should be added to your API routes (e.g., /api/webhooks/alchemy)
-export async function handleAlchemyWebhook(req, res) {
+export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResponse) {
   try {
     const event = req.body;
-    // Alchemy sends an array of activity items
-    const activities = event.activity || [];
+    const activities = event.event?.activity || [];
     for (const activity of activities) {
       // Only process incoming transfers
-      if ((activity.category === 'token_transfer' || activity.category === 'external') && activity.to) {
-        const toAddress = activity.to.toLowerCase();
+      if ((activity.category === 'token_transfer' || activity.category === 'external') && activity.toAddress) {
+        const toAddress = activity.toAddress.toLowerCase();
         // 1. Find the user by wallet address
         const { data: wallet } = await supabase
           .from('wallets')
@@ -1457,10 +1458,9 @@ export async function handleAlchemyWebhook(req, res) {
           continue;
         }
         // 3. Compose and send the WhatsApp notification
-        const amount = activity.value || activity.erc20Value || '1';
-        const token = activity.asset || activity.tokenSymbol || 'ETH';
+        const amount = String(activity.value);
+        const token = activity.asset || 'ETH';
         const network = wallet.chain === 'solana' ? 'Solana Devnet' : 'Base Sepolia';
-        // Optionally fetch new balance here if needed
         const balance = amount + ' ' + token;
         await sendWhatsAppTemplate(user.phone_number, cryptoDepositNotification({
           amount,
