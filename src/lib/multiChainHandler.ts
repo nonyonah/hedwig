@@ -7,6 +7,14 @@ import { Connection, Transaction, SystemProgram, PublicKey } from '@solana/web3.
  */
 export class MultiChainTransactionHandler {
   private privyApiUrl = 'https://api.privy.io/v1/wallets';
+  private solanaConnection: Connection;
+
+  constructor() {
+    this.solanaConnection = new Connection(
+      process.env.ALCHEMY_SOLANA_RPC_URL || 'https://solana-devnet.g.alchemy.com/v2/<YOUR_ALCHEMY_KEY>',
+      'confirmed'
+    );
+  }
   
   /**
    * Send a transaction on any supported chain
@@ -126,72 +134,22 @@ export class MultiChainTransactionHandler {
     transactionData: any, 
     method: string = 'signAndSendTransaction'
   ) {
-    const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
-    const solanaRpcUrl = 'https://api.devnet.solana.com';
-    
     // If we have a simple transfer
     if (transactionData.recipient && transactionData.amount) {
-      // Build a real Solana transaction
-      const connection = new Connection(solanaRpcUrl, 'confirmed');
       const fromPubkey = new PublicKey(transactionData.senderAddress);
       const toPubkey = new PublicKey(transactionData.recipient);
-      // Always use integer for lamports
       const lamports = Math.round(Number(transactionData.amount) * 1e9);
-      
-      // Fetch recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey,
-          toPubkey,
-          lamports
-        })
-      );
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = fromPubkey;
-      // Serialize the unsigned transaction
-      const serializedTx = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
-      const base64Tx = Buffer.from(serializedTx).toString('base64');
-      
-      const body = JSON.stringify({
-        method,
-        params: {
-          transaction: base64Tx,
-          encoding: "base64"
-        },
-        caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' // Solana Devnet
-      });
-      
-      console.log('[MultiChainHandler] Solana transaction payload:', body);
-      
-      const response = await this.sendPrivyRequest(rpcUrl, body);
-      return this.processSolanaResponse(response);
+      const transaction = await this.buildSolanaTransaction(fromPubkey, toPubkey, lamports);
+      return this.sendSolanaTransactionWithRetry(transaction, walletId);
     } 
     // If we already have an encoded transaction
     else if (transactionData.transaction) {
       // For pre-encoded transactions, decode, update blockhash and feePayer, re-encode
-      const connection = new Connection(solanaRpcUrl, 'confirmed');
-      const { blockhash } = await connection.getLatestBlockhash();
       const transaction = Transaction.from(Buffer.from(transactionData.transaction, 'base64'));
-      transaction.recentBlockhash = blockhash;
       if (!transaction.feePayer && transactionData.senderAddress) {
         transaction.feePayer = new PublicKey(transactionData.senderAddress);
       }
-      const updatedTransaction = transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
-      const body = JSON.stringify({
-        method,
-        params: {
-          transaction: updatedTransaction,
-          encoding: transactionData.encoding || "base64"
-        },
-        caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' // Solana Devnet
-      });
-      
-      console.log('[MultiChainHandler] Solana transaction payload:', body);
-      
-      const response = await this.sendPrivyRequest(rpcUrl, body);
-      return this.processSolanaResponse(response);
+      return this.sendSolanaTransactionWithRetry(transaction, walletId);
     } 
     else {
       throw new Error('Invalid Solana transaction data format');
@@ -283,6 +241,76 @@ export class MultiChainTransactionHandler {
       signature,
       explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
     };
+  }
+
+  async buildSolanaTransaction(
+    fromPubkey: PublicKey,
+    toPubkey: PublicKey,
+    amount: number
+  ): Promise<Transaction> {
+    // Get FRESH blockhash right before building transaction
+    const { blockhash } = await this.solanaConnection.getLatestBlockhash('confirmed');
+    const transaction = new Transaction({
+      recentBlockhash: blockhash,
+      feePayer: fromPubkey,
+    });
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey,
+        toPubkey,
+        lamports: amount,
+      })
+    );
+    return transaction;
+  }
+
+  async sendSolanaTransactionWithRetry(
+    transaction: Transaction,
+    walletId: string,
+    maxRetries: number = 3
+  ): Promise<any> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Get fresh blockhash for each attempt
+        const { blockhash } = await this.solanaConnection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        // Serialize and send to Privy
+        const serializedTransaction = transaction.serialize({
+          requireAllSignatures: false,
+          verifySignatures: false,
+        });
+        const payload = {
+          method: 'signAndSendTransaction',
+          params: {
+            transaction: serializedTransaction.toString('base64'),
+            encoding: 'base64',
+          },
+          caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+        };
+        return await this.sendPrivyRequest(
+          `${this.privyApiUrl}/${walletId}/rpc`,
+          JSON.stringify(payload)
+        );
+      } catch (error: any) {
+        const isLastAttempt = attempt === maxRetries - 1;
+        if (this.isBlockhashError(error) && !isLastAttempt) {
+          console.log(`[MultiChainHandler] Attempt ${attempt + 1} failed: Blockhash error. Retrying...`);
+          await this.sleep(1000); // Wait 1 second before retry
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  private isBlockhashError(error: any): boolean {
+    const errorMessage = error.message || error.toString();
+    return errorMessage.includes('Blockhash not found') || 
+           errorMessage.includes('block height exceeded');
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 
