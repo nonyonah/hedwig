@@ -614,150 +614,37 @@ async function handleSendTokens(params: ActionParams, userId: string) {
 
     // If in execution phase, process the send
     if (isExecute) {
-      // Get sender wallet address and privy_wallet_id from DB
-      let senderAddress = '';
-      let privyWalletId = '';
-      let chain: 'evm' | 'solana' = 'evm';
-      if (network.toLowerCase().includes('solana')) {
-        chain = 'solana';
-        console.log('[DEBUG] Using Solana chain for send transaction');
-        const { data: solanaWallet } = await supabase
-          .from('wallets')
-          .select('address, privy_wallet_id')
-          .eq('user_id', userId)
-          .eq('chain', 'solana')
-          .single();
-        senderAddress = solanaWallet?.address;
-        privyWalletId = solanaWallet?.privy_wallet_id;
-        console.log('[DEBUG] Solana wallet found:', { senderAddress, privyWalletId });
-      } else {
-        chain = 'evm';
-        console.log('[DEBUG] Using EVM chain for send transaction');
-        const { data: evmWallet } = await supabase
-          .from('wallets')
-          .select('address, privy_wallet_id')
-          .eq('user_id', userId)
-          .eq('chain', 'evm')
-          .single();
-        senderAddress = evmWallet?.address;
-        privyWalletId = evmWallet?.privy_wallet_id;
-        console.log('[DEBUG] EVM wallet found:', { senderAddress, privyWalletId });
-      }
-      if (!senderAddress || !privyWalletId) {
-        return sendFailed({ reason: 'Sender wallet not found.' });
-      }
-      let txHash = '';
-      let explorerUrl = '';
       try {
-        // Privy API call
-        const privyApiUrl = 'https://api.privy.io/v1/wallets';
-        const privyAppId = process.env.PRIVY_APP_ID!;
-        const privyAppSecret = process.env.PRIVY_APP_SECRET!;
-        const rpcUrl = `${privyApiUrl}/${privyWalletId}/rpc`;
-        let method, body;
-        if (chain === 'solana') {
-          // For Solana, use solana_sendTransaction per Privy docs
-          // Convert amount to lamports (1 SOL = 1e9 lamports)
-          const amountLamports = Math.floor(Number(amount) * 1e9).toString();
-          method = 'solana_sendTransaction';
-          
-          // Create a base64-encoded transaction
-          // Note: In a real implementation, we would construct a proper Solana transaction
-          // For now, we're using a placeholder structure that matches Privy's expected format
-          const dummyTx = {
-            to: recipient,
-            amount: amountLamports
-          };
-          
-          // Convert to base64 string (simulating a real encoded transaction)
-          const base64Tx = Buffer.from(JSON.stringify(dummyTx)).toString('base64');
-          
-          body = JSON.stringify({
-            method,
-            params: {
-              transaction: base64Tx,
-              encoding: "base64"
-            }
-          });
-          
-          // Calculate SOL fee for display in template
-          const solFee = 0.000005; // Typical SOL fee
-          params.fee = `${solFee.toFixed(6)} SOL`;
-          
-          console.log('[DEBUG] Solana transaction payload:', body);
-        } else {
-          // For EVM chains, use the format from Privy docs for Ethereum
-          const amountValue = Number(amount);
-          const adjustedAmount = amountValue * 0.95; // Reduce by 5% to leave room for gas fees
-          const amountInWei = Math.floor(adjustedAmount * 1e18); // Convert ETH to wei
-          const amountInHex = '0x' + amountInWei.toString(16);
-          method = 'eth_sendTransaction';
-          body = JSON.stringify({
-            method,
-            caip2: 'eip155:84532', // Base Sepolia chain ID
-            chain_type: 'ethereum',
-            params: {
-              transaction: {
-                to: recipient,
-                value: amountInHex,
-                from: senderAddress
-              }
-            }
-          });
-          // Calculate gas fee for display in template only
-          const gasFeeWei = 21000 * 5000000000; // gas units * gas price in wei
-          const gasFeeEth = gasFeeWei / 1e18; // Convert to ETH
-          params.fee = `${gasFeeEth.toFixed(6)} ETH`;
-        }
-        // Prepare auth headers
-        const auth = Buffer.from(`${privyAppId}:${privyAppSecret}`).toString('base64');
-        const headers = {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json',
-          'privy-app-id': privyAppId
+        // Import the transaction handler
+        const { handleTransaction } = await import('@/lib/transactionHandler');
+        
+        // Prepare transaction options
+        const options = {
+          chain: isSolana ? 'solana' : 'ethereum',
+          token,
+          amount,
+          recipient
         };
-        // Extra logging
-        console.log('[Privy RPC] URL:', rpcUrl);
-        console.log('[Privy RPC] Headers:', headers);
-        console.log('[Privy RPC] Body:', body);
-        const rpcRes = await fetch(rpcUrl, {
-          method: 'POST',
-          headers,
-          body
-        });
-        const rpcResText = await rpcRes.text();
-        console.log('[Privy RPC] Response status:', rpcRes.status);
-        console.log('[Privy RPC] Response body:', rpcResText);
-        if (!rpcRes.ok) {
-          console.log('[Privy RPC] Transaction failed');
-          return sendFailed({ reason: `Transaction failed: ${rpcResText}` });
-        }
-        console.log('[Privy RPC] Transaction successful!');
-        const rpcResult = JSON.parse(rpcResText);
-        txHash = rpcResult.data?.hash || rpcResult.data?.transaction_hash || rpcResult.data || '';
-        explorerUrl = chain === 'solana'
-          ? `https://explorer.solana.com/tx/${txHash}?cluster=devnet`
-          : `https://sepolia.basescan.org/tx/${txHash}`;
-        // Fetch new balance for template
-        let newBalance = '0';
-        if (chain === 'evm') {
-          newBalance = await getBaseSepoliaEthBalance(senderAddress);
-        } else if (chain === 'solana') {
-          newBalance = await getSolanaSolBalanceDirect(senderAddress);
-        }
-        // Format values for the template
-        const formattedBalance = `${newBalance} ${token}`;
+        
+        console.log('[DEBUG] Sending transaction with options:', options);
+        
+        // Execute the transaction
+        const result = await handleTransaction(userId, {}, options);
+        
+        console.log('[DEBUG] Transaction result:', result);
+        
+        // Get the transaction hash/signature and explorer URL
+        const txHash = isSolana 
+          ? (result as any).signature || '' 
+          : (result as any).hash || '';
+        const explorerUrl = result.explorerUrl;
+        
+        // Format the recipient address for display
         const formattedRecipient = recipient.length > 15 
           ? `${recipient.substring(0, 6)}...${recipient.substring(recipient.length - 4)}`
           : recipient;
-        console.log('[Transaction] Preparing success template with:', {
-          amount,
-          token,
-          recipient: formattedRecipient,
-          balance: formattedBalance,
-          explorerUrl
-        });
-        // Return the success template with all required parameters
+        
+        // Return success template
         return txSentSuccess({
           amount,
           token,
