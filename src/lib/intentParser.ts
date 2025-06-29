@@ -1,4 +1,5 @@
 export function parseIntentAndParams(llmResponse: string): { intent: string, params: Record<string, any> } {
+  console.log('[intentParser] Input:', llmResponse);
   // First try to parse JSON response from LLM
   try {
     // Look for JSON object in the response
@@ -9,24 +10,30 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         if (obj.intent && typeof obj.intent === 'string') {
           // Special handling for specific intents
           if (obj.intent === 'deposit_received' || obj.intent === 'token_received') {
-            return {
+            const result = {
               intent: 'crypto_received',
               params: obj.params || {}
             };
+            console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+            return result;
           }
           
           if (obj.intent === 'bridge_completed' || obj.intent === 'bridge_received') {
             // Ensure that this is handled as a bridge deposit notification
-            return {
+            const result = {
               intent: 'bridge',
               params: { ...obj.params, isExecute: true } // Force execution phase
             };
+            console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+            return result;
           }
           
-          return { 
+          const result = { 
             intent: obj.intent, 
             params: obj.params || {} 
           };
+          console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+          return result;
         }
       } catch (e) {
         console.error('Error parsing JSON from LLM response:', e);
@@ -42,10 +49,14 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
          text.includes('sol') || text.includes('usdc'))) {
       if (text.includes('bridge') || text.includes('cross chain') || text.includes('between chains')) {
         // Bridge deposit notification
-        return { intent: 'bridge', params: { isExecute: true } };
+        const result = { intent: 'bridge', params: { isExecute: true } };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
       } else {
         // Regular crypto deposit notification
-        return { intent: 'crypto_received', params: {} };
+        const result = { intent: 'crypto_received', params: {} };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
       }
     }
     
@@ -55,7 +66,9 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('make wallet') ||
         text.includes('setup wallet') ||
         (text.includes('wallet') && text.includes('create'))) {
-      return { intent: 'create_wallets', params: {} };
+      const result = { intent: 'create_wallets', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Wallet address keywords for deposit instructions
@@ -70,17 +83,23 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('show me my') && text.includes('address')) &&
         (text.includes('how') || text.includes('instruct') || text.includes('help') || text.includes('want'))) {
       console.log('Intent parser detected deposit instruction request');
-      return { intent: 'instruction_deposit', params: {} };
+      const result = { intent: 'instruction_deposit', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Simple deposit keywords (without asking for instructions)
     if (text.includes('deposit') || text.includes('receive crypto')) {
       if (text.includes('how') || text.includes('instruct') || text.includes('help') || text.includes('want')) {
         // User is asking for deposit instructions
-        return { intent: 'instruction_deposit', params: {} };
+        const result = { intent: 'instruction_deposit', params: {} };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
       } else {
         // User is just mentioning deposits, show addresses
-        return { intent: 'get_wallet_address', params: {} };
+        const result = { intent: 'get_wallet_address', params: {} };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
       }
     }
     
@@ -88,7 +107,9 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
     if (text.includes('balance') || 
         text.includes('how much') && (text.includes('have') || text.includes('own')) ||
         text.includes('check wallet')) {
-      return { intent: 'get_wallet_balance', params: {} };
+      const result = { intent: 'get_wallet_balance', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Export keys keywords - make this more specific to avoid false positives
@@ -97,14 +118,18 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('seed phrase') ||
         text.includes('recovery phrase') ||
         text.includes('backup') && text.includes('key')) {
-      return { intent: 'export_keys', params: {} };
+      const result = { intent: 'export_keys', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Swap instruction keywords
     if ((text.includes('swap') || text.includes('exchange') || text.includes('convert')) &&
         (text.includes('help') || text.includes('how') || text.includes('instruct') || 
          text.includes('guide') || text.includes('would like to') || text.includes('want to'))) {
-      return { intent: 'instruction_swap', params: {} };
+      const result = { intent: 'instruction_swap', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Bridge instruction keywords
@@ -112,49 +137,63 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('move between chains') || text.includes('cross chain')) &&
         (text.includes('help') || text.includes('how') || text.includes('instruct') || 
          text.includes('guide') || text.includes('would like to') || text.includes('want to'))) {
-      return { intent: 'instruction_bridge', params: {} };
+      const result = { intent: 'instruction_bridge', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Send/withdraw instruction keywords
     if ((text.includes('send') || text.includes('withdraw') || text.includes('transfer')) &&
         (text.includes('help') || text.includes('how') || text.includes('instruct') || 
          text.includes('guide') || text.includes('would like to') || text.includes('want to'))) {
-      return { intent: 'instruction_send', params: {} };
+      const result = { intent: 'instruction_send', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Actual send transaction keywords - if the user is actually trying to send
     if ((text.includes('send') || text.includes('transfer')) && 
         (text.includes('crypto') || text.includes('token') || text.includes('eth') || 
          text.includes('sol') || text.includes('usdc'))) {
-      return { intent: 'send', params: {} };
+      const result = { intent: 'send', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Actual swap keywords - if the user is actually trying to swap
     if (text.includes('swap') || 
         (text.includes('exchange') && (text.includes('token') || text.includes('crypto'))) ||
         text.includes('convert')) {
-      return { intent: 'swap', params: {} };
+      const result = { intent: 'swap', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Actual bridge keywords - if the user is actually trying to bridge
     if (text.includes('bridge') || 
         text.includes('cross chain') || 
         text.includes('move between chains')) {
-      return { intent: 'bridge', params: {} };
+      const result = { intent: 'bridge', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Price check keywords
     if (text.includes('price') || 
         text.includes('how much is') || 
         text.includes('worth')) {
-      return { intent: 'get_price', params: {} };
+      const result = { intent: 'get_price', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // News keywords
     if (text.includes('news') || 
         text.includes('latest') || 
         text.includes('updates')) {
-      return { intent: 'get_news', params: {} };
+      const result = { intent: 'get_news', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // Welcome/help keywords
@@ -163,11 +202,15 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         text.includes('hey') || 
         text.includes('start') || 
         text.includes('help')) {
-      return { intent: 'welcome', params: {} };
+      const result = { intent: 'welcome', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
     }
     
     // If no specific intent is detected, return unknown
-    return { intent: 'unknown', params: {} };
+    const result = { intent: 'unknown', params: {} };
+    console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+    return result;
   } catch (error) {
     console.error('Error in parseIntentAndParams:', error);
     return { intent: 'unknown', params: {} };
