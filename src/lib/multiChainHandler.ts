@@ -1,4 +1,5 @@
 import { getPrivyAuthHeader } from './privy';
+import { Connection, Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
 /**
  * MultiChainTransactionHandler
@@ -126,22 +127,33 @@ export class MultiChainTransactionHandler {
     method: string = 'signAndSendTransaction'
   ) {
     const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
+    const solanaRpcUrl = 'https://api.devnet.solana.com';
     
     // If we have a simple transfer
     if (transactionData.recipient && transactionData.amount) {
-      // Convert to lamports if needed
-      const amountLamports = typeof transactionData.amount === 'number' 
-        ? Math.floor(transactionData.amount * 1e9).toString()
-        : transactionData.amount;
+      // Build a real Solana transaction
+      const connection = new Connection(solanaRpcUrl, 'confirmed');
+      const fromPubkey = new PublicKey(transactionData.senderAddress);
+      const toPubkey = new PublicKey(transactionData.recipient);
+      // Always use integer for lamports
+      const lamports = Math.round(Number(transactionData.amount) * 1e9);
       
-      // Create a dummy transaction (in a real app, construct a proper Solana transaction)
-      const dummyTx = {
-        to: transactionData.recipient,
-        amount: amountLamports
-      };
+      // Fetch recent blockhash
+      const { blockhash } = await connection.getLatestBlockhash();
       
-      // Convert to base64 string
-      const base64Tx = Buffer.from(JSON.stringify(dummyTx)).toString('base64');
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey,
+          toPubkey,
+          lamports
+        })
+      );
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = fromPubkey;
+      
+      // Serialize the unsigned transaction
+      const serializedTx = transaction.serialize({ requireAllSignatures: false });
+      const base64Tx = Buffer.from(serializedTx).toString('base64');
       
       const body = JSON.stringify({
         method,

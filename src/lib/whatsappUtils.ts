@@ -420,6 +420,23 @@ function sanitizeTemplateParams(template: any): any {
   return template;
 }
 
+// Patch sendWhatsAppTemplate to always name the error parameter 'reason' for send_failed template
+function patchSendFailedTemplate(template: any): any {
+  if (template && template.name === 'send_failed' && template.components) {
+    for (const component of template.components) {
+      if (component.parameters) {
+        component.parameters = component.parameters.map((param: any) => {
+          if (param.type === 'text' && (!param.name || param.name !== 'reason')) {
+            return { ...param, name: 'reason' };
+          }
+          return param;
+        });
+      }
+    }
+  }
+  return template;
+}
+
 // Update the sendWhatsAppTemplate function to use the cleanWhatsAppTemplate function
 export async function sendWhatsAppTemplate(
   phoneNumber: string,
@@ -438,10 +455,13 @@ export async function sendWhatsAppTemplate(
     // Sanitize template parameters
     const sanitizedTemplate = sanitizeTemplateParams(cleanTemplate);
     
+    // Patch send_failed template
+    const patchedTemplate = patchSendFailedTemplate(sanitizedTemplate);
+    
     // Construct the WhatsApp template message
     const message: WhatsAppTemplateMessage = {
       to: formatPhoneNumber(phoneNumber),
-      template: sanitizedTemplate
+      template: patchedTemplate
     };
 
     // Log the actual message being sent for debugging
