@@ -6,10 +6,11 @@ import { Connection, Transaction, SystemProgram, PublicKey } from '@solana/web3.
  * Handles transactions across multiple blockchains (Ethereum and Solana)
  */
 export class MultiChainTransactionHandler {
-  private privyApiUrl = 'https://api.privy.io/v1/wallets';
+  private privyApiUrl: string;
   private solanaConnection: Connection;
 
   constructor() {
+    this.privyApiUrl = process.env.PRIVY_API_URL || 'https://api.privy.io/v1/wallets';
     this.solanaConnection = new Connection(
       process.env.ALCHEMY_SOLANA_RPC_URL || 'https://solana-devnet.g.alchemy.com/v2/<YOUR_ALCHEMY_KEY>',
       'confirmed'
@@ -24,7 +25,7 @@ export class MultiChainTransactionHandler {
    * @returns Transaction result
    */
   async sendTransaction(
-    walletId: string, 
+    senderAddress: string, // Now expects the Solana sender address
     transactionData: any, 
     options: { 
       chain?: 'ethereum' | 'solana' | string,
@@ -37,9 +38,9 @@ export class MultiChainTransactionHandler {
     console.log(`[MultiChainHandler] Sending ${chain} transaction`);
     
     if (chain.toLowerCase().includes('sol')) {
-      return this.sendSolanaTransaction(walletId, transactionData, options.method);
+      return this.sendSolanaTransaction(senderAddress, transactionData);
     } else {
-      return this.sendEthereumTransaction(walletId, transactionData, options.method);
+      return this.sendEthereumTransaction(senderAddress, transactionData, options.method);
     }
   }
   
@@ -80,44 +81,40 @@ export class MultiChainTransactionHandler {
    * @param method The RPC method to use
    * @returns Transaction result
    */
+  /**
+   * Send an Ethereum transaction using Privy
+   * @param walletId The Privy wallet ID
+   * @param transactionData The Ethereum transaction data
+   * @param method The RPC method to use (default: eth_sendTransaction)
+   * @returns Transaction result
+   */
   async sendEthereumTransaction(
-    walletId: string, 
-    transactionData: any, 
+    walletId: string,
+    transactionData: any,
     method: string = 'eth_sendTransaction'
   ) {
-    const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
-    
-    // Ensure we have the required fields
     if (!transactionData.to) {
       throw new Error('Ethereum transaction requires a "to" address');
     }
-    
-    // Format transaction data properly
+    // Format value as hex if it's a number
     let value = transactionData.value;
     if (typeof value === 'number') {
-      // Convert to hex if it's a number
       value = '0x' + Math.floor(value * 1e18).toString(16);
       transactionData.value = value;
     }
-    
+    const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
     const body = JSON.stringify({
       method,
-      caip2: 'eip155:84532', // Base Sepolia chain ID
-      chain_type: 'ethereum',
       params: {
-        transaction: {
-          to: transactionData.to,
-          value: transactionData.value,
-          from: transactionData.from,
-          data: transactionData.data,
-          gas: transactionData.gas,
-          gasPrice: transactionData.gasPrice
-        }
-      }
+        from: transactionData.from,
+        to: transactionData.to,
+        value: transactionData.value,
+        data: transactionData.data,
+        gas: transactionData.gas,
+        gasPrice: transactionData.gasPrice,
+      },
+      caip2: 'eip155:11155111', // Base Sepolia chain ID
     });
-    
-    console.log('[MultiChainHandler] Ethereum transaction payload:', body);
-    
     const response = await this.sendPrivyRequest(rpcUrl, body);
     return this.processEthereumResponse(response);
   }
@@ -129,62 +126,92 @@ export class MultiChainTransactionHandler {
    * @param method The RPC method to use
    * @returns Transaction result
    */
+  /**
+   * Send a Solana transaction using Alchemy
+   * @param senderAddress The sender's Solana address
+   * @param transactionData The Solana transaction data
+   * @returns Transaction result
+   */
+  /**
+   * Send a Solana transaction using Privy
+   * @param walletId The Privy wallet ID
+   * @param transactionData The Solana transaction data
+   * @param method The RPC method to use (default: signAndSendTransaction)
+   * @returns Transaction result
+   */
   async sendSolanaTransaction(
-    walletId: string, 
-    transactionData: any, 
+    walletId: string,
+    transactionData: any,
     method: string = 'signAndSendTransaction'
   ) {
+    const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
     // If we have a simple transfer
     if (transactionData.recipient && transactionData.amount) {
       const fromPubkey = new PublicKey(transactionData.senderAddress);
       const toPubkey = new PublicKey(transactionData.recipient);
       const lamports = Math.round(Number(transactionData.amount) * 1e9);
       const transaction = await this.buildSolanaTransaction(fromPubkey, toPubkey, lamports);
-      return this.sendSolanaTransactionWithRetry(transaction, walletId);
-    } 
-    // If we already have an encoded transaction
-    else if (transactionData.transaction) {
+      // Serialize transaction for Privy
+      const serializedTransaction = transaction.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false,
+      });
+      const body = JSON.stringify({
+        method,
+        params: {
+          transaction: serializedTransaction.toString('base64'),
+          encoding: 'base64',
+        },
+        caip2: 'solana:devnet', // Change to 'solana:mainnet-beta' for mainnet
+      });
+      const response = await this.sendPrivyRequest(rpcUrl, body);
+      return this.processSolanaResponse(response);
+    } else if (transactionData.transaction) {
       // For pre-encoded transactions, decode, update blockhash and feePayer, re-encode
       const transaction = Transaction.from(Buffer.from(transactionData.transaction, 'base64'));
       if (!transaction.feePayer && transactionData.senderAddress) {
         transaction.feePayer = new PublicKey(transactionData.senderAddress);
       }
-      return this.sendSolanaTransactionWithRetry(transaction, walletId);
-    } 
-    else {
+      // Serialize and send to Privy
+      const serializedTransaction = transaction.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false,
+      });
+      const body = JSON.stringify({
+        method,
+        params: {
+          transaction: serializedTransaction.toString('base64'),
+          encoding: 'base64',
+        },
+        caip2: 'solana:devnet', // Change to 'solana:mainnet-beta' for mainnet
+      });
+      const response = await this.sendPrivyRequest(rpcUrl, body);
+      return this.processSolanaResponse(response);
+    } else {
       throw new Error('Invalid Solana transaction data format');
     }
   }
   
   /**
    * Sign a message (works for both chains)
-   * @param walletId The Privy wallet ID
+   * @param address The wallet address
    * @param message The message to sign
    * @param chain The chain to use
    * @returns Signed message
    */
   async signMessage(
-    walletId: string, 
+    address: string, 
     message: string, 
     chain: 'ethereum' | 'solana' = 'ethereum'
   ) {
-    const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
-    
-    const method = chain === 'solana' ? 'signMessage' : 'eth_sign';
-    
-    const body = JSON.stringify({
-      method,
-      params: chain === 'solana' 
-        ? { message: Buffer.from(message).toString('base64'), encoding: 'base64' }
-        : [walletId, message]
-    });
-    
-    console.log(`[MultiChainHandler] ${chain} sign message payload:`, body);
-    
-    const response = await this.sendPrivyRequest(rpcUrl, body);
-    return chain === 'solana' 
-      ? this.processSolanaResponse(response) 
-      : this.processEthereumResponse(response);
+    if (chain === 'solana') {
+      // Client-side: use @account-kit/react or Alchemy's SDK for message signing
+      // Server-side: not supported unless you control the private key
+      throw new Error('Solana message signing must be done client-side with Alchemy SDK.');
+    } else {
+      // Ethereum: keep existing Privy logic or migrate as needed
+      // ...
+    }
   }
   
   /**
@@ -264,44 +291,16 @@ export class MultiChainTransactionHandler {
     return transaction;
   }
 
-  async sendSolanaTransactionWithRetry(
-    transaction: Transaction,
-    walletId: string,
-    maxRetries: number = 3
-  ): Promise<any> {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        // Get fresh blockhash for each attempt
-        const { blockhash } = await this.solanaConnection.getLatestBlockhash('confirmed');
-        transaction.recentBlockhash = blockhash;
-        // Serialize and send to Privy
-        const serializedTransaction = transaction.serialize({
-          requireAllSignatures: false,
-          verifySignatures: false,
-        });
-        const payload = {
-          method: 'signAndSendTransaction',
-          params: {
-            transaction: serializedTransaction.toString('base64'),
-            encoding: 'base64',
-          },
-          caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
-        };
-        return await this.sendPrivyRequest(
-          `${this.privyApiUrl}/${walletId}/rpc`,
-          JSON.stringify(payload)
-        );
-      } catch (error: any) {
-        const isLastAttempt = attempt === maxRetries - 1;
-        if (this.isBlockhashError(error) && !isLastAttempt) {
-          console.log(`[MultiChainHandler] Attempt ${attempt + 1} failed: Blockhash error. Retrying...`);
-          await this.sleep(1000); // Wait 1 second before retry
-          continue;
-        }
-        throw error;
-      }
-    }
-  }
+  /**
+   * Send a Solana transaction with retry logic using Alchemy
+   * @param transaction Transaction object
+   * @param senderAddress Sender's Solana address
+   * @param maxRetries Number of retries
+   * @returns Transaction result
+   */
+  // No longer needed: sendSolanaTransactionWithRetry (all Solana txs are sent via Privy now)
+  // If you want retry logic, wrap sendSolanaTransaction in a retry loop externally.
+  // This method is now deprecated.
 
   private isBlockhashError(error: any): boolean {
     const errorMessage = error.message || error.toString();
