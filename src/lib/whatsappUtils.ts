@@ -437,6 +437,20 @@ function patchSendFailedTemplate(template: any): any {
   return template;
 }
 
+// Remove the name property from all template parameters before sending
+function stripNameFromTemplateParams(template: any): any {
+  if (!template || !template.components) return template;
+  for (const component of template.components) {
+    if (component.parameters) {
+      component.parameters = component.parameters.map((param: any) => {
+        const { name, ...rest } = param;
+        return rest;
+      });
+    }
+  }
+  return template;
+}
+
 // Update the sendWhatsAppTemplate function to use the cleanWhatsAppTemplate function
 export async function sendWhatsAppTemplate(
   phoneNumber: string,
@@ -458,10 +472,13 @@ export async function sendWhatsAppTemplate(
     // Patch send_failed template
     const patchedTemplate = patchSendFailedTemplate(sanitizedTemplate);
     
+    // Remove the name property from all template parameters before sending
+    const strippedTemplate = stripNameFromTemplateParams(patchedTemplate);
+    
     // Construct the WhatsApp template message
     const message: WhatsAppTemplateMessage = {
       to: formatPhoneNumber(phoneNumber),
-      template: patchedTemplate
+      template: strippedTemplate
     };
 
     // Log the actual message being sent for debugging
