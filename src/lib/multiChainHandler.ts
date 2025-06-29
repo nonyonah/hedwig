@@ -104,16 +104,18 @@ export class MultiChainTransactionHandler {
     }
     const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
     const body = JSON.stringify({
-      method,
+      method: 'signAndSendTransaction',
+      address: transactionData.from,
       params: {
-        from: transactionData.from,
-        to: transactionData.to,
-        value: transactionData.value,
-        data: transactionData.data,
-        gas: transactionData.gas,
-        gasPrice: transactionData.gasPrice,
-      },
-      caip2: 'eip155:11155111', // Base Sepolia chain ID
+        transaction: {
+          from: transactionData.from,
+          to: transactionData.to,
+          value: transactionData.value,
+          data: transactionData.data,
+          gas: transactionData.gas,
+          gasPrice: transactionData.gasPrice,
+        }
+      }
     });
     const response = await this.sendPrivyRequest(rpcUrl, body);
     return this.processEthereumResponse(response);
