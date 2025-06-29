@@ -104,10 +104,9 @@ export class MultiChainTransactionHandler {
     }
     const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
     const body = JSON.stringify({
-      method: 'signAndSendTransaction',
-      address: transactionData.from,
-      params: {
-        transaction: {
+      method: 'eth_sendTransaction',
+      params: [
+        {
           from: transactionData.from,
           to: transactionData.to,
           value: transactionData.value,
@@ -115,7 +114,7 @@ export class MultiChainTransactionHandler {
           gas: transactionData.gas,
           gasPrice: transactionData.gasPrice,
         }
-      }
+      ]
     });
     const response = await this.sendPrivyRequest(rpcUrl, body);
     return this.processEthereumResponse(response);
