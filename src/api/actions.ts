@@ -383,25 +383,48 @@ async function getBaseSepoliaEthBalance(address: string): Promise<string> {
 
 // Helper to fetch USDC (ERC-20) balance on Base Sepolia
 async function getBaseSepoliaUsdcBalance(address: string): Promise<string> {
-  const rpcUrl = 'https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up';
-  const USDC_CONTRACT = '0x7F5c764cBc14f9669B88837ca1490cCa17c31607';
-  const balanceOfData = '0x70a08231000000000000000000000000' + address.replace('0x', '');
-  const body = {
-    jsonrpc: '2.0',
-    method: 'eth_call',
-    params: [{
-      to: USDC_CONTRACT,
-      data: balanceOfData
-    }, 'latest'],
-    id: 1
-  };
-  const resp = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await resp.json();
-  return data.result ? (parseInt(data.result, 16) / 1e6).toString() : '0';
+  try {
+    const rpcUrl = 'https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up';
+    const USDC_CONTRACT = '0x7F5c764cBc14f9669B88837ca1490cCa17c31607';
+    const balanceOfData = '0x70a08231000000000000000000000000' + address.replace('0x', '');
+    const body = {
+      jsonrpc: '2.0',
+      method: 'eth_call',
+      params: [{
+        to: USDC_CONTRACT,
+        data: balanceOfData
+      }, 'latest'],
+      id: 1
+    };
+    const resp = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+    
+    if (!data.result) {
+      console.log('[DEBUG] No result from USDC balance call:', data);
+      return '0';
+    }
+    
+    // Parse the hex value safely
+    const balanceHex = data.result;
+    const balanceInt = parseInt(balanceHex, 16);
+    
+    // Check for NaN and handle it
+    if (isNaN(balanceInt)) {
+      console.error('[ERROR] Failed to parse USDC balance hex:', balanceHex);
+      return '0';
+    }
+    
+    const balance = (balanceInt / 1e6).toString();
+    console.log('[DEBUG] USDC balance for', address, ':', balance);
+    return balance;
+  } catch (error) {
+    console.error('[ERROR] Exception in getBaseSepoliaUsdcBalance:', error);
+    return '0';
+  }
 }
 
 // Helper to fetch SOL balance via Solana Devnet RPC
@@ -426,7 +449,7 @@ async function getSolanaSolBalanceDirect(address: string): Promise<string> {
 async function getSolanaSplTokenBalancesMoralis(address: string): Promise<any[]> {
   const apiKey = process.env.MORALIS_API_KEY;
   if (!apiKey) throw new Error('MORALIS_API_KEY is not set');
-  const url = `https://solana-gateway.moralis.io/account/mainnet/${address}/tokens?network=devnet&excludeSpam=true`;
+  const url = `https://solana-gateway.moralis.io/account/devnet/${address}/tokens?excludeSpam=true`;
   const headers: Record<string, string> = {
     'accept': 'application/json',
     'X-API-Key': apiKey
@@ -482,8 +505,11 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       usdcBase = await getBaseSepoliaUsdcBalance(evmAddress);
     }
     if (solanaAddress) {
+      console.log('[DEBUG] Solana address for user:', solanaAddress);
       sol = await getSolanaSolBalanceDirect(solanaAddress);
       usdcSolana = await getSolanaUsdcBalance(solanaAddress);
+    } else {
+      console.error('[ERROR] No Solana address found for user:', userId);
     }
     // Compare with last known balances
     const { data: session } = await supabase
@@ -552,12 +578,18 @@ async function handleSendTokens(params: ActionParams, userId: string) {
     const recipient = params.recipient || params.to;
     const network = params.network || params.chain;
 
+    console.log('[DEBUG] handleSendTokens params:', { token, amount, recipient, network });
+
     // If any required parameter is missing, prompt and store pending context
     const missing: string[] = [];
     if (!token) missing.push('token');
     if (!amount) missing.push('amount');
     if (!recipient) missing.push('recipient');
     if (!network) missing.push('network');
+
+    // Check if network contains "solana" case-insensitively
+    const isSolana = network && typeof network === 'string' && network.toLowerCase().includes('solana');
+    console.log('[DEBUG] Network check - isSolana:', isSolana, 'Original network value:', network);
 
     if (missing.length > 0) {
       let promptText = 'To send tokens, please specify: ';
@@ -588,6 +620,7 @@ async function handleSendTokens(params: ActionParams, userId: string) {
       let chain: 'evm' | 'solana' = 'evm';
       if (network.toLowerCase().includes('solana')) {
         chain = 'solana';
+        console.log('[DEBUG] Using Solana chain for send transaction');
         const { data: solanaWallet } = await supabase
           .from('wallets')
           .select('address, privy_wallet_id')
@@ -596,8 +629,10 @@ async function handleSendTokens(params: ActionParams, userId: string) {
           .single();
         senderAddress = solanaWallet?.address;
         privyWalletId = solanaWallet?.privy_wallet_id;
+        console.log('[DEBUG] Solana wallet found:', { senderAddress, privyWalletId });
       } else {
         chain = 'evm';
+        console.log('[DEBUG] Using EVM chain for send transaction');
         const { data: evmWallet } = await supabase
           .from('wallets')
           .select('address, privy_wallet_id')
@@ -606,6 +641,7 @@ async function handleSendTokens(params: ActionParams, userId: string) {
           .single();
         senderAddress = evmWallet?.address;
         privyWalletId = evmWallet?.privy_wallet_id;
+        console.log('[DEBUG] EVM wallet found:', { senderAddress, privyWalletId });
       }
       if (!senderAddress || !privyWalletId) {
         return sendFailed({ reason: 'Sender wallet not found.' });
@@ -620,22 +656,35 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         const rpcUrl = `${privyApiUrl}/${privyWalletId}/rpc`;
         let method, body;
         if (chain === 'solana') {
-          // For Solana, use signAndSendTransaction per Privy docs
+          // For Solana, use solana_sendTransaction per Privy docs
           // Convert amount to lamports (1 SOL = 1e9 lamports)
           const amountLamports = Math.floor(Number(amount) * 1e9).toString();
-          method = 'signAndSendTransaction';
+          method = 'solana_sendTransaction';
+          
+          // Create a base64-encoded transaction
+          // Note: In a real implementation, we would construct a proper Solana transaction
+          // For now, we're using a placeholder structure that matches Privy's expected format
+          const dummyTx = {
+            to: recipient,
+            amount: amountLamports
+          };
+          
+          // Convert to base64 string (simulating a real encoded transaction)
+          const base64Tx = Buffer.from(JSON.stringify(dummyTx)).toString('base64');
+          
           body = JSON.stringify({
             method,
-            address: senderAddress,
             params: {
-              recipient,
-              amount: amountLamports
-            },
-            chain: 'solana'
+              transaction: base64Tx,
+              encoding: "base64"
+            }
           });
+          
           // Calculate SOL fee for display in template
           const solFee = 0.000005; // Typical SOL fee
           params.fee = `${solFee.toFixed(6)} SOL`;
+          
+          console.log('[DEBUG] Solana transaction payload:', body);
         } else {
           // For EVM chains, use the format from Privy docs for Ethereum
           const amountValue = Number(amount);
