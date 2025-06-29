@@ -500,12 +500,12 @@ export function walletBalance({
   eth_balance, 
   usdc_base_balance, 
   sol_balance, 
-  usdc_solana_balance 
+  usdc_solana_balance
 }: { 
   eth_balance: string, 
   usdc_base_balance: string, 
   sol_balance: string, 
-  usdc_solana_balance: string 
+  usdc_solana_balance: string
 }) {
   return {
     name: 'wallet_balance',

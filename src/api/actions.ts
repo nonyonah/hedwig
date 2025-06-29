@@ -363,9 +363,9 @@ async function handleGetWalletAddress(userId: string) {
   }
 }
 
-// Helper to fetch Sepolia ETH balance via RPC
-async function getSepoliaEthBalanceViaRpc(address: string): Promise<string> {
-  const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/aAOzNl0p1r6KoYVHqbbMbcCuNKfEodLX';
+// Helper to fetch ETH balance on Base Sepolia via Alchemy RPC
+async function getBaseSepoliaEthBalance(address: string): Promise<string> {
+  const rpcUrl = 'https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up';
   const body = {
     jsonrpc: '2.0',
     method: 'eth_getBalance',
@@ -378,15 +378,34 @@ async function getSepoliaEthBalanceViaRpc(address: string): Promise<string> {
     body: JSON.stringify(body)
   });
   const data = await resp.json();
-  if (data.result) {
-    // Convert from hex wei to ETH
-    return (parseInt(data.result, 16) / 1e18).toString();
-  }
-  return '0';
+  return data.result ? (parseInt(data.result, 16) / 1e18).toString() : '0';
 }
 
-// Helper to fetch Solana SOL balance via RPC
-async function getSolanaSolBalanceViaRpc(address: string): Promise<string> {
+// Helper to fetch USDC (ERC-20) balance on Base Sepolia
+async function getBaseSepoliaUsdcBalance(address: string): Promise<string> {
+  const rpcUrl = 'https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up';
+  const USDC_CONTRACT = '0x7F5c764cBc14f9669B88837ca1490cCa17c31607';
+  const balanceOfData = '0x70a08231000000000000000000000000' + address.replace('0x', '');
+  const body = {
+    jsonrpc: '2.0',
+    method: 'eth_call',
+    params: [{
+      to: USDC_CONTRACT,
+      data: balanceOfData
+    }, 'latest'],
+    id: 1
+  };
+  const resp = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  return data.result ? (parseInt(data.result, 16) / 1e6).toString() : '0';
+}
+
+// Helper to fetch SOL balance via Solana Devnet RPC
+async function getSolanaSolBalanceDirect(address: string): Promise<string> {
   const rpcUrl = 'https://api.devnet.solana.com';
   const body = {
     jsonrpc: '2.0',
@@ -400,11 +419,35 @@ async function getSolanaSolBalanceViaRpc(address: string): Promise<string> {
     body: JSON.stringify(body)
   });
   const data = await resp.json();
-  if (data.result && data.result.value) {
-    // Convert from lamports to SOL
-    return (data.result.value / 1e9).toString();
-  }
-  return '0';
+  return data.result && data.result.value ? (data.result.value / 1e9).toString() : '0';
+}
+
+// Helper to fetch USDC SPL balance on Solana
+async function getSolanaUsdcBalance(address: string): Promise<string> {
+  const rpcUrl = 'https://api.devnet.solana.com';
+  const USDC_MINT = '7XS5uQ6rQwBEmPA6k6RdtqvYXvyfZ87XZy4r2k6F6Z7F';
+  // 1. Get token accounts by owner
+  const body = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'getTokenAccountsByOwner',
+    params: [
+      address,
+      { mint: USDC_MINT },
+      { encoding: 'jsonParsed' }
+    ]
+  };
+  const resp = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  const accounts = data.result?.value || [];
+  if (accounts.length === 0) return '0';
+  // 2. Get balance from the first account
+  const amount = accounts[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
+  return amount ? amount.toString() : '0';
 }
 
 // Example handler for wallet balance
@@ -433,15 +476,15 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     }
     const evmAddress = evmWallet?.address;
     const solanaAddress = solanaWallet?.address;
-    let ethBalance = '0';
-    let solBalance = '0';
-    // EVM (Sepolia)
+    // Fetch balances
+    let eth = '0', usdcBase = '0', sol = '0', usdcSolana = '0';
     if (evmAddress) {
-      ethBalance = await getSepoliaEthBalanceViaRpc(evmAddress);
+      eth = await getBaseSepoliaEthBalance(evmAddress);
+      usdcBase = await getBaseSepoliaUsdcBalance(evmAddress);
     }
-    // Solana (Devnet)
     if (solanaAddress) {
-      solBalance = await getSolanaSolBalanceViaRpc(solanaAddress);
+      sol = await getSolanaSolBalanceDirect(solanaAddress);
+      usdcSolana = await getSolanaUsdcBalance(solanaAddress);
     }
     // Compare with last known balances
     const { data: session } = await supabase
@@ -456,24 +499,24 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     let lastBalances = last ? JSON.parse(last.content).lastBalances : {};
     // If any balance changed, trigger deposit notification
     const changed =
-      ethBalance !== (lastBalances.ethBalance || '0') ||
-      solBalance !== (lastBalances.solBalance || '0');
+      eth !== (lastBalances.eth || '0') ||
+      sol !== (lastBalances.sol || '0');
     if (changed) {
       // Send deposit notification (for both up and down)
-      if (parseFloat(ethBalance) !== parseFloat(lastBalances.ethBalance || '0')) {
+      if (parseFloat(eth) !== parseFloat(lastBalances.eth || '0')) {
         await handleAction('crypto_deposit_notification', {
-          amount: ethBalance,
+          amount: eth,
           token: 'ETH',
           network: 'Base Sepolia',
-          balance: ethBalance
+          balance: eth
         }, userId);
       }
-      if (parseFloat(solBalance) !== parseFloat(lastBalances.solBalance || '0')) {
+      if (parseFloat(sol) !== parseFloat(lastBalances.sol || '0')) {
         await handleAction('crypto_deposit_notification', {
-          amount: solBalance,
+          amount: sol,
           token: 'SOL',
           network: 'Solana Devnet',
-          balance: solBalance
+          balance: sol
         }, userId);
       }
     }
@@ -483,17 +526,17 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
         user_id: userId,
         context: [{
           role: 'system',
-          content: JSON.stringify({ lastBalances: { ethBalance, solBalance } })
+          content: JSON.stringify({ lastBalances: { eth, sol } })
         }],
         updated_at: new Date().toISOString()
       }
     ], { onConflict: 'user_id' });
-    // Return balances with live data
+    // Return balances with live data (numeric only)
     return walletBalance({
-      eth_balance: ethBalance,
-      usdc_base_balance: '0',
-      sol_balance: solBalance,
-      usdc_solana_balance: '0'
+      eth_balance: eth,
+      usdc_base_balance: usdcBase,
+      sol_balance: sol,
+      usdc_solana_balance: usdcSolana
     });
   } catch (error) {
     console.error('Error in handleGetWalletBalance:', error);
@@ -669,9 +712,9 @@ async function handleSendTokens(params: ActionParams, userId: string) {
         // Fetch new balance for template
         let newBalance = '0';
         if (chain === 'evm') {
-          newBalance = await getSepoliaEthBalanceViaRpc(senderAddress);
+          newBalance = await getBaseSepoliaEthBalance(senderAddress);
         } else if (chain === 'solana') {
-          newBalance = await getSolanaSolBalanceViaRpc(senderAddress);
+          newBalance = await getSolanaSolBalanceDirect(senderAddress);
         }
         
         // Format values for the template
@@ -1453,9 +1496,10 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
         console.log('[Alchemy Webhook] Looking up wallet for address:', toAddress);
         const { data: wallet } = await supabase
           .from('wallets')
-          .select('user_id, chain')
+          .select('user_id, chain, privy_wallet_id')
           .eq('address', toAddress)
           .single();
+        console.log('[Alchemy Webhook] Wallet lookup result:', wallet);
         if (!wallet) {
           const { data: allWallets } = await supabase.from('wallets').select('address');
           console.log('[Alchemy Webhook] No wallet found. All wallet addresses in DB:', allWallets);
@@ -1466,6 +1510,7 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
           .select('phone_number')
           .eq('id', wallet.user_id)
           .single();
+        console.log('[Alchemy Webhook] User lookup result:', user);
         if (!user) {
           console.log('[Alchemy Webhook] No user found for wallet:', toAddress);
           continue;
@@ -1475,29 +1520,55 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
         const from = activity.fromAddress || '-';
         const network = wallet.chain === 'solana' ? 'Solana Devnet' : 'Base Sepolia';
         let balance = amount + ' ' + token;
+        let newBalance = '0';
+        let lastBalance = '0';
         if (wallet.chain === 'evm') {
-          balance = (await getSepoliaEthBalanceViaRpc(toAddress)) + ' ' + token;
+          newBalance = await getBaseSepoliaEthBalance(toAddress);
+          balance = newBalance + ' ' + token;
         } else if (wallet.chain === 'solana') {
-          balance = (await getSolanaSolBalanceViaRpc(toAddress)) + ' ' + token;
+          newBalance = await getSolanaSolBalanceDirect(toAddress);
+          balance = newBalance + ' ' + token;
         }
-        const txHash = activity.hash || '';
-        const txUrl = txHash
-          ? (wallet.chain === 'solana'
-              ? `https://explorer.solana.com/tx/${txHash}?cluster=devnet`
-              : `https://basescan.org/tx/${txHash}`)
-          : '-';
-        const templateParams = { amount, token, from, network, balance, txUrl };
-        console.log('[Alchemy Webhook] Preparing to send WhatsApp template:', {
-          phone: user.phone_number,
-          params: templateParams
-        });
-        try {
-          const result = await sendWhatsAppTemplate(user.phone_number, cryptoDepositNotification(templateParams));
-          console.log('[Alchemy Webhook] WhatsApp API result:', result);
-        } catch (err) {
-          console.error('[Alchemy Webhook] WhatsApp send error:', err);
+        // Fetch last known balance from sessions
+        const { data: session } = await supabase
+          .from('sessions')
+          .select('context')
+          .eq('user_id', wallet.user_id)
+          .single();
+        let last = null;
+        if (session?.context) {
+          last = session.context.find((item: any) => item.role === 'system' && JSON.parse(item.content)?.lastBalances);
         }
-        console.log(`[Alchemy Webhook] Notified user ${user.phone_number} of deposit to ${toAddress}`);
+        let lastBalances = last ? JSON.parse(last.content).lastBalances : {};
+        if (wallet.chain === 'evm') {
+          lastBalance = lastBalances.eth || '0';
+        } else if (wallet.chain === 'solana') {
+          lastBalance = lastBalances.sol || '0';
+        }
+        console.log('[Alchemy Webhook] New balance:', newBalance, 'Previous:', lastBalance);
+        // Only send template if balance changed
+        if (newBalance !== lastBalance) {
+          const txHash = activity.hash || '';
+          const txUrl = txHash
+            ? (wallet.chain === 'solana'
+                ? `https://explorer.solana.com/tx/${txHash}?cluster=devnet`
+                : `https://basescan.org/tx/${txHash}`)
+            : '-';
+          const templateParams = { amount, token, from, network, balance, txUrl };
+          console.log('[Alchemy Webhook] Sending WhatsApp template:', {
+            phone: user.phone_number,
+            params: templateParams
+          });
+          try {
+            const result = await sendWhatsAppTemplate(user.phone_number, cryptoDepositNotification(templateParams));
+            console.log('[Alchemy Webhook] WhatsApp API result:', result);
+          } catch (err) {
+            console.error('[Alchemy Webhook] WhatsApp send error:', err);
+          }
+          console.log(`[Alchemy Webhook] Notified user ${user.phone_number} of deposit to ${toAddress}`);
+        } else {
+          console.log('[Alchemy Webhook] Balance unchanged, not sending template.');
+        }
       }
     }
     res.status(200).json({ ok: true });
