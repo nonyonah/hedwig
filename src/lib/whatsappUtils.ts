@@ -403,6 +403,23 @@ export function cleanWhatsAppTemplate(template: any) {
   return cleanTemplate;
 }
 
+// Before sending a WhatsApp template, sanitize and validate parameters
+function sanitizeTemplateParams(template: any): any {
+  if (!template || !template.components) return template;
+  for (const component of template.components) {
+    if (component.parameters) {
+      component.parameters = component.parameters.filter((param: any) => {
+        if (!param.text || param.text.trim() === '') {
+          console.error('[WhatsApp] Skipping empty template parameter:', param);
+          return false;
+        }
+        return true;
+      });
+    }
+  }
+  return template;
+}
+
 // Update the sendWhatsAppTemplate function to use the cleanWhatsAppTemplate function
 export async function sendWhatsAppTemplate(
   phoneNumber: string,
@@ -418,10 +435,13 @@ export async function sendWhatsAppTemplate(
     // Clean the template to remove 'name' property from parameters and sanitize text
     const cleanTemplate = cleanWhatsAppTemplate(template);
     
+    // Sanitize template parameters
+    const sanitizedTemplate = sanitizeTemplateParams(cleanTemplate);
+    
     // Construct the WhatsApp template message
     const message: WhatsAppTemplateMessage = {
       to: formatPhoneNumber(phoneNumber),
-      template: cleanTemplate
+      template: sanitizedTemplate
     };
 
     // Log the actual message being sent for debugging

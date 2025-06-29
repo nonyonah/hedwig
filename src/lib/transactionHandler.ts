@@ -49,7 +49,12 @@ export async function handleTransaction(
     const transactionHandler = new MultiChainTransactionHandler();
     
     // Format transaction data based on the chain
-    const formattedTxData = formatTransactionData(transactionData, options, chain, wallet.address);
+    let formattedTxData = formatTransactionData(transactionData, options, chain, wallet.address);
+
+    // For Solana, ensure senderAddress is included
+    if (chain.toLowerCase().includes('sol')) {
+      formattedTxData.senderAddress = wallet.address;
+    }
     
     // Send the transaction
     const result = await transactionHandler.sendTransaction(
