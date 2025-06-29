@@ -123,7 +123,7 @@ export class MultiChainTransactionHandler {
   async sendSolanaTransaction(
     walletId: string, 
     transactionData: any, 
-    method: string = 'solana_sendTransaction'
+    method: string = 'signAndSendTransaction'
   ) {
     const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
     
@@ -148,7 +148,8 @@ export class MultiChainTransactionHandler {
         params: {
           transaction: base64Tx,
           encoding: "base64"
-        }
+        },
+        caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' // Solana Devnet
       });
       
       console.log('[MultiChainHandler] Solana transaction payload:', body);
@@ -163,7 +164,8 @@ export class MultiChainTransactionHandler {
         params: {
           transaction: transactionData.transaction,
           encoding: transactionData.encoding || "base64"
-        }
+        },
+        caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' // Solana Devnet
       });
       
       console.log('[MultiChainHandler] Solana transaction payload:', body);
@@ -190,7 +192,7 @@ export class MultiChainTransactionHandler {
   ) {
     const rpcUrl = `${this.privyApiUrl}/${walletId}/rpc`;
     
-    const method = chain === 'solana' ? 'solana_signMessage' : 'eth_sign';
+    const method = chain === 'solana' ? 'signMessage' : 'eth_sign';
     
     const body = JSON.stringify({
       method,
