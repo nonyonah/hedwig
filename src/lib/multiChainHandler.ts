@@ -149,9 +149,9 @@ export class MultiChainTransactionHandler {
         })
       );
       transaction.recentBlockhash = blockhash;
-      // Do NOT set feePayer or sign the transaction
+      transaction.feePayer = fromPubkey; // Set fee payer BEFORE serializing
       // Serialize the unsigned transaction
-      const serializedTx = transaction.serialize({ requireAllSignatures: false });
+      const serializedTx = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
       const base64Tx = Buffer.from(serializedTx).toString('base64');
       
       const body = JSON.stringify({
