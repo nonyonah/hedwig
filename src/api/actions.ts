@@ -422,32 +422,31 @@ async function getSolanaSolBalanceDirect(address: string): Promise<string> {
   return data.result && data.result.value ? (data.result.value / 1e9).toString() : '0';
 }
 
-// Helper to fetch USDC SPL balance on Solana
-async function getSolanaUsdcBalance(address: string): Promise<string> {
-  const rpcUrl = 'https://api.devnet.solana.com';
-  const USDC_MINT = '7XS5uQ6rQwBEmPA6k6RdtqvYXvyfZ87XZy4r2k6F6Z7F';
-  // 1. Get token accounts by owner
-  const body = {
-    jsonrpc: '2.0',
-    id: 1,
-    method: 'getTokenAccountsByOwner',
-    params: [
-      address,
-      { mint: USDC_MINT },
-      { encoding: 'jsonParsed' }
-    ]
+// Helper to fetch SPL token balances for a Solana address using Moralis Web3 Data API (Devnet)
+async function getSolanaSplTokenBalancesMoralis(address: string): Promise<any[]> {
+  const apiKey = process.env.MORALIS_API_KEY;
+  if (!apiKey) throw new Error('MORALIS_API_KEY is not set');
+  const url = `https://solana-gateway.moralis.io/account/mainnet/${address}/tokens?network=devnet&excludeSpam=true`;
+  const headers: Record<string, string> = {
+    'accept': 'application/json',
+    'X-API-Key': apiKey
   };
-  const resp = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  const resp = await fetch(url, { headers });
+  if (!resp.ok) {
+    console.error('Moralis SPL token balance error:', await resp.text());
+    return [];
+  }
   const data = await resp.json();
-  const accounts = data.result?.value || [];
-  if (accounts.length === 0) return '0';
-  // 2. Get balance from the first account
-  const amount = accounts[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
-  return amount ? amount.toString() : '0';
+  return data.tokens || [];
+}
+
+// Helper to fetch USDC SPL balance on Solana using Moralis
+async function getSolanaUsdcBalance(address: string): Promise<string> {
+  // USDC mint on Solana Devnet
+  const USDC_MINT = '7XS5uQ6rQwBEmPA6k6RdtqvYXvyfZ87XZy4r2k6F6Z7F';
+  const tokens = await getSolanaSplTokenBalancesMoralis(address);
+  const usdc = tokens.find((t: any) => t.mint === USDC_MINT);
+  return usdc ? (Number(usdc.amount) / 1e6).toString() : '0';
 }
 
 // Example handler for wallet balance
