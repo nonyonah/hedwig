@@ -138,9 +138,7 @@ export class MultiChainTransactionHandler {
       // Always use integer for lamports
       const lamports = Math.round(Number(transactionData.amount) * 1e9);
       
-      // Fetch recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-
+      // Do NOT set recentBlockhash or feePayer
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey,
@@ -148,8 +146,6 @@ export class MultiChainTransactionHandler {
           lamports
         })
       );
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = fromPubkey; // Set fee payer BEFORE serializing
       // Serialize the unsigned transaction
       const serializedTx = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
       const base64Tx = Buffer.from(serializedTx).toString('base64');
@@ -170,17 +166,11 @@ export class MultiChainTransactionHandler {
     } 
     // If we already have an encoded transaction
     else if (transactionData.transaction) {
-      // Update blockhash before sending to Privy
-      const connection = new Connection(solanaRpcUrl, 'confirmed');
-      const { blockhash } = await connection.getLatestBlockhash();
-      // Decode, update blockhash, re-encode transaction
-      const transaction = Transaction.from(Buffer.from(transactionData.transaction, 'base64'));
-      transaction.recentBlockhash = blockhash;
-      const updatedTransaction = transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
+      // Do NOT update blockhash, just forward the unsigned transaction as-is
       const body = JSON.stringify({
         method,
         params: {
-          transaction: updatedTransaction,
+          transaction: transactionData.transaction,
           encoding: transactionData.encoding || "base64"
         },
         caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' // Solana Devnet
