@@ -170,10 +170,17 @@ export class MultiChainTransactionHandler {
     } 
     // If we already have an encoded transaction
     else if (transactionData.transaction) {
+      // Update blockhash before sending to Privy
+      const connection = new Connection(solanaRpcUrl, 'confirmed');
+      const { blockhash } = await connection.getLatestBlockhash();
+      // Decode, update blockhash, re-encode transaction
+      const transaction = Transaction.from(Buffer.from(transactionData.transaction, 'base64'));
+      transaction.recentBlockhash = blockhash;
+      const updatedTransaction = transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
       const body = JSON.stringify({
         method,
         params: {
-          transaction: transactionData.transaction,
+          transaction: updatedTransaction,
           encoding: transactionData.encoding || "base64"
         },
         caip2: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1' // Solana Devnet
