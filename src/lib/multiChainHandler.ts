@@ -138,6 +138,9 @@ export class MultiChainTransactionHandler {
       // Always use integer for lamports
       const lamports = Math.round(Number(transactionData.amount) * 1e9);
       
+      // Fetch recent blockhash
+      const { blockhash } = await connection.getLatestBlockhash();
+
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey,
@@ -145,7 +148,8 @@ export class MultiChainTransactionHandler {
           lamports
         })
       );
-      
+      transaction.recentBlockhash = blockhash;
+      // Do NOT set feePayer or sign the transaction
       // Serialize the unsigned transaction
       const serializedTx = transaction.serialize({ requireAllSignatures: false });
       const base64Tx = Buffer.from(serializedTx).toString('base64');
