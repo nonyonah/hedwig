@@ -496,16 +496,41 @@ export function sendFailed({ reason }: { reason: string }) {
  * Parameter Format: POSITIONAL
  * Parameters: eth_balance, usdc_base_balance, sol_balance, usdc_solana_balance
  */
+// export function walletBalance({ 
+//   eth_balance, 
+//   usdc_base_balance, 
+//   sol_balance, 
+//   usdc_solana_balance
+// }: { 
+//   eth_balance: string, 
+//   usdc_base_balance: string, 
+//   sol_balance: string, 
+//   usdc_solana_balance: string
+// }) {
+//   return {
+//     name: 'wallet_balance',
+//     language: { code: 'en' },
+//     components: [
+//       {
+//         type: 'BODY',
+//         parameters: [
+//           { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
+//           { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
+//           { type: 'text', text: sanitizeWhatsAppParam(sol_balance) },
+//           { type: 'text', text: sanitizeWhatsAppParam(usdc_solana_balance) }
+//         ]
+//       }
+//     ]
+//   };
+// }
+
+// EVM-only wallet balance template
 export function walletBalance({ 
   eth_balance, 
-  usdc_base_balance, 
-  sol_balance, 
-  usdc_solana_balance
+  usdc_base_balance
 }: { 
   eth_balance: string, 
-  usdc_base_balance: string, 
-  sol_balance: string, 
-  usdc_solana_balance: string
+  usdc_base_balance: string
 }) {
   return {
     name: 'wallet_balance',
@@ -515,9 +540,7 @@ export function walletBalance({
         type: 'BODY',
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(sol_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(usdc_solana_balance) }
+          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) }
         ]
       }
     ]
@@ -529,7 +552,24 @@ export function walletBalance({
  * Parameter Format: NAMED
  * Parameters: evm_wallet, solana_wallet
  */
-export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
+// export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
+//   return {
+//     name: 'wallet_created_multi',
+//     language: { code: 'en' },
+//     components: [
+//       {
+//         type: 'BODY',
+//         parameters: [
+//           { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
+//           { type: 'text', text: sanitizeWhatsAppParam(solana_wallet) }
+//         ]
+//       }
+//     ]
+//   };
+// }
+
+// EVM-only wallet created template
+export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
   return {
     name: 'wallet_created_multi',
     language: { code: 'en' },
@@ -537,8 +577,7 @@ export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: 
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
-          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet) }
+          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) }
         ]
       }
     ]
@@ -666,7 +705,24 @@ export function walletCreated({ address }: { address: string }) {
  * Parameter Format: POSITIONAL
  * Parameters: evm_wallet, solana_wallet
  */
-export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
+// export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet: string }) {
+//   return {
+//     name: 'users_wallet_addresses',
+//     language: { code: 'en' },
+//     components: [
+//       {
+//         type: 'BODY',
+//         parameters: [
+//           { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
+//           { type: 'text', text: sanitizeWhatsAppParam(solana_wallet) }
+//         ]
+//       }
+//     ]
+//   };
+// }
+
+// EVM-only wallet addresses template
+export function usersWalletAddresses({ evm_wallet }: { evm_wallet: string }) {
   return {
     name: 'users_wallet_addresses',
     language: { code: 'en' },
@@ -674,8 +730,7 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
-          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet) }
+          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) }
         ]
       }
     ]

@@ -51,7 +51,7 @@ export async function getOrCreatePrivyWallet({
 }: {
   userId: string;
   phoneNumber: string;
-  chain: 'evm' | 'base' | 'solana';
+  chain: 'evm' | 'base';
 }) {
   try {
     console.log(`Getting or creating ${chain} wallet for user ${userId} with phone ${phoneNumber}`);
@@ -116,8 +116,8 @@ export async function getOrCreatePrivyWallet({
       console.log('Checking if wallet exists in Privy');
       const privyWallets = await getAllPrivyWallets();
       let chainType: string;
-      if (chain === 'solana') chainType = 'solana';
-      else if (chain === 'base') chainType = 'base';
+      // if (chain === 'solana') chainType = 'solana';
+     if (chain === 'base') chainType = 'base';
       else chainType = 'ethereum';
       
       console.log(`Looking for ${chainType} wallet in Privy wallets:`, privyWallets);
@@ -149,8 +149,8 @@ export async function getOrCreatePrivyWallet({
     // 4. Create Privy wallet via REST API
     console.log(`Creating new ${chain} wallet in Privy`);
     let chainType: string;
-    if (chain === 'solana') chainType = 'solana';
-    else if (chain === 'base') chainType = 'base';
+    // if (chain === 'solana') chainType = 'solana';
+     if (chain === 'base') chainType = 'base';
     else chainType = 'ethereum';
     
     const res = await fetch(privyApiUrl, {

@@ -193,13 +193,13 @@ export async function handleAction(intent: string, params: ActionParams, userId:
       return walletBalance({
         eth_balance: params.eth_balance || '0',
         usdc_base_balance: params.usdc_base_balance || '0',
-        sol_balance: params.sol_balance || '0',
-        usdc_solana_balance: params.usdc_solana_balance || '0'
+        // sol_balance: params.sol_balance || '0',
+        // usdc_solana_balance: params.usdc_solana_balance || '0'
       });
     case 'wallet_created_multi':
       return walletCreatedMulti({
         evm_wallet: params.evm_wallet,
-        solana_wallet: params.solana_wallet
+        // solana_wallet: params.solana_wallet
       });
     case 'private_keys':
       return privateKeys({
@@ -240,31 +240,25 @@ async function handleWelcome(userId: string) {
   // If user has wallets, show balances (or other main menu)
   return walletBalance({
     eth_balance: '0',
-    usdc_base_balance: '0',
-    sol_balance: '0',
-    usdc_solana_balance: '0'
+    usdc_base_balance: '0'
   });
 }
 
-// Handler for creating both EVM and Solana wallets simultaneously
+// Handler for creating EVM wallet only (Solana commented out)
 async function handleCreateWallets(userId: string) {
   try {
-    console.log(`Creating wallets for user ${userId}`);
-    
+    console.log(`Creating wallet for user ${userId}`);
     // Extract phone number from user record
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('phone_number')
       .eq('id', userId)
       .single();
-      
     if (userError) {
       console.error('Error fetching user:', userError);
-      return { text: 'Error creating wallets. Please try again.' };
+      return { text: 'Error creating wallet. Please try again.' };
     }
-    
     const phoneNumber = user?.phone_number || userId;
-    
     // Create EVM wallet
     console.log('Creating EVM wallet...');
     const evmWallet = await getOrCreatePrivyWallet({
@@ -272,41 +266,27 @@ async function handleCreateWallets(userId: string) {
       phoneNumber,
       chain: 'evm'
     });
-    
-    // Create Solana wallet
-    console.log('Creating Solana wallet...');
-    const solanaWallet = await getOrCreatePrivyWallet({
-      userId,
-      phoneNumber,
-      chain: 'solana'
-    });
-    
-    if (!evmWallet || !solanaWallet) {
-      console.error('Failed to create one or both wallets');
-      return { text: 'Error creating wallets. Please try again.' };
+    if (!evmWallet) {
+      console.error('Failed to create EVM wallet');
+      return { text: 'Error creating wallet. Please try again.' };
     }
-    
-    console.log('Wallets created successfully:', {
-      evm: evmWallet.address,
-      solana: solanaWallet.address
+    console.log('Wallet created successfully:', {
+      evm: evmWallet.address
     });
-    
-    // Return wallet_created_multi template with actual addresses
+    // Return wallet_created_multi template with only EVM address
     return walletCreatedMulti({
-      evm_wallet: evmWallet.address,
-      solana_wallet: solanaWallet.address
-    });
+      evm_wallet: evmWallet.address
+    }); // Solana wallet removed
   } catch (error) {
     console.error('Error in handleCreateWallets:', error);
-    return { text: 'Error creating wallets. Please try again later.' };
+    return { text: 'Error creating wallet. Please try again later.' };
   }
 }
 
-// Handler for getting wallet addresses
+// Handler for getting EVM wallet address only (Solana commented out)
 async function handleGetWalletAddress(userId: string) {
   try {
     console.log(`Getting wallet address for user ${userId}`);
-    
     // Get EVM wallet
     const { data: evmWallet, error: evmError } = await supabase
       .from('wallets')
@@ -314,52 +294,26 @@ async function handleGetWalletAddress(userId: string) {
       .eq('user_id', userId)
       .eq('chain', 'evm')
       .single();
-      
     if (evmError) {
       console.error('Error fetching EVM wallet:', evmError);
-      return { text: 'Your wallets have not been created yet. Type "create wallet" to get started.' };
+      return { text: 'Your wallet has not been created yet. Type "create wallet" to get started.' };
     }
-    
-    // Get Solana wallet
-    const { data: solanaWallet, error: solanaError } = await supabase
-      .from('wallets')
-      .select('address')
-      .eq('user_id', userId)
-      .eq('chain', 'solana')
-      .single();
-      
-    if (solanaError) {
-      console.error('Error fetching Solana wallet:', solanaError);
-      return { text: 'Your wallets have not been created yet. Type "create wallet" to get started.' };
-    }
-
-    // Format addresses for better readability
+    // Format address for better readability
     const evmAddress = evmWallet?.address || '';
-    const solanaAddress = solanaWallet?.address || '';
-    
     const formatAddress = (address: string) => {
       if (!address) return 'Not available';
       if (address.length <= 12) return address;
       return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
     };
-    
-    // Create formatted versions for display
     const formattedEvmAddress = formatAddress(evmAddress);
-    const formattedSolanaAddress = formatAddress(solanaAddress);
-    
-    // Create explorer links
     const evmExplorerLink = `https://sepolia.basescan.org/address/${evmAddress}`;
-    const solanaExplorerLink = `https://explorer.solana.com/address/${solanaAddress}?cluster=devnet`;
-    
-    // Return the users_wallet_addresses template with full addresses
-    // The template will display the formatted versions but contain the full addresses for copying
+    // Return the users_wallet_addresses template with only EVM address
     return usersWalletAddresses({
-      evm_wallet: `${formattedEvmAddress} (${evmExplorerLink})`,
-      solana_wallet: `${formattedSolanaAddress} (${solanaExplorerLink})`
-    });
+      evm_wallet: `${formattedEvmAddress} (${evmExplorerLink})`
+    }); // Solana wallet removed
   } catch (error) {
     console.error('Error in handleGetWalletAddress:', error);
-    return { text: 'Failed to retrieve wallet addresses.' };
+    return { text: 'Failed to retrieve wallet address.' };
   }
 }
 
@@ -472,10 +426,10 @@ async function getSolanaUsdcBalance(address: string): Promise<string> {
   return usdc ? (Number(usdc.amount) / 1e6).toString() : '0';
 }
 
-// Example handler for wallet balance
+// Example handler for wallet balance (EVM only, Solana commented out)
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    console.log(`Getting wallet balances for user ${userId}`);
+    console.log(`Getting wallet balance for user ${userId}`);
     // Get EVM wallet
     const { data: evmWallet, error: evmError } = await supabase
       .from('wallets')
@@ -486,72 +440,19 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     if (evmError) {
       console.error('Error fetching EVM wallet:', evmError);
     }
-    // Get Solana wallet
-    const { data: solanaWallet, error: solanaError } = await supabase
-      .from('wallets')
-      .select('address')
-      .eq('user_id', userId)
-      .eq('chain', 'solana')
-      .single();
-    if (solanaError) {
-      console.error('Error fetching Solana wallet:', solanaError);
-    }
     const evmAddress = evmWallet?.address;
-    const solanaAddress = solanaWallet?.address;
-    // Fetch balances
-    let eth = '0', usdcBase = '0', sol = '0', usdcSolana = '0';
+    let eth = '0', usdcBase = '0';
     if (evmAddress) {
       eth = await getBaseSepoliaEthBalance(evmAddress);
       usdcBase = await getBaseSepoliaUsdcBalance(evmAddress);
     }
-    if (solanaAddress) {
-      console.log('[DEBUG] Solana address for user:', solanaAddress);
-      sol = await getSolanaSolBalanceDirect(solanaAddress);
-      usdcSolana = await getSolanaUsdcBalance(solanaAddress);
-    } else {
-      console.error('[ERROR] No Solana address found for user:', userId);
-    }
-    // Compare with last known balances
-    const { data: session } = await supabase
-      .from('sessions')
-      .select('context')
-      .eq('user_id', userId)
-      .single();
-    let last = null;
-    if (session?.context) {
-      last = session.context.find((item: any) => item.role === 'system' && JSON.parse(item.content)?.lastBalances);
-    }
-    let lastBalances = last ? JSON.parse(last.content).lastBalances : {};
-    // If any balance changed, trigger deposit notification
-    const changed =
-      eth !== (lastBalances.eth || '0') ||
-      sol !== (lastBalances.sol || '0');
-    if (changed) {
-      // Send deposit notification (for both up and down)
-      if (parseFloat(eth) !== parseFloat(lastBalances.eth || '0')) {
-        await handleAction('crypto_deposit_notification', {
-          amount: eth,
-          token: 'ETH',
-          network: 'Base Sepolia',
-          balance: eth
-        }, userId);
-      }
-      if (parseFloat(sol) !== parseFloat(lastBalances.sol || '0')) {
-        await handleAction('crypto_deposit_notification', {
-          amount: sol,
-          token: 'SOL',
-          network: 'Solana Devnet',
-          balance: sol
-        }, userId);
-      }
-    }
-    // Store new balances in session
+    // Store new balances in session (EVM only)
     await supabase.from('sessions').upsert([
       {
         user_id: userId,
         context: [{
           role: 'system',
-          content: JSON.stringify({ lastBalances: { eth, sol } })
+          content: JSON.stringify({ lastBalances: { eth } })
         }],
         updated_at: new Date().toISOString()
       }
@@ -559,9 +460,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // Return balances with live data (numeric only)
     return walletBalance({
       eth_balance: eth,
-      usdc_base_balance: usdcBase,
-      sol_balance: sol,
-      usdc_solana_balance: usdcSolana
+      usdc_base_balance: usdcBase
     });
   } catch (error) {
     console.error('Error in handleGetWalletBalance:', error);
