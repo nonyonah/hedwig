@@ -494,43 +494,16 @@ export function sendFailed({ reason }: { reason: string }) {
 /**
  * Template: wallet_balance
  * Parameter Format: POSITIONAL
- * Parameters: eth_balance, usdc_base_balance, sol_balance, usdc_solana_balance
+ * Parameters: eth_balance, usdc_base_balance, cngn_balance
  */
-// export function walletBalance({ 
-//   eth_balance, 
-//   usdc_base_balance, 
-//   sol_balance, 
-//   usdc_solana_balance
-// }: { 
-//   eth_balance: string, 
-//   usdc_base_balance: string, 
-//   sol_balance: string, 
-//   usdc_solana_balance: string
-// }) {
-//   return {
-//     name: 'wallet_balance',
-//     language: { code: 'en' },
-//     components: [
-//       {
-//         type: 'BODY',
-//         parameters: [
-//           { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
-//           { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
-//           { type: 'text', text: sanitizeWhatsAppParam(sol_balance) },
-//           { type: 'text', text: sanitizeWhatsAppParam(usdc_solana_balance) }
-//         ]
-//       }
-//     ]
-//   };
-// }
-
-// EVM-only wallet balance template
 export function walletBalance({ 
   eth_balance, 
-  usdc_base_balance
+  usdc_base_balance,
+  cngn_balance
 }: { 
   eth_balance: string, 
-  usdc_base_balance: string
+  usdc_base_balance: string,
+  cngn_balance: string
 }) {
   return {
     name: 'wallet_balance',
@@ -540,7 +513,8 @@ export function walletBalance({
         type: 'BODY',
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) }
+          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(cngn_balance) }
         ]
       }
     ]
