@@ -72,34 +72,86 @@ export interface CDPTransaction {
 export async function createWallet(network: string): Promise<CDPWallet> {
   console.log(`Creating wallet on network ${network}`);
   
-  const response = await fetch(`${CDP_API_URL}/accounts`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "CDP-API-KEY": CDP_API_KEY_ID || "",
-      "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
-    },
-    body: JSON.stringify({
-      network: network,
-    }),
-  });
+  // Log environment variables (masked for security)
+  console.log(`CDP API URL: ${CDP_API_URL}`);
+  console.log(`CDP API Key ID: ${CDP_API_KEY_ID ? CDP_API_KEY_ID.substring(0, 4) + '...' : 'MISSING'}`);
+  console.log(`CDP API Secret: ${CDP_API_KEY_SECRET ? 'Present (length: ' + CDP_API_KEY_SECRET.length + ')' : 'MISSING'}`);
+  
+  // Try up to 3 times
+  let attempts = 0;
+  const maxAttempts = 3;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    console.log(`Attempt ${attempts}/${maxAttempts} to create wallet on ${network}`);
+    
+    try {
+      const response = await fetch(`${CDP_API_URL}/accounts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "CDP-API-KEY": CDP_API_KEY_ID || "",
+          "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+        },
+        body: JSON.stringify({
+          network: network,
+        }),
+      });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Unknown error" }));
-    console.error(`CDP API error (createWallet): Status ${response.status}`, error);
-    console.error(`API Keys used: ${CDP_API_KEY_ID ? "ID Present" : "ID Missing"}, ${CDP_API_KEY_SECRET ? "Secret Present" : "Secret Missing"}`);
-    throw new Error(
-      `Failed to create wallet: ${error.message || response.statusText}`,
-    );
+      // Log full response for debugging
+      console.log(`CDP API response status: ${response.status}`);
+      console.log(`CDP API response status text: ${response.statusText}`);
+      
+      const responseText = await response.text();
+      console.log(`CDP API response body: ${responseText}`);
+      
+      // Try to parse as JSON if possible
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (e: unknown) {
+        console.log(`Response is not JSON: ${e instanceof Error ? e.message : String(e)}`);
+        result = { message: responseText || "Unknown error" };
+      }
+      
+      if (!response.ok) {
+        console.error(`CDP API error (createWallet): Status ${response.status}`, result);
+        console.error(`API Keys used: ${CDP_API_KEY_ID ? "ID Present" : "ID Missing"}, ${CDP_API_KEY_SECRET ? "Secret Present" : "Secret Missing"}`);
+        
+        // If this is not the last attempt, wait and try again
+        if (attempts < maxAttempts) {
+          console.log(`Waiting 1 second before retry...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        
+        throw new Error(
+          `Failed to create wallet: ${result.message || response.statusText}`,
+        );
+      }
+      
+      console.log(`Successfully created wallet with address: ${result.address || 'unknown'}`);
+      return {
+        id: result.id || result.address,
+        address: result.address,
+        network: network
+      };
+    } catch (error) {
+      console.error(`Error in createWallet attempt ${attempts}:`, error);
+      
+      // If this is not the last attempt, wait and try again
+      if (attempts < maxAttempts) {
+        console.log(`Waiting 1 second before retry...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      
+      throw error;
+    }
   }
-
-  const result = await response.json();
-  console.log(`Successfully created wallet with address: ${result.address || 'unknown'}`);
-  return {
-    id: result.id || result.address,
-    address: result.address,
-    network: network
-  };
+  
+  // This should never be reached due to the throw in the loop
+  throw new Error(`Failed to create wallet after ${maxAttempts} attempts`);
 }
 
 /**
@@ -293,6 +345,7 @@ export async function getOrCreateWallet(
     }
 
     // 2. Check if wallet exists for this user in Supabase
+    console.log(`Checking for existing wallet in Supabase for user ${userId} on chain ${chain}`);
     const { data: existingWallet, error: walletError } = await supabase
       .from("wallets")
       .select("*")
@@ -300,14 +353,20 @@ export async function getOrCreateWallet(
       .eq("chain", chain)
       .single();
 
+    if (walletError) {
+      console.log(`No existing wallet found in Supabase: ${walletError.message}`);
+    }
+
     if (!walletError && existingWallet) {
       console.log(`Found existing wallet for user ${userId} on chain ${chain}: ${existingWallet.address}`);
       
       // Verify the wallet still exists in CDP
       const network = formatNetworkName(chain);
+      console.log(`Verifying wallet ${existingWallet.address} exists in CDP on network ${network}`);
       const walletExists = await checkWalletExists(existingWallet.address, network);
       
       if (walletExists) {
+        console.log(`Wallet ${existingWallet.address} verified in CDP`);
         return {
           id: existingWallet.address,
           address: existingWallet.address,
@@ -321,48 +380,81 @@ export async function getOrCreateWallet(
     // 3. Create a new CDP wallet
     console.log("Creating new CDP wallet");
     const network = formatNetworkName(chain);
-    const newWallet = await createWallet(network);
+    
+    try {
+      const newWallet = await createWallet(network);
+      console.log(`Successfully created new wallet: ${JSON.stringify(newWallet)}`);
 
-    // 4. Store wallet in Supabase
-    console.log(`Storing wallet in Supabase for user ${userId}`);
-    const { error: insertError } = await supabase.from("wallets").insert({
-      user_id: userId,
-      chain,
-      address: newWallet.address,
-      cdp_wallet_id: newWallet.id,
-      created_at: new Date().toISOString(),
-    });
+      // 4. Store wallet in Supabase
+      console.log(`Storing wallet in Supabase for user ${userId}`);
+      const { error: insertError } = await supabase.from("wallets").insert({
+        user_id: userId,
+        chain,
+        address: newWallet.address,
+        cdp_wallet_id: newWallet.id,
+        created_at: new Date().toISOString(),
+      });
 
-    if (insertError) {
-      console.error("Error storing wallet in Supabase:", insertError);
-      
-      // Check if this is a duplicate key error (wallet might already exist)
-      if (insertError.message.includes('duplicate key')) {
-        console.log('Wallet already exists in Supabase, retrieving it');
-        const { data: wallet } = await supabase
-          .from("wallets")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("chain", chain)
-          .single();
-          
-        if (wallet) {
-          return {
-            id: wallet.address,
-            address: wallet.address,
-            network: formatNetworkName(chain)
-          };
+      if (insertError) {
+        console.error("Error storing wallet in Supabase:", insertError);
+        
+        // Check if this is a duplicate key error (wallet might already exist)
+        if (insertError.message.includes('duplicate key')) {
+          console.log('Wallet already exists in Supabase, retrieving it');
+          const { data: wallet } = await supabase
+            .from("wallets")
+            .select("*")
+            .eq("user_id", userId)
+            .eq("chain", chain)
+            .single();
+            
+          if (wallet) {
+            return {
+              id: wallet.address,
+              address: wallet.address,
+              network: formatNetworkName(chain)
+            };
+          }
         }
+        
+        throw insertError;
+      }
+
+      return {
+        id: newWallet.address,
+        address: newWallet.address,
+        network
+      };
+    } catch (walletError) {
+      console.error("Error creating CDP wallet:", walletError);
+      
+      // If we can't create a wallet, check if we can use a test wallet for development
+      if (process.env.NODE_ENV === 'development' && process.env.TEST_WALLET_ADDRESS) {
+        console.log(`Using test wallet address for development: ${process.env.TEST_WALLET_ADDRESS}`);
+        const testWallet = {
+          id: process.env.TEST_WALLET_ADDRESS,
+          address: process.env.TEST_WALLET_ADDRESS,
+          network
+        };
+        
+        // Store test wallet in Supabase
+        try {
+          await supabase.from("wallets").insert({
+            user_id: userId,
+            chain,
+            address: testWallet.address,
+            cdp_wallet_id: testWallet.id,
+            created_at: new Date().toISOString(),
+          });
+        } catch (e: unknown) {
+          console.error("Error storing test wallet:", e instanceof Error ? e.message : String(e));
+        }
+        
+        return testWallet;
       }
       
-      throw insertError;
+      throw walletError;
     }
-
-    return {
-      id: newWallet.address,
-      address: newWallet.address,
-      network
-    };
   } catch (error) {
     console.error("Error in getOrCreateWallet:", error);
     throw error;

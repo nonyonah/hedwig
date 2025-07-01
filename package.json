@@ -14,7 +14,8 @@
     "test-cdp": "node scripts/test-cdp.js",
     "sync-cdp": "node scripts/sync-cdp-wallets.js",
     "cleanup-db": "node scripts/cleanup-db.js",
-    "update-schema": "node scripts/update-schema.js"
+    "update-schema": "node scripts/update-schema.js",
+    "test-cdp-api": "node scripts/test-cdp-api.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.18",
