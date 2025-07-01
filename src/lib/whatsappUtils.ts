@@ -549,10 +549,46 @@ export async function handleIncomingWhatsAppMessage(body: any) {
 
   // Check if this is a message
   const message = value?.messages?.[0];
+  if (!message) {
+    console.log("No message found in webhook payload");
+    return;
+  }
 
-  // Check if this is a button click
-  const interactive = message?.interactive;
-  const buttonReply = interactive?.button_reply;
+  console.log("Message type:", message.type);
+  console.log("Full message:", JSON.stringify(message, null, 2));
+
+  // Check for different types of button interactions
+  let buttonId = null;
+  let buttonPayload = null;
+
+  // Check for interactive button click
+  if (message.type === 'interactive') {
+    const interactive = message.interactive;
+    if (interactive?.button_reply) {
+      buttonId = interactive.button_reply.id;
+      console.log("Interactive button clicked:", buttonId);
+    } else if (interactive?.quick_reply) {
+      buttonId = interactive.quick_reply.id;
+      console.log("Quick reply clicked:", buttonId);
+    }
+  }
+
+  // Check for button message type
+  if (message.type === 'button') {
+    buttonPayload = message.button?.payload;
+    buttonId = buttonPayload;
+    console.log("Button payload:", buttonPayload);
+  }
+
+  // Check for template button
+  if (message.type === 'template' && message.template?.buttons) {
+    const templateButton = message.template.buttons[0];
+    if (templateButton?.payload) {
+      buttonPayload = templateButton.payload;
+      buttonId = buttonPayload;
+      console.log("Template button payload:", buttonPayload);
+    }
+  }
 
   // Get the sender - could be in different places depending on message type
   const from =
@@ -581,7 +617,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   // This helps prevent processing the same message twice
   const messageId =
     message?.id ||
-    (interactive ? `interactive_${Date.now()}` : `unknown_${Date.now()}`);
+    (buttonId ? `button_${buttonId}_${Date.now()}` : `unknown_${Date.now()}`);
   const timestamp = value?.timestamp || Date.now();
 
   // Use a static cache for simplicity (in production, use Redis or similar)
@@ -620,115 +656,114 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     // Pass the profile name to store it with the user
     const userId = await getUserIdFromPhone(from, profileName);
 
-    // Handle button clicks
-    if (buttonReply) {
-      console.log("Button clicked:", buttonReply);
-      const buttonId = buttonReply.id;
+    // Handle button clicks - check for various formats of create_wallets
+    if (buttonId === "create_wallets" || buttonPayload === "create_wallets" ||
+        buttonId === "CREATE_WALLET" || buttonPayload === "CREATE_WALLET") {
+      console.log("Create wallets button clicked by:", from);
+      console.log("Calling handleAction with create_wallets intent");
+      
+      // Call the action handler with the create_wallets intent
+      const actionResult = await handleAction("create_wallets", {}, userId);
 
-      // Handle specific button actions
-      if (buttonId === "create_wallets") {
-        console.log("Create wallets button clicked by:", from);
-        const actionResult = await handleAction("create_wallets", {}, userId);
+      console.log("Action result:", JSON.stringify(actionResult, null, 2));
 
-        if (!actionResult) {
-          console.error("No action result returned from create_wallets");
-          await sendWhatsAppMessage(from, {
-            text: "I couldn't create your wallets. Please try again.",
-          });
-          return;
-        }
-
-        if ("name" in actionResult) {
-          await sendWhatsAppTemplate(from, actionResult);
-        } else if (
-          "text" in actionResult &&
-          typeof actionResult.text === "string"
-        ) {
-          await sendWhatsAppMessage(from, { text: actionResult.text });
-        } else {
-          console.error(
-            "Unknown action result format from create_wallets:",
-            actionResult,
-          );
-          await sendWhatsAppMessage(from, {
-            text: "I couldn't process your wallet creation properly.",
-          });
-        }
-
-        return;
-      }
-
-      // Handle send confirmation buttons
-      if (
-        buttonId === "confirm_send" ||
-        buttonReply.title.toLowerCase() === "yes"
-      ) {
-        console.log("Send confirmation button clicked by:", from);
-        // Show pending message
-        await sendWhatsAppTemplate(from, txPending());
-        // Get transaction details from the session
-        const { data: session } = await supabase
-          .from("sessions")
-          .select("context")
-          .eq("user_id", userId)
-          .single();
-        const pendingTx = session?.context?.find(
-          (item: { role: string; content: string }) =>
-            item.role === "system" &&
-            JSON.parse(item.content)?.pending?.action === "send",
-        );
-        let txParams = {};
-        if (pendingTx) {
-          txParams = JSON.parse(pendingTx.content)?.pending || {};
-        }
-        // Execute the send transaction
-        const actionResult = await handleAction(
-          "send",
-          { ...txParams, isExecute: true },
-          userId,
-        );
-        // Clear the session context after execution
-        await supabase.from("sessions").upsert(
-          [
-            {
-              user_id: userId,
-              context: [],
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          { onConflict: "user_id" },
-        );
-        if (actionResult) {
-          if ("name" in actionResult) {
-            await sendWhatsAppTemplate(from, actionResult);
-          } else if ("text" in actionResult) {
-            await sendWhatsAppMessage(from, { text: actionResult.text });
-          }
-        }
-        return;
-      }
-
-      if (buttonId === "cancel_send") {
-        console.log("Send canceled by:", from);
-        // Clear the session context
-        await supabase.from("sessions").upsert(
-          [
-            {
-              user_id: userId,
-              context: [],
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          { onConflict: "user_id" },
-        );
+      if (!actionResult) {
+        console.error("No action result returned from create_wallets");
         await sendWhatsAppMessage(from, {
-          text: "Transaction canceled. Your funds have not been sent.",
+          text: "I couldn't create your wallets. Please try again.",
         });
         return;
       }
 
-      // For other buttons, we can handle them here
-      // ...
+      if ("name" in actionResult) {
+        console.log("Sending template response:", actionResult.name);
+        await sendWhatsAppTemplate(from, actionResult);
+      } else if (
+        "text" in actionResult &&
+        typeof actionResult.text === "string"
+      ) {
+        console.log("Sending text response:", actionResult.text);
+        await sendWhatsAppMessage(from, { text: actionResult.text });
+      } else {
+        console.error(
+          "Unknown action result format from create_wallets:",
+          actionResult,
+        );
+        await sendWhatsAppMessage(from, {
+          text: "I couldn't process your wallet creation properly.",
+        });
+      }
+
+      return;
+    }
+
+    // Handle send confirmation buttons
+    if (
+      buttonId === "confirm_send" ||
+      buttonReply.title.toLowerCase() === "yes"
+    ) {
+      console.log("Send confirmation button clicked by:", from);
+      // Show pending message
+      await sendWhatsAppTemplate(from, txPending());
+      // Get transaction details from the session
+      const { data: session } = await supabase
+        .from("sessions")
+        .select("context")
+        .eq("user_id", userId)
+        .single();
+      const pendingTx = session?.context?.find(
+        (item: { role: string; content: string }) =>
+          item.role === "system" &&
+          JSON.parse(item.content)?.pending?.action === "send",
+      );
+      let txParams = {};
+      if (pendingTx) {
+        txParams = JSON.parse(pendingTx.content)?.pending || {};
+      }
+      // Execute the send transaction
+      const actionResult = await handleAction(
+        "send",
+        { ...txParams, isExecute: true },
+        userId,
+      );
+      // Clear the session context after execution
+      await supabase.from("sessions").upsert(
+        [
+          {
+            user_id: userId,
+            context: [],
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: "user_id" },
+      );
+      if (actionResult) {
+        if ("name" in actionResult) {
+          await sendWhatsAppTemplate(from, actionResult);
+        } else if ("text" in actionResult) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+        }
+      }
+      return;
+    }
+
+    if (buttonId === "cancel_send") {
+      console.log("Send canceled by:", from);
+      // Clear the session context
+      await supabase.from("sessions").upsert(
+        [
+          {
+            user_id: userId,
+            context: [],
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: "user_id" },
+      );
+      await sendWhatsAppMessage(from, {
+        text: "Transaction canceled. Your funds have not been sent.",
+      });
+      return;
     }
 
     // Handle text messages
