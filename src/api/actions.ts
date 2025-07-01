@@ -148,6 +148,34 @@ async function askForUserName(userId: string): Promise<any> {
   }
 }
 
+// Onboarding handler for first-time and returning users
+async function handleOnboarding(userId: string) {
+  // Fetch user info
+  const { data: user } = await supabase
+    .from("users")
+    .select("name")
+    .eq("id", userId)
+    .single();
+  const userName = user?.name || `User_${userId.substring(0, 8)}`;
+
+  // Check for wallet
+  const { data: wallets } = await supabase
+    .from("wallets")
+    .select("*")
+    .eq("user_id", userId);
+  const hasWallet = wallets && wallets.length > 0;
+
+  if (!hasWallet) {
+    return {
+      text: `👋 Hi ${userName}! I'm Hedwig, your crypto assistant. I can help you send, receive, swap, and bridge tokens, and check your balances. Would you like me to create a wallet for you now? (Type 'create wallet' to get started.)`
+    };
+  } else {
+    return {
+      text: `👋 Welcome back, ${userName}! What would you like to do today?`
+    };
+  }
+}
+
 export async function handleAction(
   intent: string,
   params: ActionParams,
@@ -251,7 +279,7 @@ export async function handleAction(
 
   switch (intent) {
     case "welcome":
-      return await handleWelcome(userId);
+      return await handleOnboarding(userId);
     case "create_wallets":
       return await handleCreateWallets(userId);
     case "get_wallet_balance":
@@ -380,27 +408,6 @@ export async function handleAction(
       text: "Sorry, I couldn't check your wallet status. Please try again later.",
     };
   }
-}
-
-// Example handler for onboarding
-async function handleWelcome(userId: string) {
-  // First check if we need to ask for the user's name
-  const namePrompt = await askForUserName(userId);
-  if (namePrompt) {
-    return namePrompt;
-  }
-
-  // If user has no wallet, show onboarding template
-  const { hasWallet } = await checkUserWallets(userId);
-  if (!hasWallet) {
-    return noWalletYet();
-  }
-  // If user has wallets, show balances (or other main menu)
-  return walletBalance({
-    eth_balance: "0",
-    usdc_base_balance: "0",
-    cngn_balance: "0",
-  });
 }
 
 // Handler for creating a new wallet
