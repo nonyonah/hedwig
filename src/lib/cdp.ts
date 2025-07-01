@@ -163,8 +163,11 @@ export async function createWallet(network: string): Promise<CDPWallet> {
     console.log(`Attempt ${attempts}/${maxAttempts} to create wallet on ${network}`);
     
     try {
-      // Request path and body
-      const path = "/accounts";
+      // Use the correct endpoint for EVM (Base) wallets
+      let path = "/evm/accounts";
+      if (network.toLowerCase().includes("solana")) {
+        path = "/solana/accounts";
+      }
       const body = { network };
       
       // Generate JWT token for authentication

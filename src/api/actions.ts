@@ -222,8 +222,12 @@ export async function handleAction(
       const hasEvm = wallets?.some((w) => w.chain === "evm" || w.chain === "base");
       const hasSolana = wallets?.some((w) => w.chain === "solana");
       if (!hasEvm && !hasSolana) {
-        return noWalletYet(userName);
+        // Block blockchain action and instruct user to create a wallet first
+        return {
+          text: "You need a wallet before you can continue. Please type 'create wallet' to create your wallet now.",
+        };
       }
+      // Only proceed with the blockchain action if the user has a wallet
     } catch (error) {
       console.error("Error checking wallet:", error);
       return {
