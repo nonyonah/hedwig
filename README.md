@@ -7,7 +7,7 @@ Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets
 ## 🌟 Key Features
 
 ### 💼 Wallet Management
-- Create and manage non-custodial wallets
+- Create and manage non-custodial wallets via Coinbase Developer Platform (CDP)
 - Check token balances across multiple chains
 - View transaction history and portfolio value
 - Secure private key management
@@ -17,6 +17,7 @@ Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets
 - View token prices and market data
 - Send and receive tokens
 - Track token performance
+- Swap tokens using CDP's swap API
 
 ### 🖼️ NFT Support
 - View your NFT collection
@@ -35,6 +36,7 @@ Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets
 - WhatsApp account
 - Node.js 16+ and npm/yarn
 - A server with a public URL (for webhooks)
+- Coinbase Developer Platform (CDP) API keys
 
 ### Installation
 
@@ -57,7 +59,12 @@ Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets
    # Update the values in .env with your configuration
    ```
 
-4. Start the development server:
+4. Configure CDP API keys:
+   - Sign up for a Coinbase Developer Platform account at https://www.coinbase.com/cloud
+   - Create a new project and generate API keys
+   - Add your CDP_API_KEY_ID and CDP_API_KEY_SECRET to your .env file
+
+5. Start the development server:
    ```bash
    npm run dev
    # or
@@ -79,6 +86,7 @@ Send a message to your Hedwig WhatsApp number to get started. Here are some exam
 - Non-custodial wallet - you own your private keys
 - End-to-end encryption for all messages
 - Rate limiting and spam protection
+- Secure wallet management through Coinbase Developer Platform
 - Regular security audits
 
 ## 🤝 Contributing

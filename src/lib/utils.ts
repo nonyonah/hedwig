@@ -55,3 +55,49 @@ export function formatTokenBalance(balance: string, decimals: number): string {
     return balance;
   }
 }
+
+/**
+ * Formats a balance value with proper decimals, handling both string and number inputs
+ * @param balance Raw balance (string or number)
+ * @param decimals Number of decimals for the token (default: 18 for ETH)
+ * @returns Formatted balance string
+ */
+export function formatBalance(
+  balance: string | number,
+  decimals: number = 18
+): string {
+  try {
+    // Handle number input
+    if (typeof balance === 'number') {
+      // For small numbers, convert to fixed string with up to 6 decimal places
+      if (balance < 0.000001 && balance > 0) {
+        return '<0.000001';
+      }
+      
+      // Format with up to 6 decimal places
+      const formatted = balance.toFixed(6);
+      
+      // Remove trailing zeros and decimal point if needed
+      return formatted.replace(/\.?0+$/, '');
+    }
+    
+    // Handle string input - try to parse as number first
+    if (typeof balance === 'string') {
+      // If the string appears to be a decimal number already
+      if (balance.includes('.')) {
+        const num = parseFloat(balance);
+        if (!isNaN(num)) {
+          return formatBalance(num, 0); // Already formatted, just clean up
+        }
+      }
+      
+      // Otherwise, treat as a raw token amount that needs decimal conversion
+      return formatTokenBalance(balance, decimals);
+    }
+    
+    return '0';
+  } catch (error) {
+    console.error('Error formatting balance:', error);
+    return '0';
+  }
+}

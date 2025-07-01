@@ -1,7 +1,7 @@
-import { getOrCreateWallet, getUserBalances } from "@/lib/blockradar";
+import { getOrCreateWallet, getUserBalances } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 import fetch from "node-fetch";
-import { formatAddress } from "@/lib/utils";
+import { formatAddress, formatBalance } from "@/lib/utils";
 import {
   walletTemplates,
   walletCreated,
@@ -37,16 +37,22 @@ import {
 import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
+import * as CDP from "@/lib/cdp";
+import { CDPBalance } from "@/lib/cdp";
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
+
+// Define ActionResponse type
+interface ActionResponse {
+  success: boolean;
+  message: string;
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
-
-// BlockRadar API key is now used directly in the blockradar.ts module
 
 /**
  * Check if a user has wallets
@@ -356,8 +362,8 @@ async function handleCreateWallets(userId: string) {
 
     const userName = user?.name || `User_${userId.substring(0, 8)}`;
 
-    // Create wallet using BlockRadar with user name
-    const wallet = await getOrCreateWallet(userId, "base", userName);
+    // Create wallet using CDP with user name
+    const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
     if (!wallet || !wallet.address) {
       console.error("Failed to create wallet");
       return { text: "Error creating wallet. Please try again." };
@@ -365,7 +371,7 @@ async function handleCreateWallets(userId: string) {
 
     console.log("Wallet created successfully:", {
       address: wallet.address,
-      network: wallet.chain || "base",
+      network: "base", // Use hardcoded value instead of wallet.chain
       userName: userName,
     });
 
@@ -391,8 +397,8 @@ async function handleGetWalletAddress(userId: string) {
 
     const userName = user?.name || `User_${userId.substring(0, 8)}`;
 
-    // Get wallet using BlockRadar
-    const wallet = await getOrCreateWallet(userId, "base", userName);
+    // Get wallet using CDP
+    const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
 
     if (!wallet || !wallet.address) {
       console.error("Failed to get wallet");
@@ -401,7 +407,7 @@ async function handleGetWalletAddress(userId: string) {
 
     console.log("Retrieved wallet address:", {
       address: wallet.address,
-      network: wallet.chain || "base",
+      network: "base", // Use hardcoded value instead of wallet.chain
       userName: userName,
     });
 
@@ -536,10 +542,16 @@ async function getSolanaUsdcBalance(address: string): Promise<string> {
   return usdc ? (Number(usdc.amount) / 1e6).toString() : "0";
 }
 
-async function handleGetWalletBalance(params: ActionParams, userId: string) {
+/**
+ * Handle wallet balance action
+ * @param params Action parameters
+ * @param userId User ID
+ * @returns Response with wallet balance template
+ */
+async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResponse> {
   try {
-    console.log(`Fetching wallet balance for user ${userId}`);
-
+    console.log(`Getting wallet balance for user ${userId}`);
+    
     // Get user info from Supabase for name
     const { data: user } = await supabase
       .from("users")
@@ -548,106 +560,137 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       .single();
 
     const userName = user?.name || `User_${userId.substring(0, 8)}`;
-
-    // Get wallet using BlockRadar with user name
-    const wallet = await getOrCreateWallet(userId, "base", userName);
-
-    if (!wallet || !wallet.address) {
-      console.error("Failed to get wallet for balance check");
-      return {
-        text: "❌ Error: Could not access your wallet. Please try again later.",
+    
+    // Get the user's Base wallet
+    let baseWalletDetails = await CDP.getUserAddress(userId, "base");
+    
+    // If no wallet exists, create one
+    if (!baseWalletDetails) {
+      console.log(`No Base wallet found for user ${userId}, creating one...`);
+      const result = await CDP.getOrCreateWallet(userId, "base", userName);
+      baseWalletDetails = {
+        address: result.address,
+        network: result.network
       };
+      console.log(`Created new Base wallet: ${baseWalletDetails.address}`);
     }
-
-    console.log(`Fetching balances for wallet: ${wallet.address}`);
-
-    // Get balances from BlockRadar
-    const balances = await getUserBalances(userId);
-
-    if (!Array.isArray(balances)) {
-      console.error("Invalid balances response:", balances);
-      return {
-        text: "❌ Error: Could not fetch your token balances. Please try again later.",
-      };
-    }
-
-    console.log(
-      "Retrieved wallet balances:",
-      JSON.stringify(balances, null, 2),
+    
+    // Get balances from CDP
+    const baseBalances = await CDP.getBalances(
+      baseWalletDetails.address,
+      baseWalletDetails.network
     );
-
-    // Format balance helper function
-    const formatBalance = (
-      balance: string | number,
-      decimals: number = 6,
-    ): string => {
+    
+    console.log(`Retrieved ${baseBalances.length} balances for user ${userId}`);
+    
+    // Find ETH balance
+    const ethBalance = baseBalances.find(
+      (b: CDPBalance) => b.asset?.symbol?.toUpperCase() === "ETH"
+    );
+    
+    // Find USDC balance on Base
+    const usdcBaseBalance = baseBalances.find(
+      (b: CDPBalance) => 
+        b.asset?.symbol?.toUpperCase() === "USDC"
+    );
+    
+    // Find cNGN balance
+    const cngnBalance = baseBalances.find(
+      (b: CDPBalance) => b.asset?.symbol?.toUpperCase() === "CNGN"
+    );
+    
+    // Format balances for display
+    const ethBalanceFormatted = ethBalance?.balance 
+      ? formatBalance(ethBalance.balance, ethBalance.asset?.decimals || 18)
+      : "0";
+      
+    const usdcBaseBalanceFormatted = usdcBaseBalance?.balance 
+      ? formatBalance(usdcBaseBalance.balance, usdcBaseBalance.asset?.decimals || 6)
+      : "0";
+      
+    const cngnBalanceFormatted = cngnBalance?.balance 
+      ? formatBalance(cngnBalance.balance, cngnBalance.asset?.decimals || 18)
+      : "0";
+    
+    console.log(`Formatted balances - ETH: ${ethBalanceFormatted}, USDC: ${usdcBaseBalanceFormatted}, cNGN: ${cngnBalanceFormatted}`);
+    
+    // Get the user's Solana wallet
+    const { data: solanaWallet, error: solanaError } = await supabase
+      .from("wallets")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("chain", "solana")
+      .single();
+    
+    if (solanaError) {
+      console.error("Error fetching Solana wallet:", solanaError);
+    }
+    
+    // Get Solana USDC balance if wallet exists
+    let usdcSolanaBalance = "0";
+    if (solanaWallet && solanaWallet.address) {
       try {
-        const num = typeof balance === "string" ? parseFloat(balance) : balance;
-        if (isNaN(num)) return "0.0";
-
-        // Convert from wei to ether for ETH
-        const formatted = num.toFixed(6);
-
-        // Remove trailing zeros and unnecessary decimal point
-        return formatted.replace(/\.?0+$/, "");
+        console.log(`Getting USDC balance for Solana wallet: ${solanaWallet.address}`);
+        const solanaAddress = solanaWallet.address;
+        
+        // Use CDP to get Solana balances
+        const solanaBalances = await CDP.getBalances(
+          solanaAddress,
+          "solana-devnet"
+        );
+        
+        // Find USDC token
+        const usdcToken = solanaBalances.find(
+          (token: CDPBalance) => token.asset?.symbol?.toUpperCase() === "USDC"
+        );
+        
+        if (usdcToken) {
+          usdcSolanaBalance = formatBalance(
+            usdcToken.balance,
+            usdcToken.asset?.decimals || 6
+          );
+          console.log(`Found USDC token with balance: ${usdcSolanaBalance}`);
+        } else {
+          console.log("No USDC token found in Solana wallet");
+        }
       } catch (error) {
-        console.error("Error formatting balance:", error);
-        return "0.0";
+        console.error("Error fetching Solana USDC balance:", error);
       }
+    } else {
+      console.log("No Solana wallet found for user");
+    }
+    
+    // Create the wallet balance template
+    const walletBalanceTemplate = walletBalance({
+      eth_balance: ethBalanceFormatted,
+      usdc_base_balance: usdcBaseBalanceFormatted,
+      cngn_balance: cngnBalanceFormatted,
+    });
+    
+    // Return wallet balance template with all balances
+    return {
+      success: true,
+      message: JSON.stringify(walletBalanceTemplate), // Convert template object to string
     };
-
-    // Find ETH, USDC, and cNGN balances in the BlockRadar response
-    const ethBalance = balances.find(
-      (b) =>
-        b.asset?.asset?.symbol?.toUpperCase() === "ETH" ||
-        b.asset?.asset?.blockchain?.symbol?.toUpperCase() === "ETH",
-    );
-
-    const usdcBalance = balances.find(
-      (b) => b.asset?.asset?.symbol?.toUpperCase() === "USDC",
-    );
-
-    const cngnBalance = balances.find(
-      (b) => b.asset?.asset?.symbol?.toUpperCase() === "CNGN",
-    );
-
-    // Format balances
-    const formattedEth = formatBalance(ethBalance?.balance || "0");
-    const formattedUsdc = formatBalance(usdcBalance?.balance || "0");
-    const formattedCngn = formatBalance(cngnBalance?.balance || "0");
-
-    console.log("Formatted balances:", {
-      eth: formattedEth,
-      usdc: formattedUsdc,
-      cngn: formattedCngn,
-    });
-
-    // Return formatted balances
-    return walletBalance({
-      eth_balance: formattedEth,
-      usdc_base_balance: formattedUsdc,
-      cngn_balance: formattedCngn,
-    });
   } catch (error) {
     console.error("Error in handleGetWalletBalance:", error);
     return {
-      text:
-        "❌ Oops! We encountered an issue fetching your wallet balance. " +
-        "Our team has been notified. Please try again in a few moments.",
+      success: false,
+      message: "Sorry, I couldn't retrieve your wallet balance at this time. Please try again later.",
     };
   }
 }
 
-// Handler for swapping tokens using BlockRadar
+// Handler for swapping tokens using CDP
 async function handleSwapTokens(params: ActionParams, userId: string) {
   try {
     const isExecute = params.isExecute === true || params.phase === "execute";
     const fromToken = (params.fromToken || params.from)?.toUpperCase();
     const toToken = (params.toToken || params.to)?.toUpperCase();
     const amount = params.amount;
-    const network = "base"; // Default to Base network for BlockRadar
+    const network = formatNetworkName(params.chain || "base");
 
-    console.log("[BlockRadar] handleSwapTokens params:", {
+    console.log("[CDP] handleSwapTokens params:", {
       fromToken,
       toToken,
       amount,
@@ -699,37 +742,39 @@ async function handleSwapTokens(params: ActionParams, userId: string) {
           .single();
 
         const userName = user?.name || `User_${userId.substring(0, 8)}`;
-        const wallet = await getOrCreateWallet(userId, "base", userName);
+        const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
 
         if (!wallet || !wallet.address) {
           console.error("Error fetching wallet");
           return sendFailed({ reason: "Wallet not found" });
         }
 
-        // In a real implementation, you would call BlockRadar's API to get a swap quote
-        // and then execute the swap. This is a placeholder for that implementation.
-        console.log(
-          `[BlockRadar] Preparing to swap ${amount} ${fromToken} to ${toToken}`,
+        // Get a swap quote from CDP
+        const quote = await CDP.getSwapQuote(
+          wallet.address,
+          amount,
+          fromToken,
+          toToken,
+          network
         );
-
-        // Simulate swap transaction
-        const txHash = `0x${crypto.randomBytes(32).toString("hex")}`;
-        const explorerUrl = `https://basescan.org/tx/${txHash}`;
-
-        console.log(`[BlockRadar] Swap simulated - Hash: ${txHash}`);
+        
+        // Execute the swap
+        const txHash = await CDP.executeSwap(quote.quoteId);
+        
+        console.log(`[CDP] Swap executed - Hash: ${txHash}`);
 
         // Update the transaction status in the database
         await updateTransactionStatus(txHash, "pending");
 
         // Format the swap details for display
-        const swapDetails = `Swapped ${amount} ${fromToken} to ${toToken}`;
+        const swapDetails = `Swapped ${amount} ${fromToken} to ${quote.toAmount} ${toToken}`;
 
         // Return success template with the transaction hash
         return txSentSuccess({
           amount,
           token: fromToken,
           recipient: swapDetails, // Using recipient field to show swap details
-          explorerUrl,
+          explorerUrl: getExplorerUrl("base", txHash),
         });
       } catch (err: any) {
         console.error("Swap transaction error:", err);
@@ -830,15 +875,14 @@ async function handleSwapTokens(params: ActionParams, userId: string) {
         .single();
 
       const userName = user?.name || `User_${userId.substring(0, 8)}`;
-      const wallet = await getOrCreateWallet(userId, chain, userName);
+      const wallet = await CDP.getOrCreateWallet(userId, chain, userName);
 
       if (!wallet || !wallet.address) {
         return { text: "No wallet found. Create one to get started." };
       }
 
       // 2. Show the swap prompt
-      const network =
-        params.network || chain === "solana" ? "Solana Devnet" : "Base Sepolia";
+      const network = params.network || formatNetworkName(chain);
       return handleSwapInit(
         {
           from_token: fromToken,
@@ -938,7 +982,7 @@ async function handleSend(params: ActionParams, userId: string) {
     const userName = user?.name || `User_${userId.substring(0, 8)}`;
 
     // Get or create wallet with user name
-    const wallet = await getOrCreateWallet(userId, chain, userName);
+    const wallet = await CDP.getOrCreateWallet(userId, chain, userName);
 
     if (!wallet || !wallet.address) {
       return { text: "No wallet found. Create one to get started." };
@@ -971,48 +1015,33 @@ async function handleSend(params: ActionParams, userId: string) {
         return { text: "Specify amount." };
       }
     }
+    
     // 3. Call CDP API to send transaction
-    const cdpApiKey = process.env.CDP_API_KEY_ID;
-    const cdpApiSecret = process.env.CDP_API_KEY_SECRET;
-    const cdpBaseUrl =
-      process.env.CDP_API_URL || "https://api.cdp.coinbase.com/v2";
     const fromAddress = wallet.address;
-    const network = chain === "solana" ? "solana-devnet" : "base-sepolia";
-    const url = `${cdpBaseUrl}/transactions/send?network=${network}`;
-    const body = {
-      from: fromAddress,
+    const network = formatNetworkName(chain);
+    const asset = params.asset || (chain === "solana" ? "SOL" : "ETH");
+    
+    const txHash = await CDP.sendTransaction(
+      fromAddress,
       to,
       amount,
-      asset: params.asset || (chain === "solana" ? "SOL" : "ETH"),
-    };
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "CDP-API-KEY": cdpApiKey!,
-        "CDP-API-SECRET": cdpApiSecret!,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Send error:", errorText);
-      return { text: "Failed to send transaction." };
-    }
-    const data = await response.json();
-    const txHash = data.txHash || data.transactionHash || data.hash;
+      asset,
+      network
+    );
+    
     // Log transaction in Supabase
     await supabase.from("transactions").insert([
       {
         user_id: userId,
-        wallet_id: wallet.id,
+        wallet_id: wallet.address,
         chain,
         tx_hash: txHash,
         action: "send",
         status: "pending",
-        metadata: { to, amount, asset: body.asset },
+        metadata: { to, amount, asset },
       },
     ]);
+    
     // Explorer link
     const explorerUrl = getExplorerUrl(chain, txHash);
     return transactionSuccess({
@@ -1563,6 +1592,22 @@ function cdpSign({
 }): string {
   const prehash = timestamp + method.toUpperCase() + requestPath + body;
   return crypto.createHmac("sha256", secret).update(prehash).digest("hex");
+}
+
+// Helper function to format network names for CDP API
+function formatNetworkName(chain: string): string {
+  // Map our internal chain names to CDP network names
+  switch (chain.toLowerCase()) {
+    case "base":
+      return "base-sepolia"; // Using testnet by default
+    case "ethereum":
+    case "evm":
+      return "ethereum-sepolia";
+    case "solana":
+      return "solana-devnet";
+    default:
+      return chain;
+  }
 }
 
 // --- Alchemy Webhook Handler for Deposit Notifications ---
