@@ -162,6 +162,15 @@ export async function handleAction(
     userId,
   );
 
+  // Special handling for create_wallets intent from button click
+  if (intent === "create_wallets" || intent === "CREATE_WALLET" || 
+      params.payload === "create_wallets" || params.payload === "CREATE_WALLET") {
+    console.log("[handleAction] Create wallet button clicked or intent detected");
+    console.log("[handleAction] Intent value:", intent);
+    console.log("[handleAction] Params:", JSON.stringify(params));
+    return await handleCreateWallets(userId);
+  }
+
   // Special case for clarification intent
   if (intent === "clarification") {
     return {
@@ -171,6 +180,17 @@ export async function handleAction(
 
   // Handle unknown intent
   if (intent === "unknown") {
+    console.log("[handleAction] Unknown intent, checking if this is a wallet creation request");
+    // Check if this might be a wallet creation request despite unknown intent
+    if (params.text && typeof params.text === 'string' && 
+        (params.text.toLowerCase().includes('create wallet') || 
+         params.text.toLowerCase().includes('wallet create') ||
+         params.text.toLowerCase().includes('make wallet') ||
+         params.text.toLowerCase().includes('new wallet'))) {
+      console.log("[handleAction] Text suggests wallet creation, calling handleCreateWallets");
+      return await handleCreateWallets(userId);
+    }
+    
     return {
       text: "I didn't understand your request. You can ask about creating a wallet, checking balance, sending crypto, swapping tokens, or getting crypto prices.",
     };
@@ -382,28 +402,65 @@ async function handleWelcome(userId: string) {
 // Handler for creating a new wallet
 async function handleCreateWallets(userId: string) {
   try {
-    console.log(`Creating wallet for user ${userId}`);
+    console.log(`[handleCreateWallets] Creating wallet for user ${userId}`);
 
     // Fetch user name
-    const { data: user } = await supabase
+    const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("name")
+      .select("name, phone_number")
       .eq("id", userId)
       .single();
-    const userName = user?.name || `User_${userId.substring(0, 8)}`;
+
+    if (userError) {
+      console.error(`[handleCreateWallets] Error fetching user: ${userError.message}`);
+    }
+
+    const userName = userData?.name || `User_${userId.substring(0, 8)}`;
+    console.log(`[handleCreateWallets] User name: ${userName}`);
+    
+    // Check if wallet already exists to prevent duplicates
+    const { data: existingWallet, error: walletError } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("chain", "base")
+      .maybeSingle();
+      
+    if (walletError) {
+      console.error(`[handleCreateWallets] Error checking existing wallet: ${walletError.message}`);
+    }
+      
+    if (existingWallet) {
+      console.log(`[handleCreateWallets] Wallet already exists: ${existingWallet.address}`);
+      return {
+        text: `You already have a wallet, ${userName}!` ,
+        ...walletCreatedMulti({ evm_wallet: existingWallet.address })
+      };
+    }
+
     // Create wallet using CDP with user name
+    console.log(`[handleCreateWallets] Calling CDP.getOrCreateWallet`);
     const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
+    
+    console.log(`[handleCreateWallets] CDP.getOrCreateWallet result: ${JSON.stringify(wallet)}`);
+    
     if (!wallet || !wallet.address) {
+      console.error(`[handleCreateWallets] Failed to create wallet: ${JSON.stringify(wallet)}`);
       return {
         text: `Sorry ${userName}, there was an error creating your wallet. Please try again.`
       };
     }
+
+    console.log(`[handleCreateWallets] Successfully created wallet: ${wallet.address}`);
+    const response = walletCreatedMulti({ evm_wallet: wallet.address });
+    console.log(`[handleCreateWallets] Response: ${JSON.stringify(response)}`);
+    
     return {
       text: `Wallet created for ${userName}!` ,
-      ...walletCreatedMulti({ evm_wallet: wallet.address })
+      ...response
     };
   } catch (error) {
-    console.error("Error in handleCreateWallets:", error);
+    console.error("[handleCreateWallets] Error:", error);
     return { text: "Error creating wallet. Please try again later." };
   }
 }

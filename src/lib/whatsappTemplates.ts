@@ -596,10 +596,10 @@ export function noWalletYet(name?: string) {
       },
       {
         type: 'BUTTON',
-        sub_type: 'custom',
+        sub_type: 'QUICK_REPLY',
         index: '0',
         parameters: [
-          { type: 'payload', payload: 'CREATE_WALLET' }
+          { type: 'payload', payload: 'create_wallets' }
         ]
       }
     ]
