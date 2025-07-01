@@ -66,7 +66,7 @@ export async function sendWhatsAppMessage(
   try {
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-
+    
     // Check if we have valid credentials before attempting to send
     if (
       !accessToken ||
@@ -121,7 +121,7 @@ export async function sendWhatsAppMessage(
           messaging_product: "whatsapp",
           to,
           type: "text",
-          text: {
+          text: { 
             body: text,
             preview_url: false,
           },
@@ -195,7 +195,7 @@ export async function sendWhatsAppImage(
       );
       throw new Error(`Failed to send WhatsApp image: ${errorData}`);
     }
-
+    
     return await response.json();
   } catch (err) {
     console.error("Exception in sendWhatsAppImage:", err);
@@ -239,7 +239,7 @@ export async function sendWhatsAppTemplateMessage(
       );
       throw new Error(`Failed to send WhatsApp template message: ${errorData}`);
     }
-
+    
     return await response.json();
   } catch (err) {
     console.error("Exception in sendWhatsAppTemplateMessage:", err);
@@ -260,10 +260,10 @@ interface WhatsAppListSection {
 }
 
 export async function sendWhatsAppListMessage(
-  to: string,
-  header: string,
-  body: string,
-  buttonText: string,
+  to: string, 
+  header: string, 
+  body: string, 
+  buttonText: string, 
   sections: WhatsAppListSection[],
 ): Promise<WhatsAppMessageResponse> {
   try {
@@ -309,7 +309,7 @@ export async function sendWhatsAppListMessage(
       );
       throw new Error(`Failed to send WhatsApp list message: ${errorData}`);
     }
-
+    
     return await response.json();
   } catch (err) {
     console.error("Exception in sendWhatsAppListMessage:", err);
@@ -374,7 +374,7 @@ export async function sendWhatsAppReplyButtons(
       );
       throw new Error(`Failed to send WhatsApp reply buttons: ${errorData}`);
     }
-
+    
     return await response.json();
   } catch (err) {
     console.error("Exception in sendWhatsAppReplyButtons:", err);
@@ -396,12 +396,12 @@ export function validatePhoneNumber(phoneNumber: string): boolean {
 export function formatPhoneNumber(phoneNumber: string): string {
   // Remove all non-digit characters
   const digits = phoneNumber.replace(/\D/g, "");
-
+  
   // If it starts with a country code, add +
   if (digits.length > 10) {
     return `+${digits}`;
   }
-
+  
   // Default to US country code if no country code provided
   return `+1${digits}`;
 }

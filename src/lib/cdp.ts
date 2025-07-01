@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 const CDP_API_URL = "https://api.cdp.coinbase.com/v2";
 const CDP_API_KEY_ID = process.env.CDP_API_KEY_ID;
@@ -65,6 +66,82 @@ export interface CDPTransaction {
 }
 
 /**
+ * Generate JWT token for CDP API authentication
+ * @param method The HTTP method
+ * @param path The request path
+ * @param body Optional request body
+ * @returns The JWT token
+ */
+async function generateJWT(method: string, path: string, body?: any): Promise<string> {
+  try {
+    console.log(`Generating JWT for ${method} ${path}`);
+    
+    if (!CDP_API_KEY_ID || !CDP_API_KEY_SECRET) {
+      throw new Error("CDP API credentials not configured");
+    }
+    
+    // Create timestamp (seconds since epoch)
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    
+    // Create a random nonce (jti)
+    const jti = crypto.randomBytes(16).toString('hex');
+    
+    // Create the URI claim
+    const uri = `${method} api.cdp.coinbase.com${path}`;
+    
+    // Create the JWT header
+    const header = {
+      alg: "HS256",
+      typ: "JWT"
+    };
+    
+    // Create the JWT payload
+    const payload: Record<string, any> = {
+      iat: timestamp,
+      nbf: timestamp,
+      exp: parseInt(timestamp) + 120, // Token valid for 2 minutes
+      sub: CDP_API_KEY_ID,
+      iss: "cdp-api",
+      jti: jti,
+      uris: [uri]
+    };
+    
+    // Add request body to payload if provided
+    if (body) {
+      payload.req = body;
+    }
+    
+    // Encode header and payload
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    
+    // Create the signature
+    const signatureInput = `${encodedHeader}.${encodedPayload}`;
+    const signature = crypto.createHmac('sha256', CDP_API_KEY_SECRET)
+      .update(signatureInput)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    
+    // Combine to create the JWT
+    const jwt = `${encodedHeader}.${encodedPayload}.${signature}`;
+    
+    return jwt;
+  } catch (error) {
+    console.error("Error generating JWT:", error);
+    throw error;
+  }
+}
+
+/**
  * Create a new wallet in CDP
  * @param network The network for the wallet (e.g., "base-sepolia", "solana-devnet")
  * @returns The created wallet information
@@ -86,16 +163,20 @@ export async function createWallet(network: string): Promise<CDPWallet> {
     console.log(`Attempt ${attempts}/${maxAttempts} to create wallet on ${network}`);
     
     try {
-      const response = await fetch(`${CDP_API_URL}/accounts`, {
+      // Request path and body
+      const path = "/accounts";
+      const body = { network };
+      
+      // Generate JWT token for authentication
+      const jwt = await generateJWT("POST", path, body);
+      
+      const response = await fetch(`${CDP_API_URL}${path}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "CDP-API-KEY": CDP_API_KEY_ID || "",
-          "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+          "Authorization": `Bearer ${jwt}`,
         },
-        body: JSON.stringify({
-          network: network,
-        }),
+        body: JSON.stringify(body),
       });
 
       // Log full response for debugging
@@ -166,20 +247,31 @@ export async function getBalances(
 ): Promise<CDPBalance[]> {
   console.log(`Getting balances for address ${address} on network ${network}`);
   
+  // Request path
+  const path = `/accounts/${address}/balances`;
+  
+  // Generate JWT token for authentication
+  const jwt = await generateJWT("GET", `${path}?network=${network}`);
+  
   const response = await fetch(
-    `${CDP_API_URL}/accounts/${address}/balances?network=${network}`,
+    `${CDP_API_URL}${path}?network=${network}`,
     {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "CDP-API-KEY": CDP_API_KEY_ID || "",
-        "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+        "Authorization": `Bearer ${jwt}`,
       },
     },
   );
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Unknown error" }));
+    const responseText = await response.text();
+    let error;
+    try {
+      error = JSON.parse(responseText);
+    } catch (e) {
+      error = { message: responseText || "Unknown error" };
+    }
     console.error(`CDP API error (getBalances): Status ${response.status}`, error);
     throw new Error(
       `Failed to get balances: ${error.message || response.statusText}`,
@@ -230,15 +322,20 @@ export async function checkWalletExists(
   try {
     console.log(`Checking if wallet ${address} exists on ${network}`);
     
+    // Request path
+    const path = `/accounts/${address}/balances`;
+    
+    // Generate JWT token for authentication
+    const jwt = await generateJWT("GET", `${path}?network=${network}`);
+    
     // Try to get balances as a way to verify the wallet exists
     const response = await fetch(
-      `${CDP_API_URL}/accounts/${address}/balances?network=${network}`,
+      `${CDP_API_URL}${path}?network=${network}`,
       {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "CDP-API-KEY": CDP_API_KEY_ID || "",
-          "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+          "Authorization": `Bearer ${jwt}`,
         },
       },
     );
@@ -550,20 +647,31 @@ export async function getTransactionHistory(
 ): Promise<CDPTransaction[]> {
   console.log(`Getting transaction history for address ${address} on network ${network}`);
   
+  // Request path
+  const path = `/accounts/${address}/transactions`;
+  
+  // Generate JWT token for authentication
+  const jwt = await generateJWT("GET", `${path}?network=${network}`);
+  
   const response = await fetch(
-    `${CDP_API_URL}/accounts/${address}/transactions?network=${network}`,
+    `${CDP_API_URL}${path}?network=${network}`,
     {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "CDP-API-KEY": CDP_API_KEY_ID || "",
-        "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+        "Authorization": `Bearer ${jwt}`,
       },
     },
   );
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Unknown error" }));
+    const responseText = await response.text();
+    let error;
+    try {
+      error = JSON.parse(responseText);
+    } catch (e) {
+      error = { message: responseText || "Unknown error" };
+    }
     console.error(`CDP API error (getTransactionHistory): Status ${response.status}`, error);
     throw new Error(
       `Failed to get transaction history: ${error.message || response.statusText}`,
@@ -628,24 +736,36 @@ export async function sendTransaction(
 ): Promise<string> {
   console.log(`Sending ${amount} ${asset} from ${fromAddress} to ${toAddress} on ${network}`);
   
-  const response = await fetch(`${CDP_API_URL}/transactions/send`, {
+  // Request path and body
+  const path = "/transactions/send";
+  const body = {
+    from: fromAddress,
+    to: toAddress,
+    amount,
+    asset,
+    network
+  };
+  
+  // Generate JWT token for authentication
+  const jwt = await generateJWT("POST", path, body);
+  
+  const response = await fetch(`${CDP_API_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "CDP-API-KEY": CDP_API_KEY_ID || "",
-      "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+      "Authorization": `Bearer ${jwt}`,
     },
-    body: JSON.stringify({
-      from: fromAddress,
-      to: toAddress,
-      amount,
-      asset,
-      network
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Unknown error" }));
+    const responseText = await response.text();
+    let error;
+    try {
+      error = JSON.parse(responseText);
+    } catch (e) {
+      error = { message: responseText || "Unknown error" };
+    }
     console.error(`CDP API error (sendTransaction): Status ${response.status}`, error);
     throw new Error(
       `Failed to send transaction: ${error.message || response.statusText}`,
@@ -672,27 +792,39 @@ export async function getSwapQuote(
   fromAsset: string,
   toAsset: string,
   network: string = "base-sepolia"
-) {
+): Promise<any> {
   console.log(`Getting swap quote for ${fromAmount} ${fromAsset} to ${toAsset} on ${network}`);
   
-  const response = await fetch(`${CDP_API_URL}/swaps/quote`, {
+  // Request path and body
+  const path = "/swaps/quote";
+  const body = {
+    from: fromAddress,
+    fromAmount,
+    fromAsset,
+    toAsset,
+    network
+  };
+  
+  // Generate JWT token for authentication
+  const jwt = await generateJWT("POST", path, body);
+  
+  const response = await fetch(`${CDP_API_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "CDP-API-KEY": CDP_API_KEY_ID || "",
-      "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+      "Authorization": `Bearer ${jwt}`,
     },
-    body: JSON.stringify({
-      from: fromAddress,
-      fromAmount,
-      fromAsset,
-      toAsset,
-      network
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Unknown error" }));
+    const responseText = await response.text();
+    let error;
+    try {
+      error = JSON.parse(responseText);
+    } catch (e) {
+      error = { message: responseText || "Unknown error" };
+    }
     console.error(`CDP API error (getSwapQuote): Status ${response.status}`, error);
     throw new Error(
       `Failed to get swap quote: ${error.message || response.statusText}`,
@@ -712,20 +844,32 @@ export async function getSwapQuote(
 export async function executeSwap(quoteId: string): Promise<string> {
   console.log(`Executing swap with quote ID: ${quoteId}`);
   
-  const response = await fetch(`${CDP_API_URL}/swaps/execute`, {
+  // Request path and body
+  const path = "/swaps/execute";
+  const body = {
+    quoteId
+  };
+  
+  // Generate JWT token for authentication
+  const jwt = await generateJWT("POST", path, body);
+  
+  const response = await fetch(`${CDP_API_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "CDP-API-KEY": CDP_API_KEY_ID || "",
-      "CDP-API-SECRET": CDP_API_KEY_SECRET || "",
+      "Authorization": `Bearer ${jwt}`,
     },
-    body: JSON.stringify({
-      quoteId
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Unknown error" }));
+    const responseText = await response.text();
+    let error;
+    try {
+      error = JSON.parse(responseText);
+    } catch (e) {
+      error = { message: responseText || "Unknown error" };
+    }
     console.error(`CDP API error (executeSwap): Status ${response.status}`, error);
     throw new Error(
       `Failed to execute swap: ${error.message || response.statusText}`,
@@ -735,4 +879,4 @@ export async function executeSwap(quoteId: string): Promise<string> {
   const result = await response.json();
   console.log(`Swap executed with hash: ${result.txHash || result.transactionHash || 'unknown'}`);
   return result.txHash || result.transactionHash || result.hash;
-} 
+}

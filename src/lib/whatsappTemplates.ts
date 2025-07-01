@@ -583,13 +583,25 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
  * Parameter Format: POSITIONAL (no named parameters)
  * Has QUICK_REPLY button
  */
-export function noWalletYet() {
+export function noWalletYet(name?: string) {
   return {
     name: 'no_wallet_yet',
     language: { code: 'en' },
     components: [
       {
-        type: 'BODY'
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: name || '' }
+        ]
+      },
+      {
+        type: 'BUTTONS',
+        buttons: [
+          {
+            type: 'CUSTOM',
+            text: 'Create Wallet'
+          }
+        ]
       }
     ]
   };

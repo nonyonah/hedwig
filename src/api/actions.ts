@@ -188,18 +188,21 @@ export async function handleAction(
 
   if (blockchainIntents.includes(intent)) {
     try {
-      // Check if user has a wallet in BlockRadar
+      // Check if user has a wallet in Supabase (EVM or Solana)
       const { data: user } = await supabase
         .from("users")
         .select("name")
         .eq("id", userId)
         .single();
-
       const userName = user?.name || `User_${userId.substring(0, 8)}`;
-      const wallet = await getOrCreateWallet(userId, "base", userName);
-      if (!wallet) {
-        // No wallet found, prompt to create one
-        return noWalletYet();
+      const { data: wallets } = await supabase
+        .from("wallets")
+        .select("*")
+        .eq("user_id", userId);
+      const hasEvm = wallets?.some((w) => w.chain === "evm" || w.chain === "base");
+      const hasSolana = wallets?.some((w) => w.chain === "solana");
+      if (!hasEvm && !hasSolana) {
+        return noWalletYet(userName);
       }
     } catch (error) {
       console.error("Error checking wallet:", error);
@@ -325,6 +328,34 @@ export async function handleAction(
         text: `Sorry, I don't know how to handle the action: ${intent}`,
       };
   }
+
+  // Universal wallet check fallback for any query
+  // If the response is not recognized or is a fallback, check for wallet and suggest creation if missing
+  try {
+    const { data: user } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", userId)
+      .single();
+    const userName = user?.name || `User_${userId.substring(0, 8)}`;
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", userId);
+    const hasEvm = wallets?.some((w) => w.chain === "evm" || w.chain === "base");
+    const hasSolana = wallets?.some((w) => w.chain === "solana");
+    if (!hasEvm && !hasSolana) {
+      return {
+        text: `Hi ${userName}, you don't have a wallet yet. Would you like to create one?`,
+        ...noWalletYet(),
+      };
+    }
+  } catch (error) {
+    // If Supabase fails, just return a generic fallback
+    return {
+      text: "Sorry, I couldn't check your wallet status. Please try again later.",
+    };
+  }
 }
 
 // Example handler for onboarding
@@ -353,32 +384,24 @@ async function handleCreateWallets(userId: string) {
   try {
     console.log(`Creating wallet for user ${userId}`);
 
-    // Get user info from Supabase for name
+    // Fetch user name
     const { data: user } = await supabase
       .from("users")
-      .select("name, phone_number")
+      .select("name")
       .eq("id", userId)
       .single();
-
     const userName = user?.name || `User_${userId.substring(0, 8)}`;
-
     // Create wallet using CDP with user name
     const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
     if (!wallet || !wallet.address) {
-      console.error("Failed to create wallet");
-      return { text: "Error creating wallet. Please try again." };
+      return {
+        text: `Sorry ${userName}, there was an error creating your wallet. Please try again.`
+      };
     }
-
-    console.log("Wallet created successfully:", {
-      address: wallet.address,
-      network: "base", // Use hardcoded value instead of wallet.chain
-      userName: userName,
-    });
-
-    // Return wallet_created_multi template with the new wallet address
-    return walletCreatedMulti({
-      evm_wallet: wallet.address,
-    });
+    return {
+      text: `Wallet created for ${userName}!` ,
+      ...walletCreatedMulti({ evm_wallet: wallet.address })
+    };
   } catch (error) {
     console.error("Error in handleCreateWallets:", error);
     return { text: "Error creating wallet. Please try again later." };
