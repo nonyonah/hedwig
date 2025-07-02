@@ -710,7 +710,7 @@ export function walletCreated({ address }: { address: string }) {
 export function usersWalletAddresses({ evm_wallet }: { evm_wallet: string }) {
   return {
     name: 'wallet_address_info',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
