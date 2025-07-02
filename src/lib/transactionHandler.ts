@@ -60,16 +60,20 @@ export async function handleTransaction(
     // Prepare transaction data for CDP
     const to = options.recipient || transactionData.recipient || transactionData.to;
     const amount = options.amount || transactionData.amount || '0';
-    // Convert amount to hex (wei)
-    let value = amount;
-    if (typeof value === 'number' || (typeof value === 'string' && !value.startsWith('0x'))) {
-      const amountValue = typeof value === 'number' ? value : parseFloat(value);
+    // Convert amount to hex string (wei)
+    let value = '';
+    if (typeof amount === 'number' || (typeof amount === 'string' && !amount.startsWith('0x'))) {
+      const amountValue = typeof amount === 'number' ? amount : parseFloat(amount);
       const amountInWei = Math.floor(amountValue * 1e18);
       value = '0x' + amountInWei.toString(16);
+    } else {
+      value = amount; // Already in hex format
     }
+    
+    // Ensure value is a string
     const txData = {
       to,
-      value,
+      value: value.toString(),
       data: transactionData.data || '0x',
     };
     
@@ -164,19 +168,27 @@ async function sendCDPTransaction({
       expiresIn: 120 // 2 minutes
     });
     
+    // Prepare the request body with proper string formatting
+    const requestBody = {
+      network,
+      transaction: {
+        to: transaction.to.toString(),
+        value: transaction.value.toString(),
+        data: transaction.data ? transaction.data.toString() : '0x'
+      }
+    };
+    
     // Generate the Wallet JWT for X-Wallet-Auth using the SDK
     const walletJwt = await generateWalletJwt({
       walletSecret,
       requestMethod,
       requestHost,
       requestPath,
-      requestData: {
-        network,
-        transaction
-      }
+      requestData: requestBody
     });
     
     console.log(`[sendCDPTransaction] JWTs generated successfully`);
+    console.log(`[sendCDPTransaction] Request body:`, JSON.stringify(requestBody, null, 2));
     
     // Set up the API request
     const response = await fetch(
@@ -188,10 +200,7 @@ async function sendCDPTransaction({
           'Content-Type': 'application/json',
           'X-Wallet-Auth': walletJwt,
         },
-        body: JSON.stringify({
-          network,
-          transaction,
-        }),
+        body: JSON.stringify(requestBody),
       }
     );
     
