@@ -1153,13 +1153,13 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       ) {
         console.log("Wallet address request detected, overriding intent");
         const actionResult = await handleAction(
-          "instruction_deposit",
+          "get_wallet_address",
           {},
-          userId,
+          userId
         );
         console.log(
-          "Action result for instruction_deposit:",
-          JSON.stringify(actionResult, null, 2),
+          "Action result for get_wallet_address:",
+          JSON.stringify(actionResult, null, 2)
         );
 
         if (actionResult) {

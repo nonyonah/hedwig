@@ -285,6 +285,9 @@ export async function handleAction(
     case "get_wallet_address":
       // Always return the WhatsApp template for wallet address
       return await handleGetWalletAddress(userId);
+    case "instruction_deposit":
+      // For deposit instructions or wallet address requests, show the wallet address
+      return await handleGetWalletAddress(userId);
     default:
       return {
         text: "This feature is not supported with Privy wallets."
