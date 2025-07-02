@@ -91,8 +91,50 @@ export async function handleTransaction(
     return result;
   } catch (error) {
     console.error('[TransactionHandler] Transaction failed:', error);
-    throw error;
+    
+    // Provide user-friendly error messages while logging detailed errors for developers
+    const errorMessage = getUserFriendlyErrorMessage(error);
+    
+    throw new Error(errorMessage);
   }
+}
+
+/**
+ * Get a user-friendly error message from a technical error
+ */
+function getUserFriendlyErrorMessage(error: any): string {
+  // Log the full error for developers
+  console.error('[TransactionHandler] Detailed error:', error);
+  
+  const errorStr = error?.message || String(error);
+  
+  // Check for common error patterns and provide user-friendly messages
+  if (errorStr.includes('insufficient funds') || errorStr.includes('insufficient balance')) {
+    return 'Not enough funds to complete this transaction. Please add more funds to your wallet.';
+  }
+  
+  if (errorStr.includes('gas') && (errorStr.includes('required') || errorStr.includes('fee'))) {
+    return 'Not enough funds to cover the gas fee. Please add more funds to your wallet.';
+  }
+  
+  if (errorStr.includes('nonce')) {
+    return 'There was an issue with the transaction sequence. Please try again.';
+  }
+  
+  if (errorStr.includes('rejected') || errorStr.includes('denied')) {
+    return 'Transaction was rejected. Please try again.';
+  }
+  
+  if (errorStr.includes('timeout') || errorStr.includes('timed out')) {
+    return 'The transaction is taking too long. Please try again later.';
+  }
+  
+  if (errorStr.includes('rate limit') || errorStr.includes('too many requests')) {
+    return 'Too many requests. Please wait a moment and try again.';
+  }
+  
+  // For unknown errors, provide a generic message
+  return 'Unable to complete the transaction. Please try again later.';
 }
 
 /**
@@ -199,7 +241,10 @@ async function sendPrivyTransaction({
     };
   } catch (error) {
     console.error('[sendPrivyTransaction] Error:', error);
-    throw error;
+    
+    // Log detailed error for developers but throw user-friendly message
+    const errorMessage = getUserFriendlyErrorMessage(error);
+    throw new Error(errorMessage);
   }
 }
 
