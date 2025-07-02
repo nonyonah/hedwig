@@ -709,7 +709,7 @@ export function walletCreated({ address }: { address: string }) {
 // EVM-only wallet addresses template
 export function usersWalletAddresses({ evm_wallet }: { evm_wallet: string }) {
   return {
-    name: 'wallet_address_info',
+    name: 'users_wallet_addresses',
     language: { code: 'en' },
     components: [
       {
