@@ -430,7 +430,7 @@ async function handleGetWalletAddress(userId: string) {
 }
 
 /**
- * Handle wallet balance action - Fetch real wallet balances using CDP Wallet History API
+ * Handle wallet balance action - Fetch real wallet balances using CDP Address Balances API
  * @param params Action parameters
  * @param userId User ID
  * @returns Response with wallet balance template
@@ -466,87 +466,63 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     let cngnBalance = "0";
     
     try {
-      // Call CDP Wallet History API to fetch wallet balances
-      // Based on docs from https://docs.cdp.coinbase.com/data/wallet-history/overview
+      // Call CDP Address Balances API to fetch wallet balances
+      // Based on docs from https://docs.cdp.coinbase.com/api-reference/rest-api/addresses/list-wallet-address-balances
       const apiKey = process.env.CDP_API_KEY;
-      const baseUrl = process.env.CDP_API_URL || 'https://api.coinbase.com/api/v3/bware';
+      const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
       
       if (!apiKey) {
         throw new Error('CDP_API_KEY not configured');
       }
       
-      // Fetch ETH balance
-      console.log(`[handleGetWalletBalance] Fetching ETH balance for ${walletAddress}`);
-      const ethResponse = await fetch(`${baseUrl}/wallets/address/${walletAddress}/balances?network=base-sepolia`, {
+      // Fetch all balances in a single call
+      console.log(`[handleGetWalletBalance] Fetching balances for ${walletAddress} on base-sepolia`);
+      const balancesResponse = await fetch(`${baseUrl}/v1/addresses/${walletAddress}/balances?network=base-sepolia`, {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         }
       });
       
-      if (ethResponse.ok) {
-        const ethData = await ethResponse.json();
-        const ethAsset = ethData.balances?.find((asset: any) => 
-          asset.symbol?.toLowerCase() === 'eth' || asset.contractAddress === '0x0000000000000000000000000000000000000000'
-        );
+      if (balancesResponse.ok) {
+        const balancesData = await balancesResponse.json();
+        console.log(`[handleGetWalletBalance] Balances response:`, balancesData);
         
-        if (ethAsset) {
-          ethBalance = formatBalance(ethAsset.balance || "0", 18);
-          console.log(`[handleGetWalletBalance] ETH balance: ${ethBalance}`);
+        if (balancesData.balances && Array.isArray(balancesData.balances)) {
+          // Find ETH balance
+          const ethAsset = balancesData.balances.find((asset: any) => 
+            asset.symbol?.toLowerCase() === 'eth' || 
+            asset.contractAddress === '0x0000000000000000000000000000000000000000'
+          );
+          
+          if (ethAsset) {
+            ethBalance = formatBalance(ethAsset.balance || "0", 18);
+            console.log(`[handleGetWalletBalance] ETH balance: ${ethBalance}`);
+          }
+          
+          // Find USDC balance
+          const usdcAsset = balancesData.balances.find((asset: any) => 
+            asset.symbol?.toLowerCase() === 'usdc'
+          );
+          
+          if (usdcAsset) {
+            usdcBalance = formatBalance(usdcAsset.balance || "0", 6);
+            console.log(`[handleGetWalletBalance] USDC balance: ${usdcBalance}`);
+          }
+          
+          // Find cNGN balance
+          const cngnAsset = balancesData.balances.find((asset: any) => 
+            asset.symbol?.toLowerCase() === 'cngn'
+          );
+          
+          if (cngnAsset) {
+            cngnBalance = formatBalance(cngnAsset.balance || "0", 18);
+            console.log(`[handleGetWalletBalance] cNGN balance: ${cngnBalance}`);
+          }
         }
       } else {
-        console.error("[handleGetWalletBalance] Error fetching ETH balance:", 
-          await ethResponse.text());
-      }
-      
-      // Fetch USDC balance - USDC on Base contract address
-      const usdcContractAddress = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"; // Base USDC
-      console.log(`[handleGetWalletBalance] Fetching USDC balance for ${walletAddress}`);
-      const usdcResponse = await fetch(`${baseUrl}/wallets/address/${walletAddress}/balances?network=base-sepolia&contract_address=${usdcContractAddress}`, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (usdcResponse.ok) {
-        const usdcData = await usdcResponse.json();
-        const usdcAsset = usdcData.balances?.find((asset: any) => 
-          asset.symbol?.toLowerCase() === 'usdc'
-        );
-        
-        if (usdcAsset) {
-          usdcBalance = formatBalance(usdcAsset.balance || "0", 6);
-          console.log(`[handleGetWalletBalance] USDC balance: ${usdcBalance}`);
-        }
-      } else {
-        console.error("[handleGetWalletBalance] Error fetching USDC balance:", 
-          await usdcResponse.text());
-      }
-      
-      // Fetch cNGN balance - Placeholder for now, assuming contract address
-      const cngnContractAddress = "0x6f18708187959b7a371b3a335e75d94ee4b07c4e"; // Placeholder for cNGN address
-      console.log(`[handleGetWalletBalance] Fetching cNGN balance for ${walletAddress}`);
-      const cngnResponse = await fetch(`${baseUrl}/wallets/address/${walletAddress}/balances?network=base-sepolia&contract_address=${cngnContractAddress}`, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (cngnResponse.ok) {
-        const cngnData = await cngnResponse.json();
-        const cngnAsset = cngnData.balances?.find((asset: any) => 
-          asset.symbol?.toLowerCase() === 'cngn'
-        );
-        
-        if (cngnAsset) {
-          cngnBalance = formatBalance(cngnAsset.balance || "0", 18);
-          console.log(`[handleGetWalletBalance] cNGN balance: ${cngnBalance}`);
-        }
-      } else {
-        console.error("[handleGetWalletBalance] Error fetching cNGN balance:", 
-          await cngnResponse.text());
+        console.error("[handleGetWalletBalance] Error fetching balances:", 
+          await balancesResponse.text());
       }
     } catch (apiError) {
       console.error("[handleGetWalletBalance] Error calling CDP API:", apiError);
@@ -808,9 +784,9 @@ async function handleSend(params: ActionParams, userId: string) {
       console.error(`[handleSend] Error sending transaction:`, sendError);
       return { text: sendError.message || 'Error sending transaction. Please try again later.' };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[handleSend] Error:`, error);
-    return sendFailed({ reason: 'An unexpected error occurred. Please try again later.' });
+    return { text: error.message || 'An unexpected error occurred. Please try again later.' };
   }
 }
 
