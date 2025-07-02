@@ -1217,6 +1217,31 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       ) {
         // Plain text response
         await sendWhatsAppMessage(from, { text: actionResult.text });
+      } else if (
+        "success" in actionResult &&
+        "message" in actionResult
+      ) {
+        // ActionResponse format
+        console.log("Received ActionResponse format:", actionResult);
+        if (actionResult.success) {
+          try {
+            // Try to parse the message as a template
+            const templateData = JSON.parse(actionResult.message);
+            if (templateData && "name" in templateData) {
+              await sendWhatsAppTemplate(from, templateData);
+            } else {
+              // Fallback to plain text if parsing succeeds but format is unexpected
+              await sendWhatsAppMessage(from, { text: actionResult.message });
+            }
+          } catch (err) {
+            console.error("Error parsing ActionResponse message as JSON:", err);
+            // If parsing fails, just send as plain text
+            await sendWhatsAppMessage(from, { text: actionResult.message });
+          }
+        } else {
+          // If success is false, send the message as plain text
+          await sendWhatsAppMessage(from, { text: actionResult.message });
+        }
       } else {
         console.error("Unknown action result format:", actionResult);
         await sendWhatsAppMessage(from, {

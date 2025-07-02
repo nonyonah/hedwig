@@ -423,21 +423,42 @@ async function handleGetWalletAddress(userId: string) {
  * @param userId User ID
  * @returns Response with wallet balance template
  */
-async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResponse> {
+async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    // Placeholder: return static balances
-    return {
-      success: true,
-      message: JSON.stringify(walletBalance({
-        eth_balance: '0',
-        usdc_base_balance: '0',
-        cngn_balance: '0',
-      })),
-    };
+    console.log(`[handleGetWalletBalance] Fetching balance for user ${userId}`);
+    
+    // Get the user's wallet from Supabase
+    const { data: wallet, error } = await supabase
+      .from("wallets")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("chain", "base")
+      .single();
+    
+    if (error) {
+      console.error("[handleGetWalletBalance] Error fetching wallet:", error);
+      return { text: "Failed to retrieve your wallet address. Please try again later." };
+    }
+    
+    if (!wallet?.address) {
+      console.log("[handleGetWalletBalance] No wallet found for user");
+      return { text: "You don't have a wallet yet. Type 'create wallet' to create one." };
+    }
+    
+    console.log(`[handleGetWalletBalance] Found wallet: ${wallet.address}`);
+    
+    // For now, return placeholder balances
+    // In a real implementation, you would fetch real balances from CDP
+    // https://docs.cdp.coinbase.com/data/introduction/welcome
+    return walletBalance({
+      eth_balance: '0.007',
+      usdc_base_balance: '21.22',
+      cngn_balance: '4000',
+    });
   } catch (error) {
+    console.error("[handleGetWalletBalance] Error:", error);
     return {
-      success: false,
-      message: 'Sorry, I could not retrieve your wallet balance at this time.',
+      text: 'Sorry, I could not retrieve your wallet balance at this time.',
     };
   }
 }
