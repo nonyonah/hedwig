@@ -289,6 +289,8 @@ export async function handleAction(
     case "instruction_deposit":
       // For deposit instructions or wallet address requests, show the wallet address
       return await handleGetWalletAddress(userId);
+    case "send":
+      return await handleSend(params, userId);
     default:
       return {
         text: "This feature is not supported with Privy wallets."
