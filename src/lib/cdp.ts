@@ -1,9 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 
 const CDP_API_URL = "https://api.cdp.coinbase.com/v2";
 const CDP_API_KEY_ID = process.env.CDP_API_KEY_ID;
 const CDP_API_KEY_SECRET = process.env.CDP_API_KEY_SECRET;
+const CDP_WALLET_SECRET = process.env.CDP_WALLET_SECRET!;
+const CDP_ACCOUNT_POLICY_ID = process.env.CDP_ACCOUNT_POLICY_ID!;
 
 if (
   !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -141,101 +144,74 @@ async function generateJWT(method: string, path: string, body?: any): Promise<st
   }
 }
 
+// Helper to generate X-Wallet-Auth JWT
+function generateWalletJwt(method: string, path: string, body: any): string {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iat: now,
+    nbf: now,
+    exp: now + 120,
+    uris: [`${method} api.cdp.coinbase.com${path}`],
+    req: body,
+  };
+  return jwt.sign(payload, CDP_WALLET_SECRET, { algorithm: "HS256" });
+}
+
 /**
  * Create a new wallet in CDP
  * @param network The network for the wallet (e.g., "base-sepolia", "solana-devnet")
  * @returns The created wallet information
  */
-export async function createWallet(network: string): Promise<CDPWallet> {
+export async function createWallet(network: string, name = "my-wallet"): Promise<CDPWallet> {
   console.log(`Creating wallet on network ${network}`);
-  
-  // Log environment variables (masked for security)
-  console.log(`CDP API URL: ${CDP_API_URL}`);
-  console.log(`CDP API Key ID: ${CDP_API_KEY_ID ? CDP_API_KEY_ID.substring(0, 4) + '...' : 'MISSING'}`);
-  console.log(`CDP API Secret: ${CDP_API_KEY_SECRET ? 'Present (length: ' + CDP_API_KEY_SECRET.length + ')' : 'MISSING'}`);
-  
-  // Try up to 3 times
-  let attempts = 0;
-  const maxAttempts = 3;
-  
-  while (attempts < maxAttempts) {
-    attempts++;
-    console.log(`Attempt ${attempts}/${maxAttempts} to create wallet on ${network}`);
-    
-    try {
-      // Use the correct endpoint for EVM (Base) wallets
-      let path = "/evm/accounts";
-      if (network.toLowerCase().includes("solana")) {
-        path = "/solana/accounts";
-      }
-      const body = { network };
-      
-      // Generate JWT token for authentication
-      const jwt = await generateJWT("POST", path, body);
-      
-      const response = await fetch(`${CDP_API_URL}${path}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${jwt}`,
-        },
-        body: JSON.stringify(body),
-      });
+  // Use the correct endpoint for EVM (Base) wallets
+  const path = "/platform/v2/evm/accounts";
+  const body = {
+    name,
+    accountPolicy: CDP_ACCOUNT_POLICY_ID,
+  };
 
-      // Log full response for debugging
-      console.log(`CDP API response status: ${response.status}`);
-      console.log(`CDP API response status text: ${response.statusText}`);
-      
-      const responseText = await response.text();
-      console.log(`CDP API response body: ${responseText}`);
-      
-      // Try to parse as JSON if possible
-      let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch (e: unknown) {
-        console.log(`Response is not JSON: ${e instanceof Error ? e.message : String(e)}`);
-        result = { message: responseText || "Unknown error" };
-      }
-      
-      if (!response.ok) {
-        console.error(`CDP API error (createWallet): Status ${response.status}`, result);
-        console.error(`API Keys used: ${CDP_API_KEY_ID ? "ID Present" : "ID Missing"}, ${CDP_API_KEY_SECRET ? "Secret Present" : "Secret Missing"}`);
-        
-        // If this is not the last attempt, wait and try again
-        if (attempts < maxAttempts) {
-          console.log(`Waiting 1 second before retry...`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-        
-        throw new Error(
-          `Failed to create wallet: ${result.message || response.statusText}`,
-        );
-      }
-      
-      console.log(`Successfully created wallet with address: ${result.address || 'unknown'}`);
-      return {
-        id: result.id || result.address,
-        address: result.address,
-        network: network
-      };
-    } catch (error) {
-      console.error(`Error in createWallet attempt ${attempts}:`, error);
-      
-      // If this is not the last attempt, wait and try again
-      if (attempts < maxAttempts) {
-        console.log(`Waiting 1 second before retry...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        continue;
-      }
-      
-      throw error;
-    }
+  // Generate both JWTs
+  const jwtToken = await generateJWT("POST", path, body);
+  const walletJwt = generateWalletJwt("POST", path, body);
+
+  const response = await fetch(`${CDP_API_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${jwtToken}`,
+      "X-Wallet-Auth": walletJwt,
+    },
+    body: JSON.stringify(body),
+  });
+
+  // Log full response for debugging
+  console.log(`CDP API response status: ${response.status}`);
+  console.log(`CDP API response status text: ${response.statusText}`);
+  const responseText = await response.text();
+  console.log(`CDP API response body: ${responseText}`);
+
+  let result;
+  try {
+    result = JSON.parse(responseText);
+  } catch (e: unknown) {
+    console.log(`Response is not JSON: ${e instanceof Error ? e.message : String(e)}`);
+    result = { message: responseText || "Unknown error" };
   }
-  
-  // This should never be reached due to the throw in the loop
-  throw new Error(`Failed to create wallet after ${maxAttempts} attempts`);
+
+  if (!response.ok) {
+    console.error(`CDP API error (createWallet): Status ${response.status}`, result);
+    throw new Error(
+      `Failed to create wallet: ${result.message || response.statusText}`,
+    );
+  }
+
+  console.log(`Successfully created wallet with address: ${result.address || 'unknown'}`);
+  return {
+    id: result.id || result.address,
+    address: result.address,
+    network: network
+  };
 }
 
 /**
