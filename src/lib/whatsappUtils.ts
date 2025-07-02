@@ -499,8 +499,27 @@ export async function sendWhatsAppTemplate(
     }
   }
   try {
-    // Clean the template before sending
-    const message = cleanWhatsAppTemplate(template);
+    if (!phoneNumber) {
+      console.error("[sendWhatsAppTemplate] Error: phoneNumber is required");
+      throw new Error("Phone number is required for sending WhatsApp template");
+    }
+    
+    // Format phone number
+    const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
+    console.log(`[sendWhatsAppTemplate] Formatted phone number: ${formattedPhoneNumber}`);
+    
+    // Clean the template before sending and ensure it has the 'to' field
+    const cleanedTemplate = cleanWhatsAppTemplate(template);
+    
+    // Create the final message with the formatted phone number
+    const message: WhatsAppTemplateMessage = {
+      to: formattedPhoneNumber,
+      template: cleanedTemplate
+    };
+    
+    console.log(`[sendWhatsAppTemplate] Final message:`, JSON.stringify(message, null, 2));
+    
+    // Send the template message
     return await sendWhatsAppTemplateMessage(message);
   } catch (error) {
     console.error("Exception in sendWhatsAppTemplate:", error);
