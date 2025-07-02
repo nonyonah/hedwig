@@ -752,14 +752,22 @@ async function handleSend(params: ActionParams, userId: string) {
     const amount = params.amount || '';
     const recipient = params.recipient || '';
     const network = params.network || 'base';
+    
+    console.log(`[handleSend] Token: ${token}, Amount: ${amount}, Recipient: ${recipient}, Network: ${network}, isExecute: ${isExecute}`);
+    
     if (!amount || !recipient) {
-      return { text: 'Missing required parameters for sending. Please specify amount and recipient.' };
+      console.log(`[handleSend] Missing parameters: amount=${amount}, recipient=${recipient}`);
+      return sendFailed({ reason: 'Missing required parameters for sending. Please specify amount and recipient.' });
     }
+    
     if (token.toLowerCase() !== 'eth') {
-      return { text: 'Currently only ETH transfers are supported. Please try again with ETH.' };
+      console.log(`[handleSend] Unsupported token: ${token}`);
+      return sendFailed({ reason: 'Currently only ETH transfers are supported. Please try again with ETH.' });
     }
+    
+    // If this is not an execution request, return the confirmation prompt template
     if (!isExecute) {
-      // Return a formatted message for confirmation
+      console.log(`[handleSend] Returning send_token_prompt template for confirmation`);
       return sendTokenPrompt({
         amount: amount,
         token: token,
@@ -769,17 +777,24 @@ async function handleSend(params: ActionParams, userId: string) {
         estimatedTime: '30-60 seconds',
       });
     }
-    // Show tx_pending template before sending
-    // (This will be sent by the WhatsApp handler before calling handleSend)
+    
+    // This is an execution request
+    console.log(`[handleSend] Executing transaction: ${amount} ${token} to ${recipient} on ${network}`);
+    
     try {
-      // Execute the transaction using Privy
+      // Execute the transaction
       const txResult = await handleTransaction(userId, params, { ...params, isExecute: true });
-      // Return success message with transaction details
+      console.log(`[handleSend] Transaction result:`, txResult);
+      
+      // Return success template
+      const explorerUrl = (txResult && typeof txResult === 'object' && 'explorerUrl' in txResult) ? txResult.explorerUrl : '';
+      console.log(`[handleSend] Returning tx_sent_success template with explorerUrl: ${explorerUrl}`);
+      
       return txSentSuccess({
         amount: amount,
         token: token,
         recipient: formatAddress(recipient),
-        explorerUrl: (txResult && typeof txResult === 'object' && 'explorerUrl' in txResult) ? txResult.explorerUrl : '',
+        explorerUrl: explorerUrl,
       });
     } catch (sendError: any) {
       console.error(`[handleSend] Error sending transaction:`, sendError);
@@ -789,7 +804,7 @@ async function handleSend(params: ActionParams, userId: string) {
     }
   } catch (error) {
     console.error(`[handleSend] Error:`, error);
-    return { text: 'An unexpected error occurred. Please try again later.' };
+    return sendFailed({ reason: 'An unexpected error occurred. Please try again later.' });
   }
 }
 

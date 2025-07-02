@@ -2,7 +2,7 @@ import { getRequiredEnvVar } from "@/lib/envUtils";
 import { loadServerEnvironment } from "./serverEnv";
 import { v4 as uuidv4 } from "uuid";
 import fetch from "node-fetch";
-import { textTemplate, txPending, sendTokenPrompt } from "./whatsappTemplates";
+import { textTemplate, txPending, sendTokenPrompt, sendFailed } from "./whatsappTemplates";
 import { runLLM } from "./llmAgent";
 import { parseIntentAndParams } from "./intentParser";
 import { handleAction } from "../api/actions";
@@ -672,7 +672,10 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           { onConflict: "user_id" },
         );
         if (actionResult) {
-          if ("name" in actionResult) {
+          if (typeof actionResult === 'object' && actionResult !== null && 'pending' in actionResult && 'result' in actionResult) {
+            await sendWhatsAppTemplate(from, actionResult.pending);
+            await sendWhatsAppTemplate(from, actionResult.result);
+          } else if ("name" in actionResult) {
             await sendWhatsAppTemplate(from, actionResult);
           } else if ("text" in actionResult) {
             await sendWhatsAppMessage(from, { text: actionResult.text });
@@ -837,7 +840,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           ) {
             console.log("All required fields present in pending transaction");
             
-            // Show tx_pending message
+            // Show tx_pending message first
+            console.log("Sending tx_pending template");
             await sendWhatsAppTemplate(from, txPending());
             
             // Prepare the execution parameters
@@ -851,43 +855,53 @@ export async function handleIncomingWhatsAppMessage(body: any) {
             
             console.log("Executing transaction with params:", txParams);
             
-            // Execute the send transaction
-            const actionResult = await handleAction(
-              "send",
-              txParams,
-              userId
-            );
-            
-            // Log the action result
-            console.log("Send transaction result:", actionResult);
-            
-            // Clear pending context after execution
-            await supabase.from("sessions").upsert(
-              [
-                {
-                  user_id: userId,
-                  context: [],
-                  updated_at: new Date().toISOString(),
-                },
-              ],
-              { onConflict: "user_id" }
-            );
-            
-            // Display the result to the user
-            if (actionResult) {
-              if ("name" in actionResult) {
-                await sendWhatsAppTemplate(from, actionResult);
-              } else if ("text" in actionResult) {
-                await sendWhatsAppMessage(from, { text: actionResult.text });
-              } else {
-                // If we get an unexpected response format, provide a fallback
-                await sendWhatsAppMessage(from, { text: "Your transaction has been processed. Check your wallet for confirmation." });
+            try {
+              // Execute the send transaction
+              const actionResult = await handleAction(
+                "send",
+                txParams,
+                userId
+              );
+              
+              // Log the action result
+              console.log("Send transaction result:", actionResult);
+              
+              // Clear pending context after execution
+              await supabase.from("sessions").upsert(
+                [
+                  {
+                    user_id: userId,
+                    context: [],
+                    updated_at: new Date().toISOString(),
+                  },
+                ],
+                { onConflict: "user_id" }
+              );
+              
+              // Display the result to the user
+              if (actionResult) {
+                console.log("Sending transaction result template to user");
+                if ("name" in actionResult) {
+                  await sendWhatsAppTemplate(from, actionResult);
+                } else if ("text" in actionResult) {
+                  await sendWhatsAppMessage(from, { text: actionResult.text });
+                } else {
+                  // If we get an unexpected response format, provide a fallback
+                  await sendWhatsAppMessage(from, { text: "Your transaction has been processed. Check your wallet for confirmation." });
+                }
               }
+              
+              return;
+            } catch (error) {
+              console.error("Error executing transaction:", error);
+              // Send error message to user
+              await sendWhatsAppTemplate(from, sendFailed({ reason: "Failed to execute transaction. Please try again later." }));
+              return;
             }
-            
-            return;
           } else {
             console.log("Missing required fields in pending transaction:", pendingObj);
+            await sendWhatsAppMessage(from, { text: "Missing information for transaction. Please try sending again with all required details." });
+            return;
           }
         }
         
@@ -918,7 +932,10 @@ export async function handleIncomingWhatsAppMessage(body: any) {
             userId,
           );
           if (actionResult) {
-            if ("name" in actionResult) {
+            if (typeof actionResult === 'object' && actionResult !== null && 'pending' in actionResult && 'result' in actionResult) {
+              await sendWhatsAppTemplate(from, actionResult.pending);
+              await sendWhatsAppTemplate(from, actionResult.result);
+            } else if ("name" in actionResult) {
               await sendWhatsAppTemplate(from, actionResult);
             } else if ("text" in actionResult) {
               await sendWhatsAppMessage(from, { text: actionResult.text });
@@ -1106,7 +1123,10 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           { onConflict: "user_id" },
         );
         if (actionResult) {
-          if ("name" in actionResult) {
+          if (typeof actionResult === 'object' && actionResult !== null && 'pending' in actionResult && 'result' in actionResult) {
+            await sendWhatsAppTemplate(from, actionResult.pending);
+            await sendWhatsAppTemplate(from, actionResult.result);
+          } else if ("name" in actionResult) {
             await sendWhatsAppTemplate(from, actionResult);
           } else if ("text" in actionResult) {
             await sendWhatsAppMessage(from, { text: actionResult.text });
@@ -1207,12 +1227,13 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         );
 
         if (actionResult) {
-          if ("name" in actionResult) {
+          if (typeof actionResult === 'object' && actionResult !== null && 'pending' in actionResult && 'result' in actionResult) {
+            await sendWhatsAppTemplate(from, actionResult.pending);
+            await sendWhatsAppTemplate(from, actionResult.result);
+          } else if ("name" in actionResult) {
             await sendWhatsAppTemplate(from, actionResult);
-            return;
           } else if ("text" in actionResult) {
             await sendWhatsAppMessage(from, { text: actionResult.text });
-            return;
           }
         }
       }
@@ -1229,29 +1250,9 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         return;
       }
 
-      if ("template" in actionResult && actionResult.template) {
-        // Legacy template format with nested template property
-        await sendWhatsAppTemplate(from, actionResult.template);
-      } else if (Array.isArray(actionResult)) {
-        // Safely handle array of messages
-        for (let i = 0; i < actionResult.length; i++) {
-          const msg = actionResult[i];
-          try {
-            if (msg && typeof msg === "object") {
-              if ("template" in msg && msg.template) {
-                await sendWhatsAppTemplate(from, msg.template);
-              } else if ("name" in msg && msg.name) {
-                await sendWhatsAppTemplate(from, msg);
-              } else if ("text" in msg && typeof msg.text === "string") {
-                await sendWhatsAppMessage(from, { text: msg.text });
-              } else {
-                console.warn("Unrecognized message format in array:", msg);
-              }
-            }
-          } catch (err) {
-            console.error("Error processing message in array:", err);
-          }
-        }
+      if (typeof actionResult === 'object' && actionResult !== null && 'pending' in actionResult && 'result' in actionResult) {
+        await sendWhatsAppTemplate(from, actionResult.pending);
+        await sendWhatsAppTemplate(from, actionResult.result);
       } else if ("name" in actionResult) {
         // Direct template format
         await sendWhatsAppTemplate(from, actionResult);
