@@ -686,7 +686,7 @@ export function walletCreated({ address }: { address: string }) {
 }
 
 /**
- * Template: users_wallet_addresses
+ * Template: users_wallet_address
  * Parameter Format: POSITIONAL
  * Parameters: evm_wallet, solana_wallet
  */
@@ -709,7 +709,7 @@ export function walletCreated({ address }: { address: string }) {
 // EVM-only wallet addresses template
 export function usersWalletAddresses({ evm_wallet }: { evm_wallet: string }) {
   return {
-    name: 'users_wallet_addresses',
+    name: 'users_wallet_address',
     language: { code: 'en' },
     components: [
       {
