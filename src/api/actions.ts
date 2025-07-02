@@ -1,4 +1,4 @@
-import { getOrCreateWallet, getUserBalances } from "@/lib/cdp";
+import { getOrCreatePrivyWallet } from "@/lib/privy";
 import { createClient } from "@supabase/supabase-js";
 import fetch from "node-fetch";
 import { formatAddress, formatBalance } from "@/lib/utils";
@@ -37,8 +37,6 @@ import {
 import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
-import * as CDP from "@/lib/cdp";
-import { CDPBalance } from "@/lib/cdp";
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -90,7 +88,7 @@ async function checkUserWallets(userId: string) {
 async function verifyWalletExists(userId: string) {
   try {
     // Check if user has a wallet in BlockRadar
-    const wallet = await getOrCreateWallet(userId, "base");
+    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base" });
     if (!wallet) {
       return noWalletYet();
     }
@@ -286,98 +284,9 @@ export async function handleAction(
       return await handleGetWalletBalance(params, userId);
     case "get_wallet_address":
       return await handleGetWalletAddress(userId);
-    case "send":
-      return await handleSend(params, userId);
-    case "swap":
-      return await handleSwapTokens(params, userId);
-    case "bridge":
-      return await handleBridge(params, userId);
-    case "export_keys":
-      return await handleExportKeys(params, userId);
-    case "crypto_deposit_notification":
-      return await handleCryptoDeposit(
-        {
-          ...params,
-          from: params.from || "-",
-          txUrl: params.txUrl || "-",
-        },
-        userId,
-      );
-    case "swap_processing":
-      return swapProcessing();
-    case "swap_quote_confirm":
-      return await handleSwapQuote(params, userId);
-    case "quote_pending":
-      return quotePending();
-    case "swap_prompt":
-      return await handleSwapInit(params, userId);
-    case "send_token_prompt":
-      return await handleSendInit(params, userId);
-    case "tx_pending":
-      return txPending();
-    case "bridge_failed":
-      return bridgeFailed({
-        reason: params.reason,
-      });
-    case "send_success":
-      return sendSuccessSanitized({
-        amount: params.amount,
-        token: params.token,
-        recipient: params.recipient,
-        balance: params.balance,
-        explorerUrl: params.explorerUrl,
-      });
-    case "swap_success":
-      return await handleSwapProcess(params, userId);
-    case "bridge_success":
-      return bridgeSuccess({
-        amount: params.amount,
-        from_network: params.from_network,
-        to_network: params.to_network,
-        balance: params.balance,
-      });
-    case "send_failed":
-      return sendFailed({
-        reason: params.reason,
-      });
-    case "wallet_balance":
-      return walletBalance({
-        eth_balance: params.eth_balance || "0",
-        usdc_base_balance: params.usdc_base_balance || "0",
-        cngn_balance: params.cngn_balance || "0",
-      });
-    case "wallet_created_multi":
-      return walletCreatedMulti({
-        evm_wallet: params.evm_wallet,
-        // solana_wallet: params.solana_wallet
-      });
-    case "private_keys":
-      return privateKeys({
-        privy_link: params.privy_link,
-      });
-    case "no_wallet_yet":
-      return noWalletYet();
-    case "bridge_deposit_notification":
-      return await handleBridgeDeposit(params, userId);
-    case "bridge_processing":
-      return bridgeProcessing();
-    case "bridge_quote_confirm":
-      return await handleBridgeQuote(params, userId);
-    case "bridge_quote_pending":
-      return bridgeQuotePending();
-    case "instruction_swap":
-      return handleSwapInstructions();
-    case "instruction_bridge":
-      return handleBridgeInstructions();
-    case "instruction_deposit":
-      return await handleDepositInstructions(userId);
-    case "instruction_send":
-      return handleSendInstructions();
-    case "crypto_received":
-      return await handleCryptoReceived(params, userId);
     default:
       return {
-        text: `Sorry, I don't know how to handle the action: ${intent}`,
+        text: "This feature is not supported with Privy wallets."
       };
   }
 
@@ -449,19 +358,9 @@ async function handleCreateWallets(userId: string) {
       };
     }
 
-    // Create wallet using CDP with user name
-    console.log(`[handleCreateWallets] Calling CDP.getOrCreateWallet`);
-    const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
+    // Use Privy to create or get wallet
+    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: userData?.phone_number, chain: "base" });
     
-    console.log(`[handleCreateWallets] CDP.getOrCreateWallet result: ${JSON.stringify(wallet)}`);
-    
-    if (!wallet || !wallet.address) {
-      console.error(`[handleCreateWallets] Failed to create wallet: ${JSON.stringify(wallet)}`);
-      return {
-        text: `Sorry ${userName}, there was an error creating your wallet. Please try again.`
-      };
-    }
-
     console.log(`[handleCreateWallets] Successfully created wallet: ${wallet.address}`);
     const response = walletCreatedMulti({ evm_wallet: wallet.address });
     console.log(`[handleCreateWallets] Response: ${JSON.stringify(response)}`);
@@ -489,7 +388,7 @@ async function handleGetWalletAddress(userId: string) {
     const userName = user?.name || `User_${userId.substring(0, 8)}`;
 
     // Get wallet using CDP
-    const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
+    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base" });
 
     if (!wallet || !wallet.address) {
       console.error("Failed to get wallet");
@@ -514,125 +413,6 @@ async function handleGetWalletAddress(userId: string) {
   }
 }
 
-// Helper to fetch ETH balance on Base Sepolia via Alchemy RPC
-async function getBaseSepoliaEthBalance(address: string): Promise<string> {
-  const rpcUrl =
-    "https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up";
-  const body = {
-    jsonrpc: "2.0",
-    method: "eth_getBalance",
-    params: [address, "latest"],
-    id: 1,
-  };
-  const resp = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await resp.json();
-  return data.result ? (parseInt(data.result, 16) / 1e18).toString() : "0";
-}
-
-// Helper to fetch USDC (ERC-20) balance on Base Sepolia
-async function getBaseSepoliaUsdcBalance(address: string): Promise<string> {
-  try {
-    const rpcUrl =
-      "https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up";
-    const USDC_CONTRACT = "0x7F5c764cBc14f9669B88837ca1490cCa17c31607";
-    const balanceOfData =
-      "0x70a08231000000000000000000000000" + address.replace("0x", "");
-    const body = {
-      jsonrpc: "2.0",
-      method: "eth_call",
-      params: [
-        {
-          to: USDC_CONTRACT,
-          data: balanceOfData,
-        },
-        "latest",
-      ],
-      id: 1,
-    };
-    const resp = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json();
-
-    if (!data.result) {
-      console.log("[DEBUG] No result from USDC balance call:", data);
-      return "0";
-    }
-
-    // Parse the hex value safely
-    const balanceHex = data.result;
-    const balanceInt = parseInt(balanceHex, 16);
-
-    // Check for NaN and handle it
-    if (isNaN(balanceInt)) {
-      console.error("[ERROR] Failed to parse USDC balance hex:", balanceHex);
-      return "0";
-    }
-
-    const balance = (balanceInt / 1e6).toString();
-    console.log("[DEBUG] USDC balance for", address, ":", balance);
-    return balance;
-  } catch (error) {
-    console.error("[ERROR] Exception in getBaseSepoliaUsdcBalance:", error);
-    return "0";
-  }
-}
-
-// Helper to fetch SOL balance via Solana Devnet RPC
-async function getSolanaSolBalanceDirect(address: string): Promise<string> {
-  const rpcUrl = "https://api.devnet.solana.com";
-  const body = {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "getBalance",
-    params: [address],
-  };
-  const resp = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await resp.json();
-  return data.result && data.result.value
-    ? (data.result.value / 1e9).toString()
-    : "0";
-}
-
-// Helper to fetch SPL token balances for a Solana address using Moralis Web3 Data API (Devnet)
-async function getSolanaSplTokenBalancesMoralis(
-  address: string,
-): Promise<any[]> {
-  const apiKey = process.env.MORALIS_API_KEY;
-  if (!apiKey) throw new Error("MORALIS_API_KEY is not set");
-  const url = `https://solana-gateway.moralis.io/account/devnet/${address}/tokens?excludeSpam=true`;
-  const headers: Record<string, string> = {
-    accept: "application/json",
-    "X-API-Key": apiKey,
-  };
-  const resp = await fetch(url, { headers });
-  if (!resp.ok) {
-    console.error("Moralis SPL token balance error:", await resp.text());
-    return [];
-  }
-  const data = await resp.json();
-  return data.tokens || [];
-}
-
-// Helper to fetch USDC SPL balance on Solana using Moralis
-async function getSolanaUsdcBalance(address: string): Promise<string> {
-  // USDC mint on Solana Devnet
-  const USDC_MINT = "7XS5uQ6rQwBEmPA6k6RdtqvYXvyfZ87XZy4r2k6F6Z7F";
-  const tokens = await getSolanaSplTokenBalancesMoralis(address);
-  const usdc = tokens.find((t: any) => t.mint === USDC_MINT);
-  return usdc ? (Number(usdc.amount) / 1e6).toString() : "0";
-}
-
 /**
  * Handle wallet balance action
  * @param params Action parameters
@@ -641,365 +421,26 @@ async function getSolanaUsdcBalance(address: string): Promise<string> {
  */
 async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResponse> {
   try {
-    console.log(`Getting wallet balance for user ${userId}`);
-    
-    // Get user info from Supabase for name
-    const { data: user } = await supabase
-      .from("users")
-      .select("name")
-      .eq("id", userId)
-      .single();
-
-    const userName = user?.name || `User_${userId.substring(0, 8)}`;
-    
-    // Get the user's Base wallet
-    let baseWalletDetails = await CDP.getUserAddress(userId, "base");
-    
-    // If no wallet exists, create one
-    if (!baseWalletDetails) {
-      console.log(`No Base wallet found for user ${userId}, creating one...`);
-      const result = await CDP.getOrCreateWallet(userId, "base", userName);
-      baseWalletDetails = {
-        address: result.address,
-        network: result.network
-      };
-      console.log(`Created new Base wallet: ${baseWalletDetails.address}`);
-    }
-    
-    // Get balances from CDP
-    const baseBalances = await CDP.getBalances(
-      baseWalletDetails.address,
-      baseWalletDetails.network
-    );
-    
-    console.log(`Retrieved ${baseBalances.length} balances for user ${userId}`);
-    
-    // Find ETH balance
-    const ethBalance = baseBalances.find(
-      (b: CDPBalance) => b.asset?.symbol?.toUpperCase() === "ETH"
-    );
-    
-    // Find USDC balance on Base
-    const usdcBaseBalance = baseBalances.find(
-      (b: CDPBalance) => 
-        b.asset?.symbol?.toUpperCase() === "USDC"
-    );
-    
-    // Find cNGN balance
-    const cngnBalance = baseBalances.find(
-      (b: CDPBalance) => b.asset?.symbol?.toUpperCase() === "CNGN"
-    );
-    
-    // Format balances for display
-    const ethBalanceFormatted = ethBalance?.balance 
-      ? formatBalance(ethBalance.balance, ethBalance.asset?.decimals || 18)
-      : "0";
-      
-    const usdcBaseBalanceFormatted = usdcBaseBalance?.balance 
-      ? formatBalance(usdcBaseBalance.balance, usdcBaseBalance.asset?.decimals || 6)
-      : "0";
-      
-    const cngnBalanceFormatted = cngnBalance?.balance 
-      ? formatBalance(cngnBalance.balance, cngnBalance.asset?.decimals || 18)
-      : "0";
-    
-    console.log(`Formatted balances - ETH: ${ethBalanceFormatted}, USDC: ${usdcBaseBalanceFormatted}, cNGN: ${cngnBalanceFormatted}`);
-    
-    // Get the user's Solana wallet
-    const { data: solanaWallet, error: solanaError } = await supabase
-      .from("wallets")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("chain", "solana")
-      .single();
-    
-    if (solanaError) {
-      console.error("Error fetching Solana wallet:", solanaError);
-    }
-    
-    // Get Solana USDC balance if wallet exists
-    let usdcSolanaBalance = "0";
-    if (solanaWallet && solanaWallet.address) {
-      try {
-        console.log(`Getting USDC balance for Solana wallet: ${solanaWallet.address}`);
-        const solanaAddress = solanaWallet.address;
-        
-        // Use CDP to get Solana balances
-        const solanaBalances = await CDP.getBalances(
-          solanaAddress,
-          "solana-devnet"
-        );
-        
-        // Find USDC token
-        const usdcToken = solanaBalances.find(
-          (token: CDPBalance) => token.asset?.symbol?.toUpperCase() === "USDC"
-        );
-        
-        if (usdcToken) {
-          usdcSolanaBalance = formatBalance(
-            usdcToken.balance,
-            usdcToken.asset?.decimals || 6
-          );
-          console.log(`Found USDC token with balance: ${usdcSolanaBalance}`);
-        } else {
-          console.log("No USDC token found in Solana wallet");
-        }
-      } catch (error) {
-        console.error("Error fetching Solana USDC balance:", error);
-      }
-    } else {
-      console.log("No Solana wallet found for user");
-    }
-    
-    // Create the wallet balance template
-    const walletBalanceTemplate = walletBalance({
-      eth_balance: ethBalanceFormatted,
-      usdc_base_balance: usdcBaseBalanceFormatted,
-      cngn_balance: cngnBalanceFormatted,
-    });
-    
-    // Return wallet balance template with all balances
+    // Placeholder: return static balances
     return {
       success: true,
-      message: JSON.stringify(walletBalanceTemplate), // Convert template object to string
+      message: JSON.stringify(walletBalance({
+        eth_balance: '0',
+        usdc_base_balance: '0',
+        cngn_balance: '0',
+      })),
     };
   } catch (error) {
-    console.error("Error in handleGetWalletBalance:", error);
     return {
       success: false,
-      message: "Sorry, I couldn't retrieve your wallet balance at this time. Please try again later.",
+      message: 'Sorry, I could not retrieve your wallet balance at this time.',
     };
   }
 }
 
 // Handler for swapping tokens using CDP
 async function handleSwapTokens(params: ActionParams, userId: string) {
-  try {
-    const isExecute = params.isExecute === true || params.phase === "execute";
-    const fromToken = (params.fromToken || params.from)?.toUpperCase();
-    const toToken = (params.toToken || params.to)?.toUpperCase();
-    const amount = params.amount;
-    const network = formatNetworkName(params.chain || "base");
-
-    console.log("[CDP] handleSwapTokens params:", {
-      fromToken,
-      toToken,
-      amount,
-      network,
-    });
-
-    // Validate required parameters
-    const missing: string[] = [];
-    if (!fromToken) missing.push("fromToken");
-    if (!toToken) missing.push("toToken");
-    if (!amount) missing.push("amount");
-
-    if (missing.length > 0) {
-      const promptText =
-        missing.length === 3
-          ? "What tokens do you want to swap, and how much?"
-          : `Please specify: ${missing.join(", ")}`;
-
-      // Store pending context in session
-      await supabase.from("sessions").upsert(
-        [
-          {
-            user_id: userId,
-            context: [
-              {
-                role: "system",
-                content: JSON.stringify({
-                  pending: { action: "swap", ...params },
-                }),
-              },
-            ],
-            updated_at: new Date().toISOString(),
-          },
-        ],
-        { onConflict: "user_id" },
-      );
-
-      return { text: promptText };
-    }
-
-    // If in execution phase, process the swap
-    if (isExecute) {
-      try {
-        // Get user's wallet with name
-        const { data: user } = await supabase
-          .from("users")
-          .select("name")
-          .eq("id", userId)
-          .single();
-
-        const userName = user?.name || `User_${userId.substring(0, 8)}`;
-        const wallet = await CDP.getOrCreateWallet(userId, "base", userName);
-
-        if (!wallet || !wallet.address) {
-          console.error("Error fetching wallet");
-          return sendFailed({ reason: "Wallet not found" });
-        }
-
-        // Get a swap quote from CDP
-        const quote = await CDP.getSwapQuote(
-          wallet.address,
-          amount,
-          fromToken,
-          toToken,
-          network
-        );
-        
-        // Execute the swap
-        const txHash = await CDP.executeSwap(quote.quoteId);
-        
-        console.log(`[CDP] Swap executed - Hash: ${txHash}`);
-
-        // Update the transaction status in the database
-        await updateTransactionStatus(txHash, "pending");
-
-        // Format the swap details for display
-        const swapDetails = `Swapped ${amount} ${fromToken} to ${quote.toAmount} ${toToken}`;
-
-        // Return success template with the transaction hash
-        return txSentSuccess({
-          amount,
-          token: fromToken,
-          recipient: swapDetails, // Using recipient field to show swap details
-          explorerUrl: getExplorerUrl("base", txHash),
-        });
-      } catch (err: any) {
-        console.error("Swap transaction error:", err);
-        return sendFailed({
-          reason: err?.message || "Swap failed. Please try again later.",
-        });
-      }
-    }
-
-    // If all details are present, clear pending context
-    await supabase.from("sessions").upsert(
-      [
-        {
-          user_id: userId,
-          context: [],
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      { onConflict: "user_id" },
-    );
-
-    // Prompt for confirmation (not execution yet)
-    const fee = "0.0001 ETH"; // Fixed fee for Base network
-    const estimatedTime = "1-5 mins";
-    // Format the swap details for the prompt
-    const swapDetails = `Swap ${amount} ${fromToken} to ${toToken}`;
-
-    return sendTokenPrompt({
-      amount: amount.toString(),
-      token: fromToken,
-      recipient: swapDetails,
-      network: "Base Network",
-      fee,
-      estimatedTime,
-    });
-  } catch (error) {
-    // This is the outer catch
-    const isQuote = params.isQuote === true || params.phase === "quote";
-    const isExecute = params.isExecute === true || params.phase === "execute";
-    const fromToken = params.from_token || params.fromToken;
-    const toToken = params.to_token || params.toToken;
-    const amount = params.amount;
-
-    // If any required parameter is missing, prompt and store pending context
-    if (!fromToken || !toToken || !amount) {
-      let prompt = "To swap tokens, please specify:";
-      if (!amount && !fromToken && !toToken) {
-        prompt =
-          "What token do you want to swap, how much, and to which token?";
-      } else if (!amount) {
-        prompt = `How much ${fromToken || ""} do you want to swap to ${toToken || ""}?`;
-      } else if (!fromToken) {
-        prompt = `Which token do you want to swap from? (e.g. ETH, SOL)`;
-      } else if (!toToken) {
-        prompt = `Which token do you want to swap to? (e.g. USDC, ETH)`;
-      }
-      // Store pending context in session
-      await supabase.from("sessions").upsert(
-        [
-          {
-            user_id: userId,
-            context: [
-              {
-                role: "system",
-                content: JSON.stringify({
-                  pending: { action: "swap", ...params },
-                }),
-              },
-            ],
-            updated_at: new Date().toISOString(),
-          },
-        ],
-        { onConflict: "user_id" },
-      );
-      return { text: prompt };
-    }
-
-    // If all details are present, clear pending context
-    await supabase.from("sessions").upsert(
-      [
-        {
-          user_id: userId,
-          context: [],
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      { onConflict: "user_id" },
-    );
-
-    // If no specific phase is set, start with a swap prompt
-    if (!isQuote && !isExecute) {
-      // 1. Get wallet address with user name
-      const chain = params.chain || "base";
-      const { data: user } = await supabase
-        .from("users")
-        .select("name")
-        .eq("id", userId)
-        .single();
-
-      const userName = user?.name || `User_${userId.substring(0, 8)}`;
-      const wallet = await CDP.getOrCreateWallet(userId, chain, userName);
-
-      if (!wallet || !wallet.address) {
-        return { text: "No wallet found. Create one to get started." };
-      }
-
-      // 2. Show the swap prompt
-      const network = params.network || formatNetworkName(chain);
-      return handleSwapInit(
-        {
-          from_token: fromToken,
-          to_token: toToken,
-          amount,
-          network,
-        },
-        userId,
-      );
-    }
-
-    // If we're in quote phase, get a quote
-    if (isQuote) {
-      return handleSwapQuote(params, userId);
-    }
-
-    // If we're in execute phase, process the swap
-    if (isExecute) {
-      return handleSwapProcess(params, userId);
-    }
-
-    // Fallback
-    return {
-      text: "Please specify swap details (amount, from token, to token).",
-    };
-  }
+  return { text: 'Swapping tokens is not supported with Privy wallets.' };
 }
 
 /*
@@ -1059,91 +500,7 @@ async function updateTransactionStatus(txHash: string, status: string) {
 
 // Multi-step send flow support
 async function handleSend(params: ActionParams, userId: string) {
-  try {
-    // 1. Get wallet address from Supabase
-    const chain = params.chain || "base";
-
-    // Get user info for name
-    const { data: user } = await supabase
-      .from("users")
-      .select("name")
-      .eq("id", userId)
-      .single();
-
-    const userName = user?.name || `User_${userId.substring(0, 8)}`;
-
-    // Get or create wallet with user name
-    const wallet = await CDP.getOrCreateWallet(userId, chain, userName);
-
-    if (!wallet || !wallet.address) {
-      return { text: "No wallet found. Create one to get started." };
-    }
-
-    // 2. Multi-step: check for missing recipient or amount
-    const to = params.to;
-    const amount = params.amount;
-    if (!to || !amount) {
-      // Store pending send state in session
-      const { data: session } = await supabase
-        .from("sessions")
-        .select("context")
-        .eq("user_id", userId)
-        .single();
-      const context = session?.context || [];
-      const pending = { ...params, action: "send", chain };
-      context.push({ role: "system", content: JSON.stringify({ pending }) });
-      await supabase
-        .from("sessions")
-        .upsert(
-          [{ user_id: userId, context, last_active: new Date().toISOString() }],
-          { onConflict: "user_id" },
-        );
-      if (!to && !amount) {
-        return { text: "Specify recipient and amount." };
-      } else if (!to) {
-        return { text: "Specify recipient." };
-      } else {
-        return { text: "Specify amount." };
-      }
-    }
-    
-    // 3. Call CDP API to send transaction
-    const fromAddress = wallet.address;
-    const network = formatNetworkName(chain);
-    const asset = params.asset || (chain === "solana" ? "SOL" : "ETH");
-    
-    const txHash = await CDP.sendTransaction(
-      fromAddress,
-      to,
-      amount,
-      asset,
-      network
-    );
-    
-    // Log transaction in Supabase
-    await supabase.from("transactions").insert([
-      {
-        user_id: userId,
-        wallet_id: wallet.address,
-        chain,
-        tx_hash: txHash,
-        action: "send",
-        status: "pending",
-        metadata: { to, amount, asset },
-      },
-    ]);
-    
-    // Explorer link
-    const explorerUrl = getExplorerUrl(chain, txHash);
-    return transactionSuccess({
-      amount: amount,
-      recipient_address: to,
-      transaction_hash: txHash,
-    });
-  } catch (error) {
-    console.error("Send error:", error);
-    return { text: "Failed to send." };
-  }
+  return { text: 'Sending tokens is not supported with Privy wallets.' };
 }
 
 async function handleExportKeys(params: ActionParams, userId: string) {
@@ -1153,89 +510,7 @@ async function handleExportKeys(params: ActionParams, userId: string) {
 
 // Example handler for bridging
 async function handleBridge(params: ActionParams, userId: string) {
-  try {
-    const isQuote = params.isQuote === true || params.phase === "quote";
-    const isExecute = params.isExecute === true || params.phase === "execute";
-    const amount = params.from_amount || params.amount;
-    const token = params.from_token || params.token;
-    const fromChain = params.from_chain || params.fromChain || params.source;
-    const toChain = params.to_chain || params.toChain || params.destination;
-
-    // If any required parameter is missing, prompt and store pending context
-    if (!amount || !token || !fromChain || !toChain) {
-      let prompt = "To bridge tokens, please specify:";
-      if (!amount && !token && !fromChain && !toChain) {
-        prompt =
-          "Which token and chain do you want to bridge from, and to which chain?";
-      } else if (!amount) {
-        prompt = `How much ${token || ""} do you want to bridge from ${fromChain || ""} to ${toChain || ""}?`;
-      } else if (!token) {
-        prompt = `Which token do you want to bridge? (e.g. ETH, SOL)`;
-      } else if (!fromChain) {
-        prompt = `Which chain do you want to bridge from? (e.g. Base, Solana)`;
-      } else if (!toChain) {
-        prompt = `Which chain do you want to bridge to? (e.g. Base, Solana)`;
-      }
-      // Store pending context in session
-      await supabase.from("sessions").upsert(
-        [
-          {
-            user_id: userId,
-            context: [
-              {
-                role: "system",
-                content: JSON.stringify({
-                  pending: { action: "bridge", ...params },
-                }),
-              },
-            ],
-            updated_at: new Date().toISOString(),
-          },
-        ],
-        { onConflict: "user_id" },
-      );
-      return { text: prompt };
-    }
-
-    // If all details are present, clear pending context
-    await supabase.from("sessions").upsert(
-      [
-        {
-          user_id: userId,
-          context: [],
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      { onConflict: "user_id" },
-    );
-
-    // If no specific phase is set, get a quote
-    if (!isQuote && !isExecute) {
-      // Get bridge parameters
-      const fromAmount = amount;
-      const fromToken = token;
-      // 2. Show the bridge quote pending message
-      return bridgeQuotePending();
-    }
-
-    // If we're in quote phase, get a quote
-    if (isQuote) {
-      return handleBridgeQuote(params, userId);
-    }
-
-    // If we're in execute phase, process the bridge
-    if (isExecute) {
-      return handleBridgeInit(params, userId);
-    }
-
-    // Fallback
-    return {
-      text: "Please specify bridge details (amount, token, source chain, destination chain).",
-    };
-  } catch (error) {
-    console.error("Bridge error:", error);
-    return bridgeFailed({ reason: "Failed to bridge tokens." });
-  }
+  return { text: 'Bridging tokens is not supported with Privy wallets.' };
 }
 
 // Handler for crypto deposit notification
@@ -1760,13 +1035,9 @@ export async function handleAlchemyWebhook(
         let balance = amount + " " + token;
         let newBalance = "0";
         let lastBalance = "0";
-        if (wallet.chain === "evm") {
-          newBalance = await getBaseSepoliaEthBalance(toAddress);
-          balance = newBalance + " " + token;
-        } else if (wallet.chain === "solana") {
-          newBalance = await getSolanaSolBalanceDirect(toAddress);
-          balance = newBalance + " " + token;
-        }
+        // Instead of calling getBaseSepoliaEthBalance or getSolanaSolBalanceDirect, just use the amount
+        newBalance = amount;
+        balance = newBalance + " " + token;
         // Fetch last known balance from sessions
         const { data: session } = await supabase
           .from("sessions")

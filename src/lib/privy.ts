@@ -1,6 +1,5 @@
 // PRIVY EVM SUPPORT IS NOW DISABLED. All EVM wallet logic is handled by BlockRadar. Only Solana logic (if any) remains here.
 
-/*
 import { createClient } from '@supabase/supabase-js';
 import { PrivyClient } from '@privy-io/server-auth';
 
@@ -201,6 +200,5 @@ export async function getOrCreatePrivyWallet({
     throw error;
   }
 }
-*/
 
 // (Leave Solana logic here if you still want to use Privy for Solana. Otherwise, this file can be removed.) 
