@@ -1,4 +1,4 @@
-import { MultiChainTransactionHandler } from './multiChainHandler';
+import { PrivyTransactionHandler } from './privyTransactionHandler';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client
@@ -18,6 +18,7 @@ export async function handleTransaction(
     token?: string;
     amount?: string | number;
     recipient?: string;
+    isExecute?: boolean;
   } = {}
 ) {
   try {
@@ -31,7 +32,7 @@ export async function handleTransaction(
     // Get wallet for the specified chain
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('address, cdp_wallet_id')
+      .select('address, privy_wallet_id')
       .eq('user_id', userId)
       .eq('chain', chain)
       .single();
@@ -43,61 +44,40 @@ export async function handleTransaction(
     
     console.log(`[TransactionHandler] Found wallet:`, wallet);
     
-    // Initialize the multi-chain handler
-    const transactionHandler = new MultiChainTransactionHandler();
+    // Only execute transaction if isExecute is true
+    if (!options.isExecute) {
+      return { text: 'Transaction not confirmed. Please confirm to proceed.' };
+    }
     
-    // Format transaction data
-    let formattedTxData = formatTransactionData(transactionData, options, chain, wallet.address);
+    // Prepare transaction data for Privy
+    const to = options.recipient || transactionData.recipient || transactionData.to;
+    const amount = options.amount || transactionData.amount || '0';
+    // Convert amount to hex (wei)
+    let value = amount;
+    if (typeof value === 'number' || (typeof value === 'string' && !value.startsWith('0x'))) {
+      const amountValue = typeof value === 'number' ? value : parseFloat(value);
+      const amountInWei = Math.floor(amountValue * 1e18);
+      value = '0x' + amountInWei.toString(16);
+    }
+    const txData = {
+      to,
+      value,
+      data: transactionData.data || '0x',
+      from: wallet.address,
+    };
     
-    // Send the transaction
-    const result = await transactionHandler.sendTransaction(
-      wallet.cdp_wallet_id,
-      formattedTxData,
-      { chain }
-    );
-    
-    console.log(`[TransactionHandler] Transaction result:`, result);
+    // Send transaction using Privy
+    const privyHandler = new PrivyTransactionHandler();
+    const result = await privyHandler.sendTransaction(wallet.privy_wallet_id, txData);
     
     // Record transaction in database
-    await recordTransaction(userId, wallet.address, result, chain, formattedTxData);
+    await recordTransaction(userId, wallet.address, result, chain, txData);
     
     return result;
   } catch (error) {
     console.error('[TransactionHandler] Transaction failed:', error);
     throw error;
   }
-}
-
-/**
- * Format transaction data based on chain and input parameters
- */
-function formatTransactionData(
-  transactionData: any, 
-  options: any, 
-  chain: string,
-  walletAddress: string
-) {
-  // If it's already a properly formatted transaction, return as is
-  if (transactionData.to && (transactionData.value !== undefined || transactionData.data !== undefined)) {
-    return transactionData;
-  }
-  
-  // For all EVM chains (Base, Ethereum, etc.)
-  const amount = options.amount || transactionData.amount || '0';
-  let value = amount;
-  
-  // Convert to hex if it's a number
-  if (typeof amount === 'number' || !amount.startsWith('0x')) {
-    const amountValue = typeof amount === 'number' ? amount : parseFloat(amount);
-    const amountInWei = Math.floor(amountValue * 1e18);
-    value = '0x' + amountInWei.toString(16);
-  }
-  
-  return {
-    to: options.recipient || transactionData.recipient || transactionData.to,
-    value,
-    from: walletAddress
-  };
 }
 
 /**

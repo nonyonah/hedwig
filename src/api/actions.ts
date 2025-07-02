@@ -38,6 +38,7 @@ import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
+import { handleTransaction } from '../lib/transactionHandler';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -742,98 +743,46 @@ function generateWalletAuthToken(walletSecret: string, address: string): string 
   return `${encodedHeader}.${encodedPayload}.${signature}`;
 }
 
-// Multi-step send flow support - updated to use CDP API
+// Multi-step send flow support - now uses Privy
 async function handleSend(params: ActionParams, userId: string) {
   try {
     console.log(`[handleSend] Processing send request for user ${userId}:`, params);
-    
-    // Check if we're executing a transaction or just preparing
     const isExecute = params.isExecute === true;
-    
-    // Get required parameters
-    const token = params.token || 'ETH'; // Default to ETH
+    const token = params.token || 'ETH';
     const amount = params.amount || '';
     const recipient = params.recipient || '';
-    const network = params.network || 'base-sepolia'; // Default to Base Sepolia
-    
-    // Validate required parameters
+    const network = params.network || 'base';
     if (!amount || !recipient) {
       return { text: 'Missing required parameters for sending. Please specify amount and recipient.' };
     }
-    
-    // Currently only supporting ETH transfers
     if (token.toLowerCase() !== 'eth') {
       return { text: 'Currently only ETH transfers are supported. Please try again with ETH.' };
     }
-    
-    // Get the user's wallet
-    const { data: wallet, error: walletError } = await supabase
-      .from("wallets")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("chain", "base") // Using 'base' as the chain identifier
-      .single();
-      
-    if (walletError) {
-      console.error(`[handleSend] Error fetching wallet:`, walletError);
-      return { text: 'Error fetching your wallet. Please try again later.' };
-    }
-    
-    if (!wallet?.address) {
-      return { text: 'You need to create a wallet first. Type "create wallet" to get started.' };
-    }
-    
-    // If this is just a preparation step, return information about the transaction
     if (!isExecute) {
-      console.log(`[handleSend] Preparing transaction (not executing): ${amount} ${token} to ${recipient}`);
-      
       // Return a formatted message for confirmation
       return sendTokenPrompt({
         amount: amount,
         token: token,
         recipient: formatAddress(recipient),
         network: network,
-        fee: '~0.0001 ETH', // Placeholder, CDP will handle actual gas
+        fee: '~0.0001 ETH',
         estimatedTime: '30-60 seconds',
       });
     }
-    
-    // Execute the transaction
-    console.log(`[handleSend] Executing transaction: ${amount} ${token} to ${recipient}`);
+    // Show tx_pending template before sending
+    // (This will be sent by the WhatsApp handler before calling handleSend)
     try {
-      const txHash = await sendCDPTransaction({
-        address: wallet.address,
-        recipient: recipient,
-        amount: amount,
-        network: 'base-sepolia', // Using Base Sepolia network for now
-      });
-      
-      // Store transaction in database
-      await supabase.from("transactions").insert([
-        {
-          user_id: userId,
-          tx_hash: txHash,
-          from_address: wallet.address,
-          to_address: recipient,
-          amount: amount,
-          token: token,
-          network: network,
-          status: 'completed',
-          created_at: new Date().toISOString(),
-        }
-      ]);
-      
+      // Execute the transaction using Privy
+      const txResult = await handleTransaction(userId, params, { ...params, isExecute: true });
       // Return success message with transaction details
       return txSentSuccess({
         amount: amount,
         token: token,
         recipient: formatAddress(recipient),
-        explorerUrl: getExplorerUrl('base', txHash),
+        explorerUrl: (txResult && typeof txResult === 'object' && 'explorerUrl' in txResult) ? txResult.explorerUrl : '',
       });
     } catch (sendError: any) {
       console.error(`[handleSend] Error sending transaction:`, sendError);
-      
-      // Return error message
       return sendFailed({
         reason: sendError.message || 'Error sending transaction. Please try again later.',
       });
