@@ -1,5 +1,6 @@
-import { PrivyTransactionHandler } from './privyTransactionHandler';
 import { createClient } from '@supabase/supabase-js';
+import fetch from 'node-fetch';
+import crypto from 'crypto';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -24,7 +25,7 @@ export async function handleTransaction(
   try {
     console.log(`[TransactionHandler] Processing transaction for user ${userId}`);
     
-    // Determine chain from options or transaction data
+    // Use cdp_wallet_id for CDP transactions
     const chain = options.chain || transactionData.chain || 'base';
     
     console.log(`[TransactionHandler] Using chain: ${chain}`);
@@ -49,7 +50,7 @@ export async function handleTransaction(
       return { text: 'Transaction not confirmed. Please confirm to proceed.' };
     }
     
-    // Prepare transaction data for Privy
+    // Prepare transaction data for CDP
     const to = options.recipient || transactionData.recipient || transactionData.to;
     const amount = options.amount || transactionData.amount || '0';
     // Convert amount to hex (wei)
@@ -63,12 +64,14 @@ export async function handleTransaction(
       to,
       value,
       data: transactionData.data || '0x',
-      from: wallet.address,
     };
     
-    // Send transaction using Privy
-    const privyHandler = new PrivyTransactionHandler();
-    const result = await privyHandler.sendTransaction(wallet.privy_wallet_id, txData);
+    // Send transaction using CDP
+    const result = await sendCDPTransaction({
+      address: wallet.privy_wallet_id,
+      transaction: txData,
+      network: 'base-sepolia',
+    });
     
     // Record transaction in database
     await recordTransaction(userId, wallet.address, result, chain, txData);
@@ -112,4 +115,82 @@ async function recordTransaction(
     console.error('[TransactionHandler] Failed to record transaction:', error);
     // Don't throw here, as the transaction itself was successful
   }
+}
+
+async function sendCDPTransaction({
+  address,
+  transaction,
+  network = 'base-sepolia',
+}: {
+  address: string; // cdp_wallet_id
+  transaction: { to: string; value: string; data?: string };
+  network?: string;
+}): Promise<{ hash: string; explorerUrl: string }> {
+  console.log(`[sendCDPTransaction] Sending transaction to ${transaction.to} from ${address} on ${network}`);
+  try {
+    const apiKey = process.env.CDP_API_KEY;
+    const walletSecret = process.env.CDP_WALLET_SECRET;
+    const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
+    if (!apiKey || !walletSecret) {
+      throw new Error('CDP_API_KEY or CDP_WALLET_SECRET not configured');
+    }
+    // Generate the wallet authorization token
+    const walletToken = generateWalletAuthToken(walletSecret, address);
+    // Set up the API request
+    const response = await fetch(
+      `${baseUrl}/platform/v2/evm/accounts/${address}/send/transaction`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'X-Wallet-Auth': walletToken,
+        },
+        body: JSON.stringify({
+          network,
+          transaction,
+        }),
+      }
+    );
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[sendCDPTransaction] Error: ${response.status} ${errorText}`);
+      throw new Error(`CDP API error: ${errorText}`);
+    }
+    const data = await response.json();
+    console.log(`[sendCDPTransaction] Transaction sent: ${data.transactionHash}`);
+    return {
+      hash: data.transactionHash,
+      explorerUrl: `https://sepolia.basescan.org/tx/${data.transactionHash}`,
+    };
+  } catch (error) {
+    console.error('[sendCDPTransaction] Error:', error);
+    throw error;
+  }
+}
+
+function generateWalletAuthToken(walletSecret: string, address: string): string {
+  const payload = {
+    sub: address.toLowerCase(),
+    exp: Math.floor(Date.now() / 1000) + 300,
+    iat: Math.floor(Date.now() / 1000),
+    scope: 'write:transactions',
+  };
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  const signature = crypto
+    .createHmac('sha256', walletSecret)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
 } 
