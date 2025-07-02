@@ -25,15 +25,15 @@ export async function handleTransaction(
   try {
     console.log(`[TransactionHandler] Processing transaction for user ${userId}`);
     
-    // Use cdp_wallet_id for CDP transactions
+    // Use EVM address for CDP transactions
     const chain = options.chain || transactionData.chain || 'base';
     
     console.log(`[TransactionHandler] Using chain: ${chain}`);
     
-    // Get wallet for the specified chain
+    // Get wallet for the specified chain (must include address)
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('address, privy_wallet_id')
+      .select('address') // Only need address now
       .eq('user_id', userId)
       .eq('chain', chain)
       .single();
@@ -41,6 +41,12 @@ export async function handleTransaction(
     if (error || !wallet) {
       console.error(`[TransactionHandler] Error fetching wallet:`, error);
       throw new Error(`Wallet not found for chain ${chain}`);
+    }
+    
+    // Use global CDP_WALLET_SECRET from environment
+    const walletSecret = process.env.CDP_WALLET_SECRET;
+    if (!walletSecret) {
+      throw new Error('CDP_WALLET_SECRET is required for CDP transaction signing.');
     }
     
     console.log(`[TransactionHandler] Found wallet:`, wallet);
@@ -68,7 +74,8 @@ export async function handleTransaction(
     
     // Send transaction using CDP
     const result = await sendCDPTransaction({
-      address: wallet.privy_wallet_id,
+      address: wallet.address, // EVM address
+      walletSecret, // Use global secret
       transaction: txData,
       network: 'base-sepolia',
     });
@@ -119,32 +126,39 @@ async function recordTransaction(
 
 async function sendCDPTransaction({
   address,
+  walletSecret,
   transaction,
   network = 'base-sepolia',
 }: {
-  address: string; // cdp_wallet_id
+  address: string; // EVM address
+  walletSecret: string;
   transaction: { to: string; value: string; data?: string };
   network?: string;
 }): Promise<{ hash: string; explorerUrl: string }> {
   console.log(`[sendCDPTransaction] Sending transaction to ${transaction.to} from ${address} on ${network}`);
   try {
-    const apiKey = process.env.CDP_API_KEY;
-    const walletSecret = process.env.CDP_WALLET_SECRET;
-    const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
-    if (!apiKey || !walletSecret) {
-      throw new Error('CDP_API_KEY or CDP_WALLET_SECRET not configured');
+    const apiKeyId = process.env.CDP_API_KEY_ID;
+    const apiKeySecret = process.env.CDP_API_KEY_SECRET;
+    if (!apiKeyId || !apiKeySecret || !walletSecret) {
+      console.error('[sendCDPTransaction] CDP_API_KEY_ID:', apiKeyId);
+      console.error('[sendCDPTransaction] CDP_API_KEY_SECRET:', apiKeySecret);
+      console.error('[sendCDPTransaction] walletSecret:', walletSecret);
+      throw new Error('CDP_API_KEY_ID, CDP_API_KEY_SECRET, or walletSecret not configured');
     }
-    // Generate the wallet authorization token
-    const walletToken = generateWalletAuthToken(walletSecret, address);
+    // Generate the API JWT for Authorization
+    const apiJwt = generateApiJwt(apiKeyId, apiKeySecret);
+    // Generate the Wallet JWT for X-Wallet-Auth
+    const walletJwt = generateWalletJwt(walletSecret, address);
+    const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
     // Set up the API request
     const response = await fetch(
       `${baseUrl}/platform/v2/evm/accounts/${address}/send/transaction`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${apiJwt}`,
           'Content-Type': 'application/json',
-          'X-Wallet-Auth': walletToken,
+          'X-Wallet-Auth': walletJwt,
         },
         body: JSON.stringify({
           network,
@@ -169,7 +183,33 @@ async function sendCDPTransaction({
   }
 }
 
-function generateWalletAuthToken(walletSecret: string, address: string): string {
+function generateApiJwt(apiKeyId: string, apiKeySecret: string): string {
+  const payload = {
+    sub: apiKeyId, // CDP API Key ID as subject
+    exp: Math.floor(Date.now() / 1000) + 300,
+    iat: Math.floor(Date.now() / 1000),
+    scope: 'write:transactions',
+  };
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  const signature = crypto
+    .createHmac('sha256', apiKeySecret)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+function generateWalletJwt(walletSecret: string, address: string): string {
   const payload = {
     sub: address.toLowerCase(),
     exp: Math.floor(Date.now() / 1000) + 300,

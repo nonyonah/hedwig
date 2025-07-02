@@ -806,9 +806,7 @@ async function handleSend(params: ActionParams, userId: string) {
       });
     } catch (sendError: any) {
       console.error(`[handleSend] Error sending transaction:`, sendError);
-      return sendFailed({
-        reason: sendError.message || 'Error sending transaction. Please try again later.',
-      });
+      return { text: sendError.message || 'Error sending transaction. Please try again later.' };
     }
   } catch (error) {
     console.error(`[handleSend] Error:`, error);
