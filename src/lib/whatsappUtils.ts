@@ -515,6 +515,11 @@ export async function sendWhatsAppTemplate(
       template: patchedTemplate,
     };
 
+    // Remove any accidental 'text' property at the root of the template object
+    if ('text' in message.template) {
+      delete (message.template as any).text;
+    }
+
     // Log the actual message being sent for debugging
     console.log("Sending WhatsApp template:", JSON.stringify(message, null, 2));
 

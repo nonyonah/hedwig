@@ -50,10 +50,12 @@ export async function getOrCreatePrivyWallet({
   userId,
   phoneNumber,
   chain = 'evm', // 'evm', 'base', or 'solana'
+  name,
 }: {
   userId: string;
   phoneNumber: string;
   chain: 'evm' | 'base';
+  name?: string;
 }) {
   try {
     console.log(`Getting or creating ${chain} wallet for user ${userId} with phone ${phoneNumber}`);
@@ -86,7 +88,7 @@ export async function getOrCreatePrivyWallet({
       console.log(`Creating new user with ID ${userId} and phone ${phoneNumber}`);
       const { data: newUser, error: createError } = await supabase
         .from('users')
-        .insert([{ id: userId, phone_number: phoneNumber }])
+        .insert([{ id: userId, phone_number: phoneNumber, name: name || null }])
         .select()
         .single();
       if (createError) {
@@ -94,6 +96,9 @@ export async function getOrCreatePrivyWallet({
         throw createError;
       }
       user = newUser;
+    } else if (name && user.name !== name) {
+      await supabase.from('users').update({ name }).eq('id', userId);
+      user.name = name;
     }
 
     // 2. Check if wallet exists for this user/chain in Supabase
@@ -118,9 +123,10 @@ export async function getOrCreatePrivyWallet({
       console.log('Checking if wallet exists in Privy');
       const privyWallets = await getAllPrivyWallets();
       let chainType: string;
+      // Map 'base' to 'ethereum' for Privy
+      if (chain === 'base' || chain === 'evm') chainType = 'ethereum';
       // if (chain === 'solana') chainType = 'solana';
-     if (chain === 'base') chainType = 'base';
-      else chainType = 'ethereum';
+      else chainType = chain;
       
       console.log(`Looking for ${chainType} wallet in Privy wallets:`, privyWallets);
       const found = privyWallets.wallets?.find((w: any) => w.chain_type === chainType);
@@ -151,9 +157,10 @@ export async function getOrCreatePrivyWallet({
     // 4. Create Privy wallet via REST API
     console.log(`Creating new ${chain} wallet in Privy`);
     let chainType: string;
+    // Map 'base' to 'ethereum' for Privy
+    if (chain === 'base' || chain === 'evm') chainType = 'ethereum';
     // if (chain === 'solana') chainType = 'solana';
-     if (chain === 'base') chainType = 'base';
-    else chainType = 'ethereum';
+    else chainType = chain;
     
     const res = await fetch(privyApiUrl, {
       method: 'POST',

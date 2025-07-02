@@ -283,6 +283,7 @@ export async function handleAction(
     case "get_wallet_balance":
       return await handleGetWalletBalance(params, userId);
     case "get_wallet_address":
+      // Always return the WhatsApp template for wallet address
       return await handleGetWalletAddress(userId);
     default:
       return {
@@ -359,7 +360,7 @@ async function handleCreateWallets(userId: string) {
     }
 
     // Use Privy to create or get wallet
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: userData?.phone_number, chain: "base" });
+    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: userData?.phone_number, chain: "base", name: userName });
     
     console.log(`[handleCreateWallets] Successfully created wallet: ${wallet.address}`);
     const response = walletCreatedMulti({ evm_wallet: wallet.address });
