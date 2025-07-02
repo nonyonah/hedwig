@@ -24,18 +24,16 @@ export async function handleTransaction(
     console.log(`[TransactionHandler] Processing transaction for user ${userId}`);
     
     // Determine chain from options or transaction data
-    const chain = options.chain || 
-      (transactionData.chain || 
-      (transactionData.network && transactionData.network.toLowerCase().includes('sol') ? 'solana' : 'ethereum'));
+    const chain = options.chain || transactionData.chain || 'base';
     
     console.log(`[TransactionHandler] Using chain: ${chain}`);
     
     // Get wallet for the specified chain
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('address, privy_wallet_id')
+      .select('address, cdp_wallet_id')
       .eq('user_id', userId)
-      .eq('chain', chain.toLowerCase().includes('sol') ? 'solana' : 'evm')
+      .eq('chain', chain)
       .single();
     
     if (error || !wallet) {
@@ -48,17 +46,12 @@ export async function handleTransaction(
     // Initialize the multi-chain handler
     const transactionHandler = new MultiChainTransactionHandler();
     
-    // Format transaction data based on the chain
+    // Format transaction data
     let formattedTxData = formatTransactionData(transactionData, options, chain, wallet.address);
-
-    // For Solana, ensure senderAddress is included
-    if (chain.toLowerCase().includes('sol')) {
-      formattedTxData.senderAddress = wallet.address;
-    }
     
     // Send the transaction
     const result = await transactionHandler.sendTransaction(
-      wallet.privy_wallet_id,
+      wallet.cdp_wallet_id,
       formattedTxData,
       { chain }
     );
@@ -85,38 +78,26 @@ function formatTransactionData(
   walletAddress: string
 ) {
   // If it's already a properly formatted transaction, return as is
-  if (
-    (chain.toLowerCase().includes('sol') && (transactionData.transaction || transactionData.instructions)) ||
-    (!chain.toLowerCase().includes('sol') && transactionData.to && transactionData.value)
-  ) {
+  if (transactionData.to && (transactionData.value !== undefined || transactionData.data !== undefined)) {
     return transactionData;
   }
   
-  // For Solana
-  if (chain.toLowerCase().includes('sol')) {
-    return {
-      recipient: options.recipient || transactionData.recipient || transactionData.to,
-      amount: options.amount || transactionData.amount || '0'
-    };
-  } 
-  // For Ethereum
-  else {
-    const amount = options.amount || transactionData.amount || '0';
-    let value = amount;
-    
-    // Convert to hex if it's a number
-    if (typeof amount === 'number' || !amount.startsWith('0x')) {
-      const amountValue = typeof amount === 'number' ? amount : parseFloat(amount);
-      const amountInWei = Math.floor(amountValue * 1e18);
-      value = '0x' + amountInWei.toString(16);
-    }
-    
-    return {
-      to: options.recipient || transactionData.recipient || transactionData.to,
-      value,
-      from: walletAddress
-    };
+  // For all EVM chains (Base, Ethereum, etc.)
+  const amount = options.amount || transactionData.amount || '0';
+  let value = amount;
+  
+  // Convert to hex if it's a number
+  if (typeof amount === 'number' || !amount.startsWith('0x')) {
+    const amountValue = typeof amount === 'number' ? amount : parseFloat(amount);
+    const amountInWei = Math.floor(amountValue * 1e18);
+    value = '0x' + amountInWei.toString(16);
   }
+  
+  return {
+    to: options.recipient || transactionData.recipient || transactionData.to,
+    value,
+    from: walletAddress
+  };
 }
 
 /**
@@ -130,7 +111,7 @@ async function recordTransaction(
   txData: any
 ) {
   try {
-    const txHash = result.hash || result.signature;
+    const txHash = result.hash;
     const explorerUrl = result.explorerUrl;
     
     await supabase.from('transactions').insert([{
@@ -138,7 +119,7 @@ async function recordTransaction(
       wallet_address: walletAddress,
       tx_hash: txHash,
       explorer_url: explorerUrl,
-      chain: chain.toLowerCase().includes('sol') ? 'solana' : 'ethereum',
+      chain: chain,
       status: 'completed',
       metadata: {
         ...txData,
