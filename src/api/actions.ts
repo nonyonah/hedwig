@@ -292,6 +292,14 @@ export async function handleAction(
       return await handleGetWalletAddress(userId);
     case "send":
       return await handleSend(params, userId);
+    case "send_token_prompt":
+      return await handleSendInit(params, userId);
+    case "instruction_swap":
+      return handleSwapInstructions();
+    case "instruction_bridge":
+      return handleBridgeInstructions();
+    case "instruction_send":
+      return handleSendInstructions();
     default:
       return {
         text: "This feature is not supported with Privy wallets."
