@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
-import crypto from 'crypto';
-import { generateJwt, generateWalletJwt } from '@coinbase/cdp-sdk/auth';
+import { getPrivyAuthHeader } from './privy';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -9,8 +8,10 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const PRIVY_API_URL = 'https://api.privy.io/v1/wallets';
+
 /**
- * Handles incoming transaction requests and integrates with the MultiChainTransactionHandler
+ * Handles incoming transaction requests and integrates with Privy for wallet transactions
  */
 export async function handleTransaction(
   userId: string,
@@ -26,15 +27,15 @@ export async function handleTransaction(
   try {
     console.log(`[TransactionHandler] Processing transaction for user ${userId}`);
     
-    // Use EVM address for CDP transactions
+    // Default to base chain if not specified
     const chain = options.chain || transactionData.chain || 'base';
     
     console.log(`[TransactionHandler] Using chain: ${chain}`);
     
-    // Get wallet for the specified chain (must include address)
+    // Get wallet for the specified chain
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('address') // Only need address now
+      .select('*')
       .eq('user_id', userId)
       .eq('chain', chain)
       .single();
@@ -44,10 +45,8 @@ export async function handleTransaction(
       throw new Error(`Wallet not found for chain ${chain}`);
     }
     
-    // Use global CDP_WALLET_SECRET from environment
-    const walletSecret = process.env.CDP_WALLET_SECRET;
-    if (!walletSecret) {
-      throw new Error('CDP_WALLET_SECRET is required for CDP transaction signing.');
+    if (!wallet.privy_wallet_id) {
+      throw new Error('Privy wallet ID is required for transaction signing.');
     }
     
     console.log(`[TransactionHandler] Found wallet:`, wallet);
@@ -57,11 +56,12 @@ export async function handleTransaction(
       return { text: 'Transaction not confirmed. Please confirm to proceed.' };
     }
     
-    // Prepare transaction data for CDP
+    // Prepare transaction data for Privy
     const to = options.recipient || transactionData.recipient || transactionData.to;
     const amount = options.amount || transactionData.amount || '0';
-    // Convert amount to hex string (wei)
-    let value = '';
+    
+    // Convert amount to wei (for ETH transactions)
+    let value;
     if (typeof amount === 'number' || (typeof amount === 'string' && !amount.startsWith('0x'))) {
       const amountValue = typeof amount === 'number' ? amount : parseFloat(amount);
       const amountInWei = Math.floor(amountValue * 1e18);
@@ -70,23 +70,23 @@ export async function handleTransaction(
       value = amount; // Already in hex format
     }
     
-    // Ensure value is a string
-    const txData = {
-      to,
-      value: value.toString(),
+    // Prepare transaction object
+    const transaction = {
+      to: to,
+      value: value,
+      chainId: getChainId(chain),
       data: transactionData.data || '0x',
     };
     
-    // Send transaction using CDP
-    const result = await sendCDPTransaction({
-      address: wallet.address, // EVM address
-      walletSecret, // Use global secret
-      transaction: txData,
-      network: 'base-sepolia',
+    // Send transaction using Privy
+    const result = await sendPrivyTransaction({
+      walletId: wallet.privy_wallet_id,
+      chain: chain,
+      transaction: transaction,
     });
     
     // Record transaction in database
-    await recordTransaction(userId, wallet.address, result, chain, txData);
+    await recordTransaction(userId, wallet.address, result, chain, transaction);
     
     return result;
   } catch (error) {
@@ -107,7 +107,7 @@ async function recordTransaction(
 ) {
   try {
     const txHash = result.hash;
-    const explorerUrl = result.explorerUrl;
+    const explorerUrl = getExplorerUrl(chain, txHash);
     
     await supabase.from('transactions').insert([{
       user_id: userId,
@@ -129,76 +129,53 @@ async function recordTransaction(
   }
 }
 
-async function sendCDPTransaction({
-  address,
-  walletSecret,
+/**
+ * Send a transaction via Privy API
+ */
+async function sendPrivyTransaction({
+  walletId,
+  chain,
   transaction,
-  network = 'base-sepolia',
 }: {
-  address: string; // EVM address
-  walletSecret: string;
-  transaction: { to: string; value: string; data?: string };
-  network?: string;
+  walletId: string;
+  chain: string;
+  transaction: {
+    to: string;
+    value: string;
+    chainId?: number | string;
+    data?: string;
+  };
 }): Promise<{ hash: string; explorerUrl: string }> {
-  console.log(`[sendCDPTransaction] Sending transaction to ${transaction.to} from ${address} on ${network}`);
+  console.log(`[sendPrivyTransaction] Sending transaction to ${transaction.to} from wallet ${walletId} on ${chain}`);
+  
   try {
-    const apiKeyId = process.env.CDP_API_KEY_ID;
-    const apiKeySecret = process.env.CDP_API_KEY_SECRET;
-    if (!apiKeyId || !apiKeySecret || !walletSecret) {
-      console.error('[sendCDPTransaction] CDP_API_KEY_ID:', apiKeyId);
-      console.error('[sendCDPTransaction] CDP_API_KEY_SECRET:', apiKeySecret ? 'PRESENT' : 'MISSING');
-      console.error('[sendCDPTransaction] walletSecret:', walletSecret ? 'PRESENT' : 'MISSING');
-      throw new Error('CDP_API_KEY_ID, CDP_API_KEY_SECRET, or walletSecret not configured');
-    }
+    // Convert chain to CAIP2 format for Privy
+    const caip2 = `eip155:${transaction.chainId || getChainId(chain)}`;
     
-    const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
-    const requestPath = `/platform/v2/evm/accounts/${address}/send/transaction`;
-    const requestMethod = 'POST';
-    const requestHost = 'api.cdp.coinbase.com';
-    
-    console.log(`[sendCDPTransaction] Request details: ${requestMethod} ${requestHost}${requestPath}`);
-    
-    // Generate the API JWT for Authorization using the SDK
-    const apiJwt = await generateJwt({
-      apiKeyId,
-      apiKeySecret,
-      requestMethod,
-      requestHost,
-      requestPath,
-      expiresIn: 120 // 2 minutes
-    });
-    
-    // Prepare the request body with proper string formatting
+    // Prepare request body
     const requestBody = {
-      network,
-      transaction: {
-        to: transaction.to.toString(),
-        value: transaction.value.toString(),
-        data: transaction.data ? transaction.data.toString() : '0x'
+      method: 'eth_sendTransaction',
+      caip2: caip2,
+      params: {
+        transaction: {
+          to: transaction.to,
+          value: transaction.value,
+          data: transaction.data || '0x'
+        }
       }
     };
     
-    // Generate the Wallet JWT for X-Wallet-Auth using the SDK
-    const walletJwt = await generateWalletJwt({
-      walletSecret,
-      requestMethod,
-      requestHost,
-      requestPath,
-      requestData: requestBody
-    });
+    console.log(`[sendPrivyTransaction] Request body:`, JSON.stringify(requestBody, null, 2));
     
-    console.log(`[sendCDPTransaction] JWTs generated successfully`);
-    console.log(`[sendCDPTransaction] Request body:`, JSON.stringify(requestBody, null, 2));
-    
-    // Set up the API request
+    // Send request to Privy API
     const response = await fetch(
-      `${baseUrl}${requestPath}`,
+      `${PRIVY_API_URL}/${walletId}/rpc`,
       {
-        method: requestMethod,
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiJwt}`,
+          'Authorization': getPrivyAuthHeader(),
           'Content-Type': 'application/json',
-          'X-Wallet-Auth': walletJwt,
+          'privy-app-id': process.env.PRIVY_APP_ID!,
         },
         body: JSON.stringify(requestBody),
       }
@@ -206,19 +183,70 @@ async function sendCDPTransaction({
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[sendCDPTransaction] Error ${response.status}: ${errorText}`);
-      throw new Error(`CDP API error: ${errorText}`);
+      console.error(`[sendPrivyTransaction] Error ${response.status}: ${errorText}`);
+      throw new Error(`Privy API error: ${errorText}`);
     }
     
     const data = await response.json();
-    console.log(`[sendCDPTransaction] Transaction sent: ${data.transactionHash}`);
+    console.log(`[sendPrivyTransaction] Transaction sent:`, data);
+    
+    const hash = data.data.hash;
+    const explorerUrl = getExplorerUrl(chain, hash);
     
     return {
-      hash: data.transactionHash,
-      explorerUrl: `https://sepolia.basescan.org/tx/${data.transactionHash}`,
+      hash,
+      explorerUrl,
     };
   } catch (error) {
-    console.error('[sendCDPTransaction] Error:', error);
+    console.error('[sendPrivyTransaction] Error:', error);
     throw error;
+  }
+}
+
+/**
+ * Get chain ID for a given chain name
+ */
+function getChainId(chain: string): number {
+  switch (chain.toLowerCase()) {
+    case 'ethereum':
+    case 'mainnet':
+      return 1;
+    case 'base':
+      return 8453;
+    case 'base-sepolia':
+    case 'base-testnet':
+      return 84532;
+    case 'sepolia':
+      return 11155111;
+    case 'optimism':
+      return 10;
+    case 'arbitrum':
+      return 42161;
+    default:
+      return 1; // Default to Ethereum mainnet
+  }
+}
+
+/**
+ * Get explorer URL for a given chain and transaction hash
+ */
+function getExplorerUrl(chain: string, txHash: string): string {
+  switch (chain.toLowerCase()) {
+    case 'ethereum':
+    case 'mainnet':
+      return `https://etherscan.io/tx/${txHash}`;
+    case 'base':
+      return `https://basescan.org/tx/${txHash}`;
+    case 'base-sepolia':
+    case 'base-testnet':
+      return `https://sepolia.basescan.org/tx/${txHash}`;
+    case 'sepolia':
+      return `https://sepolia.etherscan.io/tx/${txHash}`;
+    case 'optimism':
+      return `https://optimistic.etherscan.io/tx/${txHash}`;
+    case 'arbitrum':
+      return `https://arbiscan.io/tx/${txHash}`;
+    default:
+      return `https://etherscan.io/tx/${txHash}`;
   }
 } 
