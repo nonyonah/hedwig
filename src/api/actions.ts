@@ -37,6 +37,7 @@ import {
 import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -621,9 +622,224 @@ async function updateTransactionStatus(txHash: string, status: string) {
   await supabase.from("transactions").update({ status }).eq("tx_hash", txHash);
 }
 
-// Multi-step send flow support
+/**
+ * Send a transaction via CDP API
+ * @param address Wallet address to send from
+ * @param recipient Recipient address
+ * @param amount Amount to send in ETH (will be converted to wei)
+ * @param network Network to use (e.g. 'base-sepolia')
+ * @returns Transaction hash
+ */
+async function sendCDPTransaction({
+  address,
+  recipient,
+  amount,
+  network = 'base-sepolia',
+}: {
+  address: string;
+  recipient: string;
+  amount: string;
+  network?: string;
+}): Promise<string> {
+  console.log(`[sendCDPTransaction] Sending ${amount} ETH to ${recipient} from ${address} on ${network}`);
+  
+  try {
+    const apiKey = process.env.CDP_API_KEY;
+    const walletSecret = process.env.CDP_WALLET_SECRET;
+    const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
+    
+    if (!apiKey || !walletSecret) {
+      throw new Error('CDP_API_KEY or CDP_WALLET_SECRET not configured');
+    }
+
+    // Calculate value in wei
+    const valueInWei = parseUnits(amount, 18).toString();
+    console.log(`[sendCDPTransaction] Amount in wei: ${valueInWei}`);
+
+    // Create transaction object as a hex string
+    // Since viem doesn't export serialize directly, we'll create a simple hex transaction
+    const txData = {
+      to: recipient,
+      value: toHex(valueInWei),
+      data: '0x', // No contract interaction, just a simple ETH transfer
+    };
+
+    // Generate the wallet authorization token
+    const walletToken = generateWalletAuthToken(walletSecret, address);
+    
+    // Set up the API request
+    const response = await fetch(
+      `${baseUrl}/platform/v2/evm/accounts/${address}/send/transaction`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'X-Wallet-Auth': walletToken,
+        },
+        body: JSON.stringify({
+          network,
+          transaction: txData // CDP API can accept transaction parameters directly
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[sendCDPTransaction] Error: ${response.status} ${errorText}`);
+      throw new Error(`CDP API error: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log(`[sendCDPTransaction] Transaction sent: ${data.transactionHash}`);
+    
+    return data.transactionHash;
+  } catch (error) {
+    console.error('[sendCDPTransaction] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate a wallet authorization token for CDP API
+ * @param walletSecret Wallet secret from CDP
+ * @param address Wallet address
+ * @returns Signed JWT token
+ */
+function generateWalletAuthToken(walletSecret: string, address: string): string {
+  // The payload structure as required by CDP
+  const payload = {
+    sub: address.toLowerCase(), // Subject is the wallet address (lowercase)
+    exp: Math.floor(Date.now() / 1000) + 300, // 5 minutes expiration
+    iat: Math.floor(Date.now() / 1000), // Issued at current time
+    scope: 'write:transactions',  // Scope for sending transactions
+  };
+  
+  // Convert payload to base64url encoding (JWT format)
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+    
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  
+  // Create the signature
+  const signature = crypto
+    .createHmac('sha256', walletSecret)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  
+  // Return the complete JWT
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+// Multi-step send flow support - updated to use CDP API
 async function handleSend(params: ActionParams, userId: string) {
-  return { text: 'Sending tokens is not supported with Privy wallets.' };
+  try {
+    console.log(`[handleSend] Processing send request for user ${userId}:`, params);
+    
+    // Check if we're executing a transaction or just preparing
+    const isExecute = params.isExecute === true;
+    
+    // Get required parameters
+    const token = params.token || 'ETH'; // Default to ETH
+    const amount = params.amount || '';
+    const recipient = params.recipient || '';
+    const network = params.network || 'base-sepolia'; // Default to Base Sepolia
+    
+    // Validate required parameters
+    if (!amount || !recipient) {
+      return { text: 'Missing required parameters for sending. Please specify amount and recipient.' };
+    }
+    
+    // Currently only supporting ETH transfers
+    if (token.toLowerCase() !== 'eth') {
+      return { text: 'Currently only ETH transfers are supported. Please try again with ETH.' };
+    }
+    
+    // Get the user's wallet
+    const { data: wallet, error: walletError } = await supabase
+      .from("wallets")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("chain", "base") // Using 'base' as the chain identifier
+      .single();
+      
+    if (walletError) {
+      console.error(`[handleSend] Error fetching wallet:`, walletError);
+      return { text: 'Error fetching your wallet. Please try again later.' };
+    }
+    
+    if (!wallet?.address) {
+      return { text: 'You need to create a wallet first. Type "create wallet" to get started.' };
+    }
+    
+    // If this is just a preparation step, return information about the transaction
+    if (!isExecute) {
+      console.log(`[handleSend] Preparing transaction (not executing): ${amount} ${token} to ${recipient}`);
+      
+      // Return a formatted message for confirmation
+      return sendTokenPrompt({
+        amount: amount,
+        token: token,
+        recipient: formatAddress(recipient),
+        network: network,
+        fee: '~0.0001 ETH', // Placeholder, CDP will handle actual gas
+        estimatedTime: '30-60 seconds',
+      });
+    }
+    
+    // Execute the transaction
+    console.log(`[handleSend] Executing transaction: ${amount} ${token} to ${recipient}`);
+    try {
+      const txHash = await sendCDPTransaction({
+        address: wallet.address,
+        recipient: recipient,
+        amount: amount,
+        network: 'base-sepolia', // Using Base Sepolia network for now
+      });
+      
+      // Store transaction in database
+      await supabase.from("transactions").insert([
+        {
+          user_id: userId,
+          tx_hash: txHash,
+          from_address: wallet.address,
+          to_address: recipient,
+          amount: amount,
+          token: token,
+          network: network,
+          status: 'completed',
+          created_at: new Date().toISOString(),
+        }
+      ]);
+      
+      // Return success message with transaction details
+      return txSentSuccess({
+        amount: amount,
+        token: token,
+        recipient: formatAddress(recipient),
+        explorerUrl: getExplorerUrl('base', txHash),
+      });
+    } catch (sendError: any) {
+      console.error(`[handleSend] Error sending transaction:`, sendError);
+      
+      // Return error message
+      return sendFailed({
+        reason: sendError.message || 'Error sending transaction. Please try again later.',
+      });
+    }
+  } catch (error) {
+    console.error(`[handleSend] Error:`, error);
+    return { text: 'An unexpected error occurred. Please try again later.' };
+  }
 }
 
 async function handleExportKeys(params: ActionParams, userId: string) {
