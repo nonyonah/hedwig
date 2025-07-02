@@ -838,15 +838,92 @@ export async function handleIncomingWhatsAppMessage(body: any) {
             item.role === "system" && JSON.parse(item.content)?.pending,
         );
       }
+      
       // Add debug logging
       console.log("Session context:", session?.context);
       console.log("User text:", text);
+      
       // Intercept 'yes' for send confirmation if pending send flow is ready
       if (pending) {
         const pendingObj = JSON.parse(pending.content).pending;
-        // Normalize token in pendingObj
-        pendingObj.token =
-          pendingObj.token || pendingObj.asset || pendingObj.symbol;
+        console.log("Found pending context:", pendingObj);
+        
+        // First check if this is a simple yes/confirm response to a pending transaction
+        if (
+          pendingObj?.action === "send" &&
+          (text.trim().toLowerCase() === "yes" ||
+           text.trim().toLowerCase() === "confirm" ||
+           text.trim().toLowerCase() === "send" ||
+           text.trim().toLowerCase() === "go ahead" ||
+           text.trim().toLowerCase() === "proceed" ||
+           text.trim().toLowerCase().includes("confirm"))
+        ) {
+          console.log("Detected confirmation response for pending transaction");
+          
+          // Validate that we have all required fields in the pending object
+          if (
+            pendingObj.token &&
+            pendingObj.amount &&
+            pendingObj.recipient &&
+            (pendingObj.network || pendingObj.chain)
+          ) {
+            console.log("All required fields present in pending transaction");
+            
+            // Show tx_pending message
+            await sendWhatsAppTemplate(from, txPending());
+            
+            // Prepare the execution parameters
+            const txParams = {
+              token: pendingObj.token,
+              amount: pendingObj.amount,
+              recipient: pendingObj.recipient,
+              network: pendingObj.network || pendingObj.chain,
+              isExecute: true // Mark as execution
+            };
+            
+            console.log("Executing transaction with params:", txParams);
+            
+            // Execute the send transaction
+            const actionResult = await handleAction(
+              "send",
+              txParams,
+              userId
+            );
+            
+            // Log the action result
+            console.log("Send transaction result:", actionResult);
+            
+            // Clear pending context after execution
+            await supabase.from("sessions").upsert(
+              [
+                {
+                  user_id: userId,
+                  context: [],
+                  updated_at: new Date().toISOString(),
+                },
+              ],
+              { onConflict: "user_id" }
+            );
+            
+            // Display the result to the user
+            if (actionResult) {
+              if ("name" in actionResult) {
+                await sendWhatsAppTemplate(from, actionResult);
+              } else if ("text" in actionResult) {
+                await sendWhatsAppMessage(from, { text: actionResult.text });
+              } else {
+                // If we get an unexpected response format, provide a fallback
+                await sendWhatsAppMessage(from, { text: "Your transaction has been processed. Check your wallet for confirmation." });
+              }
+            }
+            
+            return;
+          } else {
+            console.log("Missing required fields in pending transaction:", pendingObj);
+          }
+        }
+        
+        // Only merge params if we didn't handle it as a direct confirmation above
         // Fix merge order: params first, then pendingObj
         const mergedParams = { ...params, ...pendingObj };
         mergedParams.token =
@@ -855,9 +932,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           mergedParams.token &&
           mergedParams.amount &&
           mergedParams.recipient &&
-          mergedParams.network;
+          (mergedParams.network || mergedParams.chain);
         // More debug logging
-        console.log("Pending object:", pendingObj);
         console.log("Merged params:", mergedParams);
         console.log("Has all required fields:", hasAll);
         if (
