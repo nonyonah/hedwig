@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
 import crypto from 'crypto';
+import { generateJwt, generateWalletJwt } from '@coinbase/cdp-sdk/auth';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -141,20 +142,47 @@ async function sendCDPTransaction({
     const apiKeySecret = process.env.CDP_API_KEY_SECRET;
     if (!apiKeyId || !apiKeySecret || !walletSecret) {
       console.error('[sendCDPTransaction] CDP_API_KEY_ID:', apiKeyId);
-      console.error('[sendCDPTransaction] CDP_API_KEY_SECRET:', apiKeySecret);
-      console.error('[sendCDPTransaction] walletSecret:', walletSecret);
+      console.error('[sendCDPTransaction] CDP_API_KEY_SECRET:', apiKeySecret ? 'PRESENT' : 'MISSING');
+      console.error('[sendCDPTransaction] walletSecret:', walletSecret ? 'PRESENT' : 'MISSING');
       throw new Error('CDP_API_KEY_ID, CDP_API_KEY_SECRET, or walletSecret not configured');
     }
-    // Generate the API JWT for Authorization
-    const apiJwt = generateApiJwt(apiKeyId, apiKeySecret);
-    // Generate the Wallet JWT for X-Wallet-Auth
-    const walletJwt = generateWalletJwt(walletSecret, address);
+    
     const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
+    const requestPath = `/platform/v2/evm/accounts/${address}/send/transaction`;
+    const requestMethod = 'POST';
+    const requestHost = 'api.cdp.coinbase.com';
+    
+    console.log(`[sendCDPTransaction] Request details: ${requestMethod} ${requestHost}${requestPath}`);
+    
+    // Generate the API JWT for Authorization using the SDK
+    const apiJwt = await generateJwt({
+      apiKeyId,
+      apiKeySecret,
+      requestMethod,
+      requestHost,
+      requestPath,
+      expiresIn: 120 // 2 minutes
+    });
+    
+    // Generate the Wallet JWT for X-Wallet-Auth using the SDK
+    const walletJwt = await generateWalletJwt({
+      walletSecret,
+      requestMethod,
+      requestHost,
+      requestPath,
+      requestData: {
+        network,
+        transaction
+      }
+    });
+    
+    console.log(`[sendCDPTransaction] JWTs generated successfully`);
+    
     // Set up the API request
     const response = await fetch(
-      `${baseUrl}/platform/v2/evm/accounts/${address}/send/transaction`,
+      `${baseUrl}${requestPath}`,
       {
-        method: 'POST',
+        method: requestMethod,
         headers: {
           'Authorization': `Bearer ${apiJwt}`,
           'Content-Type': 'application/json',
@@ -166,13 +194,16 @@ async function sendCDPTransaction({
         }),
       }
     );
+    
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[sendCDPTransaction] Error: ${response.status} ${errorText}`);
+      console.error(`[sendCDPTransaction] Error ${response.status}: ${errorText}`);
       throw new Error(`CDP API error: ${errorText}`);
     }
+    
     const data = await response.json();
     console.log(`[sendCDPTransaction] Transaction sent: ${data.transactionHash}`);
+    
     return {
       hash: data.transactionHash,
       explorerUrl: `https://sepolia.basescan.org/tx/${data.transactionHash}`,
@@ -181,56 +212,4 @@ async function sendCDPTransaction({
     console.error('[sendCDPTransaction] Error:', error);
     throw error;
   }
-}
-
-function generateApiJwt(apiKeyId: string, apiKeySecret: string): string {
-  const payload = {
-    sub: apiKeyId, // CDP API Key ID as subject
-    exp: Math.floor(Date.now() / 1000) + 300,
-    iat: Math.floor(Date.now() / 1000),
-    scope: 'write:transactions',
-  };
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  const signature = crypto
-    .createHmac('sha256', apiKeySecret)
-    .update(`${encodedHeader}.${encodedPayload}`)
-    .digest('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
-}
-
-function generateWalletJwt(walletSecret: string, address: string): string {
-  const payload = {
-    sub: address.toLowerCase(),
-    exp: Math.floor(Date.now() / 1000) + 300,
-    iat: Math.floor(Date.now() / 1000),
-    scope: 'write:transactions',
-  };
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  const signature = crypto
-    .createHmac('sha256', walletSecret)
-    .update(`${encodedHeader}.${encodedPayload}`)
-    .digest('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
 } 
