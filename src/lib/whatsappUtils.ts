@@ -1226,21 +1226,21 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         if (actionResult.success) {
           try {
             // Try to parse the message as a template
-            const templateData = JSON.parse(actionResult.message);
+            const templateData = JSON.parse(actionResult.message as string);
             if (templateData && "name" in templateData) {
               await sendWhatsAppTemplate(from, templateData);
             } else {
               // Fallback to plain text if parsing succeeds but format is unexpected
-              await sendWhatsAppMessage(from, { text: actionResult.message });
+              await sendWhatsAppMessage(from, { text: actionResult.message as string });
             }
           } catch (err) {
             console.error("Error parsing ActionResponse message as JSON:", err);
             // If parsing fails, just send as plain text
-            await sendWhatsAppMessage(from, { text: actionResult.message });
+            await sendWhatsAppMessage(from, { text: actionResult.message as string });
           }
         } else {
           // If success is false, send the message as plain text
-          await sendWhatsAppMessage(from, { text: actionResult.message });
+          await sendWhatsAppMessage(from, { text: actionResult.message as string });
         }
       } else {
         console.error("Unknown action result format:", actionResult);
