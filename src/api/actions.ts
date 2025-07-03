@@ -454,15 +454,14 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       console.log("[handleGetWalletBalance] No wallet found for user");
       return { text: "You don't have a wallet yet. Type 'create wallet' to create one." };
     }
-    const cdpWalletId = wallet.cdp_wallet_id;
     const address = wallet.address;
-    console.log(`[handleGetWalletBalance] Found CDP wallet: ${cdpWalletId}, address: ${address}`);
+    console.log(`[handleGetWalletBalance] Using address: ${address}`);
     // Initialize default balances in case API calls fail
     let ethBalance = "0";
     let usdcBalance = "0";
     let cngnBalance = "0";
     try {
-      // Call CDP API to fetch wallet balances
+      // Call CDP v2 EVM Token Balances API
       const apiKey = process.env.CDP_API_KEY;
       const walletSecret = process.env.CDP_WALLET_SECRET;
       const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
@@ -470,8 +469,8 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
         throw new Error('CDP_API_KEY or CDP_WALLET_SECRET not configured');
       }
       const jwt = generateWalletAuthToken(walletSecret, address);
-      const cdpApiUrl = `${baseUrl}/platform/v1/wallets/${cdpWalletId}/addresses/${address}/balances`;
-      console.log(`[handleGetWalletBalance] Fetching balances from CDP: ${cdpApiUrl}`);
+      const cdpApiUrl = `${baseUrl}/platform/v2/evm/token-balances/base/${address}`;
+      console.log(`[handleGetWalletBalance] Fetching balances from CDP v2: ${cdpApiUrl}`);
       const response = await fetch(cdpApiUrl, {
         method: 'GET',
         headers: {
@@ -481,21 +480,21 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
         },
       });
       const data = await response.json();
-      console.log(`[handleGetWalletBalance] Full CDP balances response:`, JSON.stringify(data, null, 2));
-      if (response.ok && data.data && Array.isArray(data.data)) {
-        for (const asset of data.data) {
-          if (asset.asset.asset_id === 'ETH') {
-            ethBalance = formatBalance(asset.amount, asset.asset.decimals);
+      console.log(`[handleGetWalletBalance] Full CDP v2 balances response:`, JSON.stringify(data, null, 2));
+      if (response.ok && data.balances && Array.isArray(data.balances)) {
+        for (const asset of data.balances) {
+          if (asset.token.symbol === 'ETH') {
+            ethBalance = formatBalance(asset.amount.amount, asset.amount.decimals);
           }
-          if (asset.asset.asset_id === 'USDC') {
-            usdcBalance = formatBalance(asset.amount, asset.asset.decimals);
+          if (asset.token.symbol === 'USDC') {
+            usdcBalance = formatBalance(asset.amount.amount, asset.amount.decimals);
           }
         }
       } else {
-        console.error("[handleGetWalletBalance] Error fetching CDP balances:", data);
+        console.error("[handleGetWalletBalance] Error fetching CDP v2 balances:", data);
       }
     } catch (apiError) {
-      console.error("[handleGetWalletBalance] Error calling CDP API:", apiError);
+      console.error("[handleGetWalletBalance] Error calling CDP v2 API:", apiError);
     }
     // Return the wallet balance template with actual balances
     console.log("[handleGetWalletBalance] Returning balances:", {
