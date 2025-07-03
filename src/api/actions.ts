@@ -401,40 +401,26 @@ async function handleCreateWallets(userId: string) {
 
 // Handler for getting wallet address
 async function handleGetWalletAddress(userId: string) {
-  try {
-    // Get user info from Supabase for name
-    const { data: user } = await supabase
-      .from("users")
-      .select("name")
-      .eq("id", userId)
-      .single();
+  // Only return the wallet address template, no fallback or error after success
+  // Get user info from Supabase for name
+  const { data: user } = await supabase
+    .from("users")
+    .select("name")
+    .eq("id", userId)
+    .single();
 
-    const userName = user?.name || `User_${userId.substring(0, 8)}`;
+  const userName = user?.name || `User_${userId.substring(0, 8)}`;
 
-    // Get wallet using CDP
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base-sepolia" });
+  // Get wallet using CDP
+  const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base-sepolia" });
 
-    if (!wallet || !wallet.address) {
-      console.error("Failed to get wallet");
-      return { text: "Error fetching wallet address. Please try again." };
-    }
-
-    console.log("Retrieved wallet address:", {
-      address: wallet.address,
-      network: "base-sepolia", // Use hardcoded value instead of wallet.chain
-      userName: userName,
-    });
-
-    // Return wallet address
-    return usersWalletAddresses({
-      evm_wallet: wallet.address,
-    });
-  } catch (error) {
-    console.error("Error in handleGetWalletAddress:", error);
-    return {
-      text: "Failed to retrieve wallet address. Please try again later.",
-    };
+  if (!wallet || !wallet.address) {
+    return { text: "Error fetching wallet address. Please try again." };
   }
+
+  return usersWalletAddresses({
+    evm_wallet: wallet.address,
+  });
 }
 
 // Helper to fetch Sepolia ETH balance via Coinbase developer RPC
@@ -463,7 +449,7 @@ async function getSepoliaEthBalanceViaRpc(address: string): Promise<string> {
 async function getSepoliaUsdcBalanceViaRpc(address: string): Promise<string> {
   const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
   // USDC contract address on Base Sepolia
-  const usdcContract = '0xD8A7cA0A7bC7e6B1e1b1b845a70d820ee63c5dFf';
+  const usdcContract = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
   // ERC20 balanceOf(address) ABI: 0x70a08231 + 24 zeros + address (without 0x)
   const data = '0x70a08231000000000000000000000000' + address.replace(/^0x/, '');
   const body = {
