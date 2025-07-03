@@ -232,7 +232,6 @@ export async function handleAction(
     "send",
     "swap",
     "bridge",
-    "export_keys",
   ];
 
   if (blockchainIntents.includes(intent)) {
@@ -301,8 +300,6 @@ export async function handleAction(
       return handleBridgeInstructions();
     case "instruction_send":
       return handleSendInstructions();
-    case "export_keys":
-      return await handleExportKeys(params, userId);
     default:
       return {
         text: "This feature is not supported with Privy wallets."
@@ -444,7 +441,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // Get the user's wallet from Supabase
     const { data: wallet, error } = await supabase
       .from("wallets")
-      .select("privy_wallet_id, address")
+      .select("address")
       .eq("user_id", userId)
       .eq("chain", "base")
       .single();
@@ -452,44 +449,57 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       console.error("[handleGetWalletBalance] Error fetching wallet:", error);
       return { text: "Failed to retrieve your wallet address. Please try again later." };
     }
-    if (!wallet?.privy_wallet_id) {
+    if (!wallet?.address) {
       console.log("[handleGetWalletBalance] No wallet found for user");
       return { text: "You don't have a wallet yet. Type 'create wallet' to create one." };
     }
-    const privyWalletId = wallet.privy_wallet_id;
-    console.log(`[handleGetWalletBalance] Found Privy wallet: ${privyWalletId}`);
+    const address = wallet.address;
+    console.log(`[handleGetWalletBalance] Found wallet address: ${address}`);
     // Initialize default balances in case API calls fail
     let ethBalance = "0";
     let usdcBalance = "0";
     let cngnBalance = "0";
     try {
-      // Call Privy Get Balance API to fetch wallet balances
-      const privyApiUrl = `https://api.privy.io/v1/wallets/${privyWalletId}/balance?chain=base&asset=eth&asset=usdc`;
-      console.log(`[handleGetWalletBalance] Fetching balances from Privy: ${privyApiUrl}`);
-      const response = await fetch(privyApiUrl, {
-        method: 'GET',
+      // Call CDP RPC API to fetch wallet balances using cdp_listBalances method
+      const cdpApiUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
+      console.log(`[handleGetWalletBalance] Fetching balances from CDP RPC API for address: ${address}`);
+      
+      const requestBody = {
+        jsonrpc: "2.0", 
+        id: 1, 
+        method: "cdp_listBalances", 
+        params: [{
+          address: address,
+          pageToken: "",
+          pageSize: 10
+        }]
+      };
+      
+      const response = await fetch(cdpApiUrl, {
+        method: 'POST',
         headers: {
-          'Authorization': getPrivyAuthHeader(),
-          'privy-app-id': process.env.PRIVY_APP_ID!,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify(requestBody),
       });
+      
       const data = await response.json();
-      console.log(`[handleGetWalletBalance] Full Privy balances response:`, JSON.stringify(data, null, 2));
-      if (response.ok && data.balances && Array.isArray(data.balances)) {
-        for (const asset of data.balances) {
-          if (asset.asset === 'eth') {
-            ethBalance = asset.display_values?.eth || (asset.raw_value ? formatBalance(asset.raw_value, asset.raw_value_decimals || 18) : "0");
-          }
-          if (asset.asset === 'usdc') {
-            usdcBalance = asset.display_values?.usdc || (asset.raw_value ? formatBalance(asset.raw_value, asset.raw_value_decimals || 6) : "0");
+      console.log(`[handleGetWalletBalance] Full CDP RPC API response:`, JSON.stringify(data, null, 2));
+      
+      if (response.ok && data.result && data.result.balances) {
+        // Process the balances
+        for (const balance of data.result.balances) {
+          if (balance.symbol === 'ETH') {
+            ethBalance = formatBalance(balance.amount, balance.decimals);
+          } else if (balance.symbol === 'USDC') {
+            usdcBalance = formatBalance(balance.amount, balance.decimals);
           }
         }
       } else {
-        console.error("[handleGetWalletBalance] Error fetching Privy balances:", data);
+        console.error("[handleGetWalletBalance] Error fetching CDP balances:", data);
       }
     } catch (apiError) {
-      console.error("[handleGetWalletBalance] Error calling Privy API:", apiError);
+      console.error("[handleGetWalletBalance] Error calling CDP RPC API:", apiError);
     }
     // Return the wallet balance template with actual balances
     console.log("[handleGetWalletBalance] Returning balances:", {
@@ -751,10 +761,10 @@ async function handleSend(params: ActionParams, userId: string) {
   }
 }
 
-async function handleExportKeys(params: ActionParams, userId: string) {
-  // ... logic to generate privy link ...
-  return privateKeys({ privy_link: "https://privy.io/privatekeys" });
-}
+// Export keys functionality is disabled
+// async function handleExportKeys(params: ActionParams, userId: string) {
+//   return privateKeys({ privy_link: "https://privy.io/privatekeys" });
+// }
 
 // Example handler for bridging
 async function handleBridge(params: ActionParams, userId: string) {
