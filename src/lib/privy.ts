@@ -49,12 +49,12 @@ async function getAllPrivyWallets() {
 export async function getOrCreatePrivyWallet({
   userId,
   phoneNumber,
-  chain = 'evm', // 'evm', 'base', or 'solana'
+  chain = 'base-sepolia', // 'base-sepolia' for testnet, or 'solana'
   name,
 }: {
   userId: string;
   phoneNumber: string;
-  chain: 'evm' | 'base';
+  chain: 'base-sepolia';
   name?: string;
 }) {
   try {
@@ -116,7 +116,7 @@ export async function getOrCreatePrivyWallet({
     if (wallet) {
       console.log(`Found existing ${chain} wallet for user ${userId}: ${wallet.address}`);
       // If cdp_wallet_id is missing, try to backfill it
-      if ((chain === 'base' || chain === 'evm') && !wallet.cdp_wallet_id && wallet.address) {
+      if ((chain === 'base-sepolia') && !wallet.cdp_wallet_id && wallet.address) {
         try {
           // Call CDP API to get wallet by address
           const apiKey = process.env.CDP_API_KEY;
@@ -154,7 +154,7 @@ export async function getOrCreatePrivyWallet({
       const privyWallets = await getAllPrivyWallets();
       let chainType: string;
       // Map 'base' to 'ethereum' for Privy
-      if (chain === 'base' || chain === 'evm') chainType = 'ethereum';
+      if (chain === 'base-sepolia') chainType = 'ethereum';
       // if (chain === 'solana') chainType = 'solana';
       else chainType = chain;
       
@@ -188,7 +188,7 @@ export async function getOrCreatePrivyWallet({
     console.log(`Creating new ${chain} wallet in Privy`);
     let chainType: string;
     // Map 'base' to 'ethereum' for Privy
-    if (chain === 'base' || chain === 'evm') chainType = 'ethereum';
+    if (chain === 'base-sepolia') chainType = 'ethereum';
     // if (chain === 'solana') chainType = 'solana';
     else chainType = chain;
     
@@ -216,7 +216,7 @@ export async function getOrCreatePrivyWallet({
     // 5. Store wallet in Supabase
     // Try to get cdp_wallet_id from CDP API for EVM/Base
     let cdp_wallet_id = null;
-    if (chain === 'base' || chain === 'evm') {
+    if (chain === 'base-sepolia') {
       try {
         const apiKey = process.env.CDP_API_KEY;
         const walletSecret = process.env.CDP_WALLET_SECRET;
