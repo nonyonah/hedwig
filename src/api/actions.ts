@@ -301,6 +301,8 @@ export async function handleAction(
       return handleBridgeInstructions();
     case "instruction_send":
       return handleSendInstructions();
+    case "export_keys":
+      return await handleExportKeys(params, userId);
     default:
       return {
         text: "This feature is not supported with Privy wallets."
@@ -442,7 +444,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // Get the user's wallet from Supabase
     const { data: wallet, error } = await supabase
       .from("wallets")
-      .select("cdp_wallet_id, address")
+      .select("privy_wallet_id, address")
       .eq("user_id", userId)
       .eq("chain", "base")
       .single();
@@ -450,51 +452,44 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       console.error("[handleGetWalletBalance] Error fetching wallet:", error);
       return { text: "Failed to retrieve your wallet address. Please try again later." };
     }
-    if (!wallet?.cdp_wallet_id || !wallet?.address) {
+    if (!wallet?.privy_wallet_id) {
       console.log("[handleGetWalletBalance] No wallet found for user");
       return { text: "You don't have a wallet yet. Type 'create wallet' to create one." };
     }
-    const address = wallet.address;
-    console.log(`[handleGetWalletBalance] Using address: ${address}`);
+    const privyWalletId = wallet.privy_wallet_id;
+    console.log(`[handleGetWalletBalance] Found Privy wallet: ${privyWalletId}`);
     // Initialize default balances in case API calls fail
     let ethBalance = "0";
     let usdcBalance = "0";
     let cngnBalance = "0";
     try {
-      // Call CDP v2 EVM Token Balances API
-      const apiKey = process.env.CDP_API_KEY;
-      const walletSecret = process.env.CDP_WALLET_SECRET;
-      const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
-      if (!apiKey || !walletSecret) {
-        throw new Error('CDP_API_KEY or CDP_WALLET_SECRET not configured');
-      }
-      const jwt = generateWalletAuthToken(walletSecret, address);
-      const cdpApiUrl = `${baseUrl}/platform/v2/evm/token-balances/base/${address}`;
-      console.log(`[handleGetWalletBalance] Fetching balances from CDP v2: ${cdpApiUrl}`);
-      const response = await fetch(cdpApiUrl, {
+      // Call Privy Get Balance API to fetch wallet balances
+      const privyApiUrl = `https://api.privy.io/v1/wallets/${privyWalletId}/balance?chain=base&asset=eth&asset=usdc`;
+      console.log(`[handleGetWalletBalance] Fetching balances from Privy: ${privyApiUrl}`);
+      const response = await fetch(privyApiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${jwt}`,
+          'Authorization': getPrivyAuthHeader(),
+          'privy-app-id': process.env.PRIVY_APP_ID!,
           'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
         },
       });
       const data = await response.json();
-      console.log(`[handleGetWalletBalance] Full CDP v2 balances response:`, JSON.stringify(data, null, 2));
+      console.log(`[handleGetWalletBalance] Full Privy balances response:`, JSON.stringify(data, null, 2));
       if (response.ok && data.balances && Array.isArray(data.balances)) {
         for (const asset of data.balances) {
-          if (asset.token.symbol === 'ETH') {
-            ethBalance = formatBalance(asset.amount.amount, asset.amount.decimals);
+          if (asset.asset === 'eth') {
+            ethBalance = asset.display_values?.eth || (asset.raw_value ? formatBalance(asset.raw_value, asset.raw_value_decimals || 18) : "0");
           }
-          if (asset.token.symbol === 'USDC') {
-            usdcBalance = formatBalance(asset.amount.amount, asset.amount.decimals);
+          if (asset.asset === 'usdc') {
+            usdcBalance = asset.display_values?.usdc || (asset.raw_value ? formatBalance(asset.raw_value, asset.raw_value_decimals || 6) : "0");
           }
         }
       } else {
-        console.error("[handleGetWalletBalance] Error fetching CDP v2 balances:", data);
+        console.error("[handleGetWalletBalance] Error fetching Privy balances:", data);
       }
     } catch (apiError) {
-      console.error("[handleGetWalletBalance] Error calling CDP v2 API:", apiError);
+      console.error("[handleGetWalletBalance] Error calling Privy API:", apiError);
     }
     // Return the wallet balance template with actual balances
     console.log("[handleGetWalletBalance] Returning balances:", {
