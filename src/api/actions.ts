@@ -200,6 +200,14 @@ export async function handleAction(
     return await handleCreateWallets(userId);
   }
 
+  // Text-based balance intent matching
+  if (params.text && typeof params.text === 'string') {
+    const text = params.text.toLowerCase();
+    if (text.includes('balance') || text.includes('wallet balance')) {
+      return await handleGetWalletBalance(params, userId);
+    }
+  }
+
   // Special case for clarification intent
   if (intent === "clarification") {
     return {
