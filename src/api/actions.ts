@@ -462,7 +462,8 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     let cngnBalance = "0";
     try {
       // Call Privy Get Balance API to fetch wallet balances
-      const privyApiUrl = `https://api.privy.io/v1/wallets/${privyWalletId}/balance?chain=base&asset=eth&asset=usdc`;
+      const chain = 'base';
+      const privyApiUrl = `https://api.privy.io/v1/wallets/${privyWalletId}/balance?chain=${encodeURIComponent(chain)}&asset=eth&asset=usdc`;
       console.log(`[handleGetWalletBalance] Fetching balances from Privy: ${privyApiUrl}`);
       const response = await fetch(privyApiUrl, {
         method: 'GET',
