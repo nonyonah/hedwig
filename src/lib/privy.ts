@@ -1,98 +1,158 @@
-// PRIVY EVM SUPPORT IS NOW DISABLED. All EVM wallet logic is handled by BlockRadar. Only Solana logic (if any) remains here.
-
+// src/lib/privy.ts
 import { createClient } from '@supabase/supabase-js';
 import { PrivyClient } from '@privy-io/server-auth';
 
-const appId = process.env.PRIVY_APP_ID!;
-const appSecret = process.env.PRIVY_APP_SECRET!;
-const privyApiUrl = 'https://api.privy.io/v1/wallets';
-
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in your environment variables.');
+// Ensure environment variables are set
+if (
+  !process.env.PRIVY_APP_ID ||
+  !process.env.PRIVY_APP_SECRET ||
+  !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  !process.env.SUPABASE_SERVICE_ROLE_KEY
+) {
+  throw new Error(
+    'PRIVY_APP_ID, PRIVY_APP_SECRET, SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY must be set.'
+  );
 }
 
+const appId = process.env.PRIVY_APP_ID;
+const appSecret = process.env.PRIVY_APP_SECRET;
+const privyApiUrl = 'https://api.privy.io/v1';
+
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const privyClient = new PrivyClient(
-  process.env.PRIVY_APP_ID!,
-  process.env.PRIVY_APP_SECRET!
-);
+const privyClient = new PrivyClient(appId, appSecret);
 
-export function getPrivyAuthHeader() {
-  // Basic Auth: base64(appId:appSecret)
+/**
+ * Generates a Basic Auth header for server-to-server Privy API requests.
+ */
+function getPrivyServerAuthHeader() {
   const encoded = Buffer.from(`${appId}:${appSecret}`).toString('base64');
   return `Basic ${encoded}`;
 }
 
-// Helper to get all wallets for a user from Privy
-async function getAllPrivyWallets() {
-  const res = await fetch(privyApiUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': getPrivyAuthHeader(),
-      'Content-Type': 'application/json',
-      'privy-app-id': appId,
-    },
-  });
-  if (!res.ok) {
-    const errorText = await res.text();
-    console.error('Privy getAllWallets error:', errorText);
-    throw new Error(`Privy getAllWallets failed: ${errorText}`);
+/**
+ * Generates a Bearer token for authenticating as a specific Privy user.
+ * @param userId The Privy user ID (did).
+ */
+export async function getPrivyUserAuthToken(userId: string) {
+  // Fetch user from Supabase to get phone number for test token
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('phone_number')
+    .eq('id', userId)
+    .single();
+
+  if (error || !user || !user.phone_number) {
+    const errorMessage = `Could not find user ${userId} or their phone number to get auth token`;
+    console.error(errorMessage, error);
+    throw new Error(errorMessage);
   }
-  return await res.json();
+
+  // FIXME: Using `getTestAccessToken` as suggested by linter. Review for production.
+  return privyClient.getTestAccessToken({ phoneNumber: user.phone_number });
 }
 
-// Create or fetch a Privy wallet for a user (EVM or Solana)
+/**
+ * Sends a transaction on behalf of a user using their Privy wallet.
+ * This function is called from actions.ts to execute the swap.
+ */
+export async function sendTransaction(
+  userId: string,
+  walletAddress: string,
+  transactionRequest: {
+    to: string;
+    chainId: number;
+    data: string;
+    value: string;
+  }
+): Promise<string> {
+  console.log(`Sending transaction for user ${userId} from wallet ${walletAddress}`);
+  
+  const authToken = await getPrivyUserAuthToken(userId);
+
+  const res = await fetch(`${privyApiUrl}/wallets/${walletAddress}/send`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(transactionRequest),
+    }
+  );
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('Privy sendTransaction failed:', errorText);
+    throw new Error(`Privy sendTransaction failed: ${errorText}`);
+  }
+
+  const data = await res.json();
+  console.log('Privy sendTransaction successful:', data);
+  return data.tx_hash;
+}
+
+/**
+ * Creates or fetches a Privy wallet for a user.
+ * @param userId The user's unique identifier.
+ * @param phoneNumber The user's phone number.
+ * @param chain The blockchain to use (e.g., 'base-sepolia').
+ * @param name The user's name.
+ */
 export async function getOrCreatePrivyWallet({
   userId,
   phoneNumber,
-  chain = 'base-sepolia', // 'base-sepolia' for testnet, or 'solana'
+  chain = 'base-sepolia',
   name,
 }: {
   userId: string;
   phoneNumber: string;
-  chain: 'base-sepolia';
+  chain: string;
   name?: string;
 }) {
   try {
     console.log(`Getting or creating ${chain} wallet for user ${userId} with phone ${phoneNumber}`);
-    
+
     // 1. Find or create user in Supabase
-    let { data: user, error } = await supabase
+    let { data: user, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('id', userId)
       .single();
 
-    if (error) {
-      console.error('Error fetching user:', error);
-      // Try to find by phone number as fallback
-      const { data: userByPhone, error: phoneError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('phone_number', phoneNumber)
-        .maybeSingle();
-        
-      if (phoneError) {
-        console.error('Error fetching user by phone:', phoneError);
-      } else if (userByPhone) {
-        console.log(`Found user by phone number: ${userByPhone.id}`);
-        user = userByPhone;
-      }
+    if (userError && userError.code !== 'PGRST116') { // Ignore 'not found' error
+      console.error('Error fetching user from Supabase:', userError);
+      throw userError;
     }
 
     if (!user) {
-      console.log(`Creating new user with ID ${userId} and phone ${phoneNumber}`);
+        // Try to find by phone number as fallback
+        const { data: userByPhone, error: phoneError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('phone_number', phoneNumber)
+            .maybeSingle();
+
+        if (phoneError) {
+            console.error('Error fetching user by phone from Supabase:', phoneError);
+        } else if (userByPhone) {
+            console.log(`Found user by phone number in Supabase: ${userByPhone.id}`);
+            user = userByPhone;
+        }
+    }
+
+    if (!user) {
+      console.log(`Creating new user in Supabase with ID ${userId} and phone ${phoneNumber}`);
       const { data: newUser, error: createError } = await supabase
         .from('users')
         .insert([{ id: userId, phone_number: phoneNumber, name: name || null }])
         .select()
         .single();
       if (createError) {
-        console.error('Error creating user:', createError);
+        console.error('Error creating user in Supabase:', createError);
         throw createError;
       }
       user = newUser;
@@ -105,97 +165,84 @@ export async function getOrCreatePrivyWallet({
     let { data: wallet, error: walletError } = await supabase
       .from('wallets')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .eq('chain', chain)
       .single();
 
-    if (walletError) {
-      console.error('Error fetching wallet:', walletError);
+    if (walletError && walletError.code !== 'PGRST116') {
+        console.error('Error fetching wallet from Supabase:', walletError);
     }
-      
+
     if (wallet) {
-      console.log(`Found existing ${chain} wallet for user ${userId}: ${wallet.address}`);
-      // If cdp_wallet_id is missing, try to backfill it
-      if ((chain === 'base-sepolia') && !wallet.cdp_wallet_id && wallet.address) {
-        try {
-          // Call CDP API to get wallet by address
-          const apiKey = process.env.CDP_API_KEY;
-          const walletSecret = process.env.CDP_WALLET_SECRET;
-          const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
-          if (apiKey && walletSecret) {
-            // Use the v2 endpoint to get wallet info by address
-            const jwt = Buffer.from('skip').toString('base64'); // Placeholder, update if JWT is required
-            const cdpApiUrl = `${baseUrl}/platform/v2/evm/accounts/base-sepolia/${wallet.address}`;
-            const response = await fetch(cdpApiUrl, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'X-API-Key': apiKey,
-              },
-            });
-            const data = await response.json();
-            if (response.ok && data.account && data.account.wallet_id) {
-              await supabase.from('wallets').update({ cdp_wallet_id: data.account.wallet_id }).eq('id', wallet.id);
-              wallet.cdp_wallet_id = data.account.wallet_id;
-              console.log('Backfilled cdp_wallet_id for wallet:', wallet.id, data.account.wallet_id);
-            }
-          }
-        } catch (err) {
-          console.error('Error backfilling cdp_wallet_id:', err);
-        }
-      }
+      console.log(`Found existing ${chain} wallet in Supabase for user ${user.id}: ${wallet.address}`);
       return wallet;
     }
 
-    // 3. Check if wallet exists in Privy (optional, for extra safety)
+    // 3. Check if user and wallet exist in Privy
+    let privyUser;
     try {
-      console.log('Checking if wallet exists in Privy');
-      const privyWallets = await getAllPrivyWallets();
-      let chainType: string;
-      // Map 'base' to 'ethereum' for Privy
-      if (chain === 'base-sepolia') chainType = 'ethereum';
-      // if (chain === 'solana') chainType = 'solana';
-      else chainType = chain;
-      
-      console.log(`Looking for ${chainType} wallet in Privy wallets:`, privyWallets);
-      const found = privyWallets.wallets?.find((w: any) => w.chain_type === chainType);
-      
-      if (found) {
-        console.log(`Found existing ${chainType} wallet in Privy: ${found.address}`);
-        // Store in Supabase if not already
-        const { data: newWallet, error: walletError } = await supabase
-          .from('wallets')
-          .insert([{
+      privyUser = await privyClient.getUser(userId);
+    } catch (err: any) {
+      if (err.status === 404) {
+        console.log(`User ${userId} not found in Privy, creating now.`);
+        const createUserResponse = await fetch(`${privyApiUrl}/users`, {
+          method: 'POST',
+          headers: {
+            'Authorization': getPrivyServerAuthHeader(),
+            'Content-Type': 'application/json',
+            'privy-app-id': appId,
+          },
+          body: JSON.stringify({
             user_id: userId,
-            chain,
-            address: found.address,
-            privy_wallet_id: found.id,
-          }])
-          .select()
-          .single();
-        if (walletError) {
-          console.error('Error storing existing Privy wallet in Supabase:', walletError);
-          throw walletError;
+            create_embedded_wallet: false, // We create the wallet separately if needed
+          }),
+        });
+        if (!createUserResponse.ok) {
+          const errorText = await createUserResponse.text();
+          console.error(`Failed to create Privy user ${userId}:`, errorText);
+          throw new Error(`Failed to create Privy user: ${errorText}`);
         }
-        return newWallet;
+        privyUser = await createUserResponse.json();
+      } else {
+        console.error('Error fetching user from Privy:', err);
+        throw err;
       }
-    } catch (err) {
-      console.error('Error checking Privy wallets:', err);
     }
 
-    // 4. Create Privy wallet via REST API
-    console.log(`Creating new ${chain} wallet in Privy`);
     let chainType: string;
-    // Map 'base' to 'ethereum' for Privy
     if (chain === 'base-sepolia') chainType = 'ethereum';
-    // if (chain === 'solana') chainType = 'solana';
     else chainType = chain;
-    
-    const res = await fetch(privyApiUrl, {
+
+    const foundWallet = privyUser.linked_accounts.find(
+      (acc: any) => acc.type === 'wallet' && acc.chain_type === chainType
+    );
+
+    if (foundWallet) {
+      console.log(`Found existing ${chainType} wallet in Privy: ${foundWallet.address}`);
+      // Store in Supabase
+      const { data: newWallet, error: storeError } = await supabase
+        .from('wallets')
+        .insert([{
+          user_id: user.id,
+          chain,
+          address: foundWallet.address,
+          privy_wallet_id: foundWallet.id,
+        }])
+        .select()
+        .single();
+      if (storeError) {
+        console.error('Error storing existing Privy wallet in Supabase:', storeError);
+        throw storeError;
+      }
+      return newWallet;
+    }
+
+    // 4. Create Privy wallet via REST API for the user
+    console.log(`Creating new ${chain} wallet in Privy for user ${userId}`);
+    const res = await fetch(`${privyApiUrl}/users/${userId}/wallets`, {
       method: 'POST',
       headers: {
-        'Authorization': getPrivyAuthHeader(),
+        'Authorization': getPrivyServerAuthHeader(),
         'Content-Type': 'application/json',
         'privy-app-id': appId,
       },
@@ -203,53 +250,24 @@ export async function getOrCreatePrivyWallet({
         chain_type: chainType,
       }),
     });
-    
+
     if (!res.ok) {
       const errorText = await res.text();
       console.error('Privy wallet creation failed:', errorText);
       throw new Error(`Privy wallet creation failed: ${errorText}`);
     }
-    
+
     const privyWallet = await res.json();
     console.log(`Created new ${chainType} wallet in Privy:`, privyWallet);
 
     // 5. Store wallet in Supabase
-    // Try to get cdp_wallet_id from CDP API for EVM/Base
-    let cdp_wallet_id = null;
-    if (chain === 'base-sepolia') {
-      try {
-        const apiKey = process.env.CDP_API_KEY;
-        const walletSecret = process.env.CDP_WALLET_SECRET;
-        const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
-        if (apiKey && walletSecret) {
-          // Use the v2 endpoint to get wallet info by address
-          const jwt = Buffer.from('skip').toString('base64'); // Placeholder, update if JWT is required
-          const cdpApiUrl = `${baseUrl}/platform/v2/evm/accounts/base-sepolia/${privyWallet.address}`;
-          const response = await fetch(cdpApiUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-              'X-API-Key': apiKey,
-            },
-          });
-          const data = await response.json();
-          if (response.ok && data.account && data.account.wallet_id) {
-            cdp_wallet_id = data.account.wallet_id;
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching cdp_wallet_id for new wallet:', err);
-      }
-    }
     const { data: newWallet, error: newWalletError } = await supabase
       .from('wallets')
       .insert([{
-        user_id: userId,
+        user_id: user.id,
         chain,
         address: privyWallet.address,
         privy_wallet_id: privyWallet.id,
-        cdp_wallet_id,
       }])
       .select()
       .single();
@@ -258,7 +276,7 @@ export async function getOrCreatePrivyWallet({
       console.error('Error storing new wallet in Supabase:', newWalletError);
       throw newWalletError;
     }
-    
+
     console.log(`Stored new ${chain} wallet in Supabase:`, newWallet);
     return newWallet;
   } catch (error) {
@@ -266,5 +284,3 @@ export async function getOrCreatePrivyWallet({
     throw error;
   }
 }
-
-// (Leave Solana logic here if you still want to use Privy for Solana. Otherwise, this file can be removed.) 

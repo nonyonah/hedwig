@@ -39,7 +39,8 @@ import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
 import { handleTransaction } from '../lib/transactionHandler';
-import { getPrivyAuthHeader } from "../lib/privy";
+import { sendTransaction } from "@/lib/privy";
+import { getCoinbaseBearerToken } from '@/lib/coinbaseAuth';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -298,9 +299,21 @@ export async function handleAction(
     case "instruction_deposit":
       // For deposit instructions or wallet address requests, show the wallet address
       return await handleGetWalletAddress(userId);
-    case "send":
-      return await handleSend(params, userId);
-    case "send_token_prompt":
+    case "swap": {
+      const swapState = params.swap_state;
+      const cleanParams = Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== undefined));
+
+      if (swapState === 'process') {
+        // User has confirmed the swap from the prompt
+        return await handleSwapProcess(cleanParams, userId);
+      } else {
+        // Initial swap request: fetch quote and show prompt
+        return await handleSwapQuote(cleanParams, userId);
+      }
+    }
+    break;
+  case "send_token_prompt":
+
       return await handleSendInit(params, userId);
     case "instruction_swap":
       return handleSwapInstructions();
@@ -310,8 +323,9 @@ export async function handleAction(
       return handleSendInstructions();
     default:
       return {
-        text: "This feature is not supported with Privy wallets."
+        text: "This feature is not supported for your current wallet or action. Please try another request or check your wallet type."
       };
+
   }
 
   // Universal wallet check fallback for any query
@@ -811,18 +825,11 @@ async function handleCryptoDeposit(params: ActionParams, userId: string) {
   }
 }
 
-// Handler for swap quote using CDP API
 async function handleSwapQuote(params: ActionParams, userId: string) {
   try {
     console.log(`[Swap] Getting swap quote for user ${userId}`);
-    await supabase.from("messages").insert([
-      {
-        user_id: userId,
-        content: JSON.stringify(quotePending()),
-        role: "assistant",
-        created_at: new Date().toISOString(),
-      },
-    ]);
+
+    const bearerToken = await getCoinbaseBearerToken();
 
     // Get wallet address
     const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: 'base-sepolia' });
@@ -831,49 +838,27 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     }
 
     // Get swap parameters
-    const fromToken = params.from_token || params.fromToken || "ETH";
-    const toToken = params.to_token || params.toToken || "USDC";
+    const fromToken = params.from_token || "ETH";
+    const toToken = params.to_token || "USDC";
     const amount = params.amount || "0.01";
     const chain = params.chain || params.network || "base-sepolia";
 
-    // 1. Get price estimate from CDP API
-    const priceRes = await fetch(`${process.env.CDP_API_BASE_URL}/v2/evm-swaps/price-estimate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key-id': process.env.CDP_API_KEY_ID!,
-        'x-api-key-secret': process.env.CDP_API_KEY_SECRET!,
-      },
-      body: JSON.stringify({
-        from_token: fromToken,
-        to_token: toToken,
-        amount,
-        chain,
-        address: wallet.address,
-      }),
-    });
-    if (!priceRes.ok) {
-      const errorText = await priceRes.text();
-      throw new Error(`Price estimate error: ${errorText}`);
-    }
-    const priceData = await priceRes.json();
+    // Build URL for GET request
+    const quoteUrl = new URL('https://api.cdp.coinbase.com/platform/v2/evm/swaps/quote');
+    quoteUrl.searchParams.append('network', chain);
+    quoteUrl.searchParams.append('toToken', toToken);
+    quoteUrl.searchParams.append('fromToken', fromToken);
+    const fromAmountInBaseUnit = parseUnits(amount, 18).toString(); // Assuming 18 decimals for fromToken
+    quoteUrl.searchParams.append('fromAmount', fromAmountInBaseUnit);
+    quoteUrl.searchParams.append('taker', wallet.address);
 
-    // 2. Get swap quote from CDP API
-    const quoteRes = await fetch(`${process.env.CDP_API_BASE_URL}/v2/evm-swaps/swap-quote`, {
-      method: 'POST',
+    const quoteRes = await fetch(quoteUrl.toString(), {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key-id': process.env.CDP_API_KEY_ID!,
-        'x-api-key-secret': process.env.CDP_API_KEY_SECRET!,
+        'Authorization': `Bearer ${bearerToken}`,
       },
-      body: JSON.stringify({
-        from_token: fromToken,
-        to_token: toToken,
-        amount,
-        chain,
-        address: wallet.address,
-      }),
     });
+
     if (!quoteRes.ok) {
       const errorText = await quoteRes.text();
       throw new Error(`Swap quote error: ${errorText}`);
@@ -897,14 +882,14 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       },
     ], { onConflict: 'user_id' });
 
-    // WhatsApp template
-    return swapQuoteConfirm({
+    const toAmountFormatted = quoteData.toAmount ? formatBalance(quoteData.toAmount, 6) : '...'; // Assuming 6 decimals for toToken
+    
+    return swapPrompt({
       from_amount: `${amount} ${fromToken}`,
-      to_amount: `${quoteData.to_amount} ${toToken}`,
+      to_amount: `${toAmountFormatted} ${toToken}`,
+      fee: quoteData.networkFee || '?',
       chain,
-      rate: `1 ${fromToken} = ${quoteData.rate || '?'} ${toToken}`,
-      network_fee: quoteData.network_fee || '?',
-      est_time: quoteData.est_time || '?',
+      est_time: quoteData.estimatedTime || '?',
     });
   } catch (error) {
     console.error("[Swap] Error getting swap quote:", error);
@@ -912,49 +897,20 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
   }
 }
 
-// Handler for initiating a swap
-async function handleSwapInit(params: ActionParams, userId: string) {
-  try {
-    console.log(`Initiating swap for user ${userId}`);
-
-    // Get swap parameters
-    const fromToken = params.from_token || params.fromToken || "ETH";
-    const toToken = params.to_token || params.toToken || "USDC";
-    const amount = params.amount || "0.01";
-    const network = params.network || params.chain || "Base Sepolia";
-
-    return swapPrompt({
-      amount,
-      from_token: fromToken,
-      to_token: toToken,
-      network,
-    });
-  } catch (error) {
-    console.error("Error initiating swap:", error);
-    return { text: "Failed to initiate swap." };
-  }
-}
-
 // Handler for processing a swap using CDP API and Privy wallet
-async function handleSwapProcess(params: ActionParams, userId: string) {
+async function handleSwapProcess(params: ActionParams, userId:string) {
   try {
     console.log(`[Swap] Processing swap for user ${userId}`);
-    await supabase.from("messages").insert([
-      {
-        user_id: userId,
-        content: JSON.stringify(swapProcessing()),
-        role: "assistant",
-        created_at: new Date().toISOString(),
-      },
-    ]);
 
-    // Get wallet
+    const bearerToken = await getCoinbaseBearerToken();
+
+    // Get wallet address
     const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: 'base-sepolia' });
-    if (!wallet || !wallet.address || !wallet.privy_wallet_id) {
+    if (!wallet || !wallet.address) {
       return noWalletYet();
     }
 
-    // Retrieve last swap quote from session
+    // Get last swap quote from session
     const { data: session } = await supabase
       .from('sessions')
       .select('context')
@@ -968,55 +924,39 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
       }
     }
     if (!lastSwapQuote) {
-      return { text: "No swap quote found. Please request a quote first." };
+      return { text: "No swap quote found to process. Please request a new quote." };
     }
 
     // 1. Create swap via CDP API
-    const swapRes = await fetch(`${process.env.CDP_API_BASE_URL}/v2/evm-swaps`, {
+    const swapRes = await fetch('https://api.cdp.coinbase.com/platform/v2/evm/swaps', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key-id': process.env.CDP_API_KEY_ID!,
-        'x-api-key-secret': process.env.CDP_API_KEY_SECRET!,
+        'Authorization': `Bearer ${bearerToken}`,
       },
-      body: JSON.stringify({
-        ...lastSwapQuote,
-        address: wallet.address,
-      }),
+      body: JSON.stringify(lastSwapQuote), // The body is the full quote object from the previous step
     });
     if (!swapRes.ok) {
       const errorText = await swapRes.text();
-      throw new Error(`Swap creation error: ${errorText}`);
+      throw new Error(`Swap process error: ${errorText}`);
     }
     const swapData = await swapRes.json();
-    if (!swapData.tx || !swapData.tx.to || !swapData.tx.data) {
-      throw new Error("Swap transaction details missing from API response.");
-    }
 
-    // 2. Send transaction using Privy wallet
-    const { sendPrivyTransaction } = await import("@/lib/transactionHandler");
-    const txResult = await sendPrivyTransaction({
-      walletId: wallet.privy_wallet_id,
-      chain: 'base-sepolia',
-      transaction: {
-        to: swapData.tx.to,
-        value: swapData.tx.value || '0x0',
-        data: swapData.tx.data,
-        chainId: swapData.tx.chainId || '0x2105', // Base Sepolia chainId
-      },
+    // 2. Sign and send transaction using Privy
+    // 2. Sign and send transaction using our new Privy helper
+    const txHash = await sendTransaction(userId, wallet.address, {
+      to: swapData.transaction.to,
+      chainId: swapData.transaction.chainId,
+      data: swapData.transaction.data,
+      value: swapData.transaction.value ? toHex(BigInt(swapData.transaction.value)) : '0x0',
     });
 
-    // 3. WhatsApp success template
-    return swapSuccess({
-      from_amount: `${lastSwapQuote.from_amount} ${lastSwapQuote.from_token}`,
-      to_amount: `${lastSwapQuote.to_amount} ${lastSwapQuote.to_token}`,
-      network: 'Base Sepolia',
-      balance: `${lastSwapQuote.to_amount} ${lastSwapQuote.to_token}`,
-      explorerUrl: txResult.explorerUrl,
-    });
+    // Return plain text success message with tx hash
+    return { text: `✅ Swap successful! Your tokens are on the way. Transaction hash: ${txHash}` };
+
   } catch (error) {
     console.error("[Swap] Error processing swap:", error);
-    return swapFailed({ reason: error.message || "Swap failed. Please try again." });
+    return { text: "Failed to process swap. Please try again later." };
   }
 }
 
