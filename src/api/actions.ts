@@ -430,16 +430,15 @@ async function handleGetWalletAddress(userId: string) {
 }
 
 /**
- * Handle wallet balance action - Fetch real wallet balances using CDP Address Balances API
+ * Handle wallet balance action - Fetch real wallet balances using CDP Onchain Data API
  * @param params Action parameters
  * @param userId User ID
  * @returns Response with wallet balance template
  */
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    console.log(`[handleGetWalletBalance] Fetching balance for user ${userId}`);
-    // Get the user's wallet from Supabase
-    const { data: wallet, error } = await supabase
+    // Get the user's EVM wallet from Supabase
+    const { data: evmWallet, error } = await supabase
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
@@ -449,68 +448,26 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       console.error("[handleGetWalletBalance] Error fetching wallet:", error);
       return { text: "Failed to retrieve your wallet address. Please try again later." };
     }
-    if (!wallet?.address) {
-      console.log("[handleGetWalletBalance] No wallet found for user");
-      return { text: "You don't have a wallet yet. Type 'create wallet' to create one." };
-    }
-    const address = wallet.address;
-    console.log(`[handleGetWalletBalance] Found wallet address: ${address}`);
-    // Initialize default balances in case API calls fail
-    let ethBalance = "0";
-    let usdcBalance = "0";
-    let cngnBalance = "0";
-    try {
-      // Call CDP RPC API to fetch wallet balances using cdp_listBalances method
-      const cdpApiUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
-      console.log(`[handleGetWalletBalance] Fetching balances from CDP RPC API for address: ${address}`);
-      
-      const requestBody = {
-        jsonrpc: "2.0", 
-        id: 1, 
-        method: "cdp_listBalances", 
-        params: [{
-          address: address,
-          pageToken: "",
-          pageSize: 10
-        }]
-      };
-      
-      const response = await fetch(cdpApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
+    const evmAddress = evmWallet?.address;
+    let ethBalance = '0';
+    let usdcBaseBalance = '0';
+    if (evmAddress) {
+      const apiKey = process.env.ONCHAINKIT_API_KEY;
+      const resp = await fetch(`https://api.cdp.coinbase.com/onchain/v1/addresses/${evmAddress}/balances?chain=base-sepolia`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
       });
-      
-      const data = await response.json();
-      console.log(`[handleGetWalletBalance] Full CDP RPC API response:`, JSON.stringify(data, null, 2));
-      
-      if (response.ok && data.result && data.result.balances) {
-        // Process the balances
-        for (const balance of data.result.balances) {
-          if (balance.symbol === 'ETH') {
-            ethBalance = formatBalance(balance.amount, balance.decimals);
-          } else if (balance.symbol === 'USDC') {
-            usdcBalance = formatBalance(balance.amount, balance.decimals);
-          }
-        }
-      } else {
-        console.error("[handleGetWalletBalance] Error fetching CDP balances:", data);
+      if (resp.ok) {
+        const data = await resp.json();
+        const eth = data.balances.find((b: any) => b.asset.symbol === 'ETH');
+        const usdc = data.balances.find((b: any) => b.asset.symbol === 'USDC');
+        ethBalance = eth ? eth.amount : '0';
+        usdcBaseBalance = usdc ? usdc.amount : '0';
       }
-    } catch (apiError) {
-      console.error("[handleGetWalletBalance] Error calling CDP RPC API:", apiError);
     }
-    // Return the wallet balance template with actual balances
-    console.log("[handleGetWalletBalance] Returning balances:", {
-      eth_balance: ethBalance,
-      usdc_base_balance: usdcBalance,
-      cngn_balance: cngnBalance
-    });
     return walletBalance({
-      eth_balance: ethBalance || "0",
-      usdc_base_balance: usdcBalance || "0",
-      cngn_balance: cngnBalance || "0",
+      eth_balance: ethBalance,
+      usdc_base_balance: usdcBaseBalance,
+      cngn_balance: '0',
     });
   } catch (error) {
     console.error("[handleGetWalletBalance] Error:", error);
