@@ -439,7 +439,7 @@ async function handleGetWalletAddress(userId: string) {
 
 // Helper to fetch Sepolia ETH balance via Coinbase developer RPC
 async function getSepoliaEthBalanceViaRpc(address: string): Promise<string> {
-  const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/aAOzNl0p1r6KoYVHqbbMbcCuNKfEodLX';
+  const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
   const body = {
     jsonrpc: '2.0',
     method: 'eth_getBalance',
@@ -452,9 +452,38 @@ async function getSepoliaEthBalanceViaRpc(address: string): Promise<string> {
     body: JSON.stringify(body)
   });
   const data = await resp.json();
-  if (data.result) {
-    // Convert from hex wei to ETH
+  console.log('[getSepoliaEthBalanceViaRpc] RPC response:', data);
+  if (data.result && data.result !== '0x') {
     return (parseInt(data.result, 16) / 1e18).toString();
+  }
+  return '0';
+}
+
+// Helper to fetch Sepolia USDC balance via Coinbase developer RPC
+async function getSepoliaUsdcBalanceViaRpc(address: string): Promise<string> {
+  const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
+  // USDC contract address on Base Sepolia
+  const usdcContract = '0xD8A7cA0A7bC7e6B1e1b1b845a70d820ee63c5dFf';
+  // ERC20 balanceOf(address) ABI: 0x70a08231 + 24 zeros + address (without 0x)
+  const data = '0x70a08231000000000000000000000000' + address.replace(/^0x/, '');
+  const body = {
+    jsonrpc: '2.0',
+    method: 'eth_call',
+    params: [{
+      to: usdcContract,
+      data: data
+    }, 'latest'],
+    id: 1
+  };
+  const resp = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const result = await resp.json();
+  console.log('[getSepoliaUsdcBalanceViaRpc] RPC response:', result);
+  if (result.result && result.result !== '0x') {
+    return (parseInt(result.result, 16) / 1e6).toString();
   }
   return '0';
 }
@@ -480,15 +509,18 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     }
     const evmAddress = evmWallet?.address;
     let ethBalance = '0';
+    let usdcBaseBalance = '0';
     if (evmAddress) {
       ethBalance = await getSepoliaEthBalanceViaRpc(evmAddress);
+      usdcBaseBalance = await getSepoliaUsdcBalanceViaRpc(evmAddress);
+      console.log('[handleGetWalletBalance] ETH:', ethBalance, 'USDC:', usdcBaseBalance);
     } else {
       console.error("[handleGetWalletBalance] No EVM address found for user.");
       return { text: "No wallet address found for your account." };
     }
     const templateData = {
       eth_balance: ethBalance,
-      usdc_base_balance: '0',
+      usdc_base_balance: usdcBaseBalance,
       cngn_balance: '0',
     };
     console.log('[handleGetWalletBalance] Sending walletBalance template with:', templateData);
@@ -719,7 +751,7 @@ async function handleSend(params: ActionParams, userId: string) {
     
     try {
       // Execute the transaction
-      const txResult = await handleTransaction(userId, params, { ...params, isExecute: true });
+      const txResult = await handleTransaction(userId, params, { ...params, isExecute: true, chain: 'base-sepolia' });
       console.log(`[handleSend] Transaction result:`, txResult);
       
       // Return success template

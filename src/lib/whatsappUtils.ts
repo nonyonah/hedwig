@@ -1297,7 +1297,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
               // Fallback to plain text if parsing succeeds but format is unexpected
               await sendWhatsAppMessage(from, { text: actionResult.message as string });
             }
-          } catch (err) {
+  } catch (err) {
             console.error("Error parsing ActionResponse message as JSON:", err);
             // If parsing fails, just send as plain text
             await sendWhatsAppMessage(from, { text: actionResult.message as string });

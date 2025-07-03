@@ -115,6 +115,36 @@ export async function getOrCreatePrivyWallet({
       
     if (wallet) {
       console.log(`Found existing ${chain} wallet for user ${userId}: ${wallet.address}`);
+      // If cdp_wallet_id is missing, try to backfill it
+      if ((chain === 'base' || chain === 'evm') && !wallet.cdp_wallet_id && wallet.address) {
+        try {
+          // Call CDP API to get wallet by address
+          const apiKey = process.env.CDP_API_KEY;
+          const walletSecret = process.env.CDP_WALLET_SECRET;
+          const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
+          if (apiKey && walletSecret) {
+            // Use the v2 endpoint to get wallet info by address
+            const jwt = Buffer.from('skip').toString('base64'); // Placeholder, update if JWT is required
+            const cdpApiUrl = `${baseUrl}/platform/v2/evm/accounts/base-sepolia/${wallet.address}`;
+            const response = await fetch(cdpApiUrl, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'X-API-Key': apiKey,
+              },
+            });
+            const data = await response.json();
+            if (response.ok && data.account && data.account.wallet_id) {
+              await supabase.from('wallets').update({ cdp_wallet_id: data.account.wallet_id }).eq('id', wallet.id);
+              wallet.cdp_wallet_id = data.account.wallet_id;
+              console.log('Backfilled cdp_wallet_id for wallet:', wallet.id, data.account.wallet_id);
+            }
+          }
+        } catch (err) {
+          console.error('Error backfilling cdp_wallet_id:', err);
+        }
+      }
       return wallet;
     }
 
@@ -184,6 +214,34 @@ export async function getOrCreatePrivyWallet({
     console.log(`Created new ${chainType} wallet in Privy:`, privyWallet);
 
     // 5. Store wallet in Supabase
+    // Try to get cdp_wallet_id from CDP API for EVM/Base
+    let cdp_wallet_id = null;
+    if (chain === 'base' || chain === 'evm') {
+      try {
+        const apiKey = process.env.CDP_API_KEY;
+        const walletSecret = process.env.CDP_WALLET_SECRET;
+        const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
+        if (apiKey && walletSecret) {
+          // Use the v2 endpoint to get wallet info by address
+          const jwt = Buffer.from('skip').toString('base64'); // Placeholder, update if JWT is required
+          const cdpApiUrl = `${baseUrl}/platform/v2/evm/accounts/base-sepolia/${privyWallet.address}`;
+          const response = await fetch(cdpApiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'X-API-Key': apiKey,
+            },
+          });
+          const data = await response.json();
+          if (response.ok && data.account && data.account.wallet_id) {
+            cdp_wallet_id = data.account.wallet_id;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching cdp_wallet_id for new wallet:', err);
+      }
+    }
     const { data: newWallet, error: newWalletError } = await supabase
       .from('wallets')
       .insert([{
@@ -191,6 +249,7 @@ export async function getOrCreatePrivyWallet({
         chain,
         address: privyWallet.address,
         privy_wallet_id: privyWallet.id,
+        cdp_wallet_id,
       }])
       .select()
       .single();
