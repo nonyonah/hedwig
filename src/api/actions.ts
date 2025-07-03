@@ -39,6 +39,7 @@ import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
 import { handleTransaction } from '../lib/transactionHandler';
+import { getPrivyAuthHeader } from "../lib/privy";
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -438,104 +439,64 @@ async function handleGetWalletAddress(userId: string) {
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
     console.log(`[handleGetWalletBalance] Fetching balance for user ${userId}`);
-    
     // Get the user's wallet from Supabase
     const { data: wallet, error } = await supabase
       .from("wallets")
-      .select("address")
+      .select("privy_wallet_id")
       .eq("user_id", userId)
       .eq("chain", "base")
       .single();
-    
     if (error) {
       console.error("[handleGetWalletBalance] Error fetching wallet:", error);
       return { text: "Failed to retrieve your wallet address. Please try again later." };
     }
-    
-    if (!wallet?.address) {
+    if (!wallet?.privy_wallet_id) {
       console.log("[handleGetWalletBalance] No wallet found for user");
       return { text: "You don't have a wallet yet. Type 'create wallet' to create one." };
     }
-    
-    const walletAddress = wallet.address;
-    console.log(`[handleGetWalletBalance] Found wallet: ${walletAddress}`);
-    
+    const privyWalletId = wallet.privy_wallet_id;
+    console.log(`[handleGetWalletBalance] Found privy wallet: ${privyWalletId}`);
     // Initialize default balances in case API calls fail
     let ethBalance = "0";
     let usdcBalance = "0";
     let cngnBalance = "0";
-    
     try {
-      // Call CDP Address Balances API to fetch wallet balances
-      // Based on docs from https://docs.cdp.coinbase.com/api-reference/rest-api/addresses/list-wallet-address-balances
-      const apiKey = process.env.CDP_API_KEY;
-      const baseUrl = process.env.CDP_API_URL || 'https://api.cdp.coinbase.com';
-      
-      if (!apiKey) {
-        throw new Error('CDP_API_KEY not configured');
-      }
-      
-      // Fetch all balances in a single call
-      console.log(`[handleGetWalletBalance] Fetching balances for ${walletAddress} on base-sepolia`);
-      const balancesResponse = await fetch(`${baseUrl}/v1/addresses/${walletAddress}/balances?network=base-sepolia`, {
+      // Call Privy Get Balance API to fetch wallet balances
+      const privyApiUrl = `https://api.privy.io/v1/wallets/${privyWalletId}/balance`;
+      const requestBody = { chain: "base", asset: ["eth", "usdc"] };
+      console.log(`[handleGetWalletBalance] Fetching balances from Privy: ${privyApiUrl} with body:`, requestBody);
+      const response = await fetch(privyApiUrl, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
+          'Authorization': getPrivyAuthHeader(),
+          'privy-app-id': process.env.PRIVY_APP_ID!,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
       });
-      
-      if (balancesResponse.ok) {
-        const balancesData = await balancesResponse.json();
-        console.log(`[handleGetWalletBalance] Balances response:`, balancesData);
-        
-        if (balancesData.balances && Array.isArray(balancesData.balances)) {
-          // Find ETH balance
-          const ethAsset = balancesData.balances.find((asset: any) => 
-            asset.symbol?.toLowerCase() === 'eth' || 
-            asset.contractAddress === '0x0000000000000000000000000000000000000000'
-          );
-          
-          if (ethAsset) {
-            ethBalance = formatBalance(ethAsset.balance || "0", 18);
-            console.log(`[handleGetWalletBalance] ETH balance: ${ethBalance}`);
+      const data = await response.json();
+      console.log(`[handleGetWalletBalance] Full Privy balances response:`, JSON.stringify(data, null, 2));
+      if (response.ok && data.balances && Array.isArray(data.balances)) {
+        for (const asset of data.balances) {
+          if (asset.asset === 'eth') {
+            ethBalance = asset.display_values?.eth || (asset.raw_value ? formatBalance(asset.raw_value, asset.raw_value_decimals || 18) : "0");
           }
-          
-          // Find USDC balance
-          const usdcAsset = balancesData.balances.find((asset: any) => 
-            asset.symbol?.toLowerCase() === 'usdc'
-          );
-          
-          if (usdcAsset) {
-            usdcBalance = formatBalance(usdcAsset.balance || "0", 6);
-            console.log(`[handleGetWalletBalance] USDC balance: ${usdcBalance}`);
-          }
-          
-          // Find cNGN balance
-          const cngnAsset = balancesData.balances.find((asset: any) => 
-            asset.symbol?.toLowerCase() === 'cngn'
-          );
-          
-          if (cngnAsset) {
-            cngnBalance = formatBalance(cngnAsset.balance || "0", 18);
-            console.log(`[handleGetWalletBalance] cNGN balance: ${cngnBalance}`);
+          if (asset.asset === 'usdc') {
+            usdcBalance = asset.display_values?.usdc || (asset.raw_value ? formatBalance(asset.raw_value, asset.raw_value_decimals || 6) : "0");
           }
         }
       } else {
-        console.error("[handleGetWalletBalance] Error fetching balances:", 
-          await balancesResponse.text());
+        console.error("[handleGetWalletBalance] Error fetching Privy balances:", data);
       }
     } catch (apiError) {
-      console.error("[handleGetWalletBalance] Error calling CDP API:", apiError);
-      // Continue with defaults if API call fails
+      console.error("[handleGetWalletBalance] Error calling Privy API:", apiError);
     }
-    
     // Return the wallet balance template with actual balances
     console.log("[handleGetWalletBalance] Returning balances:", {
       eth_balance: ethBalance,
       usdc_base_balance: usdcBalance,
       cngn_balance: cngnBalance
     });
-    
     return walletBalance({
       eth_balance: ethBalance || "0",
       usdc_base_balance: usdcBalance || "0",
