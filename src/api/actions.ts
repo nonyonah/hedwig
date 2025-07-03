@@ -72,7 +72,7 @@ async function checkUserWallets(userId: string) {
     return { hasWallet: false, wallets: null };
   }
 
-  const hasEvm = wallets?.some((w) => w.chain === "evm" || w.chain === "base");
+  const hasEvm = wallets?.some((w) => w.chain === "base-sepolia");
   const hasSolana = wallets?.some((w) => w.chain === "solana");
 
   return {
@@ -91,7 +91,7 @@ async function checkUserWallets(userId: string) {
 async function verifyWalletExists(userId: string) {
   try {
     // Check if user has a wallet in BlockRadar
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base" });
+    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base-sepolia" });
     if (!wallet) {
       return noWalletYet();
     }
@@ -255,7 +255,7 @@ export async function handleAction(
         .from("wallets")
         .select("*")
         .eq("user_id", userId);
-      const hasEvm = wallets?.some((w) => w.chain === "evm" || w.chain === "base");
+      const hasEvm = wallets?.some((w) => w.chain === "base-sepolia");
       const hasSolana = wallets?.some((w) => w.chain === "solana");
       if (!hasEvm && !hasSolana) {
         // Block blockchain action and instruct user to create a wallet first
@@ -327,7 +327,7 @@ export async function handleAction(
       .from("wallets")
       .select("*")
       .eq("user_id", userId);
-    const hasEvm = wallets?.some((w) => w.chain === "evm" || w.chain === "base");
+    const hasEvm = wallets?.some((w) => w.chain === "base-sepolia");
     const hasSolana = wallets?.some((w) => w.chain === "solana");
     if (!hasEvm && !hasSolana) {
       return {
@@ -367,7 +367,7 @@ async function handleCreateWallets(userId: string) {
       .from("wallets")
       .select("*")
       .eq("user_id", userId)
-      .eq("chain", "base")
+      .eq("chain", "base-sepolia")
       .maybeSingle();
       
     if (walletError) {
@@ -383,7 +383,7 @@ async function handleCreateWallets(userId: string) {
     }
 
     // Use Privy to create or get wallet
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: userData?.phone_number, chain: "base", name: userName });
+    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: userData?.phone_number, chain: "base-sepolia", name: userName });
     
     console.log(`[handleCreateWallets] Successfully created wallet: ${wallet.address}`);
     const response = walletCreatedMulti({ evm_wallet: wallet.address });
@@ -412,7 +412,7 @@ async function handleGetWalletAddress(userId: string) {
     const userName = user?.name || `User_${userId.substring(0, 8)}`;
 
     // Get wallet using CDP
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base" });
+    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base-sepolia" });
 
     if (!wallet || !wallet.address) {
       console.error("Failed to get wallet");
@@ -421,7 +421,7 @@ async function handleGetWalletAddress(userId: string) {
 
     console.log("Retrieved wallet address:", {
       address: wallet.address,
-      network: "base", // Use hardcoded value instead of wallet.chain
+      network: "base-sepolia", // Use hardcoded value instead of wallet.chain
       userName: userName,
     });
 
@@ -501,7 +501,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", "base")
+      .eq("chain", "base-sepolia")
       .single();
     if (error) {
       console.error("[handleGetWalletBalance] Error fetching wallet:", error);
@@ -801,7 +801,7 @@ async function handleCryptoDeposit(params: ActionParams, userId: string) {
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", network.toLowerCase() === "solana" ? "solana" : "evm")
+      .eq("chain", network.toLowerCase() === "solana" ? "solana" : "base-sepolia")
       .single();
 
     if (error) {
@@ -978,7 +978,7 @@ async function handleBridgeDeposit(params: ActionParams, userId: string) {
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", network.toLowerCase() === "solana" ? "solana" : "evm")
+      .eq("chain", network.toLowerCase() === "solana" ? "solana" : "base-sepolia")
       .single();
 
     if (error) {
@@ -1100,7 +1100,7 @@ async function handleCryptoReceived(params: ActionParams, userId: string) {
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", network.toLowerCase() === "solana" ? "solana" : "evm")
+      .eq("chain", network.toLowerCase() === "solana" ? "solana" : "base-sepolia")
       .single();
 
     if (error) {
@@ -1151,7 +1151,7 @@ async function handleDepositInstructions(userId: string) {
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", "evm")
+      .eq("chain", "base-sepolia")
       .single();
 
     if (evmError) {
