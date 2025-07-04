@@ -949,23 +949,29 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     const toTokenDecimals = typeof toTokenObj.decimals === 'number' ? toTokenObj.decimals : 18;
     const toTokenSymbol = toTokenObj.symbol || '';
     const toAmountFormatted = toAmountRaw ? formatBalance(toAmountRaw, toTokenDecimals) : '0';
-    const gasFeeFormatted = quoteData.estimatedGas !== undefined && quoteData.estimatedGas !== null && quoteData.estimatedGas !== '' ? quoteData.estimatedGas : '0';
+    // Ensure empty string for gas fee defaults to '0'
+    const gasFeeFormatted = (quoteData.estimatedGas === '' || quoteData.estimatedGas == null) ? '0' : String(quoteData.estimatedGas);
 
-    // Log all template-bound fields and quoteData for debugging
-    console.log('[handleSwapQuote] quoteData:', JSON.stringify(quoteData));
-    console.log('[handleSwapQuote] from_amount:', `${amount} ${normalizedFromToken}`);
-    console.log('[handleSwapQuote] to_amount:', `${toAmountFormatted} ${toTokenSymbol}`);
-    console.log('[handleSwapQuote] fee:', `${gasFeeFormatted} ETH`);
-    console.log('[handleSwapQuote] chain:', normalizedChain === 'base-sepolia' ? 'Base Sepolia' : 'Base');
-    console.log('[handleSwapQuote] est_time:', '10s');
+    // Stricter validation for the quote data. We check for the presence of essential fields.
+    // If the API returns an error object, these fields will be null/undefined, and the check will correctly fail.
+    if (!quoteData || quoteData.toAmount == null || quoteData.estimatedGas == null) {
+      console.error('[handleSwapQuote] Invalid or incomplete quote data from BlockRadar. Full response:', JSON.stringify(quoteData, null, 2));
+      return {
+        text: "Sorry, I couldn't get a valid swap quote right now. There might be an issue with the token pair or liquidity. Please try again later."
+      };
+    }
 
-    return swapPrompt({
+    const promptParams = {
       from_amount: `${amount} ${normalizedFromToken}`,
       to_amount: `${toAmountFormatted} ${toTokenSymbol}`,
       fee: `${gasFeeFormatted} ETH`,
       chain: normalizedChain === 'base-sepolia' ? 'Base Sepolia' : 'Base',
       est_time: '10s',
-    });
+    };
+
+    console.log('[handleSwapQuote] Parameters for swapPrompt:', JSON.stringify(promptParams, null, 2));
+
+    return swapPrompt(promptParams);
   } catch (error) {
     console.error("[Swap] Error getting swap quote:", error);
     return { text: "Failed to get swap quote. Please try again later." };

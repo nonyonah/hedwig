@@ -1,9 +1,11 @@
 import { formatAddress } from './utils';
 
 // Export this function so it can be used in other files
-export function sanitizeWhatsAppParam(text: string | number | undefined | null): string {
-  if (text === undefined || text === null) {
-    return '';
+export function sanitizeWhatsAppParam(text: string | number | undefined | null, fieldName: string = 'unknown'): string {
+  const originalValue = text;
+  if (text === undefined || text === null || String(text).trim() === '') {
+    console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${originalValue}', output: '?'`);
+    return '?';
   }
   
   // Convert to string and trim first
@@ -16,6 +18,7 @@ export function sanitizeWhatsAppParam(text: string | number | undefined | null):
     .replace(/\s+/g, ' ')          // Replace multiple spaces with a single space
     .trim();                       // Final trim to remove any leading/trailing whitespace
   
+  console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${originalValue}', output: '${sanitized}'`);
   return sanitized;
 }
 
@@ -274,11 +277,11 @@ export function swapPrompt({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(from_amount) },
-          { type: 'text', text: sanitizeWhatsAppParam(to_amount) },
-          { type: 'text', text: sanitizeWhatsAppParam(fee) },
-          { type: 'text', text: sanitizeWhatsAppParam(chain) },
-          { type: 'text', text: sanitizeWhatsAppParam(est_time) }
+          { type: 'text', text: sanitizeWhatsAppParam(from_amount, 'from_amount') },
+          { type: 'text', text: sanitizeWhatsAppParam(to_amount, 'to_amount') },
+          { type: 'text', text: sanitizeWhatsAppParam(fee, 'fee') },
+          { type: 'text', text: sanitizeWhatsAppParam(chain, 'chain') },
+          { type: 'text', text: sanitizeWhatsAppParam(est_time, 'est_time') }
         ]
       }
     ]
