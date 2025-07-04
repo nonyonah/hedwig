@@ -41,7 +41,6 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
 import { handleTransaction } from '../lib/transactionHandler';
 import { sendTransaction } from "@/lib/privy";
-import { getCoinbaseBearerToken } from '@/lib/coinbaseAuth';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -537,6 +536,17 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
   }
 }
 
+// Helper to get ETH and USDC balance as a string for swap success
+async function getWalletBalanceString(address: string): Promise<string> {
+  try {
+    const ethBalance = await getSepoliaEthBalanceViaRpc(address);
+    const usdcBaseBalance = await getSepoliaUsdcBalanceViaRpc(address);
+    return `ETH: ${ethBalance}, USDC: ${usdcBaseBalance}`;
+  } catch (e) {
+    return 'Unavailable';
+  }
+}
+
 // Handler for swapping tokens using CDP (now handled by handleSwapQuote and handleSwapProcess)
 // Deprecated: Use handleSwapQuote and handleSwapProcess for swap flows.
 // function handleSwapTokens(params: ActionParams, userId: string) { /* deprecated */ }
@@ -842,18 +852,41 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
 
     // Parse params
     const { fromToken, toToken, amount, chain } = params;
-    if (!fromToken || !toToken || !amount || !chain) {
-      throw new Error("Missing required swap parameters");
+    if (!fromToken || !toToken || !amount) {
+      return { text: "Please specify both tokens and amount. For example: 'Swap 0.1 ETH to USDC on Base'" };
     }
 
+    // Normalize token symbols and chain
+    const normalizedFromToken = fromToken.toUpperCase();
+    const normalizedToToken = toToken.toUpperCase();
+    
+    // Validate supported tokens
+    if (!['ETH', 'USDC'].includes(normalizedFromToken) || !['ETH', 'USDC'].includes(normalizedToToken)) {
+      return { text: "Currently only ETH and USDC swaps are supported." };
+    }
+
+    // Determine chain (default to base-sepolia if not specified)
+    const normalizedChain = (chain || 'base-sepolia').toLowerCase();
+    if (!['base', 'base-sepolia'].includes(normalizedChain)) {
+      return { text: "Currently only Base network is supported for swaps." };
+    }
+
+    // Show pending message first
+    await supabase.from("messages").insert([{
+      user_id: userId,
+      content: JSON.stringify({ text: "🔄 Hold on while I fetch the best swap quote for you..." }),
+      role: "assistant",
+      created_at: new Date().toISOString(),
+    }]);
+
     // Get quote from BlockRadar API
-    const fromAmountInBaseUnit = parseUnits(amount, 18).toString(); // Assuming 18 decimals for fromToken
+    const fromAmountInBaseUnit = parseUnits(amount, normalizedFromToken === 'USDC' ? 6 : 18).toString();
     const quoteData = await blockRadar.getSwapQuote({
-      fromToken,
-      toToken,
+      fromToken: normalizedFromToken === 'ETH' ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      toToken: normalizedToToken === 'ETH' ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
       fromAmount: fromAmountInBaseUnit,
       walletAddress: wallet.address,
-      chainId: chain === 'base-sepolia' ? 84532 : 8453, // Base Sepolia or Base Mainnet
+      chainId: normalizedChain === 'base-sepolia' ? 84532 : 8453,
     });
 
     // Save quote info in session for use in swapProcess
@@ -865,7 +898,7 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
             role: 'system',
             content: JSON.stringify({
               lastSwapQuote: quoteData,
-              lastSwapParams: { fromToken, toToken, amount, chain },
+              lastSwapParams: { fromToken: normalizedFromToken, toToken: normalizedToToken, amount, chain: normalizedChain },
             }),
           },
         ],
@@ -873,14 +906,15 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       },
     ], { onConflict: 'user_id' });
 
-    const toAmountFormatted = quoteData.toAmount ? formatBalance(quoteData.toAmount, 6) : '...';
+    const toAmountFormatted = formatBalance(quoteData.toAmount, normalizedToToken === 'USDC' ? 6 : 18);
+    const gasFeeFormatted = formatBalance(quoteData.estimatedGas, 18);
     
     return swapPrompt({
-      from_amount: `${amount} ${fromToken}`,
-      to_amount: `${toAmountFormatted} ${toToken}`,
-      fee: quoteData.estimatedGas || '?',
-      chain,
-      est_time: '~1 min', // BlockRadar typically completes swaps within a minute
+      from_amount: `${amount} ${normalizedFromToken}`,
+      to_amount: `${toAmountFormatted} ${normalizedToToken}`,
+      fee: `${gasFeeFormatted} ETH`,
+      chain: normalizedChain === 'base-sepolia' ? 'Base Sepolia' : 'Base',
+      est_time: '10s',
     });
   } catch (error) {
     console.error("[Swap] Error getting swap quote:", error);
@@ -899,6 +933,14 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
       return noWalletYet();
     }
 
+    // First show the processing message
+    await supabase.from("messages").insert([{
+      user_id: userId,
+      content: JSON.stringify(swapProcessing()),
+      role: "assistant",
+      created_at: new Date().toISOString(),
+    }]);
+
     // Get last swap quote from session
     const { data: session } = await supabase
       .from('sessions')
@@ -906,10 +948,13 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
       .eq('user_id', userId)
       .single();
     let lastSwapQuote = null;
+    let lastSwapParams = null;
     if (session?.context) {
       const last = session.context.find((item: any) => item.role === 'system' && JSON.parse(item.content)?.lastSwapQuote);
       if (last) {
-        lastSwapQuote = JSON.parse(last.content).lastSwapQuote;
+        const content = JSON.parse(last.content);
+        lastSwapQuote = content.lastSwapQuote;
+        lastSwapParams = content.lastSwapParams;
       }
     }
     if (!lastSwapQuote) {
@@ -933,10 +978,26 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
       throw new Error(swapResult.error);
     }
 
-    return swapSuccessful({
-      success_message: `Swapped ${lastSwapQuote.fromAmount} ${lastSwapQuote.fromToken} to ${lastSwapQuote.toAmount} ${lastSwapQuote.toToken}`,
-      wallet_balance: await getWalletBalance(wallet.address),
-      tx_hash: txHash,
+    // First send swap success message
+    await supabase.from("messages").insert([{
+      user_id: userId,
+      content: JSON.stringify(swapSuccessful({
+        success_message: `Swapped ${lastSwapParams.amount} ${lastSwapParams.fromToken} to ${formatBalance(lastSwapQuote.toAmount, lastSwapParams.toToken === 'USDC' ? 6 : 18)} ${lastSwapParams.toToken}`,
+        wallet_balance: await getWalletBalanceString(wallet.address),
+        tx_hash: txHash,
+      })),
+      role: "assistant",
+      created_at: new Date().toISOString(),
+    }]);
+
+    // Then show deposit notification for received tokens
+    return cryptoDepositNotification({
+      amount: formatBalance(lastSwapQuote.toAmount, lastSwapParams.toToken === 'USDC' ? 6 : 18),
+      token: lastSwapParams.toToken,
+      from: 'Swap',
+      network: lastSwapParams.chain === 'base-sepolia' ? 'Base Sepolia' : 'Base',
+      balance: await getWalletBalanceString(wallet.address),
+      txUrl: `https://sepolia.basescan.org/tx/${txHash}`,
     });
 
   } catch (error) {
