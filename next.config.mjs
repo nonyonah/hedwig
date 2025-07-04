@@ -64,8 +64,7 @@ const nextConfig = {
     CDP_PROJECT_ID: process.env.CDP_PROJECT_ID,
     // ALCHEMY_API_KEY: process.env.ALCHEMY_API_KEY,
     // MORALIS_API_KEY: process.env.MORALIS_API_KEY,
-    // ZEROEX_API_KEY: process.env.ZEROEX_API_KEY,
-    BLOCKRADAR_API_KEY: process.env.BLOCKRADAR_API_KEY,
+    ZEROEX_API_KEY: process.env.ZEROEX_API_KEY,  
   },
 
   reactStrictMode: true,

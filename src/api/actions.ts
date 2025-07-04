@@ -33,7 +33,6 @@ import {
   bridgeQuoteConfirm,
   bridgeQuotePending,
 } from "@/lib/whatsappTemplates";
-import { BlockRadarClient } from "@/lib/blockRadar";
 // import { PrivyClient } from '@privy-io/server-auth'; // Privy EVM support is now disabled
 import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
@@ -55,9 +54,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
-
-// Create BlockRadar client
-const blockRadar = new BlockRadarClient(process.env.BLOCK_RADAR_API_KEY || '');
 
 /**
  * Check if a user has wallets
@@ -860,7 +856,7 @@ async function handleCryptoDeposit(params: ActionParams, userId: string) {
   }
 }
 
-// Handler for getting a swap quote from BlockRadar API
+// Handler for getting a swap quote using 0x API and Privy wallet
 async function handleSwapQuote(params: ActionParams, userId: string) {
   try {
     console.log(`[Swap] Getting swap quote for user ${userId}, params:`, params);
@@ -880,50 +876,32 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     }]);
 
     // Parse params
-    const { fromToken, toToken, amount, chain } = params;
-    if (!fromToken || !toToken || !amount) {
-      // Show a swapPrompt with whatever the user entered, but default to ETH/USDC if missing
-      return swapPrompt({
-        from_amount: `${amount || ''} ${fromToken ? fromToken.toUpperCase() : 'ETH'}`.trim(),
-        to_amount: toToken ? `? ${toToken.toUpperCase()}` : '? USDC',
-        fee: '?',
-        chain: chain || 'Base',
-        est_time: '10s',
-      });
-    }
+    const fromToken = (params.fromToken || params.from_token || 'USDC').toUpperCase();
+    const toToken = (params.toToken || params.to_token || 'ETH').toUpperCase();
+    const amount = params.amount || '1';
+    const chainId = 84532; // Base Sepolia
+    const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+    const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    const fromTokenAddress = fromToken === 'USDC' ? USDC_ADDRESS : ETH_ADDRESS;
+    const toTokenAddress = toToken === 'USDC' ? USDC_ADDRESS : ETH_ADDRESS;
+    const decimals = fromToken === 'USDC' ? 6 : 18;
+    const formattedAmount = (Number(amount) * 10 ** decimals).toString();
 
-    // Normalize token symbols and chain
-    const normalizedFromToken = fromToken.toUpperCase();
-    const normalizedToToken = toToken.toUpperCase();
-    
-    // Validate supported tokens
-    if (!['ETH', 'USDC'].includes(normalizedFromToken) || !['ETH', 'USDC'].includes(normalizedToToken)) {
-      return { text: "Currently only ETH and USDC swaps are supported." };
-    }
-
-    // Determine chain (default to base-sepolia if not specified)
-    const normalizedChain = (chain || 'base-sepolia').toLowerCase();
-    if (!['base', 'base-sepolia'].includes(normalizedChain)) {
-      return { text: "Currently only Base network is supported for swaps." };
-    }
-
-    // Show pending message first
-    await supabase.from("messages").insert([{
-      user_id: userId,
-      content: JSON.stringify({ text: "🔄 Hold on while I fetch the best swap quote for you..." }),
-      role: "assistant",
-      created_at: new Date().toISOString(),
-    }]);
-
-    // Get quote from BlockRadar API
-    const fromAmountInBaseUnit = parseUnits(amount, normalizedFromToken === 'USDC' ? 6 : 18).toString();
-    const quoteData = await blockRadar.getSwapQuote({
-      fromToken: normalizedFromToken === 'ETH' ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-      toToken: normalizedToToken === 'ETH' ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-      fromAmount: fromAmountInBaseUnit,
-      walletAddress: wallet.address,
-      chainId: normalizedChain === 'base-sepolia' ? 84532 : 8453,
+    // Fetch quote from 0x API
+    const apiKey = process.env.API_KEY_0X;
+    const quoteUrl = `https://api.0x.org/swap/permit2/quote?chainId=${chainId}&sellToken=${fromTokenAddress}&buyToken=${toTokenAddress}&sellAmount=${formattedAmount}&taker=${wallet.address}`;
+    const quoteResponse = await fetch(quoteUrl, {
+      headers: {
+        '0x-api-key': apiKey ?? '',
+        '0x-version': 'v2',
+      } as HeadersInit,
     });
+    if (!quoteResponse.ok) {
+      const errorText = await quoteResponse.text();
+      console.error('[handleSwapQuote] 0x API error:', errorText);
+      return { text: 'Failed to get swap quote from 0x.' };
+    }
+    const quoteData = await quoteResponse.json();
 
     // Save quote info in session for use in swapProcess
     await supabase.from('sessions').upsert([
@@ -934,7 +912,7 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
             role: 'system',
             content: JSON.stringify({
               lastSwapQuote: quoteData,
-              lastSwapParams: { fromToken: normalizedFromToken, toToken: normalizedToToken, amount, chain: normalizedChain },
+              lastSwapParams: { fromToken, toToken, amount, chain: 'base-sepolia' },
             }),
           },
         ],
@@ -942,35 +920,16 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       },
     ], { onConflict: 'user_id' });
 
-
-    // Format output amount and fee using BlockRadar API docs
-    const toAmountRaw = quoteData.toAmount;
-    const toTokenObj = (quoteData.toToken || {}) as { decimals?: number; symbol?: string };
-    const toTokenDecimals = typeof toTokenObj.decimals === 'number' ? toTokenObj.decimals : 18;
-    const toTokenSymbol = toTokenObj.symbol || '';
-    const toAmountFormatted = toAmountRaw ? formatBalance(toAmountRaw, toTokenDecimals) : '0';
-    // Ensure empty string for gas fee defaults to '0'
-    const gasFeeFormatted = (quoteData.estimatedGas === '' || quoteData.estimatedGas == null) ? '0' : String(quoteData.estimatedGas);
-
-    // Stricter validation for the quote data. We check for the presence of essential fields.
-    // If the API returns an error object, these fields will be null/undefined, and the check will correctly fail.
-    if (!quoteData || quoteData.toAmount == null || quoteData.estimatedGas == null) {
-      console.error('[handleSwapQuote] Invalid or incomplete quote data from BlockRadar. Full response:', JSON.stringify(quoteData, null, 2));
-      return {
-        text: "Sorry, I couldn't get a valid swap quote right now. There might be an issue with the token pair or liquidity. Please try again later."
-      };
-    }
-
+    // Format output amount and fee
+    const toAmountFormatted = (Number(quoteData.buyAmount) / 10 ** (toToken === 'USDC' ? 6 : 18)).toString();
+    const gasFeeFormatted = quoteData.estimatedGas ? String(quoteData.estimatedGas) : '?';
     const promptParams = {
-      from_amount: `${amount} ${normalizedFromToken}`,
-      to_amount: `${toAmountFormatted} ${toTokenSymbol}`,
+      from_amount: `${amount} ${fromToken}`,
+      to_amount: `${toAmountFormatted} ${toToken}`,
       fee: `${gasFeeFormatted} ETH`,
-      chain: normalizedChain === 'base-sepolia' ? 'Base Sepolia' : 'Base',
+      chain: 'Base Sepolia',
       est_time: '10s',
     };
-
-    console.log('[handleSwapQuote] Parameters for swapPrompt:', JSON.stringify(promptParams, null, 2));
-
     return swapPrompt(promptParams);
   } catch (error) {
     console.error("[Swap] Error getting swap quote:", error);
@@ -978,17 +937,15 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
   }
 }
 
-// Handler for processing a swap using BlockRadar API and Privy wallet
+// Handler for processing a swap using Privy wallet and 0x
 async function handleSwapProcess(params: ActionParams, userId: string) {
   try {
     console.log(`[Swap] Processing swap for user ${userId}`);
-
     // Get wallet address
     const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: 'base-sepolia' });
     if (!wallet || !wallet.address) {
       return noWalletYet();
     }
-
     // Get last swap quote from session
     const { data: session } = await supabase
       .from('sessions')
@@ -1008,33 +965,54 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
     if (!lastSwapQuote) {
       return { text: "No swap quote found to process. Please request a new quote." };
     }
-
-    // TODO: Integrate new swap execution logic here (BlockRadar or other)
-    // Placeholder for txHash, since sendTransaction is removed
-    const txHash = "0xPLACEHOLDER_TX_HASH";
-
-    // First send swap success message
-    await supabase.from("messages").insert([{
-      user_id: userId,
-      content: JSON.stringify(swapSuccessful({
-        success_message: `Swapped ${lastSwapParams.amount} ${lastSwapParams.fromToken} to ${formatBalance(lastSwapQuote.toAmount, lastSwapParams.toToken === 'USDC' ? 6 : 18)} ${lastSwapParams.toToken}`,
-        wallet_balance: await getWalletBalanceString(wallet.address),
-        tx_hash: txHash,
-      })),
-      role: "assistant",
-      created_at: new Date().toISOString(),
-    }]);
-
-    // Then show deposit notification for received tokens
-    return cryptoDepositNotification({
-      amount: formatBalance(lastSwapQuote.toAmount, lastSwapParams.toToken === 'USDC' ? 6 : 18),
-      token: lastSwapParams.toToken,
-      from: 'Swap',
-      network: lastSwapParams.chain === 'base-sepolia' ? 'Base Sepolia' : 'Base',
-      balance: await getWalletBalanceString(wallet.address),
-      txUrl: `https://sepolia.basescan.org/tx/${txHash}`,
+    // Step 2: Approve Permit2 contract if needed
+    const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+    const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+    const provider = await wallet.getProvider?.();
+    if (!provider) {
+      return { text: 'Could not get Privy wallet provider.' };
+    }
+    // Approve Permit2 if not already approved
+    const { encodeFunctionData, erc20Abi, maxUint256 } = await import('viem');
+    const approveData = encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [PERMIT2_ADDRESS, maxUint256],
     });
-
+    await provider.request({
+      method: 'eth_sendTransaction',
+      params: [{
+        from: wallet.address,
+        to: USDC_ADDRESS,
+        data: approveData,
+      }],
+    });
+    // Step 4: Sign and send the swap transaction
+    const { numberToHex, concat } = await import('viem');
+    const signature = await provider.request({
+      method: 'eth_signTypedData_v4',
+      params: [wallet.address, lastSwapQuote.permit2.eip712],
+    });
+    const signatureLengthInHex = numberToHex(signature.length / 2, { signed: false, size: 32 });
+    const transactionData = concat([lastSwapQuote.transaction.data, signatureLengthInHex, signature]);
+    const paramsTx = {
+      from: wallet.address,
+      to: lastSwapQuote.transaction.to,
+      data: transactionData,
+      gas: lastSwapQuote.transaction.gas ? BigInt(lastSwapQuote.transaction.gas) : undefined,
+    };
+    const txHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [paramsTx],
+    });
+    // Return swap success template
+    return swapSuccess({
+      from_amount: `${lastSwapParams.amount} ${lastSwapParams.fromToken}`,
+      to_amount: `${Number(lastSwapQuote.buyAmount) / 10 ** (lastSwapParams.toToken === 'USDC' ? 6 : 18)} ${lastSwapParams.toToken}`,
+      network: 'Base Sepolia',
+      balance: '',
+      explorerUrl: `https://sepolia.basescan.org/tx/${txHash}`,
+    });
   } catch (error) {
     console.error("[Swap] Error processing swap:", error);
     return { text: "Failed to process swap. Please try again later." };
