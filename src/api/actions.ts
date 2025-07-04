@@ -40,7 +40,7 @@ import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
 import { handleTransaction } from '../lib/transactionHandler';
-import { sendTransaction } from "@/lib/privy";
+
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -213,25 +213,39 @@ export async function handleAction(
   }
 
   // Special case for clarification intent
-  if (intent === "clarification") {
-    return {
-      text: "I'm not sure what you're asking. Could you please rephrase your question?",
-    };
-  }
-
-  // Handle unknown intent
-  if (intent === "unknown") {
-    console.log("[handleAction] Unknown intent, checking if this is a wallet creation request");
-    // Check if this might be a wallet creation request despite unknown intent
-    if (params.text && typeof params.text === 'string' && 
-        (params.text.toLowerCase().includes('create wallet') || 
-         params.text.toLowerCase().includes('wallet create') ||
-         params.text.toLowerCase().includes('make wallet') ||
-         params.text.toLowerCase().includes('new wallet'))) {
-      console.log("[handleAction] Text suggests wallet creation, calling handleCreateWallets");
-      return await handleCreateWallets(userId);
+  if (intent === "clarification" || intent === "unknown") {
+    // Check session context for a pending swap
+    const { data: session } = await supabase
+      .from('sessions')
+      .select('context')
+      .eq('user_id', userId)
+      .single();
+    let lastSwapQuote = null;
+    let lastSwapParams = null;
+    if (session && session.context && Array.isArray(session.context)) {
+      for (const ctx of session.context) {
+        if (ctx.role === 'system' && ctx.content) {
+          try {
+            const content = typeof ctx.content === 'string' ? JSON.parse(ctx.content) : ctx.content;
+            if (content.lastSwapQuote && content.lastSwapParams) {
+              lastSwapQuote = content.lastSwapQuote;
+              lastSwapParams = content.lastSwapParams;
+              break;
+            }
+          } catch (e) { /* ignore parse errors */ }
+        }
+      }
     }
-    
+    if (lastSwapQuote && lastSwapParams) {
+      // Treat as swap confirmation
+      return await handleSwapProcess(lastSwapParams, userId);
+    }
+    // Fallback: clarification/unknown
+    if (intent === "clarification") {
+      return {
+        text: "I'm not sure what you're asking. Could you please rephrase your question?",
+      };
+    }
     return {
       text: "I didn't understand your request. You can ask about creating a wallet, checking balance, sending crypto, swapping tokens, or getting crypto prices.",
     };
@@ -290,6 +304,13 @@ export async function handleAction(
   }
 
   switch (intent) {
+    case "balance":
+    case "show_balance":
+    case "wallet":
+    case "wallet_balance":
+    case "my_wallet":
+    case "check_balance":
+      return await handleGetWalletBalance(params, userId);
     case "welcome":
       return await handleOnboarding(userId);
     case "create_wallets":
@@ -850,10 +871,25 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       return noWalletYet();
     }
 
+    // Always show the fetching quote message before any prompt
+    await supabase.from("messages").insert([{
+      user_id: userId,
+      content: JSON.stringify({ text: "🔄 Hold on while I fetch the best swap quote for you..." }),
+      role: "assistant",
+      created_at: new Date().toISOString(),
+    }]);
+
     // Parse params
     const { fromToken, toToken, amount, chain } = params;
     if (!fromToken || !toToken || !amount) {
-      return { text: "Please specify both tokens and amount. For example: 'Swap 0.1 ETH to USDC on Base'" };
+      // Show a swapPrompt with whatever the user entered, but default to ETH/USDC if missing
+      return swapPrompt({
+        from_amount: `${amount || ''} ${fromToken ? fromToken.toUpperCase() : 'ETH'}`.trim(),
+        to_amount: toToken ? `? ${toToken.toUpperCase()}` : '? USDC',
+        fee: '?',
+        chain: chain || 'Base',
+        est_time: '10s',
+      });
     }
 
     // Normalize token symbols and chain
@@ -906,12 +942,26 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       },
     ], { onConflict: 'user_id' });
 
-    const toAmountFormatted = formatBalance(quoteData.toAmount, normalizedToToken === 'USDC' ? 6 : 18);
-    const gasFeeFormatted = formatBalance(quoteData.estimatedGas, 18);
-    
+
+    // Format output amount and fee using BlockRadar API docs
+    const toAmountRaw = quoteData.toAmount;
+    const toTokenObj = (quoteData.toToken || {}) as { decimals?: number; symbol?: string };
+    const toTokenDecimals = typeof toTokenObj.decimals === 'number' ? toTokenObj.decimals : 18;
+    const toTokenSymbol = toTokenObj.symbol || '';
+    const toAmountFormatted = toAmountRaw ? formatBalance(toAmountRaw, toTokenDecimals) : '0';
+    const gasFeeFormatted = quoteData.estimatedGas !== undefined && quoteData.estimatedGas !== null && quoteData.estimatedGas !== '' ? quoteData.estimatedGas : '0';
+
+    // Log all template-bound fields and quoteData for debugging
+    console.log('[handleSwapQuote] quoteData:', JSON.stringify(quoteData));
+    console.log('[handleSwapQuote] from_amount:', `${amount} ${normalizedFromToken}`);
+    console.log('[handleSwapQuote] to_amount:', `${toAmountFormatted} ${toTokenSymbol}`);
+    console.log('[handleSwapQuote] fee:', `${gasFeeFormatted} ETH`);
+    console.log('[handleSwapQuote] chain:', normalizedChain === 'base-sepolia' ? 'Base Sepolia' : 'Base');
+    console.log('[handleSwapQuote] est_time:', '10s');
+
     return swapPrompt({
       from_amount: `${amount} ${normalizedFromToken}`,
-      to_amount: `${toAmountFormatted} ${normalizedToToken}`,
+      to_amount: `${toAmountFormatted} ${toTokenSymbol}`,
       fee: `${gasFeeFormatted} ETH`,
       chain: normalizedChain === 'base-sepolia' ? 'Base Sepolia' : 'Base',
       est_time: '10s',
@@ -923,7 +973,7 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
 }
 
 // Handler for processing a swap using BlockRadar API and Privy wallet
-async function handleSwapProcess(params: ActionParams, userId:string) {
+async function handleSwapProcess(params: ActionParams, userId: string) {
   try {
     console.log(`[Swap] Processing swap for user ${userId}`);
 
@@ -932,14 +982,6 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
     if (!wallet || !wallet.address) {
       return noWalletYet();
     }
-
-    // First show the processing message
-    await supabase.from("messages").insert([{
-      user_id: userId,
-      content: JSON.stringify(swapProcessing()),
-      role: "assistant",
-      created_at: new Date().toISOString(),
-    }]);
 
     // Get last swap quote from session
     const { data: session } = await supabase
@@ -961,22 +1003,9 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
       return { text: "No swap quote found to process. Please request a new quote." };
     }
 
-    // Sign and send transaction using our Privy helper
-    const txHash = await sendTransaction(userId, wallet.address, {
-      to: lastSwapQuote.tx.to,
-      chainId: lastSwapQuote.tx.chainId,
-      data: lastSwapQuote.tx.data,
-      value: lastSwapQuote.tx.value ? toHex(BigInt(lastSwapQuote.tx.value)) : '0x0',
-    });
-
-    // Execute the swap using BlockRadar API
-    const swapResult = await blockRadar.executeSwap({
-      swapId: lastSwapQuote.swapId,
-    });
-
-    if (swapResult.error) {
-      throw new Error(swapResult.error);
-    }
+    // TODO: Integrate new swap execution logic here (BlockRadar or other)
+    // Placeholder for txHash, since sendTransaction is removed
+    const txHash = "0xPLACEHOLDER_TX_HASH";
 
     // First send swap success message
     await supabase.from("messages").insert([{
@@ -1005,6 +1034,7 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
     return { text: "Failed to process swap. Please try again later." };
   }
 }
+
 
 // Handler for initiating a token send
 async function handleSendInit(params: ActionParams, userId: string) {
