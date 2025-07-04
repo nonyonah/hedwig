@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
-import { getPrivyAuthHeader } from './privy';
+import { getPrivyServerAuthHeader } from './privy';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -174,7 +174,7 @@ async function recordTransaction(
 /**
  * Send a transaction via Privy API
  */
-async function sendPrivyTransaction({
+export async function sendPrivyTransaction({
   walletId,
   chain,
   transaction,
@@ -215,7 +215,7 @@ async function sendPrivyTransaction({
       {
         method: 'POST',
         headers: {
-          'Authorization': getPrivyAuthHeader(),
+          'Authorization': getPrivyServerAuthHeader(),
           'Content-Type': 'application/json',
           'privy-app-id': process.env.PRIVY_APP_ID!,
         },

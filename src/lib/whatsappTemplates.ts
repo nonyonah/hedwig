@@ -255,15 +255,17 @@ export function quotePending() {
  * Parameters: amount, from_token, to_token, network
  */
 export function swapPrompt({ 
-  amount, 
-  from_token, 
-  to_token, 
-  network 
+  from_amount, 
+  to_amount, 
+  fee, 
+  chain, 
+  est_time 
 }: { 
-  amount: string, 
-  from_token: string, 
-  to_token: string, 
-  network: string 
+  from_amount: string, 
+  to_amount: string, 
+  fee: string, 
+  chain: string, 
+  est_time: string 
 }) {
   return {
     name: 'swap_prompt',
@@ -272,10 +274,11 @@ export function swapPrompt({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(amount) },
-          { type: 'text', text: sanitizeWhatsAppParam(from_token) },
-          { type: 'text', text: sanitizeWhatsAppParam(to_token) },
-          { type: 'text', text: sanitizeWhatsAppParam(network) }
+          { type: 'text', text: sanitizeWhatsAppParam(from_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(to_amount) },
+          { type: 'text', text: sanitizeWhatsAppParam(fee) },
+          { type: 'text', text: sanitizeWhatsAppParam(chain) },
+          { type: 'text', text: sanitizeWhatsAppParam(est_time) }
         ]
       }
     ]
@@ -612,8 +615,8 @@ export function errorTemplate(reason: string) {
 }
 
 // Alias for swap_failed - using send_failed template since there's no dedicated swap_failed template
-export function swapFailed() {
-  return sendFailed({ reason: 'Swap failed' });
+export function swapFailed({ reason }: { reason: string }) {
+  return sendFailed({ reason });
 }
 
 // Alias for swap_pending - using tx_pending template

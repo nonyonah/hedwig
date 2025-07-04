@@ -28,7 +28,7 @@ const privyClient = new PrivyClient(appId, appSecret);
 /**
  * Generates a Basic Auth header for server-to-server Privy API requests.
  */
-function getPrivyServerAuthHeader() {
+export function getPrivyServerAuthHeader() {
   const encoded = Buffer.from(`${appId}:${appSecret}`).toString('base64');
   return `Basic ${encoded}`;
 }
