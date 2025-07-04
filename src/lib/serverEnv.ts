@@ -247,3 +247,15 @@ if (!process.env.NETLIFY) {
 } else {
   console.log('[ENV] Skipping loadServerEnvironment on Netlify. Environment variables are injected by Netlify.');
 }
+
+/**
+ * Get required environment variables
+ */
+export function getServerEnvironment() {
+  // BlockRadar API key
+  const blockRadarApiKey = getRequiredEnvVar('BLOCK_RADAR_API_KEY');
+
+  return {
+    blockRadarApiKey,
+  };
+}

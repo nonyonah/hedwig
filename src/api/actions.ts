@@ -33,14 +33,15 @@ import {
   bridgeQuoteConfirm,
   bridgeQuotePending,
 } from "@/lib/whatsappTemplates";
+import { BlockRadarClient } from "@/lib/blockRadar";
 // import { PrivyClient } from '@privy-io/server-auth'; // Privy EVM support is now disabled
 import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
 import { handleTransaction } from '../lib/transactionHandler';
-
-
+import { sendTransaction } from "@/lib/privy";
+import { getCoinbaseBearerToken } from '@/lib/coinbaseAuth';
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -55,6 +56,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+
+// Create BlockRadar client
+const blockRadar = new BlockRadarClient(process.env.BLOCK_RADAR_API_KEY || '');
 
 /**
  * Check if a user has wallets
@@ -319,10 +323,6 @@ export async function handleAction(
       return handleSwapInstructions();
     case "instruction_bridge":
       return handleBridgeInstructions();
-    case "swap":
-      return params.swap_state === 'process'
-        ? await handleSwapProcess(params, userId)
-        : await handleSwapQuote(params, userId);
     case "instruction_send":
       return handleSendInstructions();
     default:
@@ -829,11 +829,10 @@ async function handleCryptoDeposit(params: ActionParams, userId: string) {
   }
 }
 
+// Handler for getting a swap quote from BlockRadar API
 async function handleSwapQuote(params: ActionParams, userId: string) {
   try {
-    console.log(`[Swap] Getting swap quote for user ${userId}`);
-
-    const bearerToken = await getCoinbaseBearerToken();
+    console.log(`[Swap] Getting swap quote for user ${userId}, params:`, params);
 
     // Get wallet address
     const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: 'base-sepolia' });
@@ -841,33 +840,21 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       return noWalletYet();
     }
 
-    // Get swap parameters
-    const fromToken = params.from_token || "ETH";
-    const toToken = params.to_token || "USDC";
-    const amount = params.amount || "0.01";
-    const chain = params.chain || params.network || "base-sepolia";
-
-    // Build URL for GET request
-    const quoteUrl = new URL('https://api.cdp.coinbase.com/platform/v2/evm/swaps/quote');
-    quoteUrl.searchParams.append('network', chain);
-    quoteUrl.searchParams.append('toToken', toToken);
-    quoteUrl.searchParams.append('fromToken', fromToken);
-    const fromAmountInBaseUnit = parseUnits(amount, 18).toString(); // Assuming 18 decimals for fromToken
-    quoteUrl.searchParams.append('fromAmount', fromAmountInBaseUnit);
-    quoteUrl.searchParams.append('taker', wallet.address);
-
-    const quoteRes = await fetch(quoteUrl.toString(), {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${bearerToken}`,
-      },
-    });
-
-    if (!quoteRes.ok) {
-      const errorText = await quoteRes.text();
-      throw new Error(`Swap quote error: ${errorText}`);
+    // Parse params
+    const { fromToken, toToken, amount, chain } = params;
+    if (!fromToken || !toToken || !amount || !chain) {
+      throw new Error("Missing required swap parameters");
     }
-    const quoteData = await quoteRes.json();
+
+    // Get quote from BlockRadar API
+    const fromAmountInBaseUnit = parseUnits(amount, 18).toString(); // Assuming 18 decimals for fromToken
+    const quoteData = await blockRadar.getSwapQuote({
+      fromToken,
+      toToken,
+      fromAmount: fromAmountInBaseUnit,
+      walletAddress: wallet.address,
+      chainId: chain === 'base-sepolia' ? 84532 : 8453, // Base Sepolia or Base Mainnet
+    });
 
     // Save quote info in session for use in swapProcess
     await supabase.from('sessions').upsert([
@@ -886,14 +873,14 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       },
     ], { onConflict: 'user_id' });
 
-    const toAmountFormatted = quoteData.toAmount ? formatBalance(quoteData.toAmount, 6) : '...'; // Assuming 6 decimals for toToken
+    const toAmountFormatted = quoteData.toAmount ? formatBalance(quoteData.toAmount, 6) : '...';
     
     return swapPrompt({
       from_amount: `${amount} ${fromToken}`,
       to_amount: `${toAmountFormatted} ${toToken}`,
-      fee: quoteData.networkFee || '?',
+      fee: quoteData.estimatedGas || '?',
       chain,
-      est_time: quoteData.estimatedTime || '?',
+      est_time: '~1 min', // BlockRadar typically completes swaps within a minute
     });
   } catch (error) {
     console.error("[Swap] Error getting swap quote:", error);
@@ -901,12 +888,10 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
   }
 }
 
-// Handler for processing a swap using CDP API and Privy wallet
+// Handler for processing a swap using BlockRadar API and Privy wallet
 async function handleSwapProcess(params: ActionParams, userId:string) {
   try {
     console.log(`[Swap] Processing swap for user ${userId}`);
-
-    const bearerToken = await getCoinbaseBearerToken();
 
     // Get wallet address
     const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: 'base-sepolia' });
@@ -931,32 +916,28 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
       return { text: "No swap quote found to process. Please request a new quote." };
     }
 
-    // 1. Create swap via CDP API
-    const swapRes = await fetch('https://api.cdp.coinbase.com/platform/v2/evm/swaps', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${bearerToken}`,
-      },
-      body: JSON.stringify(lastSwapQuote), // The body is the full quote object from the previous step
-    });
-    if (!swapRes.ok) {
-      const errorText = await swapRes.text();
-      throw new Error(`Swap process error: ${errorText}`);
-    }
-    const swapData = await swapRes.json();
-
-    // 2. Sign and send transaction using Privy
-    // 2. Sign and send transaction using our new Privy helper
+    // Sign and send transaction using our Privy helper
     const txHash = await sendTransaction(userId, wallet.address, {
-      to: swapData.transaction.to,
-      chainId: swapData.transaction.chainId,
-      data: swapData.transaction.data,
-      value: swapData.transaction.value ? toHex(BigInt(swapData.transaction.value)) : '0x0',
+      to: lastSwapQuote.tx.to,
+      chainId: lastSwapQuote.tx.chainId,
+      data: lastSwapQuote.tx.data,
+      value: lastSwapQuote.tx.value ? toHex(BigInt(lastSwapQuote.tx.value)) : '0x0',
     });
 
-    // Return plain text success message with tx hash
-    return { text: `✅ Swap successful! Your tokens are on the way. Transaction hash: ${txHash}` };
+    // Execute the swap using BlockRadar API
+    const swapResult = await blockRadar.executeSwap({
+      swapId: lastSwapQuote.swapId,
+    });
+
+    if (swapResult.error) {
+      throw new Error(swapResult.error);
+    }
+
+    return swapSuccessful({
+      success_message: `Swapped ${lastSwapQuote.fromAmount} ${lastSwapQuote.fromToken} to ${lastSwapQuote.toAmount} ${lastSwapQuote.toToken}`,
+      wallet_balance: await getWalletBalance(wallet.address),
+      tx_hash: txHash,
+    });
 
   } catch (error) {
     console.error("[Swap] Error processing swap:", error);
@@ -965,126 +946,6 @@ async function handleSwapProcess(params: ActionParams, userId:string) {
 }
 
 // Handler for initiating a token send
-async function handleSwapQuote(params: ActionParams, userId: string) {
-  try {
-    const { from_token, to_token, from_amount } = params;
-    if (!from_token || !to_token || !from_amount) {
-      return { text: 'Please provide the token you want to swap from, the token you want to receive, and the amount.' };
-    }
-
-    const apiKey = process.env.BLOCKRADAR_API_KEY;
-    if (!apiKey) {
-      console.error('BLOCKRADAR_API_KEY is not set.');
-      return { text: 'The swap service is currently unavailable. Please try again later.' };
-    }
-
-    const response = await fetch('https://api.blockradar.co/v1/addresses/swap-quote', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-KEY': apiKey,
-      },
-      body: JSON.stringify({
-        fromAssetId: from_token,
-        toAssetId: to_token,
-        amount: from_amount,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('BlockRadar API Error:', errorText);
-      throw new Error(`BlockRadar API Error: ${errorText}`);
-    }
-
-    const quote = await response.json();
-
-    // Save the successful quote and original request parameters to the session
-    const sessionData = {
-      last_swap_quote: quote,
-      from_token,
-      to_token,
-      from_amount
-    };
-
-    await supabase.from('sessions').upsert(
-      {
-        user_id: userId,
-        context: [{ role: 'system', content: JSON.stringify(sessionData) }],
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id' }
-    );
-
-    return swapQuoteConfirm({
-      from_amount: from_amount,
-      to_amount: quote.toAmount,
-      chain: 'Base Sepolia', // Placeholder
-      rate: 'N/A', // Placeholder
-      network_fee: 'N/A', // Placeholder
-      est_time: 'N/A', // Placeholder
-    });
-  } catch (error) {
-    console.error('[Swap Quote Error]', error);
-    return { text: 'Sorry, I was unable to get a swap quote. Please try again.' };
-  }
-}
-
-async function handleSwapProcess(params: ActionParams, userId: string) {
-  try {
-    const { data: session } = await supabase
-      .from('sessions')
-      .select('context')
-      .eq('user_id', userId)
-      .single();
-
-    const sessionContext = session?.context.find((c: any) => c.role === 'system' && JSON.parse(c.content)?.last_swap_quote);
-    const sessionData = sessionContext ? JSON.parse(sessionContext.content) : null;
-
-    if (!sessionData || !sessionData.last_swap_quote) {
-      return { text: 'No active swap quote found. Please get a new quote first.' };
-    }
-
-    const apiKey = process.env.BLOCKRADAR_API_KEY;
-    if (!apiKey) {
-      console.error('BLOCKRADAR_API_KEY is not set.');
-      return { text: 'The swap service is currently unavailable. Please try again later.' };
-    }
-
-    const response = await fetch('https://api.blockradar.co/v1/addresses/swap-execute', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-KEY': apiKey,
-      },
-      body: JSON.stringify({
-        fromAssetId: sessionData.from_token,
-        toAssetId: sessionData.to_token,
-        amount: sessionData.from_amount,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('BlockRadar API Error:', errorText);
-      throw new Error(`BlockRadar API Error: ${errorText}`);
-    }
-
-    const swapResult = await response.json();
-
-    return swapSuccess({
-      from_amount: sessionData.from_amount,
-      to_amount: sessionData.last_swap_quote.toAmount,
-      network: 'Base Sepolia',
-      balance: 'N/A', // Balance is not available here
-      explorerUrl: getExplorerUrl('base-sepolia', swapResult.transactionHash),
-    });
-  } catch (error) {
-    console.error('[Swap Process Error]', error);
-    return swapFailed({ reason: 'An unexpected error occurred while processing your swap.' });
-  }
-}
-
 async function handleSendInit(params: ActionParams, userId: string) {
   try {
     console.log(`Initiating send for user ${userId}`);
