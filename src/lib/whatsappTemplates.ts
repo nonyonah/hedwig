@@ -500,16 +500,18 @@ export function sendFailed({ reason }: { reason: string }) {
 /**
  * Template: wallet_balance
  * Parameter Format: POSITIONAL
- * Parameters: eth_balance, usdc_base_balance, cngn_balance
+ * Parameters: base_eth_balance, base_usdc_balance, eth_sepolia_balance, usdc_sepolia_balance
  */
 export function walletBalance({ 
-  eth_balance, 
-  usdc_base_balance,
-  cngn_balance
+  base_eth_balance, 
+  base_usdc_balance,
+  eth_sepolia_balance,
+  usdc_sepolia_balance
 }: { 
-  eth_balance: string, 
-  usdc_base_balance: string,
-  cngn_balance: string
+  base_eth_balance: string, 
+  base_usdc_balance: string,
+  eth_sepolia_balance: string,
+  usdc_sepolia_balance: string
 }) {
   return {
     name: 'wallet_balance',
@@ -518,9 +520,10 @@ export function walletBalance({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(cngn_balance) }
+          { type: 'text', text: sanitizeWhatsAppParam(base_eth_balance, 'base_eth_balance') },
+          { type: 'text', text: sanitizeWhatsAppParam(base_usdc_balance, 'base_usdc_balance') },
+          { type: 'text', text: sanitizeWhatsAppParam(eth_sepolia_balance, 'eth_sepolia_balance') },
+          { type: 'text', text: sanitizeWhatsAppParam(usdc_sepolia_balance, 'usdc_sepolia_balance') }
         ]
       }
     ]
