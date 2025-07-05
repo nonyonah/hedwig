@@ -377,6 +377,7 @@ export function tokenReceived({ amount, network, balance }: { amount: string, ne
   };
 }
 
+
 /**
  * Template: bridge_failed
  * Parameter Format: NAMED
@@ -490,7 +491,7 @@ export function sendFailed({ reason }: { reason: string }) {
       {
         type: 'body',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(safeReason), name: 'reason' }
+          { type: 'text', text: sanitizeWhatsAppParam(safeReason) }
         ]
       }
     ]
@@ -500,18 +501,18 @@ export function sendFailed({ reason }: { reason: string }) {
 /**
  * Template: wallet_balance
  * Parameter Format: POSITIONAL
- * Parameters: base_eth_balance, base_usdc_balance, eth_sepolia_balance, usdc_sepolia_balance
+ * Parameters: base_eth, base_usdc, eth_eth, eth_usdc
  */
 export function walletBalance({ 
-  base_eth_balance, 
-  base_usdc_balance,
-  eth_sepolia_balance,
-  usdc_sepolia_balance
+  base_eth, 
+  base_usdc, 
+  eth_eth, 
+  eth_usdc 
 }: { 
-  base_eth_balance: string, 
-  base_usdc_balance: string,
-  eth_sepolia_balance: string,
-  usdc_sepolia_balance: string
+  base_eth: string, 
+  base_usdc: string, 
+  eth_eth: string, 
+  eth_usdc: string 
 }) {
   return {
     name: 'wallet_balance',
@@ -520,10 +521,10 @@ export function walletBalance({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(base_eth_balance, 'base_eth_balance') },
-          { type: 'text', text: sanitizeWhatsAppParam(base_usdc_balance, 'base_usdc_balance') },
-          { type: 'text', text: sanitizeWhatsAppParam(eth_sepolia_balance, 'eth_sepolia_balance') },
-          { type: 'text', text: sanitizeWhatsAppParam(usdc_sepolia_balance, 'usdc_sepolia_balance') }
+          { type: 'text', text: sanitizeWhatsAppParam(base_eth, 'base_eth') },
+          { type: 'text', text: sanitizeWhatsAppParam(base_usdc, 'base_usdc') },
+          { type: 'text', text: sanitizeWhatsAppParam(eth_eth, 'eth_eth') },
+          { type: 'text', text: sanitizeWhatsAppParam(eth_usdc, 'eth_usdc') }
         ]
       }
     ]

@@ -35,6 +35,7 @@
     "@privy-io/server-auth": "^1.27.1",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.0",
+    "alchemy-sdk": "^3.6.0",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.4",
     "ethers": "^6.14.4",

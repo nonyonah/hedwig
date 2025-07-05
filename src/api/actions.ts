@@ -1,5 +1,6 @@
 import { getOrCreatePrivyWallet } from "@/lib/privy";
 import { createClient } from "@supabase/supabase-js";
+
 import fetch from "node-fetch";
 import { formatAddress, formatBalance } from "@/lib/utils";
 import {
@@ -457,170 +458,142 @@ async function handleGetWalletAddress(userId: string) {
   });
 }
 
-// Helper to fetch Sepolia ETH balance via Coinbase developer RPC
-async function getSepoliaEthBalanceViaRpc(address: string): Promise<string> {
-  const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
-  const body = {
+const ALCHEMY_URL_ETH = process.env.ALCHEMY_URL_ETH_SEPOLIA;
+const ALCHEMY_URL_BASE = process.env.ALCHEMY_URL_BASE_SEPOLIA;
+
+const USDC_CONTRACT_ETH = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // Ethereum Sepolia USDC
+const USDC_CONTRACT_BASE = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
+
+async function getTokenBalances(address: string, network: 'eth' | 'base'): Promise<{ eth: string, usdc: string }> {
+  const url = network === 'eth' ? ALCHEMY_URL_ETH : ALCHEMY_URL_BASE;
+  const usdcContract = network === 'eth' ? USDC_CONTRACT_ETH : USDC_CONTRACT_BASE;
+
+  if (!url) {
+    throw new Error(`Alchemy URL for ${network} is not set. Please set the respective environment variables.`);
+  }
+
+  console.log(`[getTokenBalances] Fetching balances for address: ${address} on network: ${network}`);
+
+  // Create payload for eth_getBalance
+  const ethBalancePayload = {
     jsonrpc: '2.0',
+    id: 1,
     method: 'eth_getBalance',
     params: [address, 'latest'],
-    id: 1
   };
-  const resp = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await resp.json();
-  console.log('[getSepoliaEthBalanceViaRpc] RPC response:', data);
-  if (data.result && data.result !== '0x') {
-    return (parseInt(data.result, 16) / 1e18).toString();
-  }
-  return '0';
-}
 
-// Helper to fetch Sepolia USDC balance via Coinbase developer RPC
-async function getSepoliaUsdcBalanceViaRpc(address: string): Promise<string> {
-  const rpcUrl = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
-  // USDC contract address on Base Sepolia
-  const usdcContract = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
-  // ERC20 balanceOf(address) ABI: 0x70a08231 + 24 zeros + address (without 0x)
-  const data = '0x70a08231000000000000000000000000' + address.replace(/^0x/, '');
-  const body = {
+  // Create payload for balanceOf USDC
+  const usdcBalancePayload = {
     jsonrpc: '2.0',
+    id: 2,
     method: 'eth_call',
-    params: [{
-      to: usdcContract,
-      data: data
-    }, 'latest'],
-    id: 1
+    params: [
+      {
+        to: usdcContract,
+        data: `0x70a08231${address.substring(2).padStart(64, '0')}`, // balanceOf(address)
+      },
+      'latest',
+    ],
   };
-  const resp = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const result = await resp.json();
-  console.log('[getSepoliaUsdcBalanceViaRpc] RPC response:', result);
-  if (result.result && result.result !== '0x') {
-    return (parseInt(result.result, 16) / 1e6).toString();
+
+  try {
+    const [ethResponse, usdcResponse] = await Promise.all([
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ethBalancePayload),
+      }),
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(usdcBalancePayload),
+      }),
+    ]);
+
+    const ethData = await ethResponse.json();
+    const usdcData = await usdcResponse.json();
+
+    // Added for debugging
+    console.log('Alchemy ETH Response:', JSON.stringify(ethData, null, 2));
+    console.log('Alchemy USDC Response:', JSON.stringify(usdcData, null, 2));
+
+    if (ethData.error || usdcData.error) {
+      console.error('Alchemy API Error (ETH):', ethData.error);
+      console.error('Alchemy API Error (USDC):', usdcData.error);
+      throw new Error(`Alchemy API error: ${ethData.error?.message || usdcData.error?.message}`);
+    }
+    
+    // The result is a hex string, e.g., "0x...". Convert to decimal string.
+    // Handle '0x' case which is invalid for BigInt, treating it as 0.
+    const ethBalance = BigInt(ethData.result && ethData.result !== '0x' ? ethData.result : '0x0').toString();
+    const usdcBalance = BigInt(usdcData.result && usdcData.result !== '0x' ? usdcData.result : '0x0').toString();
+
+    return {
+      eth: ethBalance,
+      usdc: usdcBalance,
+    };
+  } catch (error) {
+    console.error('Error fetching balances via eth_call:', error);
+    // Return zero balances on failure to prevent crashes
+    return { eth: '0', usdc: '0' };
   }
-  return '0';
 }
 
-// Helper to fetch Ethereum Sepolia ETH balance via RPC
-async function getEthereumSepoliaEthBalance(address: string): Promise<string> {
-  const rpcUrl = process.env.ETHEREUM_SEPOLIA_RPC_URL || 'https://rpc.sepolia.org';
-  const body = {
-    jsonrpc: '2.0',
-    method: 'eth_getBalance',
-    params: [address, 'latest'],
-    id: 1
-  };
-  const resp = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await resp.json();
-  if (data.result && data.result !== '0x') {
-    return (parseInt(data.result, 16) / 1e18).toString();
-  }
-  return '0';
-}
-
-// Helper to fetch Ethereum Sepolia USDC balance via RPC
-async function getEthereumSepoliaUsdcBalance(address: string): Promise<string> {
-  const rpcUrl = process.env.ETHEREUM_SEPOLIA_RPC_URL || 'https://rpc.sepolia.org';
-  // USDC contract address on Ethereum Sepolia (replace with actual if different)
-  const usdcContract = process.env.ETHEREUM_SEPOLIA_USDC || '0x07865c6e87b9f70255377e024ace6630c1eaa37f';
-  const data = '0x70a08231000000000000000000000000' + address.replace(/^0x/, '');
-  const body = {
-    jsonrpc: '2.0',
-    method: 'eth_call',
-    params: [{
-      to: usdcContract,
-      data: data
-    }, 'latest'],
-    id: 1
-  };
-  const resp = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const result = await resp.json();
-  if (result.result && result.result !== '0x') {
-    return (parseInt(result.result, 16) / 1e6).toString();
-  }
-  return '0';
-}
 
 /**
- * Handle wallet balance action - Fetch real wallet balances using CDP Onchain Data API
+ * Handle wallet balance action - Fetches balances from Base and Ethereum mainnets using Alchemy.
  * @param params Action parameters
  * @param userId User ID
  * @returns Response with wallet balance template
  */
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    // Get the user's EVM wallets from Supabase
-    const { data: baseWallet } = await supabase
-      .from("wallets")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("chain", "base-sepolia")
-      .single();
-    const { data: ethWallet } = await supabase
-      .from("wallets")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("chain", "ethereum-sepolia")
-      .single();
-    const baseAddress = baseWallet?.address;
-    const ethAddress = ethWallet?.address;
+    const walletCheck = await verifyWalletExists(userId);
+    if (walletCheck) {
+      return walletCheck;
+    }
 
-    let baseEth = '0', baseUsdc = '0', ethSepolia = '0', usdcSepolia = '0';
-    if (baseAddress) {
-      baseEth = await getSepoliaEthBalanceViaRpc(baseAddress);
-      baseUsdc = await getSepoliaUsdcBalanceViaRpc(baseAddress);
+    const { data: wallet } = await supabase
+      .from("wallets")
+      .select("address")
+      .eq("user_id", userId)
+      .single();
+
+    if (!wallet) {
+      return noWalletYet();
     }
-    if (ethAddress) {
-      ethSepolia = await getEthereumSepoliaEthBalance(ethAddress);
-      usdcSepolia = await getEthereumSepoliaUsdcBalance(ethAddress);
-    }
-    // If no Ethereum Sepolia wallet, fallback to Base wallet for demo
-    if (!ethAddress && baseAddress) {
-      ethSepolia = await getEthereumSepoliaEthBalance(baseAddress);
-      usdcSepolia = await getEthereumSepoliaUsdcBalance(baseAddress);
-    }
-    const templateData = {
-      base_eth_balance: baseEth,
-      base_usdc_balance: baseUsdc,
-      eth_sepolia_balance: ethSepolia,
-      usdc_sepolia_balance: usdcSepolia,
-    };
-    return walletBalance(templateData);
+
+    const address = wallet.address;
+
+    // Fetch balances from Alchemy for both networks
+    const [baseBalances, ethBalances] = await Promise.all([
+      getTokenBalances(address, 'base'),
+      getTokenBalances(address, 'eth')
+    ]);
+
+    return walletBalance({
+      base_eth: formatBalance(baseBalances.eth, 18),
+      base_usdc: formatBalance(baseBalances.usdc, 6),
+      eth_eth: formatBalance(ethBalances.eth, 18),
+      eth_usdc: formatBalance(ethBalances.usdc, 6),
+    });
   } catch (error) {
-    console.error("[handleGetWalletBalance] Error:", error);
-    return {
-      text: 'Sorry, I could not retrieve your wallet balance at this time.',
-    };
+    console.error("Error getting wallet balance:", error);
+    return sendFailed({ reason: "Could not fetch wallet balance." });
   }
 }
 
 // Helper to get ETH and USDC balance as a string for swap success
 async function getWalletBalanceString(address: string): Promise<string> {
   try {
-    const ethBalance = await getSepoliaEthBalanceViaRpc(address);
-    const usdcBaseBalance = await getSepoliaUsdcBalanceViaRpc(address);
-    return `ETH: ${ethBalance}, USDC: ${usdcBaseBalance}`;
-  } catch (e) {
-    return 'Unavailable';
+    const baseBalances = await getTokenBalances(address, 'base');
+    return `ETH: ${formatBalance(baseBalances.eth, 18)}, USDC: ${formatBalance(baseBalances.usdc, 6)}`;
+  } catch (error) {
+    console.error('Error in getWalletBalanceString:', error);
+    return 'ETH: ?, USDC: ?';
   }
 }
 
-// Handler for swapping tokens using CDP (now handled by handleSwapQuote and handleSwapProcess)
 // Deprecated: Use handleSwapQuote and handleSwapProcess for swap flows.
 // function handleSwapTokens(params: ActionParams, userId: string) { /* deprecated */ }
 
@@ -805,20 +778,20 @@ async function handleSend(params: ActionParams, userId: string) {
     const token = params.token || 'ETH';
     const amount = params.amount || '';
     const recipient = params.recipient || '';
-    const network = params.network || 'base';
-    
+    const network = (params.network as string || 'base').toLowerCase().replace(' ', '-'); // e.g., 'base-sepolia'
+
     console.log(`[handleSend] Token: ${token}, Amount: ${amount}, Recipient: ${recipient}, Network: ${network}, isExecute: ${isExecute}`);
-    
+
     if (!amount || !recipient) {
       console.log(`[handleSend] Missing parameters: amount=${amount}, recipient=${recipient}`);
       return sendFailed({ reason: 'Missing required parameters for sending. Please specify amount and recipient.' });
     }
-    
+
     if (token.toLowerCase() !== 'eth') {
       console.log(`[handleSend] Unsupported token: ${token}`);
       return sendFailed({ reason: 'Currently only ETH transfers are supported. Please try again with ETH.' });
     }
-    
+
     // If this is not an execution request, return the confirmation prompt template
     if (!isExecute) {
       console.log(`[handleSend] Returning send_token_prompt template for confirmation`);
@@ -826,24 +799,42 @@ async function handleSend(params: ActionParams, userId: string) {
         amount: amount,
         token: token,
         recipient: formatAddress(recipient),
-        network: network,
+        network: params.network as string, // Use original network string for display
         fee: '~0.0001 ETH',
         estimatedTime: '30-60 seconds',
       });
     }
-    
+
     // This is an execution request
     console.log(`[handleSend] Executing transaction: ${amount} ${token} to ${recipient} on ${network}`);
-    
+
+    // --- Wallet Fetch/Create and Logging ---
+    let wallet = null;
+    try {
+      wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: network });
+      console.log('[handleSend] Wallet fetched/created:', wallet);
+      if (!wallet || !wallet.address) {
+        console.log('[handleSend] Wallet missing or no address, returning noWalletYet');
+        return noWalletYet();
+      }
+      if (wallet.walletClientType !== 'privy' || wallet.connectorType !== 'embedded') {
+        console.log('[handleSend] Wallet type not supported:', wallet.walletClientType, wallet.connectorType);
+        return { text: 'This feature is not supported for your current wallet or action. Please try another request or check your wallet type.' };
+      }
+    } catch (werr) {
+      console.error('[handleSend] Error fetching/creating wallet:', werr);
+      return sendFailed({ reason: 'Could not fetch or create wallet.' });
+    }
+
     try {
       // Execute the transaction
-      const txResult = await handleTransaction(userId, params, { ...params, isExecute: true, chain: 'base-sepolia' });
+      const txResult = await handleTransaction(userId, params, { ...params, isExecute: true, chain: network });
       console.log(`[handleSend] Transaction result:`, txResult);
-      
+
       // Return success template
       const explorerUrl = (txResult && typeof txResult === 'object' && 'explorerUrl' in txResult) ? txResult.explorerUrl : '';
       console.log(`[handleSend] Returning tx_sent_success template with explorerUrl: ${explorerUrl}`);
-      
+
       return txSentSuccess({
         amount: amount,
         token: token,
@@ -1099,7 +1090,6 @@ async function handleSendInit(params: ActionParams, userId: string) {
     });
   } catch (error) {
     console.error("Error initiating send:", error);
-    return { text: "Failed to initiate send." };
   }
 }
 
