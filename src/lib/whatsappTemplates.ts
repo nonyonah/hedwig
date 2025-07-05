@@ -255,21 +255,9 @@ export function quotePending() {
 /**
  * Template: swap_prompt
  * Parameter Format: POSITIONAL
- * Parameters: amount, from_token, to_token, network
+ * Parameters: from_amount_token, to_amount_token, fee, chain, time
  */
-export function swapPrompt({ 
-  from_amount, 
-  to_amount, 
-  fee, 
-  chain, 
-  est_time 
-}: { 
-  from_amount: string, 
-  to_amount: string, 
-  fee: string, 
-  chain: string, 
-  est_time: string 
-}) {
+export function swapPrompt({ from_amount_token, to_amount_token, fee, chain, time }: { from_amount_token: string, to_amount_token: string, fee: string, chain: string, time: string }) {
   return {
     name: 'swap_prompt',
     language: { code: 'en' },
@@ -277,11 +265,11 @@ export function swapPrompt({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(from_amount, 'from_amount') },
-          { type: 'text', text: sanitizeWhatsAppParam(to_amount, 'to_amount') },
+          { type: 'text', text: sanitizeWhatsAppParam(from_amount_token, 'from_amount_token') },
+          { type: 'text', text: sanitizeWhatsAppParam(to_amount_token, 'to_amount_token') },
           { type: 'text', text: sanitizeWhatsAppParam(fee, 'fee') },
           { type: 'text', text: sanitizeWhatsAppParam(chain, 'chain') },
-          { type: 'text', text: sanitizeWhatsAppParam(est_time, 'est_time') }
+          { type: 'text', text: sanitizeWhatsAppParam(time, 'time') },
         ]
       }
     ]

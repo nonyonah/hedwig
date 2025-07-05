@@ -2,6 +2,7 @@ import { getOrCreatePrivyWallet } from "@/lib/privy";
 import { createClient } from "@supabase/supabase-js";
 
 import fetch from "node-fetch";
+import { formatUnits } from "viem";
 import { formatAddress, formatBalance } from "@/lib/utils";
 import {
   walletTemplates,
@@ -320,6 +321,8 @@ export async function handleAction(
     case "instruction_deposit":
       // For deposit instructions or wallet address requests, show the wallet address
       return await handleGetWalletAddress(userId);
+    case "send":
+      return await handleSend(params, userId);
     case "swap": {
       const swapState = params.swap_state;
       const cleanParams = Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== undefined));
@@ -332,21 +335,18 @@ export async function handleAction(
         return await handleSwapQuote(cleanParams, userId);
       }
     }
-    break;
   case "send_token_prompt":
-
-      return await handleSendInit(params, userId);
-    case "instruction_swap":
-      return handleSwapInstructions();
-    case "instruction_bridge":
-      return handleBridgeInstructions();
-    case "instruction_send":
-      return handleSendInstructions();
-    default:
-      return {
-        text: "This feature is not supported for your current wallet or action. Please try another request or check your wallet type."
-      };
-
+    return await handleSendInit(params, userId);
+  case "instruction_swap":
+    return handleSwapInstructions();
+  case "instruction_bridge":
+    return handleBridgeInstructions();
+  case "instruction_send":
+    return handleSendInstructions();
+  default:
+    return {
+      text: "This feature is not supported for your current wallet or action. Please try another request or check your wallet type."
+    };
   }
 
   // Universal wallet check fallback for any query
@@ -784,18 +784,22 @@ async function handleSend(params: ActionParams, userId: string) {
 
     if (!amount || !recipient) {
       console.log(`[handleSend] Missing parameters: amount=${amount}, recipient=${recipient}`);
-      return sendFailed({ reason: 'Missing required parameters for sending. Please specify amount and recipient.' });
+      const failResp = sendFailed({ reason: 'Missing required parameters for sending. Please specify amount and recipient.' });
+      console.log('[handleSend] Returning:', failResp);
+      return failResp;
     }
 
     if (token.toLowerCase() !== 'eth') {
       console.log(`[handleSend] Unsupported token: ${token}`);
-      return sendFailed({ reason: 'Currently only ETH transfers are supported. Please try again with ETH.' });
+      const failResp = sendFailed({ reason: 'Currently only ETH transfers are supported. Please try again with ETH.' });
+      console.log('[handleSend] Returning:', failResp);
+      return failResp;
     }
 
     // If this is not an execution request, return the confirmation prompt template
     if (!isExecute) {
       console.log(`[handleSend] Returning send_token_prompt template for confirmation`);
-      return sendTokenPrompt({
+      const promptResp = sendTokenPrompt({
         amount: amount,
         token: token,
         recipient: formatAddress(recipient),
@@ -803,6 +807,8 @@ async function handleSend(params: ActionParams, userId: string) {
         fee: '~0.0001 ETH',
         estimatedTime: '30-60 seconds',
       });
+      console.log('[handleSend] Returning:', promptResp);
+      return promptResp;
     }
 
     // This is an execution request
@@ -815,15 +821,15 @@ async function handleSend(params: ActionParams, userId: string) {
       console.log('[handleSend] Wallet fetched/created:', wallet);
       if (!wallet || !wallet.address) {
         console.log('[handleSend] Wallet missing or no address, returning noWalletYet');
-        return noWalletYet();
-      }
-      if (wallet.walletClientType !== 'privy' || wallet.connectorType !== 'embedded') {
-        console.log('[handleSend] Wallet type not supported:', wallet.walletClientType, wallet.connectorType);
-        return { text: 'This feature is not supported for your current wallet or action. Please try another request or check your wallet type.' };
+        const noWalletResp = noWalletYet();
+        console.log('[handleSend] Returning:', noWalletResp);
+        return noWalletResp;
       }
     } catch (werr) {
       console.error('[handleSend] Error fetching/creating wallet:', werr);
-      return sendFailed({ reason: 'Could not fetch or create wallet.' });
+      const failResp = sendFailed({ reason: 'Could not fetch or create wallet.' });
+      console.log('[handleSend] Returning:', failResp);
+      return failResp;
     }
 
     try {
@@ -835,19 +841,25 @@ async function handleSend(params: ActionParams, userId: string) {
       const explorerUrl = (txResult && typeof txResult === 'object' && 'explorerUrl' in txResult) ? txResult.explorerUrl : '';
       console.log(`[handleSend] Returning tx_sent_success template with explorerUrl: ${explorerUrl}`);
 
-      return txSentSuccess({
+      const successResp = sendSuccessSanitized({
         amount: amount,
         token: token,
         recipient: formatAddress(recipient),
         explorerUrl: explorerUrl,
       });
+      console.log('[handleSend] Returning:', successResp);
+      return successResp;
     } catch (sendError: any) {
       console.error(`[handleSend] Error sending transaction:`, sendError);
-      return { text: sendError.message || 'Error sending transaction. Please try again later.' };
+      const failResp = { text: sendError.message || 'Error sending transaction. Please try again later.' };
+      console.log('[handleSend] Returning:', failResp);
+      return failResp;
     }
   } catch (error: any) {
     console.error(`[handleSend] Error:`, error);
-    return { text: error.message || 'An unexpected error occurred. Please try again later.' };
+    const failResp = { text: error.message || 'An unexpected error occurred. Please try again later.' };
+    console.log('[handleSend] Returning:', failResp);
+    return failResp;
   }
 }
 
@@ -914,17 +926,26 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
       return noWalletYet();
     }
 
-    // Always show the fetching quote message before any prompt
-    await supabase.from("messages").insert([{
-      user_id: userId,
-      content: JSON.stringify({ text: "🔄 Hold on while I fetch the best swap quote for you..." }),
-      role: "assistant",
-      created_at: new Date().toISOString(),
-    }]);
+    // Ensure we have a valid phone number for WhatsApp
+    let phoneNumber = params.phoneNumber;
+    if (!phoneNumber) {
+      const { data: user } = await supabase
+        .from("users")
+        .select("phone_number")
+        .eq("id", userId)
+        .single();
+      phoneNumber = user?.phone_number || '';
+    }
 
-    // Parse params
+    // Parse params first to use in quotePending
     const fromToken = (params.fromToken || params.from_token || 'USDC').toUpperCase();
     const toToken = (params.toToken || params.to_token || 'ETH').toUpperCase();
+
+    // Immediately send WhatsApp quote_pending template
+    if (phoneNumber) {
+      await sendWhatsAppTemplate(phoneNumber, quotePending());
+    }
+
     const amount = params.amount || '1';
     const chainId = 8453; // Base Sepolia
     const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
@@ -950,6 +971,14 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     }
     const quoteData = await quoteResponse.json();
 
+    console.log("[Swap] 0x Quote Response:", JSON.stringify(quoteData, null, 2));
+
+    if (!quoteData.buyAmount || !quoteData.sellAmount) {
+      console.error('[Swap] Invalid quote response from 0x', quoteData);
+      const errorMessage = quoteData.validationErrors?.[0]?.description || 'Could not fetch a valid swap quote. There might be an issue with the trading pair or liquidity.';
+      return { text: errorMessage };
+    }
+
     // Save quote info in session for use in swapProcess
     await supabase.from('sessions').upsert([
       {
@@ -968,16 +997,25 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     ], { onConflict: 'user_id' });
 
     // Format output amount and fee
-    const toAmountFormatted = (Number(quoteData.buyAmount) / 10 ** (toToken === 'USDC' ? 6 : 18)).toString();
-    const gasFeeFormatted = quoteData.estimatedGas ? String(quoteData.estimatedGas) : '?';
-    const promptParams = {
-      from_amount: `${amount} ${fromToken}`,
-      to_amount: `${toAmountFormatted} ${toToken}`,
-      fee: `${gasFeeFormatted} ETH`,
-      chain: 'Base Sepolia',
-      est_time: '10s',
-    };
-    return swapPrompt(promptParams);
+    const fromTokenDecimals = fromToken === 'USDC' ? 6 : 18;
+    const toTokenDecimals = toToken === 'USDC' ? 6 : 18;
+    const fromAmountFmt = formatUnits(BigInt(quoteData.sellAmount), fromTokenDecimals);
+    const toAmountFmt = formatUnits(BigInt(quoteData.buyAmount), toTokenDecimals);
+    const gasFee = quoteData.estimatedGas ? formatUnits(BigInt(quoteData.estimatedGas), 18) : '0';
+    const gasFeeFormatted = parseFloat(gasFee).toFixed(8);
+
+    // Send swapPrompt via WhatsApp with all quote details
+    if (phoneNumber) {
+      await sendWhatsAppTemplate(phoneNumber, swapPrompt({
+        from_amount_token: `${parseFloat(fromAmountFmt).toFixed(4)} ${fromToken}`,
+        to_amount_token: `${parseFloat(toAmountFmt).toFixed(4)} ${toToken}`,
+        fee: `${gasFeeFormatted} ETH`,
+        chain: 'Base',
+        time: '10s',
+      }));
+    }
+    // Optionally, return a confirmation object or nothing
+    return { text: "Swap quote sent. Please check WhatsApp for details and confirmation." };
   } catch (error) {
     console.error("[Swap] Error getting swap quote:", error);
     return { text: "Failed to get swap quote. Please try again later." };
