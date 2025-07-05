@@ -343,6 +343,8 @@ export async function handleAction(
     return handleBridgeInstructions();
   case "instruction_send":
     return handleSendInstructions();
+  case "export_private_key":
+    return await handleExportPrivateKey(params, userId);
   default:
     return {
       text: "This feature is not supported for your current wallet or action. Please try another request or check your wallet type."
@@ -1206,6 +1208,52 @@ async function handleBridgeQuote(params: ActionParams, userId: string) {
   } catch (error) {
     console.error("Error getting bridge quote:", error);
     return { text: "Failed to get bridge quote." };
+  }
+}
+
+async function handleExportPrivateKey(params: ActionParams, userId: string) {
+  try {
+    // 1. Get user's wallet
+    const { data: wallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('address')
+      .eq('user_id', userId)
+      .single();
+
+    if (walletError || !wallet) {
+      console.error(`[Export Key] Wallet not found for user ${userId}`, walletError);
+      return noWalletYet();
+    }
+
+    // 2. Get user's phone number
+    let phoneNumber = params.phoneNumber;
+    if (!phoneNumber) {
+      const { data: user } = await supabase
+        .from("users")
+        .select("phone_number")
+        .eq("id", userId)
+        .single();
+      phoneNumber = user?.phone_number || '';
+    }
+
+    if (!phoneNumber) {
+      console.error(`[Export Key] Phone number not found for user ${userId}`);
+      return { text: "We couldn't find your phone number to send the export link." };
+    }
+
+    // 3. Construct the URL path parameter. Using the wallet address for uniqueness.
+    // The base URL is configured in the WhatsApp template manager.
+    const urlPathParam = wallet.address;
+
+    // 4. Send the WhatsApp template
+    await sendWhatsAppTemplate(phoneNumber, privateKeys({ url_path_param: urlPathParam }));
+
+    // 5. Return a confirmation message to the system/logs. The user sees the WhatsApp message.
+    return { text: "Private key export link sent to the user's WhatsApp." };
+
+  } catch (error) {
+    console.error(`[Export Key] Error exporting private key for user ${userId}:`, error);
+    return { text: "An unexpected error occurred while trying to export your private key. Please try again later." };
   }
 }
 

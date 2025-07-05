@@ -556,23 +556,30 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
   };
 }
 
+
+
 /**
- * Template: private_keys
- * Parameter Format: POSITIONAL
- * Parameters: privy_link
+ * Template: no_wallet_yet
+ * Parameter Format: POSITIONAL (no named parameters)
+ * Has QUICK_REPLY button
  */
-export function privateKeys({ privy_link }: { privy_link: string }) {
+export function privateKeys({ url_path_param }: { url_path_param: string }) {
   return {
-    name: 'private_keys',
+    name: 'privatekeys',
     language: { code: 'en' },
     components: [
       {
-        type: 'BODY',
+        type: 'BUTTON',
+        sub_type: 'URL',
+        index: '0',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(privy_link) }
-        ]
-      }
-    ]
+          {
+            type: 'text',
+            text: url_path_param,
+          },
+        ],
+      },
+    ],
   };
 }
 
