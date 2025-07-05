@@ -1241,12 +1241,13 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
       return { text: "We couldn't find your phone number to send the export link." };
     }
 
-    // 3. Construct the URL path parameter. Using the wallet address for uniqueness.
-    // The base URL is configured in the WhatsApp template manager.
-    const urlPathParam = wallet.address;
+    // 3. Construct the fully qualified export URL (robust, works for prod/dev)
+    // You may want to update this to your real frontend domain
+    const frontendBaseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://your-frontend-domain.com';
+    const privy_link = `${frontendBaseUrl}/export-key/${wallet.address}`;
 
-    // 4. Send the WhatsApp template
-    await sendWhatsAppTemplate(phoneNumber, privateKeys({ url_path_param: urlPathParam }));
+    // 4. Send the WhatsApp template with the named parameter
+    await sendWhatsAppTemplate(phoneNumber, privateKeys({ privy_link }));
 
     // 5. Return a confirmation message to the system/logs. The user sees the WhatsApp message.
     return { text: "Private key export link sent to the user's WhatsApp." };

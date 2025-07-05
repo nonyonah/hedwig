@@ -563,19 +563,17 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
  * Parameter Format: POSITIONAL (no named parameters)
  * Has QUICK_REPLY button
  */
-export function privateKeys({ url_path_param }: { url_path_param: string }) {
+export function privateKeys({ privy_link }: { privy_link: string }) {
   return {
-    name: 'privatekeys',
+    name: 'private_keys',
     language: { code: 'en' },
     components: [
       {
-        type: 'BUTTON',
-        sub_type: 'URL',
-        index: '0',
+        type: 'BODY',
         parameters: [
           {
             type: 'text',
-            text: url_path_param,
+            text: sanitizeWhatsAppParam(privy_link, 'privy_link'),
           },
         ],
       },
