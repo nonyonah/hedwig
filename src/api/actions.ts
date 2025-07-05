@@ -343,7 +343,7 @@ export async function handleAction(
     return handleBridgeInstructions();
   case "instruction_send":
     return handleSendInstructions();
-  case "export_private_key":
+  case "export_keys":
     return await handleExportPrivateKey(params, userId);
   default:
     return {
