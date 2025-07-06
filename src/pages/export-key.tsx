@@ -1,43 +1,41 @@
 "use client";
 
+import dynamic from 'next/dynamic';
 import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { PrivyProvider } from '@privy-io/react-auth';
 import ExportKeyPageContent from './export-key-content';
 
-interface ApiResponse {
-  walletAddress: string;
-  userId: string;
-}
-
-export default function ExportKeyTokenPage() {
+function ExportKeyPage() {
   const router = useRouter();
   const { token } = router.query;
-  const [loading, setLoading] = useState(true);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!token || typeof token !== 'string') return;
-    setLoading(true);
-    fetch(`/api/export-key?token=${encodeURIComponent(token)}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json()).error || 'Invalid or expired link');
-        return res.json();
-      })
-      .then((data: ApiResponse) => {
+    if (!router.isReady) return;
+    if (!token) {
+        setLoading(false);
+        setError('No token provided.');
+        return;
+    }
+
+    fetch(`/api/export-key?token=${token}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          throw new Error(data.error);
+        }
         setWalletAddress(data.walletAddress);
-        setError(null);
       })
-      .catch((err) => {
-        setError(err.message || 'Invalid or expired link');
-        setWalletAddress(null);
+      .catch(err => {
+        setError(err.message || 'Invalid or expired link.');
       })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [router.isReady, token]);
 
-  if (typeof window === 'undefined') return null;
   return (
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
@@ -46,19 +44,20 @@ export default function ExportKeyTokenPage() {
       <Head>
         <title>Export Private Key</title>
       </Head>
-      {error ? (
+      {loading ? (
+        <div className="flex flex-col items-center justify-center min-h-screen">
+          <p>Validating link...</p>
+        </div>
+      ) : error ? (
         <div className="flex flex-col items-center justify-center min-h-screen">
           <h2 className="text-lg font-bold mb-2 text-red-600">Error</h2>
           <p>{error}</p>
         </div>
-      ) : !walletAddress ? (
-        <div className="flex flex-col items-center justify-center min-h-screen">
-          <p>Loading...</p>
-        </div>
-      ) : (
+      ) : walletAddress ? (
         <ExportKeyPageContent walletAddress={walletAddress} />
-      )}
+      ) : null}
     </PrivyProvider>
   );
 }
 
+export default dynamic(() => Promise.resolve(ExportKeyPage), { ssr: false });
