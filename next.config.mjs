@@ -42,6 +42,36 @@ if (!process.env.NETLIFY && process.env.NODE_ENV !== 'production') {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Client-side polyfills
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        crypto: 'crypto-browserify',
+        stream: 'stream-browserify',
+        buffer: 'buffer',
+        util: 'util',
+        assert: 'assert',
+        path: 'path-browserify',
+        os: 'os-browserify',
+        https: 'https-browserify',
+        http: 'stream-http',
+        zlib: 'browserify-zlib',
+        querystring: 'querystring-es3',
+        url: 'url',
+        'whatwg-url': 'whatwg-url'
+      };
+
+      // Inject Buffer polyfill
+      config.plugins.push(
+        new config.webpack.ProvidePlugin({
+          Buffer: ['buffer', 'Buffer'],
+          process: 'process/browser',
+        })
+      );
+    }
+    return config;
+  },
   env: {
     CDP_API_KEY_ID: process.env.CDP_API_KEY_ID,
     CDP_API_KEY_SECRET: process.env.CDP_API_KEY_SECRET,

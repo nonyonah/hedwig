@@ -1,7 +1,13 @@
 "use client";
 
-import React from "react";
-import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
+import React from 'react';
+import { usePrivy } from '@privy-io/react-auth';
+import dynamic from 'next/dynamic';
+
+const PrivyWrapper = dynamic(
+    () => import('../components/PrivyWrapper'),
+    { ssr: false }
+);
 
 interface WalletInfo {
     address: string;
@@ -17,9 +23,9 @@ function ExportUi({ walletAddress }: { walletAddress: string }) {
 
     const hasEmbeddedWallet = !!user?.linkedAccounts?.find(
         (account) =>
-            account.type === "wallet" &&
-            account.walletClient === "privy" &&
-            account.chainType === "ethereum" &&
+            account.type === 'wallet' &&
+            account.walletClientType === 'privy' &&
+            account.chainType === 'ethereum' &&
             account.address?.toLowerCase() === walletAddress.toLowerCase()
     );
 
@@ -41,7 +47,7 @@ function ExportUi({ walletAddress }: { walletAddress: string }) {
                 </button>
                 {(!isAuthenticated || !hasEmbeddedWallet) && (
                     <div className="mt-2 text-xs text-gray-500">
-                        {!isAuthenticated ? "Please log in to export your wallet." : "Embedded wallet not found for this address."}
+                        {!isAuthenticated ? 'Please log in to export your wallet.' : 'Embedded wallet not found for this address.'}
                     </div>
                 )}
             </div>
@@ -49,19 +55,11 @@ function ExportUi({ walletAddress }: { walletAddress: string }) {
     );
 }
 
-// This component wraps the UI with the PrivyProvider.
-// It is the default export and is dynamically imported with ssr: false.
+// This component now uses the dynamically imported PrivyWrapper.
 export default function ExportKeyPageContent({ walletInfo }: ExportKeyPageContentProps) {
     return (
-        <PrivyProvider
-            appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
-            config={{
-                embeddedWallets: {
-                    createOnLogin: 'users-without-wallets',
-                },
-            }}
-        >
+        <PrivyWrapper>
             <ExportUi walletAddress={walletInfo.address} />
-        </PrivyProvider>
+        </PrivyWrapper>
     );
 }

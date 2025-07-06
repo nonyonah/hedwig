@@ -75,6 +75,7 @@ For unknown requests that are clearly not blockchain-related, use intent "unknow
   ];
 
   // 3. Call Gemini
+  console.log(`[LLM] Attempting to generate content with Google Gemini model: ${MODEL}`);
   const model = gemini.getGenerativeModel({ model: MODEL });
   const result = await model.generateContent({
     contents: prompt,

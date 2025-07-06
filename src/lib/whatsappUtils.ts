@@ -1339,9 +1339,11 @@ async function getUserIdFromPhone(
   profileName?: string,
 ): Promise<string> {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    console.log(`[Supabase] Attempting to connect to Supabase at ${supabaseUrl} for user ${phoneNumber}`);
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      supabaseUrl!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
 
