@@ -1241,10 +1241,13 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
       return { text: "We couldn't find your phone number to send the export link." };
     }
 
-    // 3. Construct the fully qualified export URL (robust, works for prod/dev)
-    // You may want to update this to your real frontend domain
-    const frontendBaseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://your-frontend-domain.com';
-    const privy_link = `${frontendBaseUrl}/export-key/${wallet.address}`;
+    // 3. Generate a secure export token and link
+    const { signExportToken } = await import('@/lib/jwtExport');
+    const token = signExportToken({ userId, walletAddress: wallet.address });
+    const frontendBaseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+    const privy_link = `${frontendBaseUrl}/export-key?token=${token}`;
+    console.log(`[Export Key] Generated secure export link: ${privy_link}`);
 
     // 4. Send the WhatsApp template with the named parameter
     await sendWhatsAppTemplate(phoneNumber, privateKeys({ privy_link }));

@@ -430,15 +430,23 @@ export function cleanWhatsAppTemplate(template: any) {
         // Clean parameters if they exist
         if (component.parameters) {
           component.parameters = component.parameters.map((param: any) => {
-            // Remove 'name' property
-            const { name, ...rest } = param;
-
-            // Sanitize text parameter
-            if (rest.type === "text" && rest.text) {
-              rest.text = sanitizeWhatsAppParam(rest.text);
+            // Only remove 'name' for positional templates; keep it for named templates like 'private_keys'
+            if (
+              template.name === 'private_keys' && param.type === 'text' && param.name === 'privy_link'
+            ) {
+              // Keep 'name' property for named param
+              if (param.text) {
+                param.text = sanitizeWhatsAppParam(param.text);
+              }
+              return param;
+            } else {
+              // Remove 'name' for positional templates
+              const { name, ...rest } = param;
+              if (rest.type === "text" && rest.text) {
+                rest.text = sanitizeWhatsAppParam(rest.text);
+              }
+              return rest;
             }
-
-            return rest;
           });
         }
         return component;

@@ -64,6 +64,7 @@ const nextConfig = {
     CDP_PROJECT_ID: process.env.CDP_PROJECT_ID,
     ALCHEMY_URL_ETH_SEPOLIA: process.env.ALCHEMY_URL_ETH_SEPOLIA,
     ALCHEMY_URL_BASE_SEPOLIA: process.env.ALCHEMY_URL_BASE_SEPOLIA, 
+    NEXT_PUBLIC_FRONTEND: process.env.NEXT_PUBLIC_FRONTEND,
     // ALCHEMY_API_KEY: process.env.ALCHEMY_API_KEY,
     // MORALIS_API_KEY: process.env.MORALIS_API_KEY,
     API_KEY_0X: process.env.API_KEY_0X,  

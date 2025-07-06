@@ -569,15 +569,16 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
     language: { code: 'en' },
     components: [
       {
-        type: 'BODY',
+        type: 'body',
         parameters: [
           {
             type: 'text',
-            text: sanitizeWhatsAppParam(privy_link, 'privy_link'),
-          },
-        ],
-      },
-    ],
+            parameter_name: 'privy_link',
+            text: sanitizeWhatsAppParam(privy_link, 'privy_link')
+          }
+        ]
+      }
+    ]
   };
 }
 

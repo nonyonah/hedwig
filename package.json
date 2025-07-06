@@ -33,6 +33,7 @@
     "@openrouter/ai-sdk-provider": "^0.7.1",
     "@privy-io/public-api": "^2.33.2",
     "@privy-io/server-auth": "^1.27.1",
+    "@privy-io/react-auth": "^1.27.1",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.0",
     "alchemy-sdk": "^3.6.0",
