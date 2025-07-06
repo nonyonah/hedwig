@@ -1,34 +1,50 @@
 "use client";
 
-import React, { useCallback } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import React from "react";
+import { usePrivy } from "@privy-io/react-auth";
 
 interface ExportKeyPageContentProps {
   walletAddress: string;
 }
 
 export default function ExportKeyPageContent({ walletAddress }: ExportKeyPageContentProps) {
-  const { exportWallet, ready, authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const evmWallet = wallets.find(w => w.address.toLowerCase() === walletAddress.toLowerCase());
+  const { ready, authenticated, user, exportWallet } = usePrivy();
 
-  const handleExport = useCallback(() => {
-    if (!authenticated) {
-      login();
-      return;
-    }
-    if (evmWallet) {
-      exportWallet(evmWallet);
-    } else {
-      alert("No wallet found for this address. Please ensure you are logged in with the correct account.");
-    }
-  }, [authenticated, evmWallet, exportWallet, login]);
+  // Check for embedded wallet as per Privy docs
+  const hasEmbeddedWallet = !!user?.linkedAccounts?.find(
+    (account) =>
+      account.type === "wallet" &&
+      account.walletClient === "privy" &&
+      account.chainType === "ethereum" &&
+      account.address?.toLowerCase() === walletAddress.toLowerCase()
+  );
+
+  const isAuthenticated = ready && authenticated;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-      <div className="w-full max-w-md rounded-xl shadow-lg bg-white p-8 mt-8">
-        <h1 className="text-2xl font-bold mb-6 text-center text-indigo-700">Hedwig Wallet Recovery</h1>
-        <div className="mb-8">
+      <div className="w-full max-w-md rounded-xl shadow-lg bg-white p-8 mt-8 text-center">
+        <h1 className="text-2xl font-bold mb-6 text-indigo-700">Export Wallet</h1>
+        <div className="mb-4">
+          <span className="font-mono text-sm break-all">{walletAddress}</span>
+        </div>
+        <button
+          className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-semibold disabled:opacity-50"
+          onClick={exportWallet}
+          disabled={!isAuthenticated || !hasEmbeddedWallet}
+        >
+          Export my wallet
+        </button>
+        {(!isAuthenticated || !hasEmbeddedWallet) && (
+          <div className="mt-2 text-xs text-gray-500">
+            { !isAuthenticated ? "Please log in to export your wallet." : "Embedded wallet not found for this address." }
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
           <div className="flex flex-col items-center">
             <button
               className="w-full py-3 px-4 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition mb-2"
