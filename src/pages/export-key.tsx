@@ -37,24 +37,27 @@ export default function ExportKeyTokenPage() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  if (typeof window === 'undefined') return null;
   return (
     <PrivyProvider
-      appId={process.env.PRIVY_APP_ID!}
+      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
       config={{ appearance: { theme: 'light' }, embeddedWallets: { requireUserPasswordOnCreate: false } }}
     >
       <Head>
-        <title>Hedwig Wallet Export</title>
+        <title>Export Private Key</title>
       </Head>
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-        <div className="w-full max-w-md rounded-xl shadow-lg bg-white p-8 mt-8">
-          <h1 className="text-2xl font-bold mb-6 text-center text-indigo-700">Hedwig Wallet Recovery</h1>
-          {loading && <div className="text-center">Validating link...</div>}
-          {error && <div className="text-center text-red-500">{error}</div>}
-          {walletAddress && !error && (
-            <ExportKeyPageContent walletAddress={walletAddress} />
-          )}
+      {error ? (
+        <div className="flex flex-col items-center justify-center min-h-screen">
+          <h2 className="text-lg font-bold mb-2 text-red-600">Error</h2>
+          <p>{error}</p>
         </div>
-      </div>
+      ) : !walletAddress ? (
+        <div className="flex flex-col items-center justify-center min-h-screen">
+          <p>Loading...</p>
+        </div>
+      ) : (
+        <ExportKeyPageContent walletAddress={walletAddress} />
+      )}
     </PrivyProvider>
   );
 }
