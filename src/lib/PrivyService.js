@@ -75,7 +75,7 @@ class PrivyService {
         aead: new Chacha20Poly1305(),
       });
 
-      const keyPair = await suite.generateKeyPair();
+      const keyPair = await suite.kem.generateKeyPair();
 
       const publicKeyBytes = await suite.kem.serializePublicKey(keyPair.publicKey);
       const privateKeyBytes = await suite.kem.serializePrivateKey(keyPair.privateKey);
