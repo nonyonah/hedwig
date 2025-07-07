@@ -1212,7 +1212,65 @@ async function handleBridgeQuote(params: ActionParams, userId: string) {
 }
 
 async function handleExportPrivateKey(params: ActionParams, userId: string) {
-  return { text: "Private key export is currently unavailable." };
+  try {
+    console.log(`[handleExportPrivateKey] Initiating private key export for user ${userId}`);
+    
+    // Get user's phone number
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("phone_number")
+      .eq("id", userId)
+      .single();
+    
+    if (userError || !user || !user.phone_number) {
+      console.error(`[handleExportPrivateKey] Error fetching user:`, userError);
+      return { text: "Could not find your account information. Please try again later." };
+    }
+    
+    // Get user's wallet
+    const { data: wallet, error: walletError } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("chain", "base-sepolia")
+      .single();
+    
+    if (walletError || !wallet) {
+      console.error(`[handleExportPrivateKey] Error fetching wallet:`, walletError);
+      return noWalletYet();
+    }
+    
+    // Create export request URL
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const exportUrl = `${baseUrl}/api/wallet/export`;
+    
+    // Make POST request to export API
+    const response = await fetch(exportUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        phone: user.phone_number,
+        walletId: wallet.privy_wallet_id,
+        walletAddress: wallet.address
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[handleExportPrivateKey] Export API error:`, errorText);
+      return { text: "Failed to initiate private key export. Please try again later." };
+    }
+    
+    const data = await response.json();
+    
+    // Return privateKeys template with export link
+    return privateKeys({ export_link: data.exportLink });
+  } catch (error) {
+    console.error(`[handleExportPrivateKey] Error:`, error);
+    return { text: "An error occurred while exporting your private key. Please try again later." };
+  }
 }
 
 // Handler for initiating a bridge
