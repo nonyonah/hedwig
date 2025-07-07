@@ -432,7 +432,7 @@ export function cleanWhatsAppTemplate(template: any) {
           component.parameters = component.parameters.map((param: any) => {
             // Only remove 'name' for positional templates; keep it for named templates like 'private_keys'
             if (
-              template.name === 'private_keys' && param.type === 'text' && param.name === 'privy_link'
+              template.name === 'private_keys' && param.type === 'text'
             ) {
               // Keep 'name' property for named param
               if (param.text) {
