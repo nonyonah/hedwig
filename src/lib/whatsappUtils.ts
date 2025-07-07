@@ -7,6 +7,7 @@ import { runLLM } from "./llmAgent";
 import { parseIntentAndParams } from "./intentParser";
 import { handleAction } from "../api/actions";
 import { createClient } from "@supabase/supabase-js";
+import { toE164 } from "@/lib/phoneFormat";
 
 // Extend the global object to include our message cache
 declare global {
@@ -1338,25 +1339,38 @@ async function getUserIdFromPhone(
   phoneNumber: string,
   profileName?: string,
 ): Promise<string> {
+  // Always normalize to E.164 before any database operations
+  const e164PhoneNumber = toE164(phoneNumber, "NG");
+
+  if (!e164PhoneNumber) {
+    console.error(
+      `[getUserIdFromPhone] Invalid phone number received: ${phoneNumber}. Cannot get or create user.`,
+    );
+    // Fallback to a random UUID to prevent crashing the flow, but log the error.
+    return uuidv4();
+  }
+
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    console.log(`[Supabase] Attempting to connect to Supabase at ${supabaseUrl} for user ${phoneNumber}`);
+    console.log(
+      `[Supabase] Attempting to connect to Supabase at ${supabaseUrl} for user ${e164PhoneNumber}`,
+    );
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
       supabaseUrl!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
 
-    // Check if user exists with this phone number
+    // Check if user exists with the E.164 phone number
     const { data: existingUser } = await supabase
       .from("users")
       .select("id, name")
-      .eq("phone_number", phoneNumber)
+      .eq("phone_number", e164PhoneNumber)
       .maybeSingle();
 
     if (existingUser?.id) {
       console.log(
-        `Found existing user ID ${existingUser.id} for phone ${phoneNumber}`,
+        `Found existing user ID ${existingUser.id} for phone ${e164PhoneNumber}`,
       );
 
       // Update name if we have a new one from WhatsApp and it's different
@@ -1365,7 +1379,9 @@ async function getUserIdFromPhone(
         (!existingUser.name || existingUser.name !== profileName)
       ) {
         console.log(
-          `Updating name for user ${existingUser.id} from "${existingUser.name || "none"}" to "${profileName}"`,
+          `Updating name for user ${existingUser.id} from "${
+            existingUser.name || "none"
+          }" to "${profileName}"`,
         );
         await supabase
           .from("users")
@@ -1376,15 +1392,15 @@ async function getUserIdFromPhone(
       return existingUser.id;
     }
 
-    // Create a new user with a valid UUID
+    // Create a new user with a valid UUID and the E.164 phone number
     const newUserId = uuidv4();
     const { error } = await supabase.from("users").insert([
       {
         id: newUserId,
-        phone_number: phoneNumber,
+        phone_number: e164PhoneNumber, // Always store in E.164 format
         name:
           profileName ||
-          `User_${phoneNumber.substring(phoneNumber.length - 4)}`,
+          `User_${e164PhoneNumber.substring(e164PhoneNumber.length - 4)}`,
         created_at: new Date().toISOString(),
       },
     ]);

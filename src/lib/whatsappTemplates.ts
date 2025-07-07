@@ -559,11 +559,13 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
 
 
 /**
- * Template: no_wallet_yet
- * Parameter Format: POSITIONAL (no named parameters)
- * Has QUICK_REPLY button
+ * Template: private_keys
+ * Parameter Format: POSITIONAL
+ * Parameters: export_link
+ * 
+ * This template sends a secure link to export wallet private keys
  */
-export function privateKeys(_: { privy_link: string }) {
+export function privateKeys({ export_link }: { export_link: string }) {
   return {
     name: 'private_keys',
     language: { code: 'en' },
@@ -573,7 +575,7 @@ export function privateKeys(_: { privy_link: string }) {
         parameters: [
           {
             type: 'text',
-            text: 'Private key export is currently unavailable.'
+            text: sanitizeWhatsAppParam(export_link, 'export_link')
           }
         ]
       }

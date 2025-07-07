@@ -2,6 +2,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import PrivyService from '../../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
+import { WalletExportRequest, PrivyError } from '../../../../types/wallet';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -33,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Get export request details
-    const exportRequest = await PrivyService.getExportRequest(token);
+    const exportRequest = await PrivyService.getExportRequest(token) as WalletExportRequest | null;
     
     if (!exportRequest) {
       return res.status(404).json({ 
@@ -74,7 +75,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           status: 'ready',
           walletAddress: exportRequest.wallet_address
         });
-      } catch (privyError) {
+      } catch (error) {
+        const privyError = error as PrivyError;
         console.error('Error exporting wallet from Privy:', privyError);
 
         // Log Privy API error
@@ -104,7 +106,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       status: exportRequest.status,
       walletAddress: exportRequest.wallet_address
     });
-  } catch (error) {
+  } catch (err) {
+    const error = err as Error;
     console.error('Error retrieving export status:', error);
 
     // Log error

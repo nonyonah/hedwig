@@ -1,7 +1,7 @@
 // src/lib/PrivyService.js
-import { randomBytes } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
-import * as hpke from 'hpke-js';
+const { CipherSuite, DhkemP256HkdfSha256, HkdfSha256 } = require('@hpke/core');
+const { Chacha20Poly1305 } = require('@hpke/chacha20poly1305');
 import { v4 as uuidv4 } from 'uuid';
 import { getPrivyServerAuthHeader } from './privy';
 
@@ -14,17 +14,23 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
- * PrivyService class for handling wallet export functionality
+ * PrivyService class for handling wallet export functionality.
+ * This class should be instantiated with a privyUserId.
  */
 class PrivyService {
+  constructor(privyUserId) {
+    if (!privyUserId) {
+      throw new Error('PrivyService must be initialized with a privyUserId.');
+    }
+    this.privyUserId = privyUserId;
+  }
+
   /**
    * Generate a secure random token for wallet export
    * @returns {string} A secure random token
    */
-  static generateSecureToken() {
-    // Generate a UUID v4 and remove hyphens
+  generateSecureToken() {
     const uuid = uuidv4().replace(/-/g, '');
-    // Add additional randomness
     const randomBytes = require('crypto').randomBytes(8).toString('hex');
     return `${uuid}${randomBytes}`;
   }
@@ -34,9 +40,8 @@ class PrivyService {
    * @param {string} phone User's phone number
    * @returns {Promise<boolean>} True if rate limited, false otherwise
    */
-  static async checkRateLimit(phone) {
+  async checkRateLimit(phone) {
     try {
-      // Get count of export requests in the last hour
       const oneHourAgo = new Date();
       oneHourAgo.setHours(oneHourAgo.getHours() - 1);
 
@@ -48,15 +53,12 @@ class PrivyService {
 
       if (error) {
         console.error('Error checking rate limit:', error);
-        // In case of error, allow the request to proceed
         return false;
       }
 
-      // Return true if rate limited (3 exports per hour)
       return count >= 3;
     } catch (error) {
       console.error('Error in rate limit check:', error);
-      // In case of error, allow the request to proceed
       return false;
     }
   }
@@ -65,21 +67,22 @@ class PrivyService {
    * Generate HPKE key pair for secure wallet export
    * @returns {Promise<{publicKey: string, privateKey: string}>} The HPKE key pair
    */
-  static async generateHpkeKeyPair() {
+  async generateHpkeKeyPair() {
     try {
-      // Initialize HPKE with X25519 key exchange and ChaCha20Poly1305 AEAD
-      const suite = new hpke.CipherSuite({
-        kem: hpke.Kem.DhkemX25519HkdfSha256,
-        kdf: hpke.Kdf.HkdfSha256,
-        aead: hpke.Aead.ChaCha20Poly1305
+      const suite = new CipherSuite({
+        kem: new DhkemP256HkdfSha256(),
+        kdf: new HkdfSha256(),
+        aead: new Chacha20Poly1305(),
       });
 
-      // Generate key pair
-      const keyPair = await suite.kem.generateKeyPair();
+      const keyPair = await suite.generateKeyPair();
 
-      // Convert keys to base64 for storage
-      const publicKey = Buffer.from(keyPair.publicKey).toString('base64');
-      const privateKey = Buffer.from(keyPair.privateKey).toString('base64');
+      const publicKeyBytes = await suite.kem.serializePublicKey(keyPair.publicKey);
+      const privateKeyBytes = await suite.kem.serializePrivateKey(keyPair.privateKey);
+
+      // Convert to base64 for storage and API calls
+      const publicKey = Buffer.from(publicKeyBytes).toString('base64');
+      const privateKey = Buffer.from(privateKeyBytes).toString('base64');
 
       return { publicKey, privateKey };
     } catch (error) {
@@ -95,34 +98,29 @@ class PrivyService {
    * @param {string} recipientPrivateKey HPKE private key (base64)
    * @returns {Promise<string>} Decrypted private key
    */
-  static async decryptPrivateKey(encryptedPrivateKey, encapsulation, recipientPrivateKey) {
+  async decryptPrivateKey(encryptedPrivateKey, encapsulation, recipientPrivateKey) {
     try {
-      // Initialize HPKE with X25519 key exchange and ChaCha20Poly1305 AEAD
       const suite = new hpke.CipherSuite({
         kem: hpke.Kem.DhkemX25519HkdfSha256,
         kdf: hpke.Kdf.HkdfSha256,
-        aead: hpke.Aead.ChaCha20Poly1305
+        aead: hpke.Aead.ChaCha20Poly1305,
       });
 
-      // Convert base64 strings to Uint8Array
       const encryptedData = Buffer.from(encryptedPrivateKey, 'base64');
       const encapsulationData = Buffer.from(encapsulation, 'base64');
       const privateKeyData = Buffer.from(recipientPrivateKey, 'base64');
 
-      // Create recipient context
       const recipientContext = await suite.createRecipientContext({
         recipientKey: privateKeyData,
         enc: encapsulationData,
-        info: new Uint8Array()
+        info: new Uint8Array(),
       });
 
-      // Decrypt the private key
       const decryptedData = await recipientContext.open({
         ciphertext: encryptedData,
-        aad: new Uint8Array()
+        aad: new Uint8Array(),
       });
 
-      // Convert decrypted data to string
       return Buffer.from(decryptedData).toString();
     } catch (error) {
       console.error('Error decrypting private key:', error);
@@ -136,39 +134,34 @@ class PrivyService {
    * @param {string} publicKey HPKE public key (base64)
    * @returns {Promise<{encryptedPrivateKey: string, encapsulation: string}>} Encrypted wallet data
    */
-  static async exportWalletFromPrivy(walletId, publicKey) {
+  async exportWalletFromPrivy(walletId, publicKey) {
     try {
-      // Get Privy API auth header
       const authHeader = await getPrivyServerAuthHeader();
 
-      // Call Privy API to export wallet
       const response = await fetch(
-        `${PRIVY_API_URL}/v1/wallets/${walletId}/export`,
+        `${PRIVY_API_URL}/v1/users/${this.privyUserId}/wallets/${walletId}/export`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': authHeader
+            Authorization: authHeader,
           },
           body: JSON.stringify({
-            recipient_public_key: publicKey
-          })
+            recipient_public_key: publicKey,
+          }),
         }
       );
 
-      // Check for successful response
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(`Privy API error: ${response.status} ${JSON.stringify(errorData)}`);
       }
 
-      // Parse response
       const data = await response.json();
 
-      // Extract encrypted private key and encapsulation
       return {
         encryptedPrivateKey: data.encrypted_private_key,
-        encapsulation: data.encapsulation
+        encapsulation: data.encapsulation,
       };
     } catch (error) {
       console.error('Error exporting wallet from Privy:', error);
@@ -185,16 +178,13 @@ class PrivyService {
    * @param {string} privateKey HPKE private key (base64)
    * @returns {Promise<{exportToken: string}>} Export token
    */
-  static async createExportRequest(phone, walletId, walletAddress, publicKey, privateKey) {
+  async createExportRequest(phone, walletId, walletAddress, publicKey, privateKey) {
     try {
-      // Generate secure token
       const exportToken = this.generateSecureToken();
 
-      // Calculate expiry time (1 hour from now)
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 1);
 
-      // Insert export request into database
       const { error } = await supabase.from('wallet_export_requests').insert([
         {
           user_phone: phone,
@@ -204,8 +194,8 @@ class PrivyService {
           recipient_public_key: publicKey,
           recipient_private_key: privateKey,
           status: 'pending',
-          expires_at: expiresAt.toISOString()
-        }
+          expires_at: expiresAt.toISOString(),
+        },
       ]);
 
       if (error) {
@@ -213,7 +203,6 @@ class PrivyService {
         throw new Error('Failed to create export request');
       }
 
-      // Return export token
       return { exportToken };
     } catch (error) {
       console.error('Error in createExportRequest:', error);
@@ -226,7 +215,7 @@ class PrivyService {
    * @param {string} token Export token
    * @returns {Promise<Object|null>} Export request details or null if not found
    */
-  static async getExportRequest(token) {
+  async getExportRequest(token) {
     try {
       const { data, error } = await supabase
         .from('wallet_export_requests')
@@ -252,11 +241,10 @@ class PrivyService {
    * @param {string} status New status ('pending', 'ready', 'completed', 'failed')
    * @returns {Promise<void>}
    */
-  static async updateExportRequestStatus(token, status) {
+  async updateExportRequestStatus(token, status) {
     try {
       const updates = { status };
-      
-      // If status is 'completed', add completed_at timestamp
+
       if (status === 'completed') {
         updates.completed_at = new Date().toISOString();
       }
@@ -281,7 +269,7 @@ class PrivyService {
    * @param {string} token Export token
    * @returns {Promise<void>}
    */
-  static async completeExportRequest(token) {
+  async completeExportRequest(token) {
     return this.updateExportRequestStatus(token, 'completed');
   }
 
@@ -292,18 +280,25 @@ class PrivyService {
    * @param {string} encapsulation HPKE encapsulation from Privy
    * @returns {Promise<void>}
    */
-  static async updateExportRequestWithEncryptedData(token, encryptedPrivateKey, encapsulation) {
+  async updateExportRequestWithEncryptedData(
+    token,
+    encryptedPrivateKey,
+    encapsulation
+  ) {
     try {
       const { error } = await supabase
         .from('wallet_export_requests')
         .update({
           encrypted_private_key: encryptedPrivateKey,
-          encapsulation: encapsulation
+          encapsulation: encapsulation,
         })
         .eq('export_token', token);
 
       if (error) {
-        console.error('Error updating export request with encrypted data:', error);
+        console.error(
+          'Error updating export request with encrypted data:',
+          error
+        );
         throw new Error('Failed to update export request with encrypted data');
       }
     } catch (error) {
@@ -311,7 +306,6 @@ class PrivyService {
       throw error;
     }
   }
-
 
 }
 

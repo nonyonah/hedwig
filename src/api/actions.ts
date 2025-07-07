@@ -421,6 +421,14 @@ async function handleCreateWallets(userId: string) {
 
     // Use Privy to create or get wallet
     const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: userData?.phone_number, chain: "base-sepolia", name: userName });
+
+    // Update the user with the privy_user_id from the created wallet
+    if (wallet.privy_user_id) {
+      await supabase
+        .from('users')
+        .update({ privy_user_id: wallet.privy_user_id })
+        .eq('id', userId);
+    }
     
     console.log(`[handleCreateWallets] Successfully created wallet: ${wallet.address}`);
     const response = walletCreatedMulti({ evm_wallet: wallet.address });
@@ -866,14 +874,6 @@ async function handleSend(params: ActionParams, userId: string) {
 }
 
 // Export keys functionality is disabled
-// async function handleExportKeys(params: ActionParams, userId: string) {
-//   return privateKeys({ privy_link: "https://privy.io/privatekeys" });
-// }
-
-// Example handler for bridging
-async function handleBridge(params: ActionParams, userId: string) {
-  return { text: 'Bridging tokens is not supported with Privy wallets.' };
-}
 
 // Handler for crypto deposit notification
 async function handleCryptoDeposit(params: ActionParams, userId: string) {
@@ -1211,6 +1211,8 @@ async function handleBridgeQuote(params: ActionParams, userId: string) {
   }
 }
 
+import { toE164 } from '@/lib/phoneFormat';
+
 async function handleExportPrivateKey(params: ActionParams, userId: string) {
   try {
     console.log(`[handleExportPrivateKey] Initiating private key export for user ${userId}`);
@@ -1225,6 +1227,12 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
     if (userError || !user || !user.phone_number) {
       console.error(`[handleExportPrivateKey] Error fetching user:`, userError);
       return { text: "Could not find your account information. Please try again later." };
+    }
+
+    // Format phone number to E.164 with '+'
+    const e164Phone = toE164(user.phone_number);
+    if (!e164Phone) {
+      return { text: "Invalid phone number. Please update your profile with a valid phone number, e.g. +2348153324197." };
     }
     
     // Get user's wallet
@@ -1251,7 +1259,7 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        phone: user.phone_number,
+        phone: e164Phone,
         walletId: wallet.privy_wallet_id,
         walletAddress: wallet.address
       })
