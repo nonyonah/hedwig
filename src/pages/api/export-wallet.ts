@@ -1,5 +1,6 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import crypto from 'crypto';
+// Feature disabled: Private key export is currently unavailable.
+// import { NextApiRequest, NextApiResponse } from 'next';
+// import crypto from 'crypto';
 
 // HPKE configuration as per Privy documentation
 const HPKE_CONFIG = {
@@ -20,15 +21,12 @@ interface PrivyExportResponse {
   encapsulated_key: string;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
+export default function handler(req, res) {
+  res.status(503).json({ message: 'Private key export is currently unavailable.' });
+  // if (req.method !== 'POST') {
+  //   return res.status(405).json({ error: 'Method not allowed' });
+  // }
+  // try {
     const { walletId, userId }: ExportWalletRequest = req.body;
 
     if (!walletId || !userId) {

@@ -563,7 +563,7 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
  * Parameter Format: POSITIONAL (no named parameters)
  * Has QUICK_REPLY button
  */
-export function privateKeys({ privy_link }: { privy_link: string }) {
+export function privateKeys(_: { privy_link: string }) {
   return {
     name: 'private_keys',
     language: { code: 'en' },
@@ -573,8 +573,7 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
         parameters: [
           {
             type: 'text',
-            parameter_name: 'privy_link',
-            text: sanitizeWhatsAppParam(privy_link, 'privy_link')
+            text: 'Private key export is currently unavailable.'
           }
         ]
       }

@@ -1,6 +1,7 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import crypto from 'crypto';
-import { PrivyClient } from '@privy-io/server-auth';
+// Feature disabled: Private key export is currently unavailable.
+// import { NextApiRequest, NextApiResponse } from 'next';
+// import crypto from 'crypto';
+// import { PrivyClient } from '@privy-io/server-auth';
 
 interface ExportWalletRequest {
   walletId: string;
@@ -12,15 +13,12 @@ interface PrivyExportResponse {
   encapsulated_key: string;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
+export default function handler(req, res) {
+  res.status(503).json({ message: 'Private key export is currently unavailable.' });
+  // if (req.method !== 'POST') {
+  //   return res.status(405).json({ error: 'Method not allowed' });
+  // }
+  // try {
     const { walletId }: ExportWalletRequest = req.body;
 
     if (!walletId) {

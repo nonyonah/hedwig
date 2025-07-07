@@ -1212,53 +1212,7 @@ async function handleBridgeQuote(params: ActionParams, userId: string) {
 }
 
 async function handleExportPrivateKey(params: ActionParams, userId: string) {
-  try {
-    // 1. Get user's wallet
-    const { data: wallet, error: walletError } = await supabase
-      .from('wallets')
-      .select('address')
-      .eq('user_id', userId)
-      .single();
-
-    if (walletError || !wallet) {
-      console.error(`[Export Key] Wallet not found for user ${userId}`, walletError);
-      return noWalletYet();
-    }
-
-    // 2. Get user's phone number
-    let phoneNumber = params.phoneNumber;
-    if (!phoneNumber) {
-      const { data: user } = await supabase
-        .from("users")
-        .select("phone_number")
-        .eq("id", userId)
-        .single();
-      phoneNumber = user?.phone_number || '';
-    }
-
-    if (!phoneNumber) {
-      console.error(`[Export Key] Phone number not found for user ${userId}`);
-      return { text: "We couldn't find your phone number to send the export link." };
-    }
-
-    // 3. Generate a secure export token and link
-    const { signExportToken } = await import('@/lib/jwtExport');
-    const token = signExportToken({ userId, walletAddress: wallet.address });
-    const frontendBaseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-    const privy_link = `${frontendBaseUrl}/export-key?token=${token}`;
-    console.log(`[Export Key] Generated secure export link: ${privy_link}`);
-
-    // 4. Send the WhatsApp template with the named parameter
-    await sendWhatsAppTemplate(phoneNumber, privateKeys({ privy_link }));
-
-    // 5. Return a confirmation message to the system/logs. The user sees the WhatsApp message.
-    return { text: "Private key export link sent to the user's WhatsApp." };
-
-  } catch (error) {
-    console.error(`[Export Key] Error exporting private key for user ${userId}:`, error);
-    return { text: "An unexpected error occurred while trying to export your private key. Please try again later." };
-  }
+  return { text: "Private key export is currently unavailable." };
 }
 
 // Handler for initiating a bridge

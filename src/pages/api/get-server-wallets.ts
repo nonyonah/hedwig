@@ -1,15 +1,13 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import { PrivyClient } from '@privy-io/server-auth';
+// Feature disabled: Private key export is currently unavailable.
+// import { NextApiRequest, NextApiResponse } from 'next';
+// import { PrivyClient } from '@privy-io/server-auth';
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
+export default function handler(req, res) {
+  res.status(503).json({ message: 'Private key export is currently unavailable.' });
+  // if (req.method !== 'GET') {
+  //   return res.status(405).json({ error: 'Method not allowed' });
+  // }
+  // try {
     // Initialize Privy client with app credentials
     const privy = new PrivyClient(
       process.env.PRIVY_APP_ID!,
