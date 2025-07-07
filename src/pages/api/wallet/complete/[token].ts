@@ -2,7 +2,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import PrivyService from '../../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
-import { walletExportSuccess, walletExportError } from '../../../../lib/walletExportTemplate';
+import { sendFailed } from '../../../../lib/whatsappTemplates';
+import { WalletExportRequest, WhatsAppError, DecryptionError } from '../../../../types/wallet';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -34,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Get export request details
-    const exportRequest = await PrivyService.getExportRequest(token);
+    const exportRequest = await PrivyService.getExportRequest(token) as WalletExportRequest | null;
     
     if (!exportRequest) {
       return res.status(404).json({ 
@@ -83,22 +84,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Import WhatsApp messaging function
         const { sendWhatsAppTemplate } = await import('../../../../lib/whatsapp');
         
-        // Send success template message
-        await sendWhatsAppTemplate(exportRequest.user_phone, walletExportSuccess({
-          wallet_address: exportRequest.wallet_address
-        }));
+        // Send success message using text template since there's no specific template for this
+        await sendWhatsAppTemplate(exportRequest.user_phone, {
+          name: 'private_keys_success',
+          language: { code: 'en' },
+          components: [
+            {
+              type: 'BODY',
+              parameters: [
+                { type: 'text', text: exportRequest.wallet_address }
+              ]
+            }
+          ]
+        });
 
         // Log successful message sending
         await supabase.from('message_logs').insert([
           {
             user_id: exportRequest.user_phone,
             message_type: 'template',
-            content: 'wallet_export_success',
+            content: 'private_keys_success',
             direction: 'outgoing',
             metadata: { walletAddress: exportRequest.wallet_address }
           }
         ]);
-      } catch (whatsappError) {
+      } catch (error) {
+        const whatsappError = error as WhatsAppError;
         console.error('Error sending WhatsApp confirmation:', whatsappError);
         
         // Log WhatsApp error but continue with the process
@@ -120,7 +131,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         privateKey,
         walletAddress: exportRequest.wallet_address
       });
-    } catch (decryptionError) {
+    } catch (error) {
+      const decryptionError = error as DecryptionError;
       console.error('Error decrypting private key:', decryptionError);
 
       // Log decryption error
@@ -142,11 +154,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Import WhatsApp messaging function
         const { sendWhatsAppTemplate } = await import('../../../../lib/whatsapp');
         
-        // Send error template message
-        await sendWhatsAppTemplate(exportRequest.user_phone, walletExportError({
-          error_message: 'Failed to decrypt your wallet. Please try again.'
+        // Send error message using the sendFailed template
+        await sendWhatsAppTemplate(exportRequest.user_phone, sendFailed({
+          reason: 'Failed to decrypt your wallet. Please try again.'
         }));
-      } catch (whatsappError) {
+      } catch (error) {
+        const whatsappError = error as WhatsAppError;
         console.error('Error sending WhatsApp error message:', whatsappError);
       }
 
@@ -156,7 +169,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         details: decryptionError.message 
       });
     }
-  } catch (error) {
+  } catch (err) {
+    const error = err as Error;
     console.error('Error completing wallet export:', error);
 
     // Log error

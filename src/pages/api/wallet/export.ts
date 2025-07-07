@@ -2,7 +2,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import PrivyService from '../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
-import { walletExportLink } from '../../../lib/walletExportTemplate';
+import { privateKeys } from '../../../lib/whatsappTemplates';
+import { WhatsAppError } from '../../../types/wallet';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -85,16 +86,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Generate export link
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://app.example.com';
-    const exportLink = `${baseUrl}/wallet/export/${exportToken}`;
+    let exportLink = `${baseUrl}/wallet/export/${exportToken}`;
+    
+    // Truncate the link if it's too long (keeping the token intact)
+    if (exportLink.length > 50) {
+      const tokenPart = `/wallet/export/${exportToken}`;
+      const truncatedBaseUrl = baseUrl.substring(0, Math.max(0, 50 - tokenPart.length - 3)) + '...';
+      exportLink = `${truncatedBaseUrl}${tokenPart}`;
+    }
 
     // Send WhatsApp message with export link
     try {
       // Import WhatsApp messaging function
       const { sendWhatsAppTemplate } = await import('../../../lib/whatsapp');
       
-      // Send template message
-      await sendWhatsAppTemplate(phone, walletExportLink({
-        wallet_address: walletAddress,
+      // Send template message using the official private_keys template
+      await sendWhatsAppTemplate(phone, privateKeys({
         export_link: exportLink
       }));
 
@@ -103,12 +110,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         {
           user_id: phone,
           message_type: 'template',
-          content: 'wallet_export_link',
+          content: 'private_keys',
           direction: 'outgoing',
           metadata: { walletAddress, exportToken }
         }
       ]);
-    } catch (whatsappError) {
+    } catch (error) {
+      const whatsappError = error as WhatsAppError;
       console.error('Error sending WhatsApp message:', whatsappError);
       
       // Log WhatsApp error
@@ -131,7 +139,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       message: 'Wallet export initiated successfully',
       exportToken
     });
-  } catch (error) {
+  } catch (err) {
+    const error = err as Error;
     console.error('Error initiating wallet export:', error);
 
     // Log error
