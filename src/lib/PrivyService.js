@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const { CipherSuite, DhkemP256HkdfSha256, HkdfSha256 } = require('@hpke/core');
 const { Chacha20Poly1305 } = require('@hpke/chacha20poly1305');
 import { v4 as uuidv4 } from 'uuid';
-import { getPrivyServerAuthHeader } from './privy';
+
 
 // Environment variables
 const PRIVY_API_URL = process.env.PRIVY_API_URL || 'https://auth.privy.io/api';
@@ -12,6 +12,8 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Initialize Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+
 
 /**
  * PrivyService class for handling wallet export functionality.
@@ -140,69 +142,7 @@ class PrivyService {
     }
   }
 
-  /**
-   * Export wallet from Privy using HPKE
-   * @param {string} walletId Privy wallet ID
-   * @param {string} publicKey HPKE public key (base64)
-   * @returns {Promise<{encryptedPrivateKey: string, encapsulation: string}>} Encrypted wallet data
-   */
-  async exportWalletFromPrivy(walletId, publicKey) {
-    try {
-      const authHeader = await getPrivyServerAuthHeader();
-      
-      console.log(`[exportWalletFromPrivy] Exporting wallet ${walletId} for user ${this.privyUserId}`);
-      console.log(`[exportWalletFromPrivy] API URL: ${PRIVY_API_URL}/api/v1/wallets/${walletId}/export`);
-      if (!publicKey || typeof publicKey !== 'string') {
-        console.error('[exportWalletFromPrivy] recipient_public_key is missing or not a string:', publicKey);
-      } else {
-        try {
-          Buffer.from(publicKey, 'base64');
-        } catch (e) {
-          console.error('[exportWalletFromPrivy] recipient_public_key is not valid base64:', publicKey);
-        }
-      }
-      if (!authHeader) {
-        console.error('[exportWalletFromPrivy] Authorization header is missing!');
-      }
-      
-      // Note: The correct endpoint is /wallets/{id}/export, not /users/{id}/wallets/{id}/export
-      // Debugging logs for Privy API request
-            // The base URL from env likely contains /api, so we construct from there.
-      const requestUrl = `${PRIVY_API_URL}/v1/wallets/${walletId}/export`;
-      const requestOptions = {
-        method: 'POST',
-        headers: {
-          'privy-app-id': process.env.NEXT_PUBLIC_PRIVY_APP_ID,
-          'Content-Type': 'application/json',
-          Authorization: authHeader,
-        },
-        body: JSON.stringify({ recipient_public_key: publicKey, export_type: 'private_key' }),
-      };
-
-      console.log('[PrivyService] Request URL:', requestUrl);
-      console.log('[PrivyService] Request Method:', requestOptions.method);
-      console.log('[PrivyService] Request Headers:', JSON.stringify(requestOptions.headers, null, 2));
-
-      const response = await fetch(requestUrl, requestOptions);
-      
-      console.log(`[exportWalletFromPrivy] Response status: ${response.status}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Privy API Error Response: ${errorText}`);
-        throw new Error(`Privy API error: ${response.status} ${errorText}`);
-      }
-
-      const data = await response.json();
-      return {
-        encryptedPrivateKey: data.encrypted_private_key,
-        encapsulation: data.encapsulation,
-      };
-    } catch (error) {
-      console.error('Error exporting wallet from Privy:', error);
-      throw error;
-    }
-  }
+  
 
   /**
    * Create a new wallet export request in the database
@@ -250,7 +190,7 @@ class PrivyService {
    * @param {string} token Export token
    * @returns {Promise<Object|null>} Export request details or null if not found
    */
-  async getExportRequest(token) {
+  static async getExportRequest(token) {
     try {
       const { data, error } = await supabase
         .from('wallet_export_requests')

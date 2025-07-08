@@ -26,25 +26,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { phone, walletId, walletAddress } = req.body;
+    const { phone, walletId, walletAddress, privyUserId } = req.body;
 
-    if (!phone || !walletId || !walletAddress) {
+    if (!phone || !walletId || !walletAddress || !privyUserId) {
       return res.status(400).json({
         error: 'Missing required parameters',
-        details: 'phone, walletId, and walletAddress are required',
+        details: 'phone, walletId, walletAddress, and privyUserId are required',
       });
     }
 
-    // Try to convert to E.164 format, but use original as fallback
-    let phoneToUse = phone;
-    const e164Phone = toE164(phone);
-    
-    if (e164Phone) {
-      phoneToUse = e164Phone;
-      console.log(`[wallet/export] Converted phone ${phone} to E.164 format: ${e164Phone}`);
-    } else {
-      console.log(`[wallet/export] Could not convert phone to E.164, using original: ${phoneToUse}`);
-    }
+    // Use the phone number from the request for rate limiting and record-keeping.
+    const phoneToUse = toE164(phone) || phone;
 
     if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
       return res.status(400).json({
@@ -53,37 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Try to find user by phone number
-    console.log(`[wallet/export] Looking up user with phone: ${phoneToUse}`);
-    let { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, privy_user_id, phone_number')
-      .eq('phone_number', phoneToUse)
-      .single();
-      
-    // If not found and we have an E.164 format, try that as well
-    if ((!user || userError) && e164Phone && e164Phone !== phoneToUse) {
-      console.log(`[wallet/export] User not found with ${phoneToUse}, trying E.164 format: ${e164Phone}`);
-      const result = await supabase
-        .from('users')
-        .select('id, privy_user_id, phone_number')
-        .eq('phone_number', e164Phone)
-        .single();
-        
-      user = result.data;
-      userError = result.error;
-    }
-
-    if (userError || !user) {
-      console.error('Error fetching user for export:', userError);
-      return res.status(404).json({ error: 'User not found for the provided phone number.' });
-    }
-
-    if (!user.privy_user_id) {
-      return res.status(400).json({ error: 'User does not have a Privy account linked.' });
-    }
-
-    const privyService = new PrivyService(user.privy_user_id);
+        const privyService = new PrivyService(privyUserId);
 
     // Check rate limit with the new return format
     const { isRateLimited, remainingAttempts } = await privyService.checkRateLimit(phoneToUse);
@@ -95,65 +57,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const { publicKey, privateKey } = await privyService.generateHpkeKeyPair();
-
+    // Create a pending export request to generate a secure token
     const { exportToken } = await privyService.createExportRequest(
       phoneToUse,
       walletId,
       walletAddress,
-      publicKey,
-      privateKey
+      '', // No longer storing HPKE keys here
+      ''
     );
 
-    privyService
-      .exportWalletFromPrivy(walletId, publicKey)
-      .then(async ({ encryptedPrivateKey, encapsulation }: { encryptedPrivateKey: string; encapsulation: string }) => {
-        await privyService.updateExportRequestWithEncryptedData(exportToken, encryptedPrivateKey, encapsulation);
-        await privyService.updateExportRequestStatus(exportToken, 'ready');
-      })
-      .catch(async (error: any) => {
-        console.error('Error exporting wallet from Privy:', error);
-        await privyService.updateExportRequestStatus(exportToken, 'failed');
-      });
-
+    // Construct the client-side export link
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    let exportLink = `${baseUrl}/wallet/export/${exportToken}`;
+    const exportLink = `${baseUrl}/wallet/export/${exportToken}`;
+    console.log(`[export] Generated client-side export link: ${exportLink}`);
 
-
-    
-    console.log(`[export] Generated export link: ${exportLink}`);
-
+    // Send the link to the user via WhatsApp
     try {
       const { sendWhatsAppTemplate } = await import('../../../lib/whatsapp');
-      
-      // Make sure export_link is a non-empty string
-      if (!exportLink) {
-        exportLink = `${baseUrl}/wallet/export/${exportToken}`;
-      }
-      
-      // Format the phone number for WhatsApp
-      let whatsappPhone = user.phone_number;
-      
-      // Ensure phone starts with '+' for WhatsApp API
+      let whatsappPhone = phoneToUse;
       if (whatsappPhone && !whatsappPhone.startsWith('+')) {
         whatsappPhone = '+' + whatsappPhone;
       }
-      
       console.log(`[export] Sending WhatsApp template to ${whatsappPhone} with export_link: ${exportLink}`);
       const template = exportWallet({ export_link: exportLink });
-      console.log('[export] Template payload:', JSON.stringify(template));
-      
       await sendWhatsAppTemplate(whatsappPhone, template);
     } catch (whatsappError) {
-      console.error('Failed to send WhatsApp message, but export will continue:', whatsappError);
-      // Do not rethrow; allow the API to return a success response
+      console.error('Failed to send WhatsApp message, but export request was created:', whatsappError);
+      // Proceed to return success, as the user can still be notified through other means if necessary
     }
 
+    // Return a success response
     return res.status(200).json({
       success: true,
-      message: 'Wallet export initiated successfully',
+      message: 'Wallet export link has been sent to your WhatsApp.',
       exportToken,
-      exportLink, // Include the export link in the response
+      exportLink,
     });
   } catch (err) {
     const error = err as Error;

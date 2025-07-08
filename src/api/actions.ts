@@ -1216,86 +1216,78 @@ import { toE164 } from '@/lib/phoneFormat';
 async function handleExportPrivateKey(params: ActionParams, userId: string) {
   try {
     console.log(`[handleExportPrivateKey] Initiating private key export for user ${userId}`);
-    
-    // Get user's phone number
+
+    // Get user's phone number and Privy User ID
     const { data: user, error: userError } = await supabase
-      .from("users")
-      .select("phone_number")
-      .eq("id", userId)
+      .from('users')
+      .select('phone_number, privy_user_id')
+      .eq('id', userId)
       .single();
-    
-    if (userError || !user || !user.phone_number) {
-      console.error(`[handleExportPrivateKey] Error fetching user:`, userError);
-      return { text: "Could not find your account information. Please try again later." };
+
+    if (userError || !user || !user.phone_number || !user.privy_user_id) {
+      console.error(`[handleExportPrivateKey] Error fetching user data:`, userError);
+      return { text: 'Could not find your complete account information. Please try again later.' };
     }
 
-    // Format phone number to E.164 with '+'
-    // If toE164 fails, use the original phone number as a fallback
-    let phoneToUse = user.phone_number;
-    const e164Phone = toE164(user.phone_number);
-    
-    if (e164Phone) {
-      phoneToUse = e164Phone;
-      console.log(`[handleExportPrivateKey] Converted phone ${user.phone_number} to E.164 format: ${e164Phone}`);
-    } else {
-      console.log(`[handleExportPrivateKey] Could not convert phone to E.164, using original: ${phoneToUse}`);
-    }
-    
+    // Format phone number to E.164, using original as fallback
+    const phoneToUse = toE164(user.phone_number) || user.phone_number;
+
     // Get user's wallet
     const { data: wallet, error: walletError } = await supabase
-      .from("wallets")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("chain", "base-sepolia")
+      .from('wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('chain', 'base-sepolia')
       .single();
-    
+
     if (walletError || !wallet) {
       console.error(`[handleExportPrivateKey] Error fetching wallet:`, walletError);
       return noWalletYet();
     }
-    
+
     // Create export request URL
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const exportUrl = `${baseUrl}/api/wallet/export`;
-    
+
     // Make POST request to export API
-    console.log(`[handleExportPrivateKey] Making export request with phone: ${phoneToUse}`);
+    console.log(`[handleExportPrivateKey] Making export request for privyUserId: ${user.privy_user_id}`);
     const response = await fetch(exportUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         phone: phoneToUse,
         walletId: wallet.privy_wallet_id,
-        walletAddress: wallet.address
-      })
+        walletAddress: wallet.address,
+        privyUserId: user.privy_user_id, // Pass the user's Privy ID
+      }),
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error(`[handleExportPrivateKey] Export API error (${response.status}):`, errorData);
-      
+
       if (response.status === 429) {
-        const retryAfter = errorData.retryAfter || 3600; // Default to 1 hour if not specified
+        const retryAfter = errorData.retryAfter || 3600;
         const retryMinutes = Math.ceil(retryAfter / 60);
-        return { 
-          text: `You've reached the maximum number of export attempts. Please wait ${retryMinutes} minutes before trying again.`
+        return {
+          text: `You've reached the maximum number of export attempts. Please wait ${retryMinutes} minutes before trying again.`,
         };
       }
-      
-      return { 
-        text: "Failed to initiate private key export. Please try again later." 
+
+      return {
+        text: 'Failed to initiate private key export. Please try again later.',
       };
     }
-    
+
     const data = await response.json();
-    
+
     // Return privateKeys template with export link
     return exportWallet({ export_link: data.exportLink });
   } catch (error) {
     console.error(`[handleExportPrivateKey] Error:`, error);
-    return { text: "An error occurred while exporting your private key. Please try again later." };
+    return { text: 'An error occurred while exporting your private key. Please try again later.' };
   }
 }
 
