@@ -1,7 +1,7 @@
 // src/pages/_app.tsx
 import type { AppProps } from 'next/app';
 import { PrivyProvider } from '@privy-io/react-auth';
-import '../styles/globals.css'; // Assuming you have a global stylesheet
+import '@/styles/globals.css';
 
 function MyApp({ Component, pageProps }: AppProps) {
   const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
