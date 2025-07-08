@@ -3,20 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "browser": {
-    "crypto": false,
-    "stream": "stream-browserify",
-    "buffer": "buffer",
-    "util": "util",
-    "assert": "assert",
-    "path": "path-browserify",
-    "os": "os-browserify",
-    "https": "https-browserify",
-    "http": "stream-http",
-    "zlib": "browserify-zlib",
-    "querystring": "querystring-es3",
-    "url": "url"
-  },
+
   "scripts": {
     "dev": "next dev",
     "build": "next build",

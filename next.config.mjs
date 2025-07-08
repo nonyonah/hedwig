@@ -41,37 +41,6 @@ if (!process.env.NETLIFY && process.env.NODE_ENV !== 'production') {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      // Client-side polyfills
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        crypto: 'crypto-browserify',
-        stream: 'stream-browserify',
-        buffer: 'buffer',
-        util: 'util',
-        assert: 'assert',
-        path: 'path-browserify',
-        os: 'os-browserify',
-        https: 'https-browserify',
-        http: 'stream-http',
-        zlib: 'browserify-zlib',
-        querystring: 'querystring-es3',
-        url: 'url',
-        'whatwg-url': 'whatwg-url'
-      };
-
-      // Inject Buffer polyfill
-      config.plugins.push(
-        new config.webpack.ProvidePlugin({
-          Buffer: ['buffer', 'Buffer'],
-          process: 'process/browser',
-        })
-      );
-    }
-    return config;
-  },
   env: {
     CDP_API_KEY_ID: process.env.CDP_API_KEY_ID,
     CDP_API_KEY_SECRET: process.env.CDP_API_KEY_SECRET,
@@ -159,20 +128,20 @@ const nextConfig = {
     
     if (!isServer) {
       // Only include browser polyfills for client-side code
-      fallbacks.crypto = 'crypto-browserify';
-      fallbacks.stream = 'stream-browserify';
-      fallbacks.buffer = 'buffer/';
-      fallbacks.util = 'util/';
-      fallbacks.assert = 'assert/';
-      fallbacks.path = 'path-browserify';
+      fallbacks.crypto = require.resolve('crypto-browserify');
+      fallbacks.stream = require.resolve('stream-browserify');
+      fallbacks.buffer = require.resolve('buffer/');
+      fallbacks.util = require.resolve('util/');
+      fallbacks.assert = require.resolve('assert/');
+      fallbacks.path = require.resolve('path-browserify');
       fallbacks.process = 'process/browser';
-      fallbacks.os = 'os-browserify/browser';
-      fallbacks.https = 'https-browserify';
-      fallbacks.http = 'stream-http';
-      fallbacks.zlib = 'browserify-zlib';
-      fallbacks.querystring = 'querystring-es3';
-      fallbacks.url = 'url/';
-      fallbacks['whatwg-url'] = 'whatwg-url';
+      fallbacks.os = require.resolve('os-browserify/browser');
+      fallbacks.https = require.resolve('https-browserify');
+      fallbacks.http = require.resolve('stream-http');
+      fallbacks.zlib = require.resolve('browserify-zlib');
+      fallbacks.querystring = require.resolve('querystring-es3');
+      fallbacks.url = require.resolve('url/');
+      fallbacks['whatwg-url'] = require.resolve('whatwg-url');
     }
     
     config.resolve.fallback = {
@@ -180,24 +149,14 @@ const nextConfig = {
       ...fallbacks
     };
     
-    config.plugins = [
-      ...config.plugins,
+    config.plugins.push(
       new nextWebpack.ProvidePlugin({
         process: 'process/browser',
-        Buffer: ['buffer', 'Buffer']
+        Buffer: ['buffer', 'Buffer'],
       })
-    ];
+    );
     
-    if (!isServer) {
-      // Only provide browser polyfills for client-side code
-      config.plugins.push(
-        new nextWebpack.ProvidePlugin({
-          crypto: 'crypto-browserify',
-          stream: 'stream-browserify',
-          util: 'util/'
-        })
-      );
-    }
+
     
     config.module.rules.push({
       test: /whatwg-url\/.*\.js$/,
