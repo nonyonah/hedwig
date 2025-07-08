@@ -2,7 +2,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import PrivyService from '../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
-import { privateKeys } from '../../../lib/whatsappTemplates';
+import { exportWallet } from '../../../lib/whatsappTemplates';
 import { WhatsAppError } from '../../../types/wallet';
 import { toE164 } from '../../../lib/phoneFormat';
 
@@ -119,17 +119,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     let exportLink = `${baseUrl}/wallet/export/${exportToken}`;
 
-    if (exportLink.length > 50) {
-      const tokenPart = `/wallet/export/${exportToken}`;
-      const truncatedBaseUrl = baseUrl.substring(0, Math.max(0, 50 - tokenPart.length - 3)) + '...';
-      exportLink = `${truncatedBaseUrl}${tokenPart}`;
-    }
+
     
     console.log(`[export] Generated export link: ${exportLink}`);
 
     try {
       const { sendWhatsAppTemplate } = await import('../../../lib/whatsapp');
-      const { privateKeys } = await import('../../../lib/whatsappTemplates');
       
       // Make sure export_link is a non-empty string
       if (!exportLink) {
@@ -145,7 +140,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       
       console.log(`[export] Sending WhatsApp template to ${whatsappPhone} with export_link: ${exportLink}`);
-      const template = privateKeys({ export_link: exportLink });
+      const template = exportWallet({ export_link: exportLink });
       console.log('[export] Template payload:', JSON.stringify(template));
       
       await sendWhatsAppTemplate(whatsappPhone, template);

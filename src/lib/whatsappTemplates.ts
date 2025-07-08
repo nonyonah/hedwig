@@ -747,17 +747,21 @@ export function priceAlert({
  * Parameter Format: NAMED
  * Parameters: export_link (used in a URL button)
  */
-export function privateKeys({ export_link }: { export_link: string }) {
+/**
+ * Template: export_wallet
+ * Parameter Format: POSITIONAL
+ * Parameters: export_link
+ */
+export function exportWallet({ export_link }: { export_link: string }) {
   return {
-    name: 'private_keys',
+    name: 'export_wallet',
     language: { code: 'en' },
     components: [
       {
-        type: 'body',
+        type: 'BODY',
         parameters: [
           {
             type: 'text',
-            name: 'export_link', // The required name for the named parameter
             text: sanitizeWhatsAppParam(export_link, 'export_link'),
           },
         ],

@@ -167,7 +167,8 @@ class PrivyService {
       
       // Note: The correct endpoint is /wallets/{id}/export, not /users/{id}/wallets/{id}/export
       // Debugging logs for Privy API request
-      const requestUrl = `${PRIVY_API_URL}/api/v1/wallets/${walletId}/export`;
+            // The base URL from env likely contains /api, so we construct from there.
+      const requestUrl = `${PRIVY_API_URL}/v1/wallets/${walletId}/export`;
       const requestOptions = {
         method: 'POST',
         headers: {

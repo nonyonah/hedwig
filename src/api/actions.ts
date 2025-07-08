@@ -20,7 +20,7 @@ import {
   sendFailed,
   walletBalance,
   walletCreatedMulti,
-  privateKeys,
+  exportWallet,
   noWalletYet,
   textTemplate,
   usersWalletAddresses,
@@ -1292,7 +1292,7 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
     const data = await response.json();
     
     // Return privateKeys template with export link
-    return privateKeys({ export_link: data.exportLink });
+    return exportWallet({ export_link: data.exportLink });
   } catch (error) {
     console.error(`[handleExportPrivateKey] Error:`, error);
     return { text: "An error occurred while exporting your private key. Please try again later." };
