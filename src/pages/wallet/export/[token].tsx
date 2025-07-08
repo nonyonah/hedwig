@@ -2,7 +2,7 @@
 // src/pages/wallet/export/[token].tsx
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import { useWallets } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
 import Head from 'next/head';
 import styles from '../../../styles/WalletExport.module.css';
 
@@ -17,7 +17,7 @@ interface PageState {
 export default function WalletExportPage() {
   const router = useRouter();
   const { token } = router.query;
-  const { exportWallet } = useWallets();
+  const { exportWallet, ready, authenticated } = usePrivy();
 
   const [state, setState] = useState<PageState>({
     status: 'loading',
@@ -61,7 +61,8 @@ export default function WalletExportPage() {
 
     try {
       // This triggers the Privy client-side export modal
-      await exportWallet(state.walletAddress);
+      // The exportWallet function expects an object with an address property
+      await exportWallet({ address: state.walletAddress });
 
       // After the user completes the export, mark the token as used
       await fetch(`/api/wallet/export/${token}`, { method: 'POST' });
