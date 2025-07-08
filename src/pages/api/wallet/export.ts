@@ -35,12 +35,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    // Try to convert to E.164 format, but use original as fallback
+    let phoneToUse = phone;
     const e164Phone = toE164(phone);
-    if (!e164Phone) {
-      return res.status(400).json({
-        error: 'Invalid phone number format',
-        details: 'Phone number must be a valid E.164 format phone number.',
-      });
+    
+    if (e164Phone) {
+      phoneToUse = e164Phone;
+      console.log(`[wallet/export] Converted phone ${phone} to E.164 format: ${e164Phone}`);
+    } else {
+      console.log(`[wallet/export] Could not convert phone to E.164, using original: ${phoneToUse}`);
     }
 
     if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
@@ -50,11 +53,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const { data: user, error: userError } = await supabase
+    // Try to find user by phone number
+    console.log(`[wallet/export] Looking up user with phone: ${phoneToUse}`);
+    let { data: user, error: userError } = await supabase
       .from('users')
-      .select('id, privy_user_id')
-      .eq('phone_number', e164Phone)
+      .select('id, privy_user_id, phone_number')
+      .eq('phone_number', phoneToUse)
       .single();
+      
+    // If not found and we have an E.164 format, try that as well
+    if ((!user || userError) && e164Phone && e164Phone !== phoneToUse) {
+      console.log(`[wallet/export] User not found with ${phoneToUse}, trying E.164 format: ${e164Phone}`);
+      const result = await supabase
+        .from('users')
+        .select('id, privy_user_id, phone_number')
+        .eq('phone_number', e164Phone)
+        .single();
+        
+      user = result.data;
+      userError = result.error;
+    }
 
     if (userError || !user) {
       console.error('Error fetching user for export:', userError);
@@ -67,7 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const privyService = new PrivyService(user.privy_user_id);
 
-    const isRateLimited = await privyService.checkRateLimit(e164Phone);
+    const isRateLimited = await privyService.checkRateLimit(phoneToUse);
     if (isRateLimited) {
       return res.status(429).json({ error: 'Too many requests' });
     }
@@ -75,7 +93,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { publicKey, privateKey } = await privyService.generateHpkeKeyPair();
 
     const { exportToken } = await privyService.createExportRequest(
-      e164Phone,
+      phoneToUse,
       walletId,
       walletAddress,
       publicKey,
@@ -101,18 +119,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const truncatedBaseUrl = baseUrl.substring(0, Math.max(0, 50 - tokenPart.length - 3)) + '...';
       exportLink = `${truncatedBaseUrl}${tokenPart}`;
     }
+    
+    console.log(`[export] Generated export link: ${exportLink}`);
 
     try {
       const { sendWhatsAppTemplate } = await import('../../../lib/whatsapp');
-      await sendWhatsAppTemplate(e164Phone, privateKeys({ export_link: exportLink }));
-    } catch (error) {
-      console.error('Error sending WhatsApp message:', error);
+      const { privateKeys } = await import('../../../lib/whatsappTemplates');
+      
+      // Make sure export_link is a non-empty string
+      if (!exportLink) {
+        exportLink = `${baseUrl}/wallet/export/${exportToken}`;
+      }
+      
+      // Format the phone number for WhatsApp
+      let whatsappPhone = user.phone_number;
+      
+      // Ensure phone starts with '+' for WhatsApp API
+      if (whatsappPhone && !whatsappPhone.startsWith('+')) {
+        whatsappPhone = '+' + whatsappPhone;
+      }
+      
+      console.log(`[export] Sending WhatsApp template to ${whatsappPhone} with export_link: ${exportLink}`);
+      const template = privateKeys({ export_link: exportLink });
+      console.log('[export] Template payload:', JSON.stringify(template));
+      
+      await sendWhatsAppTemplate(whatsappPhone, template);
+    } catch (whatsappError) {
+      console.error('Failed to send WhatsApp message, but export will continue:', whatsappError);
+      // Do not rethrow; allow the API to return a success response
     }
 
     return res.status(200).json({
       success: true,
       message: 'Wallet export initiated successfully',
       exportToken,
+      exportLink, // Include the export link in the response
     });
   } catch (err) {
     const error = err as Error;

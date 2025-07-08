@@ -1230,9 +1230,15 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
     }
 
     // Format phone number to E.164 with '+'
+    // If toE164 fails, use the original phone number as a fallback
+    let phoneToUse = user.phone_number;
     const e164Phone = toE164(user.phone_number);
-    if (!e164Phone) {
-      return { text: "Invalid phone number. Please update your profile with a valid phone number, e.g. +2348153324197." };
+    
+    if (e164Phone) {
+      phoneToUse = e164Phone;
+      console.log(`[handleExportPrivateKey] Converted phone ${user.phone_number} to E.164 format: ${e164Phone}`);
+    } else {
+      console.log(`[handleExportPrivateKey] Could not convert phone to E.164, using original: ${phoneToUse}`);
     }
     
     // Get user's wallet
@@ -1253,13 +1259,14 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
     const exportUrl = `${baseUrl}/api/wallet/export`;
     
     // Make POST request to export API
+    console.log(`[handleExportPrivateKey] Making export request with phone: ${phoneToUse}`);
     const response = await fetch(exportUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        phone: e164Phone,
+        phone: phoneToUse,
         walletId: wallet.privy_wallet_id,
         walletAddress: wallet.address
       })

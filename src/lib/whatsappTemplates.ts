@@ -2,6 +2,22 @@ import { formatAddress } from './utils';
 
 // Export this function so it can be used in other files
 export function sanitizeWhatsAppParam(text: string | number | undefined | null, fieldName: string = 'unknown'): string {
+  // Special handling for export_link parameter
+  if (fieldName === 'export_link') {
+    // If it's undefined or empty, use a fallback URL
+    if (text === undefined || text === null || String(text).trim() === '') {
+      const fallbackUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${text}', using fallback: '${fallbackUrl}'`);
+      return fallbackUrl;
+    }
+    
+    // For export_link, we want to preserve the URL as is
+    const sanitized = String(text).trim();
+    console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${text}', output: '${sanitized}'`);
+    return sanitized;
+  }
+  
+  // Standard handling for other parameters
   const originalValue = text;
   if (text === undefined || text === null || String(text).trim() === '') {
     console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${originalValue}', output: '?'`);
@@ -571,11 +587,11 @@ export function privateKeys({ export_link }: { export_link: string }) {
     language: { code: 'en' },
     components: [
       {
-        type: 'body',
+        type: 'BODY',
         parameters: [
           {
             type: 'text',
-            text: sanitizeWhatsAppParam(export_link, 'export_link')
+            text: sanitizeWhatsAppParam(export_link)
           }
         ]
       }

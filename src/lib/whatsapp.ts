@@ -9,13 +9,16 @@ import { v4 as uuidv4 } from 'uuid';
 export async function sendWhatsAppTemplate(phoneNumber: string, template: any): Promise<any> {
   try {
     // Get your WhatsApp Business Account ID and access token from env vars
-    const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+    // Use phone number ID as fallback for business account ID if not available
+    const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || process.env.WHATSAPP_PHONE_NUMBER_ID;
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
     
     if (!wabaId || !accessToken) {
       console.error('Missing required environment variables for WhatsApp API');
       throw new Error('Missing WhatsApp API configuration');
     }
+    
+    console.log('[sendWhatsAppTemplate] Using WABA/Phone ID:', wabaId);
     
     // Construct the request to the WhatsApp API
     const response = await fetch(

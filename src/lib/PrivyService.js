@@ -100,28 +100,25 @@ class PrivyService {
    */
   async decryptPrivateKey(encryptedPrivateKey, encapsulation, recipientPrivateKey) {
     try {
-      const suite = new hpke.CipherSuite({
-        kem: hpke.Kem.DhkemX25519HkdfSha256,
-        kdf: hpke.Kdf.HkdfSha256,
-        aead: hpke.Aead.ChaCha20Poly1305,
+      const suite = new CipherSuite({
+        kem: new DhkemP256HkdfSha256(),
+        kdf: new HkdfSha256(),
+        aead: new Chacha20Poly1305(),
       });
 
-      const encryptedData = Buffer.from(encryptedPrivateKey, 'base64');
-      const encapsulationData = Buffer.from(encapsulation, 'base64');
-      const privateKeyData = Buffer.from(recipientPrivateKey, 'base64');
+      const ikm = Buffer.from(recipientPrivateKey, 'base64');
+      const keyPair = await suite.kem.importKey('raw', ikm, false);
 
-      const recipientContext = await suite.createRecipientContext({
-        recipientKey: privateKeyData,
-        enc: encapsulationData,
-        info: new Uint8Array(),
+      const rkp = keyPair;
+
+      const sender = await suite.createRecipientContext({
+        recipientKey: rkp,
+        enc: Buffer.from(encapsulation, 'base64'),
       });
 
-      const decryptedData = await recipientContext.open({
-        ciphertext: encryptedData,
-        aad: new Uint8Array(),
-      });
+      const decrypted = await sender.open(Buffer.from(encryptedPrivateKey, 'base64'));
 
-      return Buffer.from(decryptedData).toString();
+      return Buffer.from(decrypted).toString('utf-8');
     } catch (error) {
       console.error('Error decrypting private key:', error);
       throw new Error('Failed to decrypt private key');
@@ -137,28 +134,44 @@ class PrivyService {
   async exportWalletFromPrivy(walletId, publicKey) {
     try {
       const authHeader = await getPrivyServerAuthHeader();
-
+      
+      console.log(`[exportWalletFromPrivy] Exporting wallet ${walletId} for user ${this.privyUserId}`);
+      console.log(`[exportWalletFromPrivy] API URL: ${PRIVY_API_URL}/api/v1/wallets/${walletId}/export`);
+      if (!publicKey || typeof publicKey !== 'string') {
+        console.error('[exportWalletFromPrivy] recipient_public_key is missing or not a string:', publicKey);
+      } else {
+        try {
+          Buffer.from(publicKey, 'base64');
+        } catch (e) {
+          console.error('[exportWalletFromPrivy] recipient_public_key is not valid base64:', publicKey);
+        }
+      }
+      if (!authHeader) {
+        console.error('[exportWalletFromPrivy] Authorization header is missing!');
+      }
+      
+      // Note: The correct endpoint is /wallets/{id}/export, not /users/{id}/wallets/{id}/export
       const response = await fetch(
-        `${PRIVY_API_URL}/v1/users/${this.privyUserId}/wallets/${walletId}/export`,
+        `${PRIVY_API_URL}/api/v1/wallets/${walletId}/export`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: authHeader,
           },
-          body: JSON.stringify({
-            recipient_public_key: publicKey,
-          }),
+          body: JSON.stringify({ recipient_public_key: publicKey, export_type: 'private_key' }),
         }
       );
+      
+      console.log(`[exportWalletFromPrivy] Response status: ${response.status}`);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`Privy API error: ${response.status} ${JSON.stringify(errorData)}`);
+        const errorText = await response.text();
+        console.error(`Privy API Error Response: ${errorText}`);
+        throw new Error(`Privy API error: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
-
       return {
         encryptedPrivateKey: data.encrypted_private_key,
         encapsulation: data.encapsulation,
@@ -306,7 +319,6 @@ class PrivyService {
       throw error;
     }
   }
-
 }
 
 export default PrivyService;
