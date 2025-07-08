@@ -128,20 +128,20 @@ const nextConfig = {
     
     if (!isServer) {
       // Only include browser polyfills for client-side code
-      fallbacks.crypto = require.resolve('crypto-browserify');
-      fallbacks.stream = require.resolve('stream-browserify');
-      fallbacks.buffer = require.resolve('buffer/');
-      fallbacks.util = require.resolve('util/');
-      fallbacks.assert = require.resolve('assert/');
-      fallbacks.path = require.resolve('path-browserify');
+      fallbacks.crypto = 'crypto-browserify';
+      fallbacks.stream = 'stream-browserify';
+      fallbacks.buffer = 'buffer/';
+      fallbacks.util = 'util/';
+      fallbacks.assert = 'assert/';
+      fallbacks.path = 'path-browserify';
       fallbacks.process = 'process/browser';
-      fallbacks.os = require.resolve('os-browserify/browser');
-      fallbacks.https = require.resolve('https-browserify');
-      fallbacks.http = require.resolve('stream-http');
-      fallbacks.zlib = require.resolve('browserify-zlib');
-      fallbacks.querystring = require.resolve('querystring-es3');
-      fallbacks.url = require.resolve('url/');
-      fallbacks['whatwg-url'] = require.resolve('whatwg-url');
+      fallbacks.os = 'os-browserify/browser';
+      fallbacks.https = 'https-browserify';
+      fallbacks.http = 'stream-http';
+      fallbacks.zlib = 'browserify-zlib';
+      fallbacks.querystring = 'querystring-es3';
+      fallbacks.url = 'url/';
+      fallbacks['whatwg-url'] = 'whatwg-url';
     }
     
     config.resolve.fallback = {
