@@ -2,22 +2,6 @@ import { formatAddress } from './utils';
 
 // Export this function so it can be used in other files
 export function sanitizeWhatsAppParam(text: string | number | undefined | null, fieldName: string = 'unknown'): string {
-  // Special handling for export_link parameter
-  if (fieldName === 'export_link') {
-    // If it's undefined or empty, use a fallback URL
-    if (text === undefined || text === null || String(text).trim() === '') {
-      const fallbackUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-      console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${text}', using fallback: '${fallbackUrl}'`);
-      return fallbackUrl;
-    }
-    
-    // For export_link, we want to preserve the URL as is
-    const sanitized = String(text).trim();
-    console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${text}', output: '${sanitized}'`);
-    return sanitized;
-  }
-  
-  // Standard handling for other parameters
   const originalValue = text;
   if (text === undefined || text === null || String(text).trim() === '') {
     console.log(`[sanitizeWhatsAppParam] field: ${fieldName}, input: '${originalValue}', output: '?'`);
@@ -271,9 +255,21 @@ export function quotePending() {
 /**
  * Template: swap_prompt
  * Parameter Format: POSITIONAL
- * Parameters: from_amount_token, to_amount_token, fee, chain, time
+ * Parameters: amount, from_token, to_token, network
  */
-export function swapPrompt({ from_amount_token, to_amount_token, fee, chain, time }: { from_amount_token: string, to_amount_token: string, fee: string, chain: string, time: string }) {
+export function swapPrompt({ 
+  from_amount, 
+  to_amount, 
+  fee, 
+  chain, 
+  est_time 
+}: { 
+  from_amount: string, 
+  to_amount: string, 
+  fee: string, 
+  chain: string, 
+  est_time: string 
+}) {
   return {
     name: 'swap_prompt',
     language: { code: 'en' },
@@ -281,11 +277,11 @@ export function swapPrompt({ from_amount_token, to_amount_token, fee, chain, tim
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(from_amount_token, 'from_amount_token') },
-          { type: 'text', text: sanitizeWhatsAppParam(to_amount_token, 'to_amount_token') },
+          { type: 'text', text: sanitizeWhatsAppParam(from_amount, 'from_amount') },
+          { type: 'text', text: sanitizeWhatsAppParam(to_amount, 'to_amount') },
           { type: 'text', text: sanitizeWhatsAppParam(fee, 'fee') },
           { type: 'text', text: sanitizeWhatsAppParam(chain, 'chain') },
-          { type: 'text', text: sanitizeWhatsAppParam(time, 'time') },
+          { type: 'text', text: sanitizeWhatsAppParam(est_time, 'est_time') }
         ]
       }
     ]
@@ -380,7 +376,6 @@ export function tokenReceived({ amount, network, balance }: { amount: string, ne
     ]
   };
 }
-
 
 /**
  * Template: bridge_failed
@@ -495,7 +490,7 @@ export function sendFailed({ reason }: { reason: string }) {
       {
         type: 'body',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(safeReason) }
+          { type: 'text', text: sanitizeWhatsAppParam(safeReason), name: 'reason' }
         ]
       }
     ]
@@ -505,18 +500,16 @@ export function sendFailed({ reason }: { reason: string }) {
 /**
  * Template: wallet_balance
  * Parameter Format: POSITIONAL
- * Parameters: base_eth, base_usdc, eth_eth, eth_usdc
+ * Parameters: eth_balance, usdc_base_balance, cngn_balance
  */
 export function walletBalance({ 
-  base_eth, 
-  base_usdc, 
-  eth_eth, 
-  eth_usdc 
+  eth_balance, 
+  usdc_base_balance,
+  cngn_balance
 }: { 
-  base_eth: string, 
-  base_usdc: string, 
-  eth_eth: string, 
-  eth_usdc: string 
+  eth_balance: string, 
+  usdc_base_balance: string,
+  cngn_balance: string
 }) {
   return {
     name: 'wallet_balance',
@@ -525,10 +518,9 @@ export function walletBalance({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(base_eth, 'base_eth') },
-          { type: 'text', text: sanitizeWhatsAppParam(base_usdc, 'base_usdc') },
-          { type: 'text', text: sanitizeWhatsAppParam(eth_eth, 'eth_eth') },
-          { type: 'text', text: sanitizeWhatsAppParam(eth_usdc, 'eth_usdc') }
+          { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(cngn_balance) }
         ]
       }
     ]
@@ -566,33 +558,6 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
         type: 'BODY',
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) }
-        ]
-      }
-    ]
-  };
-}
-
-
-
-/**
- * Template: private_keys
- * Parameter Format: POSITIONAL
- * Parameters: export_link
- * 
- * This template sends a secure link to export wallet private keys
- */
-export function privateKeys({ export_link }: { export_link: string }) {
-  return {
-    name: 'private_keys',
-    language: { code: 'en' },
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          {
-            type: 'text',
-            text: sanitizeWhatsAppParam(export_link)
-          }
         ]
       }
     ]
@@ -776,3 +741,27 @@ export function priceAlert({
   };
 }
 */
+
+/**
+ * Template: private_keys
+ * Parameter Format: NAMED
+ * Parameters: export_link (used in a URL button)
+ */
+export function privateKeys({ export_link }: { export_link: string }) {
+  return {
+    name: 'private_keys',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'body',
+        parameters: [
+          {
+            type: 'text',
+            name: 'export_link', // The required name for the named parameter
+            text: sanitizeWhatsAppParam(export_link, 'export_link'),
+          },
+        ],
+      },
+    ],
+  };
+}

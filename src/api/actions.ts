@@ -1273,9 +1273,20 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[handleExportPrivateKey] Export API error:`, errorText);
-      return { text: "Failed to initiate private key export. Please try again later." };
+      const errorData = await response.json().catch(() => ({}));
+      console.error(`[handleExportPrivateKey] Export API error (${response.status}):`, errorData);
+      
+      if (response.status === 429) {
+        const retryAfter = errorData.retryAfter || 3600; // Default to 1 hour if not specified
+        const retryMinutes = Math.ceil(retryAfter / 60);
+        return { 
+          text: `You've reached the maximum number of export attempts. Please wait ${retryMinutes} minutes before trying again.`
+        };
+      }
+      
+      return { 
+        text: "Failed to initiate private key export. Please try again later." 
+      };
     }
     
     const data = await response.json();

@@ -85,9 +85,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const privyService = new PrivyService(user.privy_user_id);
 
-    const isRateLimited = await privyService.checkRateLimit(phoneToUse);
+    // Check rate limit with the new return format
+    const { isRateLimited, remainingAttempts } = await privyService.checkRateLimit(phoneToUse);
     if (isRateLimited) {
-      return res.status(429).json({ error: 'Too many requests' });
+      return res.status(429).json({ 
+        error: 'Too many requests',
+        message: `You've exceeded the maximum number of export attempts. Please try again in an hour.`,
+        retryAfter: 3600 // 1 hour in seconds
+      });
     }
 
     const { publicKey, privateKey } = await privyService.generateHpkeKeyPair();

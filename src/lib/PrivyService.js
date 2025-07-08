@@ -40,10 +40,16 @@ class PrivyService {
    * @param {string} phone User's phone number
    * @returns {Promise<boolean>} True if rate limited, false otherwise
    */
+  /**
+   * Check if a user has exceeded rate limits for wallet exports
+   * @param {string} phone User's phone number
+   * @returns {Promise<{isRateLimited: boolean, remainingAttempts: number}>} Rate limit status
+   */
   async checkRateLimit(phone) {
     try {
       const oneHourAgo = new Date();
       oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+      const maxAttempts = 10; // Increased from 3 to 10
 
       const { count, error } = await supabase
         .from('wallet_export_requests')
@@ -53,10 +59,19 @@ class PrivyService {
 
       if (error) {
         console.error('Error checking rate limit:', error);
-        return false;
+        return { isRateLimited: false, remainingAttempts: maxAttempts };
       }
 
-      return count >= 3;
+      const remainingAttempts = Math.max(0, maxAttempts - (count || 0));
+      const isRateLimited = (count || 0) >= maxAttempts;
+      
+      if (isRateLimited) {
+        console.warn(`[Rate Limit] User ${phone} has exceeded rate limit (${maxAttempts} attempts/hour).`);
+      } else {
+        console.log(`[Rate Limit] User ${phone} has ${remainingAttempts} attempts remaining.`);
+      }
+
+      return { isRateLimited, remainingAttempts };
     } catch (error) {
       console.error('Error in rate limit check:', error);
       return false;
@@ -151,17 +166,23 @@ class PrivyService {
       }
       
       // Note: The correct endpoint is /wallets/{id}/export, not /users/{id}/wallets/{id}/export
-      const response = await fetch(
-        `${PRIVY_API_URL}/api/v1/wallets/${walletId}/export`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: authHeader,
-          },
-          body: JSON.stringify({ recipient_public_key: publicKey, export_type: 'private_key' }),
-        }
-      );
+      // Debugging logs for Privy API request
+      const requestUrl = `${PRIVY_API_URL}/api/v1/wallets/${walletId}/export`;
+      const requestOptions = {
+        method: 'POST',
+        headers: {
+          'privy-app-id': process.env.NEXT_PUBLIC_PRIVY_APP_ID,
+          'Content-Type': 'application/json',
+          Authorization: authHeader,
+        },
+        body: JSON.stringify({ recipient_public_key: publicKey, export_type: 'private_key' }),
+      };
+
+      console.log('[PrivyService] Request URL:', requestUrl);
+      console.log('[PrivyService] Request Method:', requestOptions.method);
+      console.log('[PrivyService] Request Headers:', JSON.stringify(requestOptions.headers, null, 2));
+
+      const response = await fetch(requestUrl, requestOptions);
       
       console.log(`[exportWalletFromPrivy] Response status: ${response.status}`);
 
