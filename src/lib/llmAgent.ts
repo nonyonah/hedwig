@@ -38,7 +38,12 @@ export async function runLLM({
   message: string;
 }) {
   // 1. Get last N messages for context
-  const context = await getUserContext(userId);
+  let context = await getUserContext(userId);
+
+  // Defensive: ensure context is always an array for .filter
+  if (!Array.isArray(context)) {
+    context = context ? [context] : [];
+  }
 
   // 2. Compose prompt in Gemini API format (no system role)
   const systemMessage = `
@@ -66,7 +71,7 @@ For unknown requests that are clearly not blockchain-related, use intent "unknow
   const prompt = [
     { role: "user", parts: [{ text: systemMessage }] },
     ...context
-      .filter((msg: any) => msg.role !== 'system')
+      .filter((msg: any) => msg.role !== 'system' && msg.content && typeof msg.content === 'string')
       .map((msg: any) => ({
         role: msg.role,
         parts: [{ text: msg.content }]

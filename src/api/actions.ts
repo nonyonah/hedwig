@@ -1,4 +1,4 @@
-import { getOrCreatePrivyWallet } from "@/lib/privy";
+import { getOrCreatePrivyWallet, pregeneratePrivyWallet, assignWalletToUser } from "@/lib/privy";
 import { createClient } from "@supabase/supabase-js";
 
 import fetch from "node-fetch";
@@ -242,6 +242,7 @@ export async function handleAction(
   }
 
   if (pendingAction === 'COLLECT_EMAIL') {
+    // When collecting email, the raw text is the email address.
     const email = params.text?.trim();
     // Basic email validation regex
     const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g;
@@ -261,10 +262,21 @@ export async function handleAction(
       // Clear the pending action
       await updateSession(userId, { pending_action: null });
 
-      // Confirmation message
-      return {
-        text: `✅ Your email has been saved! Now, would you like me to create a wallet for you? (Type 'create wallet' to get started.)`,
-      };
+      // Pre-generate a wallet for the user now that we have their email
+      try {
+        const newWallet = await pregeneratePrivyWallet(userId);
+        if (!newWallet || !newWallet.address) {
+          throw new Error('Wallet pre-generation did not return a valid wallet.');
+        }
+
+        // Confirmation message with wallet address
+        return {
+          text: `✅ Your email has been saved and your new wallet is ready!\n\nYour wallet address is: ${newWallet.address}`,
+        };
+      } catch (error) {
+        console.error(`[handleAction] Failed to pre-generate wallet for user ${userId}:`, error);
+        return { text: "I've saved your email, but there was an error creating your wallet. You can try again by typing 'create wallet'." };
+      }
     } else {
       // Ask again if the email is invalid
       return {
@@ -284,6 +296,18 @@ export async function handleAction(
 
   // Text-based balance intent matching
   if (params.text && typeof params.text === 'string') {
+    // Temporary admin command to assign a wallet
+    if (params.text.toLowerCase() === 'run admin assign') {
+      try {
+        const walletId = 'so1c43wb4g20wb9fcrgsef9j';
+        const targetUserId = 'cmcv85jlg01z9kz0m3em5b0p8';
+        await assignWalletToUser(walletId, targetUserId);
+        return { text: `Successfully assigned wallet ${walletId} to user ${targetUserId}.` };
+      } catch (error) {
+        console.error('[admin_assign_wallet] Error:', error);
+        return { text: 'Failed to assign wallet. Check the logs for details.' };
+      }
+    }
     const text = params.text.toLowerCase();
     if (text.includes('balance') || text.includes('wallet balance')) {
       return await handleGetWalletBalance(params, userId);
@@ -425,6 +449,7 @@ export async function handleAction(
     return handleSendInstructions();
   case "export_keys":
     return await handleExportPrivateKey(params, userId);
+
   default:
     return {
       text: "This feature is not supported for your current wallet or action. Please try another request or check your wallet type."
@@ -541,18 +566,25 @@ async function handleCreateWallets(userId: string) {
 
 // Handler for getting wallet address
 async function handleGetWalletAddress(userId: string) {
-  // Only return the wallet address template, no fallback or error after success
-  // Get user info from Supabase for name
+  // Get user info from Supabase for name, phone, and email
   const { data: user } = await supabase
     .from("users")
-    .select("name")
+    .select("name, phone_number, email")
     .eq("id", userId)
     .single();
 
-  const userName = user?.name || `User_${userId.substring(0, 8)}`;
+  if (!user) {
+    console.error(`[handleGetWalletAddress] User not found for ID: ${userId}`);
+    return { text: "Error fetching user details. Please try again." };
+  }
 
-  // Get wallet using CDP
-  const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base-sepolia" });
+  // Get wallet using Privy, passing user details
+  const wallet = await getOrCreatePrivyWallet({
+    userId,
+    phoneNumber: user.phone_number || undefined,
+    email: user.email || undefined,
+    chain: "base-sepolia",
+  });
 
   if (!wallet || !wallet.address) {
     return { text: "Error fetching wallet address. Please try again." };

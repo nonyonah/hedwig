@@ -431,23 +431,11 @@ export function cleanWhatsAppTemplate(template: any) {
         // Clean parameters if they exist
         if (component.parameters) {
           component.parameters = component.parameters.map((param: any) => {
-            // Only remove 'name' for positional templates; keep it for named templates like 'private_keys'
-            if (
-              template.name === 'private_keys' && param.type === 'text'
-            ) {
-              // Keep 'name' property for named param
-              if (param.text) {
-                param.text = sanitizeWhatsAppParam(param.text);
-              }
-              return param;
-            } else {
-              // Remove 'name' for positional templates
-              const { name, ...rest } = param;
-              if (rest.type === "text" && rest.text) {
-                rest.text = sanitizeWhatsAppParam(rest.text);
-              }
-              return rest;
+            if (param.type === 'text' && param.text) {
+              param.text = sanitizeWhatsAppParam(param.text);
             }
+            // Do not remove the 'name' property, as it's required for named templates.
+            return param;
           });
         }
         return component;
@@ -745,7 +733,13 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         .eq("user_id", userId)
         .single();
 
-      const waitingForName = nameSession?.context?.find(
+      // Defensive: ensure context is always an array for .find
+      let contextArr = Array.isArray(nameSession?.context)
+        ? nameSession.context
+        : nameSession?.context
+          ? [nameSession.context]
+          : [];
+      const waitingForName = contextArr.find(
         (item: any) =>
           item.role === "system" &&
           JSON.parse(item.content)?.waiting_for === "name",
@@ -832,7 +826,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         .single();
       let pending = null;
       if (session?.context) {
-        pending = session.context.find(
+        const contextArr = Array.isArray(session.context) ? session.context : [session.context];
+        pending = contextArr.find(
           (item: any) =>
             item.role === "system" && JSON.parse(item.content)?.pending,
         );
@@ -1266,7 +1261,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         }
       }
 
-      const actionResult = await handleAction(intent, params, userId);
+      const actionResult = await handleAction(intent, { ...params, text }, userId);
       console.log("Action result:", JSON.stringify(actionResult, null, 2));
 
       // Handle different result types
