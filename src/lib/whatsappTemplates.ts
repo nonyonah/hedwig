@@ -499,17 +499,22 @@ export function sendFailed({ reason }: { reason: string }) {
 
 /**
  * Template: wallet_balance
- * Parameter Format: POSITIONAL
- * Parameters: eth_balance, usdc_base_balance, cngn_balance
+ * Displays balances for ETH and USDC on Base and Ethereum networks.
+ * @param {string} base_eth - Base ETH balance.
+ * @param {string} base_usdc - Base USDC balance.
+ * @param {string} eth_eth - Ethereum ETH balance.
+ * @param {string} eth_usdc - Ethereum USDC balance.
  */
 export function walletBalance({ 
-  eth_balance, 
-  usdc_base_balance,
-  cngn_balance
+  base_eth, 
+  base_usdc,
+  eth_eth,
+  eth_usdc
 }: { 
-  eth_balance: string, 
-  usdc_base_balance: string,
-  cngn_balance: string
+  base_eth: string, 
+  base_usdc: string,
+  eth_eth: string,
+  eth_usdc: string
 }) {
   return {
     name: 'wallet_balance',
@@ -518,9 +523,10 @@ export function walletBalance({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(cngn_balance) }
+          { type: 'text', text: sanitizeWhatsAppParam(base_eth) },
+          { type: 'text', text: sanitizeWhatsAppParam(base_usdc) },
+          { type: 'text', text: sanitizeWhatsAppParam(eth_eth) },
+          { type: 'text', text: sanitizeWhatsAppParam(eth_usdc) }
         ]
       }
     ]
