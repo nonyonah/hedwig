@@ -385,10 +385,10 @@ async function handleCreateWallets(userId: string) {
   try {
     console.log(`[handleCreateWallets] Creating wallet for user ${userId}`);
 
-    // Fetch user name
+    // Fetch user name and email
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("name, phone_number")
+      .select("name, phone_number, email")
       .eq("id", userId)
       .single();
 
@@ -419,8 +419,15 @@ async function handleCreateWallets(userId: string) {
       };
     }
 
-    // Use Privy to create or get wallet
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: userData?.phone_number, chain: "base-sepolia", name: userName });
+    // Use Privy to create or get wallet using the user's email
+    const createWalletRequest = {
+      userId,
+      chain: "base-sepolia",
+      name: userName,
+      // Prioritize email for wallet creation to match login method
+      ...(userData?.email ? { email: userData.email } : { phoneNumber: userData?.phone_number })
+    };
+    const wallet = await getOrCreatePrivyWallet(createWalletRequest);
 
     // Update the user with the privy_user_id from the created wallet
     if (wallet.privy_user_id) {
@@ -1009,11 +1016,11 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     // Send swapPrompt via WhatsApp with all quote details
     if (phoneNumber) {
       await sendWhatsAppTemplate(phoneNumber, swapPrompt({
-        from_amount_token: `${parseFloat(fromAmountFmt).toFixed(4)} ${fromToken}`,
-        to_amount_token: `${parseFloat(toAmountFmt).toFixed(4)} ${toToken}`,
+        from_amount: `${parseFloat(fromAmountFmt).toFixed(4)} ${fromToken}`,
+        to_amount: `${parseFloat(toAmountFmt).toFixed(4)} ${toToken}`,
         fee: `${gasFeeFormatted} ETH`,
         chain: 'Base',
-        time: '10s',
+        est_time: '10s',
       }));
     }
     // Optionally, return a confirmation object or nothing

@@ -105,16 +105,22 @@ export async function sendTransaction(
 export async function getOrCreatePrivyWallet({
   userId,
   phoneNumber,
+  email,
   chain = 'base-sepolia',
   name,
 }: {
   userId: string;
-  phoneNumber: string;
+  phoneNumber?: string;
+  email?: string;
   chain: string;
   name?: string;
 }) {
   try {
-    console.log(`Getting or creating ${chain} wallet for user ${userId} with phone ${phoneNumber}`);
+    console.log(`Getting or creating ${chain} wallet for user ${userId} with identifier`, { email, phoneNumber });
+
+    if (!email && !phoneNumber) {
+      throw new Error('Either email or phoneNumber must be provided to create a wallet.');
+    }
 
     // 1. Find or create user in Supabase
     let { data: user, error: userError } = await supabase
@@ -128,27 +134,30 @@ export async function getOrCreatePrivyWallet({
       throw userError;
     }
 
+    // If user not found by ID, try to find by email or phone as a fallback
     if (!user) {
-        // Try to find by phone number as fallback
-        const { data: userByPhone, error: phoneError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('phone_number', phoneNumber)
-            .maybeSingle();
+      const identifier = email ? { column: 'email', value: email } : { column: 'phone_number', value: phoneNumber };
+      if (identifier.value) {
+        const { data: userByIdentifier, error: identifierError } = await supabase
+          .from('users')
+          .select('*')
+          .eq(identifier.column, identifier.value)
+          .maybeSingle();
 
-        if (phoneError) {
-            console.error('Error fetching user by phone from Supabase:', phoneError);
-        } else if (userByPhone) {
-            console.log(`Found user by phone number in Supabase: ${userByPhone.id}`);
-            user = userByPhone;
+        if (identifierError) {
+          console.error(`Error fetching user by ${identifier.column} from Supabase:`, identifierError);
+        } else if (userByIdentifier) {
+          console.log(`Found user by ${identifier.column} in Supabase: ${userByIdentifier.id}`);
+          user = userByIdentifier;
         }
+      }
     }
 
     if (!user) {
-      console.log(`Creating new user in Supabase with ID ${userId} and phone ${phoneNumber}`);
+      console.log(`Creating new user in Supabase with ID ${userId}`);
       const { data: newUser, error: createError } = await supabase
         .from('users')
-        .insert([{ id: userId, phone_number: phoneNumber, name: name || null }])
+        .insert([{ id: userId, email, phone_number: phoneNumber, name: name || null }])
         .select()
         .single();
       if (createError) {
@@ -156,9 +165,15 @@ export async function getOrCreatePrivyWallet({
         throw createError;
       }
       user = newUser;
-    } else if (name && user.name !== name) {
-      await supabase.from('users').update({ name }).eq('id', userId);
-      user.name = name;
+    } else {
+      // Update user if email or name has changed
+      const updates: { email?: string; name?: string } = {};
+      if (email && user.email !== email) updates.email = email;
+      if (name && user.name !== name) updates.name = name;
+      if (Object.keys(updates).length > 0) {
+        await supabase.from('users').update(updates).eq('id', userId);
+        user = { ...user, ...updates };
+      }
     }
 
     // 2. Check if wallet exists for this user/chain in Supabase
@@ -181,28 +196,39 @@ export async function getOrCreatePrivyWallet({
     // 3. Check if user and wallet exist in Privy
     let privyUser;
     try {
-      privyUser = await privyClient.getUser(userId);
+      privyUser = await privyClient.getUser(user.id);
+      console.log(`Found existing Privy user: ${privyUser.id}`);
     } catch (err: any) {
       if (err.status === 404) {
-        console.log(`User ${userId} not found in Privy, creating now.`);
-        const createUserResponse = await fetch(`${privyApiUrl}/users`, {
-          method: 'POST',
-          headers: {
-            'Authorization': getPrivyServerAuthHeader(),
-            'Content-Type': 'application/json',
-            'privy-app-id': appId,
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            create_embedded_wallet: false, // We create the wallet separately if needed
-          }),
-        });
+        console.log(`User ${user.id} not found in Privy, creating now.`);
+        
+        const linkedAccounts = email
+          ? [{ type: 'email', address: email }]
+          : [{ type: 'phone', number: phoneNumber }];
+
+        const createUserResponse = await fetch(`${privyApiUrl}/users`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': getPrivyServerAuthHeader(),
+              'Content-Type': 'application/json',
+              'privy-app-id': appId,
+            },
+            body: JSON.stringify({
+              user_id: user.id,
+              create_embedded_wallet: true,
+              linked_accounts: linkedAccounts,
+            }),
+          }
+        );
+
         if (!createUserResponse.ok) {
           const errorText = await createUserResponse.text();
-          console.error(`Failed to create Privy user ${userId}:`, errorText);
+          console.error(`Failed to create Privy user ${user.id}:`, errorText);
           throw new Error(`Failed to create Privy user: ${errorText}`);
         }
         privyUser = await createUserResponse.json();
+        console.log(`Successfully created Privy user: ${privyUser.id}`);
       } else {
         console.error('Error fetching user from Privy:', err);
         throw err;
@@ -213,71 +239,35 @@ export async function getOrCreatePrivyWallet({
     if (chain === 'base-sepolia') chainType = 'ethereum';
     else chainType = chain;
 
-    const foundWallet = privyUser.linked_accounts.find(
-      (acc: any) => acc.type === 'wallet' && acc.chain_type === chainType
-    );
+    const foundWallet = privyUser.wallet;
 
-    if (foundWallet) {
-      console.log(`Found existing ${chainType} wallet in Privy: ${foundWallet.address}`);
-      // Store in Supabase
-      const { data: newWallet, error: storeError } = await supabase
-        .from('wallets')
-        .insert([{
-          user_id: user.id,
-          chain,
-          address: foundWallet.address,
-          privy_wallet_id: foundWallet.id,
-        }])
-        .select()
-        .single();
-      if (storeError) {
-        console.error('Error storing existing Privy wallet in Supabase:', storeError);
-        throw storeError;
-      }
-      return newWallet;
+    if (!foundWallet || !foundWallet.address) {
+      console.error('Privy user was created/found, but the embedded wallet is missing.');
+      throw new Error('Failed to retrieve embedded wallet from Privy.');
     }
 
-    // 4. Create Privy wallet via REST API for the user
-    console.log(`Creating new ${chain} wallet in Privy for user ${userId}`);
-    const res = await fetch(`${privyApiUrl}/users/${userId}/wallets`, {
-      method: 'POST',
-      headers: {
-        'Authorization': getPrivyServerAuthHeader(),
-        'Content-Type': 'application/json',
-        'privy-app-id': appId,
-      },
-      body: JSON.stringify({
-        chain_type: chainType,
-      }),
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error('Privy wallet creation failed:', errorText);
-      throw new Error(`Privy wallet creation failed: ${errorText}`);
-    }
-
-    const privyWallet = await res.json();
-    console.log(`Created new ${chainType} wallet in Privy:`, privyWallet);
-
-    // 5. Store wallet in Supabase
-    const { data: newWallet, error: newWalletError } = await supabase
+    console.log(`Found/created ${chainType} wallet in Privy: ${foundWallet.address}`);
+    // Store in Supabase
+    const { data: newWallet, error: storeError } = await supabase
       .from('wallets')
       .insert([{
         user_id: user.id,
         chain,
-        address: privyWallet.address,
-        privy_wallet_id: privyWallet.id,
+        address: foundWallet.address,
+        privy_wallet_id: foundWallet.id,
+        privy_user_id: privyUser.id, // Store the Privy user ID
       }])
       .select()
       .single();
 
-    if (newWalletError) {
-      console.error('Error storing new wallet in Supabase:', newWalletError);
-      throw newWalletError;
+    if (storeError) {
+      console.error('Error storing new Privy wallet in Supabase:', storeError);
+      throw storeError;
     }
 
-    console.log(`Stored new ${chain} wallet in Supabase:`, newWallet);
+    // Also update the privy_user_id in the users table
+    await supabase.from('users').update({ privy_user_id: privyUser.id }).eq('id', user.id);
+
     return newWallet;
   } catch (error) {
     console.error(`Error in getOrCreatePrivyWallet for ${chain}:`, error);
