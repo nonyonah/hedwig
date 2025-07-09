@@ -57,6 +57,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+// Helper to update the session context with a pending action
+async function updateSession(userId: string, context: object) {
+  console.log(`[updateSession] Updating session for ${userId} with context:`, context);
+
+  // Always store context as an array of { role: 'system', content: stringified object }
+  const newContextArray = [
+    {
+      role: 'system',
+      content: JSON.stringify(context),
+    },
+  ];
+
+  const { error: upsertError } = await supabase
+    .from('sessions')
+    .upsert({ user_id: userId, context: newContextArray, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+
+  if (upsertError) {
+    console.error(`[updateSession] Error upserting session for user ${userId}:`, upsertError);
+  }
+}
+
 /**
  * Check if a user has wallets
  * @param userId User ID to check
@@ -153,13 +174,21 @@ async function askForUserName(userId: string): Promise<any> {
 
 // Onboarding handler for first-time and returning users
 async function handleOnboarding(userId: string) {
-  // Fetch user info
+  // Fetch user info, including email
   const { data: user } = await supabase
     .from("users")
-    .select("name")
+    .select("name, email")
     .eq("id", userId)
     .single();
   const userName = user?.name || `User_${userId.substring(0, 8)}`;
+
+  // If user has no email, ask for it and set a pending action.
+  if (!user?.email) {
+    await updateSession(userId, { pending_action: 'COLLECT_EMAIL' });
+    return {
+      text: `👋 Hi ${userName}! To get the most out of Hedwig, please provide your email address. This is used for important notifications and to secure your account.`,
+    };
+  }
 
   // Check for wallet
   const { data: wallets } = await supabase
@@ -170,11 +199,11 @@ async function handleOnboarding(userId: string) {
 
   if (!hasWallet) {
     return {
-      text: `👋 Hi ${userName}! I'm Hedwig, your crypto assistant. I can help you send, receive, swap, and bridge tokens, and check your balances. Would you like me to create a wallet for you now? (Type 'create wallet' to get started.)`
+      text: `👋 Hi ${userName}! I'm Hedwig, your crypto assistant. I can help you send, receive, swap, and bridge tokens, and check your balances. Would you like me to create a wallet for you now? (Type 'create wallet' to get started.)`,
     };
   } else {
     return {
-      text: `👋 Welcome back, ${userName}! What would you like to do today?`
+      text: `👋 Welcome back, ${userName}! What would you like to do today?`,
     };
   }
 }
@@ -192,6 +221,57 @@ export async function handleAction(
     "UserId:",
     userId,
   );
+
+  // Check for a pending action in the user's session
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('context')
+    .eq('user_id', userId)
+    .single();
+
+  // Extract pending_action from first 'system' context item (if any)
+  let pendingAction = undefined;
+  if (session?.context && Array.isArray(session.context)) {
+    const systemItem = session.context.find((item: any) => item.role === 'system' && item.content);
+    if (systemItem) {
+      try {
+        const parsed = typeof systemItem.content === 'string' ? JSON.parse(systemItem.content) : systemItem.content;
+        pendingAction = parsed.pending_action;
+      } catch (e) { /* ignore parse errors */ }
+    }
+  }
+
+  if (pendingAction === 'COLLECT_EMAIL') {
+    const email = params.text?.trim();
+    // Basic email validation regex
+    const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g;
+
+    if (email && emailRegex.test(email)) {
+      // Save the email to the users table
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ email })
+        .eq('id', userId);
+
+      if (updateError) {
+        console.error(`[handleAction] Error saving email for user ${userId}:`, updateError);
+        return { text: "I'm sorry, there was an error saving your email. Please try again." };
+      }
+
+      // Clear the pending action
+      await updateSession(userId, { pending_action: null });
+
+      // Confirmation message
+      return {
+        text: `✅ Your email has been saved! Now, would you like me to create a wallet for you? (Type 'create wallet' to get started.)`,
+      };
+    } else {
+      // Ask again if the email is invalid
+      return {
+        text: "That doesn't look like a valid email address. Please provide a valid email so I can keep your account secure.",
+      };
+    }
+  }
 
   // Special handling for create_wallets intent from button click
   if (intent === "create_wallets" || intent === "CREATE_WALLET" || 
@@ -392,8 +472,16 @@ async function handleCreateWallets(userId: string) {
       .eq("id", userId)
       .single();
 
+    // Before creating a wallet, ensure the user has provided an email.
+    if (!userData?.email) {
+      await updateSession(userId, { pending_action: 'COLLECT_EMAIL' });
+      return {
+        text: "Before I can create a wallet for you, please provide your email address. This is required to secure your account.",
+      };
+    }
+
     if (userError) {
-      console.error(`[handleCreateWallets] Error fetching user: ${userError.message}`);
+      console.error(`[handleCreateWallets] Error fetching user:`, userError);
     }
 
     const userName = userData?.name || `User_${userId.substring(0, 8)}`;
@@ -1224,15 +1312,31 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
   try {
     console.log(`[handleExportPrivateKey] Initiating private key export for user ${userId}`);
 
-    // Get user's phone number and Privy User ID
+    // Get user's phone number, Privy User ID, and email
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('phone_number, privy_user_id')
+      .select('phone_number, privy_user_id, email')
       .eq('id', userId)
       .single();
 
-    if (userError || !user || !user.phone_number || !user.privy_user_id) {
+    // If user does not exist, prompt onboarding
+    if (userError || !user) {
       console.error(`[handleExportPrivateKey] Error fetching user data:`, userError);
+      return {
+        text: "It looks like you haven't onboarded yet. Please get started by providing your email address so I can create your secure wallet.",
+      };
+    }
+
+    // If user exists but has no email, prompt for email and set pending_action
+    if (!user.email) {
+      await updateSession(userId, { pending_action: 'COLLECT_EMAIL' });
+      return {
+        text: "Before I can export your wallet, please provide your email address for security.",
+      };
+    }
+
+    if (!user.phone_number || !user.privy_user_id) {
+      console.error(`[handleExportPrivateKey] Missing phone number or privy_user_id for user ${userId}`);
       return { text: 'Could not find your complete account information. Please try again later.' };
     }
 
