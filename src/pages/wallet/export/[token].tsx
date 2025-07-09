@@ -1,8 +1,7 @@
 // src/pages/wallet/export/[token].tsx
-// src/pages/wallet/export/[token].tsx
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { useEffect, useState, useCallback } from 'react';
+import { usePrivy, useLogin } from '@privy-io/react-auth';
 import Head from 'next/head';
 import styles from '../../../styles/WalletExport.module.css';
 
@@ -18,6 +17,7 @@ export default function WalletExportPage() {
   const router = useRouter();
   const { token } = router.query;
   const { exportWallet, ready, authenticated } = usePrivy();
+  const { login } = useLogin();
 
   const [state, setState] = useState<PageState>({
     status: 'loading',
@@ -26,59 +26,123 @@ export default function WalletExportPage() {
 
   useEffect(() => {
     if (!token || Array.isArray(token)) {
+      setState({ 
+        status: 'invalid', 
+        message: 'Invalid export link. Please make sure you copied the complete URL.' 
+      });
       return;
     }
 
     const validateToken = async () => {
       try {
+        console.log(`[WalletExport] Validating token: ${token.substring(0, 8)}...`);
         const response = await fetch(`/api/wallet/export/${token}`);
         const data = await response.json();
 
         if (!response.ok) {
-          setState({ status: 'invalid', message: data.details || 'This link is invalid or has expired.' });
+          console.error(`[WalletExport] Token validation failed with status ${response.status}:`, data);
+          
+          // Handle specific error cases
+          if (response.status === 410) {
+            setState({ 
+              status: 'invalid', 
+              message: data.details || 'This link has expired or has already been used. Please request a new export link.' 
+            });
+          } else {
+            setState({ 
+              status: 'error', 
+              message: data.details || 'This link is invalid or has expired.' 
+            });
+          }
           return;
         }
 
+        console.log(`[WalletExport] Token validated for wallet: ${data.walletAddress}`);
         setState({
           status: 'ready',
           message: 'Your wallet is ready for export.',
           walletAddress: data.walletAddress,
         });
       } catch (err) {
-        console.error('Error validating export token:', err);
-        setState({ status: 'error', message: 'An unexpected error occurred. Please try again.' });
+        console.error('[WalletExport] Error validating export token:', err);
+        setState({ 
+          status: 'error', 
+          message: 'Unable to connect to the server. Please check your internet connection and try again.' 
+        });
       }
     };
 
     validateToken();
   }, [token]);
 
-  const handleExport = async () => {
-    if (!state.walletAddress) {
-      setState({ status: 'error', message: 'Wallet address not found. Cannot proceed.' });
+  const handleExport = useCallback(async () => {
+    if (!state.walletAddress || !token || Array.isArray(token)) {
+      setState({ 
+        status: 'error', 
+        message: 'Missing required information. Please try the export link again.' 
+      });
       return;
     }
 
+    setState(prev => ({ ...prev, status: 'loading', message: 'Preparing wallet export...' }));
+
     try {
-      // This triggers the Privy client-side export modal
-      // The exportWallet function expects an object with an address property
+      // Validate the token with your backend
+      const validationResponse = await fetch(`/api/wallet/export/${token}`);
+      if (!validationResponse.ok) {
+        const errorData = await validationResponse.json().catch(() => ({}));
+        throw new Error(errorData.details || 'Export link is no longer valid');
+      }
+
+      // If not authenticated, prompt login and retry
+      if (!authenticated) {
+        setState(prev => ({
+          ...prev,
+          status: 'loading',
+          message: 'Please login to export your wallet...'
+        }));
+        await login();
+        // User will need to click the button again after login
+        return;
+      }
+
+      // Trigger the Privy export modal
       await exportWallet({ address: state.walletAddress });
 
-      // After the user completes the export, mark the token as used
+      // Mark the export as used in your backend
       await fetch(`/api/wallet/export/${token}`, { method: 'POST' });
 
-      setState({ 
+      setState({
         status: 'success',
-        message: 'Your wallet has been successfully exported! This link is now invalid.'
+        message: 'Your wallet has been successfully exported! This link is now invalid.',
+        walletAddress: state.walletAddress
       });
 
     } catch (err) {
-      console.error('Error during client-side wallet export:', err);
-      setState({ status: 'error', message: 'The export process was cancelled or failed.' });
+      console.error('[WalletExport] Error during export:', err);
+      setState({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'The export process was cancelled or failed.',
+        walletAddress: state.walletAddress
+      });
     }
-  };
+  }, [token, state.walletAddress, authenticated, login, exportWallet]);
+
+  // Helper: get phone number from pageProps if available
+  const phoneNumber = (typeof window !== 'undefined' && (window as any).pageProps && (window as any).pageProps.phoneNumber) || undefined;
 
   const renderContent = () => {
+    // Add instructions for users
+    const instructions = (
+      <div style={{ marginBottom: 16, color: '#333', fontSize: 15 }}>
+        <b>Important:</b> To export your wallet, you must log in with the <b>same phone number</b> you used to create your wallet.<br />
+        {phoneNumber ? (
+          <>Your phone number: <b>{phoneNumber}</b></>
+        ) : (
+          <span style={{ color: 'red' }}>We could not detect your phone number. Please use the same number you used on WhatsApp.</span>
+        )}
+      </div>
+    );
     switch (state.status) {
       case 'loading':
         return (

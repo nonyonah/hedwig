@@ -14,14 +14,13 @@ function MyApp({ Component, pageProps }: AppProps) {
     <PrivyProvider
       appId={privyAppId}
       config={{
-        // Customize Privy's appearance here
         appearance: {
           theme: 'light',
           accentColor: '#676FFF',
-          logo: 'https://your-logo-url.com/logo.png', // Replace with your logo URL
+          logo: 'https://your-logo-url.com/logo.png',
         },
-        // Customize Privy's login methods here
-        loginMethods: ['email', 'wallet', 'google', 'github'],
+        // Only allow phone number login for strict identity sync
+        loginMethods: ['sms'],
       }}
     >
       <Component {...pageProps} />

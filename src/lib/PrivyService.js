@@ -157,8 +157,12 @@ class PrivyService {
     try {
       const exportToken = this.generateSecureToken();
 
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 1);
+      // Create expiration date in UTC to avoid timezone issues
+      const now = new Date();
+      // Set expiration to 24 hours from now to give users more time
+      const expiresAt = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+      
+      console.log(`[createExportRequest] Creating token that expires at: ${expiresAt.toISOString()} (UTC)`);
 
       const { error } = await supabase.from('wallet_export_requests').insert([
         {
@@ -192,14 +196,35 @@ class PrivyService {
    */
   static async getExportRequest(token) {
     try {
+      if (!token) {
+        console.error('No token provided to getExportRequest');
+        return null;
+      }
+      
+      console.log(`[getExportRequest] Looking up token: ${token.substring(0, 8)}...`);
+      
       const { data, error } = await supabase
         .from('wallet_export_requests')
         .select('*')
         .eq('export_token', token)
         .single();
-
+        
       if (error) {
-        console.error('Error getting export request:', error);
+        console.error('Error fetching export request:', error);
+        return null;
+      }
+      
+      if (!data) {
+        console.log(`[getExportRequest] No export request found for token`);
+        return null;
+      }
+      
+      console.log(`[getExportRequest] Found export request with status: ${data.status}`);
+      console.log(`[getExportRequest] Expires at: ${data.expires_at}`);
+      
+      // Ensure the data has all required fields
+      if (!data.wallet_address || !data.status || !data.expires_at) {
+        console.error('Invalid export request data:', data);
         return null;
       }
 

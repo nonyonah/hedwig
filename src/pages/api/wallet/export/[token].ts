@@ -29,16 +29,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // GET request: Validate the token and return data for the client-side export page
   if (req.method === 'GET') {
     try {
+      console.log(`[export][${token.substring(0, 8)}...] Validating export token`);
+      
       const exportRequest = await PrivyService.getExportRequest(token) as WalletExportRequest | null;
 
       if (!exportRequest) {
+        console.error(`[export][${token.substring(0, 8)}...] Export request not found`);
         return res.status(404).json({ 
           error: 'Export request not found', 
           details: 'The provided token is invalid or has expired.' 
         });
       }
 
-      if (new Date(exportRequest.expires_at) < new Date()) {
+      // Parse dates in UTC to avoid timezone issues
+      const expiryDate = new Date(exportRequest.expires_at);
+      const now = new Date();
+      
+      // Log both UTC and local times for debugging
+      console.log(`[export][${token.substring(0, 8)}...] Token expiry (UTC): ${expiryDate.toISOString()}`);
+      console.log(`[export][${token.substring(0, 8)}...] Current time (UTC): ${now.toISOString()}`);
+      console.log(`[export][${token.substring(0, 8)}...] Time difference (ms): ${expiryDate.getTime() - now.getTime()}`);
+
+      // Add a small buffer (5 minutes) to account for clock skew between servers
+      const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+      const effectiveExpiryTime = expiryDate.getTime() + bufferTime;
+      
+      if (now.getTime() > effectiveExpiryTime) {
+        console.error(`[export][${token.substring(0, 8)}...] Token expired. Expired at: ${expiryDate.toISOString()}, Current time: ${now.toISOString()}`);
         return res.status(410).json({ 
           error: 'Export request expired', 
           details: 'This export link has expired. Please request a new one.' 
@@ -47,6 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // A link can only be used if it's in the 'pending' state.
       if (exportRequest.status !== 'pending') {
+        console.error(`[export][${token.substring(0, 8)}...] Invalid status: ${exportRequest.status}`);
         return res.status(410).json({
           error: 'Export link invalid',
           details: 'This export link has already been used or is no longer valid. Please request a new one.',
