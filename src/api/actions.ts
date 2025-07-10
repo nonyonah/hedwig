@@ -1,4 +1,4 @@
-import { getOrCreatePrivyWallet, pregeneratePrivyWallet, assignWalletToUser } from "@/lib/privy";
+import { getOrCreatePrivyWallet, assignWalletToUser, pregeneratePrivyWallet, getPrivyUserAuthToken } from "@/lib/privy";
 import { createClient } from "@supabase/supabase-js";
 
 import fetch from "node-fetch";
@@ -114,7 +114,7 @@ async function checkUserWallets(userId: string) {
 async function verifyWalletExists(userId: string) {
   try {
     // Check if user has a wallet in BlockRadar
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: "base-sepolia" });
+    const wallet = await getOrCreatePrivyWallet(userId);
     if (!wallet) {
       return noWalletYet();
     }
@@ -294,6 +294,11 @@ export async function handleAction(
     return await handleCreateWallets(userId);
   }
 
+  // Handle wallet export intent
+  if (intent === "export_wallet") {
+    return await handleExportWallet(userId);
+  }
+
   // Text-based balance intent matching
   if (params.text && typeof params.text === 'string') {
     // Temporary admin command to assign a wallet
@@ -410,18 +415,6 @@ export async function handleAction(
     case "show_balance":
     case "wallet":
     case "wallet_balance":
-    case "my_wallet":
-    case "check_balance":
-      return await handleGetWalletBalance(params, userId);
-    case "welcome":
-      return await handleOnboarding(userId);
-    case "create_wallets":
-      return await handleCreateWallets(userId);
-    case "get_wallet_balance":
-      return await handleGetWalletBalance(params, userId);
-    case "get_wallet_address":
-      // Always return the WhatsApp template for wallet address
-      return await handleGetWalletAddress(userId);
     case "instruction_deposit":
       // For deposit instructions or wallet address requests, show the wallet address
       return await handleGetWalletAddress(userId);
@@ -532,24 +525,10 @@ async function handleCreateWallets(userId: string) {
       };
     }
 
-    // Use Privy to create or get wallet using the user's email
-    const createWalletRequest = {
-      userId,
-      chain: "base-sepolia",
-      name: userName,
-      // Prioritize email for wallet creation to match login method
-      ...(userData?.email ? { email: userData.email } : { phoneNumber: userData?.phone_number })
-    };
-    const wallet = await getOrCreatePrivyWallet(createWalletRequest);
+    // Use Privy to create or get wallet using the user's ID
+    const wallet = await getOrCreatePrivyWallet(userId);
 
-    // Update the user with the privy_user_id from the created wallet
-    if (wallet.privy_user_id) {
-      await supabase
-        .from('users')
-        .update({ privy_user_id: wallet.privy_user_id })
-        .eq('id', userId);
-    }
-    
+
     console.log(`[handleCreateWallets] Successfully created wallet: ${wallet.address}`);
     const response = walletCreatedMulti({ evm_wallet: wallet.address });
     console.log(`[handleCreateWallets] Response: ${JSON.stringify(response)}`);
@@ -579,12 +558,7 @@ async function handleGetWalletAddress(userId: string) {
   }
 
   // Get wallet using Privy, passing user details
-  const wallet = await getOrCreatePrivyWallet({
-    userId,
-    phoneNumber: user.phone_number || undefined,
-    email: user.email || undefined,
-    chain: "base-sepolia",
-  });
+  const wallet = await getOrCreatePrivyWallet(userId);
 
   if (!wallet || !wallet.address) {
     return { text: "Error fetching wallet address. Please try again." };
@@ -954,7 +928,7 @@ async function handleSend(params: ActionParams, userId: string) {
     // --- Wallet Fetch/Create and Logging ---
     let wallet = null;
     try {
-      wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: network });
+      wallet = await getOrCreatePrivyWallet(userId);
       console.log('[handleSend] Wallet fetched/created:', wallet);
       if (!wallet || !wallet.address) {
         console.log('[handleSend] Wallet missing or no address, returning noWalletYet');
@@ -997,6 +971,40 @@ async function handleSend(params: ActionParams, userId: string) {
     const failResp = { text: error.message || 'An unexpected error occurred. Please try again later.' };
     console.log('[handleSend] Returning:', failResp);
     return failResp;
+  }
+}
+
+async function handleExportWallet(userId: string) {
+  try {
+    console.log(`[handleExportWallet] Initiating wallet export for user ${userId}`);
+
+    // 1. Get the user's Privy ID from Supabase
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('privy_user_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user || !user.privy_user_id) {
+      console.error(`[handleExportWallet] Could not find Privy user ID for Supabase user ${userId}.`, userError);
+      return { text: "We couldn't find your account details to start the export. Please try again." };
+    }
+
+    const privyUserId = user.privy_user_id;
+
+    // 2. Generate a short-lived user auth token from Privy
+    const authToken = await getPrivyUserAuthToken(privyUserId);
+
+    // 3. Construct the export URL with the auth token
+    const exportUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/export-wallet?token=${authToken}`;
+
+    // 4. Send the URL to the user via the WhatsApp template
+    console.log(`[handleExportWallet] Sending export link to user ${userId}`);
+    return exportWallet({ export_link: exportUrl });
+
+  } catch (error) {
+    console.error('[handleExportWallet] Error:', error);
+    return { text: 'An unexpected error occurred while trying to export your wallet. Please try again later.' };
   }
 }
 
@@ -1050,7 +1058,7 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     console.log(`[Swap] Getting swap quote for user ${userId}, params:`, params);
 
     // Get wallet address
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: 'base-sepolia' });
+    const wallet = await getOrCreatePrivyWallet(userId);
     if (!wallet || !wallet.address) {
       return noWalletYet();
     }
@@ -1156,7 +1164,7 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
   try {
     console.log(`[Swap] Processing swap for user ${userId}`);
     // Get wallet address
-    const wallet = await getOrCreatePrivyWallet({ userId, phoneNumber: '', chain: 'base-sepolia' });
+    const wallet = await getOrCreatePrivyWallet(userId);
     if (!wallet || !wallet.address) {
       return noWalletYet();
     }

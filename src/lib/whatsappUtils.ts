@@ -122,8 +122,8 @@ export async function sendWhatsAppMessage(
           messaging_product: "whatsapp",
           to,
           type: "text",
-          text: { 
-            body: text,
+          text: {
+            body: text || "No wallet found. Please create one.",
             preview_url: false,
           },
         }),
