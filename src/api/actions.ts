@@ -229,60 +229,27 @@ export async function handleAction(
     .eq('user_id', userId)
     .single();
 
-  // Extract pending_action from first 'system' context item (if any)
-  let pendingAction = undefined;
-  if (session?.context && Array.isArray(session.context)) {
-    const systemItem = session.context.find((item: any) => item.role === 'system' && item.content);
-    if (systemItem) {
-      try {
-        const parsed = typeof systemItem.content === 'string' ? JSON.parse(systemItem.content) : systemItem.content;
-        pendingAction = parsed.pending_action;
-      } catch (e) { /* ignore parse errors */ }
+  // Extract pending_action from the session context
+  let pending_action = null;
+  if (session && session.context && Array.isArray(session.context)) {
+    const systemContext = session.context.find(ctx => ctx.role === 'system' && ctx.content);
+    if (systemContext) {
+        try {
+            const content = typeof systemContext.content === 'string' ? JSON.parse(systemContext.content) : systemContext.content;
+            if (content.pending_action) {
+                pending_action = content.pending_action;
+            }
+        } catch (e) { /* ignore parse errors */ }
     }
   }
 
-  if (pendingAction === 'COLLECT_EMAIL') {
-    // When collecting email, the raw text is the email address.
-    const email = params.text?.trim();
-    // Basic email validation regex
-    const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g;
-
-    if (email && emailRegex.test(email)) {
-      // Save the email to the users table
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ email })
-        .eq('id', userId);
-
-      if (updateError) {
-        console.error(`[handleAction] Error saving email for user ${userId}:`, updateError);
-        return { text: "I'm sorry, there was an error saving your email. Please try again." };
-      }
-
-      // Clear the pending action
-      await updateSession(userId, { pending_action: null });
-
-      // Pre-generate a wallet for the user now that we have their email
-      try {
-        const newWallet = await pregeneratePrivyWallet(userId);
-        if (!newWallet || !newWallet.address) {
-          throw new Error('Wallet pre-generation did not return a valid wallet.');
-        }
-
-        // Confirmation message with wallet address
-        return {
-          text: `✅ Your email has been saved and your new wallet is ready!\n\nYour wallet address is: ${newWallet.address}`,
-        };
-      } catch (error) {
-        console.error(`[handleAction] Failed to pre-generate wallet for user ${userId}:`, error);
-        return { text: "I've saved your email, but there was an error creating your wallet. You can try again by typing 'create wallet'." };
-      }
-    } else {
-      // Ask again if the email is invalid
-      return {
-        text: "That doesn't look like a valid email address. Please provide a valid email so I can keep your account secure.",
-      };
-    }
+  // If there's a pending action, check for user confirmation
+  const affirmativeIntent = intent === 'clarification' || intent === 'welcome' || params.text?.toLowerCase() === 'yes' || params.text?.toLowerCase() === 'yea';
+  if (pending_action && pending_action.type === 'send' && affirmativeIntent) {
+    // Clear the pending action from the session to prevent re-triggering
+    await supabase.from('sessions').update({ context: [] }).eq('user_id', userId);
+    // Proceed with the transaction
+    return await handleSend(pending_action.params, userId);
   }
 
   // Special handling for create_wallets intent from button click
@@ -301,18 +268,6 @@ export async function handleAction(
 
   // Text-based balance intent matching
   if (params.text && typeof params.text === 'string') {
-    // Temporary admin command to assign a wallet
-    if (params.text.toLowerCase() === 'run admin assign') {
-      try {
-        const walletId = 'so1c43wb4g20wb9fcrgsef9j';
-        const targetUserId = 'cmcv85jlg01z9kz0m3em5b0p8';
-        await assignWalletToUser(walletId, targetUserId);
-        return { text: `Successfully assigned wallet ${walletId} to user ${targetUserId}.` };
-      } catch (error) {
-        console.error('[admin_assign_wallet] Error:', error);
-        return { text: 'Failed to assign wallet. Check the logs for details.' };
-      }
-    }
     const text = params.text.toLowerCase();
     if (text.includes('balance') || text.includes('wallet balance')) {
       return await handleGetWalletBalance(params, userId);
@@ -347,6 +302,9 @@ export async function handleAction(
       // Treat as swap confirmation
       return await handleSwapProcess(lastSwapParams, userId);
     }
+
+
+
     // Fallback: clarification/unknown
     if (intent === "clarification") {
       return {

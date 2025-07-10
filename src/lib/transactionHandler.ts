@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import jwt from 'jsonwebtoken';
+
 import fetch from 'node-fetch';
-import { privyClient } from './privy';
+import { getPrivyServerAuthHeader } from './privy';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -80,16 +80,17 @@ export async function handleTransaction(
     };
     
     // Send transaction using Privy
-    const result = await sendPrivyTransaction({
-      walletId: wallet.privy_wallet_id,
-      chain: chain,
-      transaction: transaction,
+    const { hash, explorerUrl } = await sendPrivyTransaction({
+      userId: wallet.privy_user_id, 
+      walletId: wallet.address, 
+      chain,
+      transaction,
     });
-    
+
     // Record transaction in database
-    await recordTransaction(userId, wallet.address, result, chain, transaction);
-    
-    return result;
+    await recordTransaction(userId, wallet.address, { hash, explorerUrl }, chain, transaction);
+
+    return { hash, explorerUrl };
   } catch (error) {
     console.error('[TransactionHandler] Transaction failed:', error);
     
@@ -176,10 +177,12 @@ async function recordTransaction(
  * Send a transaction via Privy API
  */
 export async function sendPrivyTransaction({
+  userId,
   walletId,
   chain,
   transaction,
 }: {
+  userId: string;
   walletId: string;
   chain: string;
   transaction: {
@@ -193,47 +196,51 @@ export async function sendPrivyTransaction({
     console.log(`[sendPrivyTransaction] Sending transaction for wallet ${walletId} on chain ${chain}`);
     const chainId = transaction.chainId || getChainId(chain);
 
-    const url = `https://auth.privy.io/api/v1/wallets/${walletId}/ethereum/send-transaction`;
+        const url = `https://api.privy.io/v1/wallets/${walletId}/rpc`;
     const valueHex = `0x${BigInt(transaction.value).toString(16)}`;
+
     const numericChainId = typeof chainId === 'string' ? parseInt(chainId.split(':')[1]) : chainId;
+    const caip2 = `eip155:${numericChainId}`;
+    const hexChainId = `0x${numericChainId.toString(16)}`;
 
     const requestBody = {
-      to: transaction.to,
-      value: valueHex,
-      data: transaction.data || '0x',
-      chainId: numericChainId,
+      method: 'eth_sendTransaction',
+      caip2: caip2,
+      params: {
+        transaction: {
+          to: transaction.to,
+          value: valueHex,
+          data: transaction.data || '0x',
+          from: walletId,
+          chainId: hexChainId,
+        },
+      },
     };
 
-    const now = Math.floor(Date.now() / 1000);
-    const token = jwt.sign(
-      {
-        iat: now,
-        exp: now + 60,
-        iss: process.env.PRIVY_APP_ID,
-        sub: walletId,
-        aud: 'privy.io',
-        jti: require('crypto').randomBytes(16).toString('hex'),
-      },
-      process.env.PRIVY_APP_SECRET!
-    );
-
+    // Send request to Privy API using Basic Auth for server-to-server calls
     const response = await fetch(url, {
       method: 'POST',
       headers: {
+        'Authorization': getPrivyServerAuthHeader(),
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'privy-app-id': process.env.PRIVY_APP_ID!,
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Privy API Error: ${response.status} ${errorBody}`);
+      const errorText = await response.text();
+      console.error(`[sendPrivyTransaction] Error ${response.status}: ${errorText}`);
+      throw new Error(`Privy API error: ${errorText}`);
     }
 
-    const { hash } = await response.json();
+    const { result: hash } = await response.json();
     const explorerUrl = getExplorerUrl(chain, hash);
-    return { hash, explorerUrl };
+    return {
+      hash,
+      explorerUrl,
+    };
+
 
   } catch (error) {
     console.error('[sendPrivyTransaction] Error:', error);
