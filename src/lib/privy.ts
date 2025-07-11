@@ -96,18 +96,42 @@ export async function assignWalletToUser(walletId: string, supabaseUserId: strin
  * @returns The Privy user ID.
  */
 export async function getPrivyUserIdForSupabaseUser(supabaseUserId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('privy_user_id')
-    .eq('id', supabaseUserId)
-    .single();
+  try {
+    // First try to find the user by ID (for UUIDs)
+    let { data, error } = await supabase
+      .from('users')
+      .select('privy_user_id')
+      .eq('id', supabaseUserId)
+      .single();
 
-  if (error && error.code !== 'PGRST116') { // 'PGRST116' means no rows found, which is not an error here
-    console.error(`[getPrivyUserIdForSupabaseUser] Error fetching user ${supabaseUserId}:`, error);
+    // If not found, try to find by auth_id or other identifier
+    if ((error && error.code === 'PGRST116') || !data?.privy_user_id) {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('privy_user_id')
+        .or(`user_id.eq.${supabaseUserId},username.eq.${supabaseUserId}`)
+        .single();
+
+      if (userError && userError.code !== 'PGRST116') {
+        console.error(`[getPrivyUserIdForSupabaseUser] Error looking up user by auth_id/username ${supabaseUserId}:`, userError);
+        return null;
+      }
+      data = userData;
+    } else if (error && error.code !== 'PGRST116') {
+      console.error(`[getPrivyUserIdForSupabaseUser] Error fetching user ${supabaseUserId}:`, error);
+      return null;
+    }
+
+    if (!data?.privy_user_id) {
+      console.error(`[getPrivyUserIdForSupabaseUser] No privy_user_id found for user ${supabaseUserId}`);
+      return null;
+    }
+
+    return data.privy_user_id;
+  } catch (error) {
+    console.error(`[getPrivyUserIdForSupabaseUser] Unexpected error for user ${supabaseUserId}:`, error);
     return null;
   }
-
-  return data?.privy_user_id || null;
 }
 
 async function _createOrUpdatePrivyUser(supabaseUserId: string, email: string) {
