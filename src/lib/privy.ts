@@ -6,9 +6,12 @@ import { importPKCS8, SignJWT } from 'jose';
 
 // This function correctly formats the private key from the environment variable.
 function formatPrivateKey(key: string): string {
-  // The key from the environment variable comes in as a single line with '\n' as text.
-  // We need to replace the textual '\n' with actual newline characters.
-  return key.replace(/\\n/g, '\n');
+  // The key is an 'EC PRIVATE KEY' but importPKCS8 expects a 'PRIVATE KEY'.
+  // We must replace the headers and fix the newline characters.
+  return key
+    .replace('-----BEGIN EC PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----')
+    .replace('-----END EC PRIVATE KEY-----', '-----END PRIVATE KEY-----')
+    .replace(/\\n/g, '\n');
 }
 
 // Ensure environment variables are set
