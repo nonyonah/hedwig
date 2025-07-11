@@ -250,7 +250,7 @@ export async function sendPrivyTransaction({
     const token = jwt.sign(
       {
         iat: now,
-        exp: now + 300, // 5-minute expiration
+        exp: now + 3600, // 1-hour expiration as per Privy docs
         iss: 'privy.io', // Must be 'privy.io'
         aud: process.env.PRIVY_APP_ID!, // Must be your Privy App ID
         sub: userId, // The user's Privy DID
@@ -278,6 +278,51 @@ export async function sendPrivyTransaction({
 
     if (!response.ok) {
       const errorBody = await response.text();
+      if (response.status === 401 && errorBody.includes('Invalid auth token')) {
+        // Implement exponential backoff retry for invalid token
+        const maxRetries = 3;
+        const baseDelay = 1000; // Start with 1 second delay
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`[sendPrivyTransaction] Token expired, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Generate a new token and retry the request
+          const newToken = jwt.sign(
+            {
+              iat: Math.floor(Date.now() / 1000),
+              exp: Math.floor(Date.now() / 1000) + 3600,
+              iss: 'privy.io',
+              aud: process.env.PRIVY_APP_ID!,
+              sub: userId,
+              sid: `session_${Date.now()}`
+            },
+            formattedPrivateKey,
+            { 
+              algorithm: 'ES256',
+              header: {
+                alg: 'ES256',
+                typ: 'JWT'
+              }
+            }
+          );
+          
+          const retryResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${newToken}`,
+            },
+            body: JSON.stringify(requestBody),
+          });
+          
+          if (retryResponse.ok) {
+            return await retryResponse.json();
+          }
+        }
+      }
       throw new Error(`Privy API Error: ${response.status} ${errorBody}`);
     }
 
