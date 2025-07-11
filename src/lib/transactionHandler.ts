@@ -101,7 +101,7 @@ export async function sendPrivyTransaction({
     const authToken = await getPrivyUserAuthToken(supabaseUserId);
     const url = `https://api.privy.io/v1/wallets/${walletId}/eth_send_transaction`;
 
-    const response = await fetch(url, {
+    const requestOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${authToken}`,
@@ -112,7 +112,13 @@ export async function sendPrivyTransaction({
         transaction, // EIP-1559 or legacy transaction
         chain_id: `eip155:${getChainId(chain)}`,
       }),
-    });
+    };
+
+    console.log('Request URL:', url);
+    console.log('Request headers:', requestOptions.headers);
+    console.log('Request body:', JSON.stringify(JSON.parse(requestOptions.body), null, 2));
+
+    const response = await fetch(url, requestOptions);
 
     if (!response.ok) {
       const errorBody = await response.text();
