@@ -247,7 +247,7 @@ export async function getPrivyUserAuthToken(supabaseUserId: string): Promise<str
 
   if (!signingKey) {
     signingKey = await importPKCS8(
-      process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!,
+      process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!.replace(/\\n/g, '\n'),
       'ES256'
     );
   }
