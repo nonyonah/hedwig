@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
 
@@ -225,7 +226,8 @@ export async function sendPrivyTransaction({
     };
 
     const now = Math.floor(Date.now() / 1000);
-    const formattedPrivateKey = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!.replace(/\\n/g, '\n');
+    const privateKeyPem = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!.replace(/\\n/g, '\n');
+    const formattedPrivateKey = crypto.createPrivateKey(privateKeyPem);
 
     const token = jwt.sign(
       {
