@@ -1,3 +1,4 @@
+import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
 
@@ -135,69 +136,47 @@ export async function handleTransaction(
 ) {
   try {
     console.log(`[TransactionHandler] Processing transaction for user ${userId}`);
-    
-    // Default to base chain if not specified
     const chain = options.chain || transactionData.chain || 'base';
-    
     console.log(`[TransactionHandler] Using chain: ${chain}`);
-    
-    // Get wallet for the specified chain
+
     const { data: wallet, error } = await supabase
       .from('wallets')
       .select('*')
       .eq('user_id', userId)
       .eq('chain', chain)
       .single();
-    
+
     if (error || !wallet) {
       console.error(`[TransactionHandler] Error fetching wallet:`, error);
       throw new Error(`Wallet not found for chain ${chain}`);
     }
-    
-    if (!wallet.address) {
-      throw new Error('Wallet address is required for transaction signing.');
-    }
-    
-    console.log(`[TransactionHandler] Found wallet:`, wallet);
-    
-    // Only execute transaction if isExecute is true
-    if (!options.isExecute) {
-      return { text: 'Transaction not confirmed. Please confirm to proceed.' };
-    }
-    
-    // Prepare transaction data
-    const to = options.recipient || transactionData.recipient || transactionData.to;
-    const amount = options.amount || transactionData.amount || '0';
-    
-    // Convert amount to wei (for ETH transactions)
-    let value;
-    if (typeof amount === 'number' || (typeof amount === 'string' && !amount.startsWith('0x'))) {
-      const amountValue = typeof amount === 'number' ? amount : parseFloat(amount);
-      const amountInWei = Math.floor(amountValue * 1e18);
-      value = '0x' + amountInWei.toString(16);
-    } else {
-      value = amount; // Already in hex format
-    }
-    
-    // Prepare transaction object
-    const transaction = {
-      to: to,
-      value: value,
-      chainId: getChainId(chain),
+
+    const txData = {
+      to: options.recipient || transactionData.to,
+      value: options.amount?.toString() || transactionData.value,
       data: transactionData.data || '0x',
     };
-    
-    // Send transaction using CDP
-    const { hash, explorerUrl } = await sendCDPTransaction({
-      walletAddress: wallet.address,
-      chain,
-      transaction,
+
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('privy_user_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user || !user.privy_user_id) {
+      throw new Error('Privy user ID not found for this user.');
+    }
+
+    const result = await sendPrivyTransaction({
+      userId: user.privy_user_id,
+      walletId: wallet.address, // For Privy, wallet.address is the wallet ID
+      chain: chain,
+      transaction: txData,
     });
 
-    // Record transaction in database
-    await recordTransaction(userId, wallet.address, { hash, explorerUrl }, chain, transaction);
+    await recordTransaction(userId, wallet.address, result, chain, txData);
+    return result;
 
-    return { hash, explorerUrl };
   } catch (error) {
     console.error('[TransactionHandler] Transaction failed:', error);
     const errorMessage = getUserFriendlyErrorMessage(error);
@@ -206,14 +185,16 @@ export async function handleTransaction(
 }
 
 /**
- * Send a transaction via CDP API
+ * Send a transaction via Privy API
  */
-export async function sendCDPTransaction({
-  walletAddress,
+export async function sendPrivyTransaction({
+  userId,
+  walletId,
   chain,
   transaction,
 }: {
-  walletAddress: string;
+  userId: string;
+  walletId: string;
   chain: string;
   transaction: {
     to: string;
@@ -223,69 +204,67 @@ export async function sendCDPTransaction({
   };
 }): Promise<{ hash: string; explorerUrl: string }> {
   try {
-    console.log(`[sendCDPTransaction] Sending transaction for wallet ${walletAddress} on chain ${chain}`);
     const chainId = transaction.chainId || getChainId(chain);
+    const url = `https://auth.privy.io/api/v1/wallets/${walletId}/rpc`;
+    const valueHex = `0x${BigInt(transaction.value).toString(16)}`;
 
-    // First, sign the transaction
-    const signUrl = `https://api.cdp.coinbase.com/platform/v2/evm/accounts/${walletAddress}/sign/transaction`;
-    const signResponse = await fetch(signUrl, {
+    const requestBody = {
+      request: {
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            to: transaction.to,
+            value: valueHex,
+            data: transaction.data || '0x',
+            from: walletId,
+          },
+        ],
+      },
+      chainId: `eip155:${typeof chainId === 'string' ? chainId.split(':')[1] : chainId}`,
+    };
+
+    const now = Math.floor(Date.now() / 1000);
+    const formattedPrivateKey = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!.replace(/\\n/g, '\n');
+
+    const token = jwt.sign(
+      {
+        iat: now,
+        exp: now + 300, // 5-minute expiration
+        iss: process.env.PRIVY_APP_ID!,
+        aud: 'privy.io',
+        sub: userId, // The user's Privy DID is critical for authorization
+      },
+      formattedPrivateKey,
+      { algorithm: 'ES256' }
+    );
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.CDP_API_KEY}`,
-        'X-Wallet-Auth': process.env.CDP_WALLET_AUTH!,
-        'X-Idempotency-Key': `${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        'privy-app-id': process.env.PRIVY_APP_ID!,
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        transaction: `0x${Buffer.from(JSON.stringify({
-          to: transaction.to,
-          value: transaction.value,
-          data: transaction.data || '0x',
-          chainId: chainId,
-          nonce: '0x0', // CDP will auto-populate the correct nonce
-          gasPrice: '0x0', // CDP will estimate gas price
-          gasLimit: '0x0', // CDP will estimate gas limit
-        })).toString('hex')}`,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
-    if (!signResponse.ok) {
-      const errorBody = await signResponse.text();
-      throw new Error(`CDP API Error (Sign): ${signResponse.status} ${errorBody}`);
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Privy API Error: ${response.status} ${errorBody}`);
     }
 
-    const { signedTransaction } = await signResponse.json();
-
-    // Then, send the signed transaction
-    const sendResponse = await fetch(`${CDP_API_BASE_URL}/evm-accounts/${walletAddress}/send-transaction`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.CDP_API_KEY}`,
-        'X-Wallet-Auth': process.env.CDP_WALLET_AUTH!,
-        'X-Idempotency-Key': `${Date.now()}-${Math.random().toString(36).substring(7)}`,
-      },
-      body: JSON.stringify({
-        signedTransaction: signedTransaction,
-        chainId: `eip155:${chainId}`,
-      }),
-    });
-
-    if (!sendResponse.ok) {
-      const errorBody = await sendResponse.text();
-      throw new Error(`CDP API Error (Send): ${sendResponse.status} ${errorBody}`);
-    }
-
-    const { transactionHash } = await sendResponse.json();
-     const explorerUrl = getExplorerUrl(chain, transactionHash);
-     return { hash: transactionHash, explorerUrl };
+    const { result: transactionHash } = await response.json();
+    const explorerUrl = getExplorerUrl(chain, transactionHash);
+    return { hash: transactionHash, explorerUrl };
 
   } catch (error) {
-    console.error('[sendCDPTransaction] Error:', error);
+    console.error('[sendPrivyTransaction] Error:', error);
     const errorMessage = getUserFriendlyErrorMessage(error);
     throw new Error(errorMessage);
   }
 }
+
+
 
 /**
  * Get a user-friendly error message from a technical error
@@ -295,18 +274,7 @@ function getUserFriendlyErrorMessage(error: any): string {
   
   const errorStr = error?.message || String(error);
   
-  // CDP-specific error handling
-  if (errorStr.includes('CDP API Error')) {
-    if (errorStr.includes('401')) {
-      return 'Authentication failed. Please check your API credentials.';
-    }
-    if (errorStr.includes('429')) {
-      return 'Too many requests. Please wait a moment and try again.';
-    }
-    if (errorStr.includes('500')) {
-      return 'The service is temporarily unavailable. Please try again later.';
-    }
-  }
+
 
   // Chain-specific error handling
   if (errorStr.includes('insufficient funds') || errorStr.includes('insufficient balance')) {
