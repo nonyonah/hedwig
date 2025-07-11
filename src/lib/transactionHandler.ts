@@ -7,7 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const CDP_API_BASE_URL = 'https://api.coinbase.com/api/v2';
+const CDP_API_BASE_URL = 'https://api.coinbase.com/v2';
 
 /**
  * Sign a typed data structure using EIP-712
@@ -227,19 +227,25 @@ export async function sendCDPTransaction({
     const chainId = transaction.chainId || getChainId(chain);
 
     // First, sign the transaction
-    const signResponse = await fetch(`${CDP_API_BASE_URL}/evm-accounts/${walletAddress}/sign-transaction`, {
+    const signUrl = `https://api.cdp.coinbase.com/platform/v2/evm/accounts/${walletAddress}/sign/transaction`;
+    const signResponse = await fetch(signUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.CDP_API_KEY}`,
+        'X-Wallet-Auth': process.env.CDP_WALLET_AUTH!,
+        'X-Idempotency-Key': `${Date.now()}-${Math.random().toString(36).substring(7)}`,
       },
       body: JSON.stringify({
-        transaction: {
+        transaction: `0x${Buffer.from(JSON.stringify({
           to: transaction.to,
           value: transaction.value,
           data: transaction.data || '0x',
           chainId: chainId,
-        },
+          nonce: '0x0', // CDP will auto-populate the correct nonce
+          gasPrice: '0x0', // CDP will estimate gas price
+          gasLimit: '0x0', // CDP will estimate gas limit
+        })).toString('hex')}`,
       }),
     });
 
@@ -256,9 +262,12 @@ export async function sendCDPTransaction({
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.CDP_API_KEY}`,
+        'X-Wallet-Auth': process.env.CDP_WALLET_AUTH!,
+        'X-Idempotency-Key': `${Date.now()}-${Math.random().toString(36).substring(7)}`,
       },
       body: JSON.stringify({
-        signedTransaction,
+        signedTransaction: signedTransaction,
+        chainId: `eip155:${chainId}`,
       }),
     });
 
@@ -267,9 +276,9 @@ export async function sendCDPTransaction({
       throw new Error(`CDP API Error (Send): ${sendResponse.status} ${errorBody}`);
     }
 
-    const { hash } = await sendResponse.json();
-    const explorerUrl = getExplorerUrl(chain, hash);
-    return { hash, explorerUrl };
+    const { transactionHash } = await sendResponse.json();
+     const explorerUrl = getExplorerUrl(chain, transactionHash);
+     return { hash: transactionHash, explorerUrl };
 
   } catch (error) {
     console.error('[sendCDPTransaction] Error:', error);
@@ -286,6 +295,20 @@ function getUserFriendlyErrorMessage(error: any): string {
   
   const errorStr = error?.message || String(error);
   
+  // CDP-specific error handling
+  if (errorStr.includes('CDP API Error')) {
+    if (errorStr.includes('401')) {
+      return 'Authentication failed. Please check your API credentials.';
+    }
+    if (errorStr.includes('429')) {
+      return 'Too many requests. Please wait a moment and try again.';
+    }
+    if (errorStr.includes('500')) {
+      return 'The service is temporarily unavailable. Please try again later.';
+    }
+  }
+
+  // Chain-specific error handling
   if (errorStr.includes('insufficient funds') || errorStr.includes('insufficient balance')) {
     return 'Not enough funds to complete this transaction. Please add more funds to your wallet.';
   }
@@ -306,8 +329,15 @@ function getUserFriendlyErrorMessage(error: any): string {
     return 'The transaction is taking too long. Please try again later.';
   }
   
-  if (errorStr.includes('rate limit') || errorStr.includes('too many requests')) {
-    return 'Too many requests. Please wait a moment and try again.';
+  // Generic error handling
+  try {
+    // Try to parse error body if it's JSON
+    const errorBody = JSON.parse(errorStr.substring(errorStr.indexOf('{'), errorStr.lastIndexOf('}') + 1));
+    if (errorBody.error) {
+      return `Transaction failed: ${errorBody.error}`;
+    }
+  } catch (e) {
+    // If parsing fails, return generic message
   }
   
   return 'Unable to complete the transaction. Please try again later.';
