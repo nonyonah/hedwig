@@ -15,7 +15,7 @@ if (
   );
 }
 
-const appId = process.env.PRIVY_APP_ID;
+export const appId = process.env.PRIVY_APP_ID;
 const appSecret = process.env.PRIVY_APP_SECRET;
 const privyApiUrl = 'https://api.privy.io/v1';
 
@@ -24,7 +24,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export const privyClient = new PrivyClient(appId, appSecret);
+export const privyClient = new PrivyClient(appId, appSecret, {
+  walletApi: {
+    authorizationPrivateKey: process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!,
+  },
+});
 
 /**
  * Generates a Basic Auth header for server-to-server Privy API requests.
@@ -225,7 +229,7 @@ export async function getPrivyUserAuthToken(privyUserId: string): Promise<string
   // FIXME: This token generation might be incorrect. The client SDK might handle this automatically.
   // For now, we generate a token as per server-auth docs.
   try {
-        // The type definitions for PrivyClient seem to be missing createAccessToken.
+    // The type definitions for PrivyClient seem to be missing createAccessToken.
     // Casting to any to bypass the TypeScript error.
     const token = await (privyClient as any).createAccessToken(privyUserId);
     return token;

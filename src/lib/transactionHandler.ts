@@ -1,6 +1,6 @@
-import { PrivyClient } from '@privy-io/server-auth';
 import { createClient } from '@supabase/supabase-js';
 import fetch, { Response } from 'node-fetch';
+import * as crypto from 'crypto';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -8,25 +8,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Singleton PrivyClient
-let privyClient: PrivyClient | undefined;
-function getPrivyClient() {
-  if (!privyClient) {
-    privyClient = new PrivyClient(
-      process.env.PRIVY_APP_ID!,
-      process.env.PRIVY_APP_SECRET!,
-      {
-        walletApi: {
-          authorizationPrivateKey: process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!
-        }
-      }
-    );
-    // DEBUG: log available walletApi methods
-    console.log('[Privy DEBUG] walletApi methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(privyClient.walletApi)));
 
-  }
-  return privyClient;
-}
 
 /**
  * Handles incoming transaction requests and integrates with Coinbase Developer Program for wallet transactions
@@ -111,33 +93,73 @@ export async function sendPrivyTransaction({
     data?: string;
   };
 }): Promise<{ hash: string; explorerUrl: string }> {
+  // DEBUG: Log incoming parameters to diagnose 404 error
+  console.log(`[sendPrivyTransaction] Received userId: ${userId}, walletId: ${walletId}`);
   try {
     const chainId = transaction.chainId || getChainId(chain);
+    const url = `https://auth.privy.io/api/v1/wallets/${walletId}/rpc`;
     const weiValue = Math.floor(parseFloat(transaction.value) * 1e18);
     const valueHex = `0x${BigInt(weiValue).toString(16)}`;
 
-    const privyClient = getPrivyClient();
-    const rpcRequest = {
+    // DEBUG: Check if the private key is loaded
+    console.log(`[sendPrivyTransaction] Privy Auth Private Key Loaded: ${!!process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY}`);
+
+    // 1. Generate authorization signature for the request
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = `${process.env.PRIVY_APP_ID}:${timestamp}`;
+    
+    // Use crypto to create signature
+    const crypto = require('crypto');
+    const privateKey = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!;
+    const signer = crypto.createSign('RSA-SHA256');
+    signer.update(message);
+    const signature = signer.sign(privateKey, 'base64');
+
+    // Create Authorization header
+    const authorization = `Bearer privy:${process.env.PRIVY_APP_ID}:${timestamp}:${signature}`;
+
+    // 3. Construct and send the RPC request manually via fetch
+    const rpcPayload = {
       method: 'eth_sendTransaction',
-      params: [
-        {
-          to: transaction.to,
-          value: valueHex,
-          data: transaction.data || '0x',
-          from: walletId,
+      params: {
+        transaction: {
+          to: transaction.to as `0x${string}`,
+          value: valueHex as `0x${string}`,
+          data: (transaction.data || '0x') as `0x${string}`,
+          from: walletId as `0x${string}`,
         },
-      ],
+      },
+      caip2: `eip155:${typeof chainId === 'string' ? chainId.split(':')[1] : chainId}`,
+      walletId: walletId,
     };
 
-    const result = await privyClient.walletApi.rpc({
-      walletId,
-      chainId: `eip155:${typeof chainId === 'string' ? chainId.split(':')[1] : chainId}`,
-      request: rpcRequest,
+    const response = await fetch(`https://auth.privy.io/api/v1/wallets/${walletId}/rpc`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authorization,
+        'Content-Type': 'application/json',
+        'X-Privy-App-Id': process.env.PRIVY_APP_ID!,
+      },
+      body: JSON.stringify(rpcPayload),
     });
 
-    const transactionHash = result.result;
-    const explorerUrl = getExplorerUrl(chain, transactionHash);
-    return { hash: transactionHash, explorerUrl };
+    const rpcResponse = await response.json();
+
+    if (!response.ok) {
+      console.error('[sendPrivyTransaction] RPC Error:', rpcResponse);
+      const errorMessage = rpcResponse.message || JSON.stringify(rpcResponse) || `HTTP error! status: ${response.status}`;
+      throw new Error(`Failed to send transaction: ${errorMessage}`);
+    }
+
+    if (rpcResponse.data && rpcResponse.data.hash) {
+      const transactionHash = rpcResponse.data.hash;
+      const explorerUrl = getExplorerUrl(chain, transactionHash);
+      return { hash: transactionHash, explorerUrl };
+    } else {
+      console.error('[sendPrivyTransaction] Invalid RPC Response:', rpcResponse);
+      throw new Error('Failed to send transaction: Invalid response from Privy API.');
+    }
+
   } catch (error) {
     console.error('[sendPrivyTransaction] Error:', error);
     const errorMessage = getUserFriendlyErrorMessage(error);

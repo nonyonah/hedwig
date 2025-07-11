@@ -760,14 +760,16 @@ export function priceAlert({
  */
 export function exportWallet({ export_link }: { export_link: string }) {
   return {
-    name: 'export_wallet',
+    name: 'private_keys',
     language: { code: 'en' },
+    parameter_format: 'NAMED',
     components: [
       {
         type: 'BODY',
         parameters: [
           {
             type: 'text',
+            parameter_name: 'export_link',
             text: sanitizeWhatsAppParam(export_link, 'export_link'),
           },
         ],
