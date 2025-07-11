@@ -21,6 +21,9 @@ function getPrivyClient() {
         }
       }
     );
+    // DEBUG: log available walletApi methods
+    console.log('[Privy DEBUG] walletApi methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(privyClient.walletApi)));
+
   }
   return privyClient;
 }
@@ -110,91 +113,37 @@ export async function sendPrivyTransaction({
 }): Promise<{ hash: string; explorerUrl: string }> {
   try {
     const chainId = transaction.chainId || getChainId(chain);
-    const url = `https://auth.privy.io/api/v1/wallets/${walletId}/rpc`;
     const weiValue = Math.floor(parseFloat(transaction.value) * 1e18);
     const valueHex = `0x${BigInt(weiValue).toString(16)}`;
 
-    const requestBody = {
-      request: {
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            to: transaction.to,
-            value: valueHex,
-            data: transaction.data || '0x',
-            from: walletId,
-          },
-        ],
-      },
-      chainId: `eip155:${typeof chainId === 'string' ? chainId.split(':')[1] : chainId}`,
+    const privyClient = getPrivyClient();
+    const rpcRequest = {
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          to: transaction.to,
+          value: valueHex,
+          data: transaction.data || '0x',
+          from: walletId,
+        },
+      ],
     };
 
-    // Use Privy SDK to get a user-specific access token
-    const privyClient = getPrivyClient();
-
-    async function getAccessTokenWithRetry(userId: string, maxRetries = 2, delayMs = 500): Promise<string> {
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          return await (privyClient as any).createAccessToken(userId);
-        } catch (err) {
-          if (attempt < maxRetries) {
-            await new Promise(res => setTimeout(res, delayMs * (attempt + 1)));
-          } else {
-            throw err;
-          }
-        }
-      }
-      throw new Error('Failed to get Privy access token after retries');
-    }
-
-    let token = await getAccessTokenWithRetry(userId);
-    let response: Response;
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'privy-app-id': process.env.PRIVY_APP_ID!,
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(requestBody),
+    const result = await privyClient.walletApi.rpc({
+      walletId,
+      chainId: `eip155:${typeof chainId === 'string' ? chainId.split(':')[1] : chainId}`,
+      request: rpcRequest,
     });
 
-    // If 401 Invalid auth token, retry once with a new token
-    if (response.status === 401) {
-      const errorBody = await response.text();
-      if (errorBody.includes('Invalid auth token')) {
-        token = await getAccessTokenWithRetry(userId);
-        await new Promise(res => setTimeout(res, 500)); // short delay
-        response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'privy-app-id': process.env.PRIVY_APP_ID!,
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(requestBody),
-        });
-      }
-    }
-
-    // response already declared above, just reuse it
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Privy API Error: ${response.status} ${errorBody}`);
-    }
-
-    const { result: transactionHash } = await response.json();
+    const transactionHash = result.result;
     const explorerUrl = getExplorerUrl(chain, transactionHash);
     return { hash: transactionHash, explorerUrl };
-
   } catch (error) {
     console.error('[sendPrivyTransaction] Error:', error);
     const errorMessage = getUserFriendlyErrorMessage(error);
     throw new Error(errorMessage);
   }
 }
-
-
 
 /**
  * Get a user-friendly error message from a technical error
