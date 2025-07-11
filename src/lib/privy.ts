@@ -1,6 +1,7 @@
 // src/lib/privy.ts
 import { createClient } from '@supabase/supabase-js';
 import { PrivyClient } from '@privy-io/server-auth';
+import { importPKCS8, SignJWT } from 'jose';
 
 // Ensure environment variables are set
 if (
@@ -24,15 +25,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export const privyClient = new PrivyClient(appId, appSecret, {
-  walletApi: {
-    authorizationPrivateKey: process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!,
-  },
-});
+export const privyClient = new PrivyClient(appId, appSecret);
+
+// Keep a cache of the parsed private key
+let signingKey: Awaited<ReturnType<typeof importPKCS8>> | null = null;
 
 /**
  * Generates a Basic Auth header for server-to-server Privy API requests.
  */
+export function getPrivyServerAuthHeader() {
+  const encoded = Buffer.from(`${appId}:${appSecret}`).toString('base64');
+  return `Basic ${encoded}`;
+}
 
 
 /**
@@ -225,69 +229,30 @@ export async function pregeneratePrivyWallet(supabaseUserId: string) {
 export async function getPrivyUserAuthToken(supabaseUserId: string): Promise<string> {
   const privyUserId = await getPrivyUserIdForSupabaseUser(supabaseUserId);
   if (!privyUserId) {
-    const errorMessage = `Could not find Privy user ID for Supabase user ${supabaseUserId}`;
-    console.error(errorMessage);
-    throw new Error(errorMessage);
+    throw new Error(`Could not find Privy user ID for Supabase user ${supabaseUserId}`);
   }
 
-  // Generate a short-lived access token for the user
-  const token = await privyClient.createAccessToken(privyUserId);
+  if (!signingKey) {
+    signingKey = await importPKCS8(
+      process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!,
+      'ES256'
+    );
+  }
+
+  const token = await new SignJWT({})
+    .setProtectedHeader({ alg: 'ES256', typ: 'JWT' })
+    .setSubject(privyUserId) // The user's Privy DID
+    .setIssuer(appId)        // Your Privy App ID
+    .setAudience('privy.io') // Privy's service audience
+    .setIssuedAt()
+    .setExpirationTime('1m') // Short-lived token
+    .sign(signingKey);
+
   return token;
 }
 
 
-// ======================================================================================
-// PRIVY WALLET ACTIONS
-// ======================================================================================
 
-async function callPrivyWalletApi(supabaseUserId: string, privyWalletId: string, endpoint: string, body: object) {
-  const authToken = await getPrivyUserAuthToken(supabaseUserId);
-  const response = await fetch(`${privyApiUrl}/wallets/${privyWalletId}/${endpoint}`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'privy-app-id': appId,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    }
-  );
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error(`[callPrivyWalletApi] Privy API error on '${endpoint}': ${response.status}`, errorBody);
-    throw new Error(`Failed to call ${endpoint} for wallet ${privyWalletId}.`);
-  }
-
-  return response.json();
-}
-
-export async function sendTransaction(supabaseUserId: string, privyWalletId: string, transaction: object) {
-    return callPrivyWalletApi(supabaseUserId, privyWalletId, 'eth_send_transaction', {
-        transaction, // EIP-1559 or legacy transaction
-        chain_id: 'eip155:84532' // Base Sepolia
-    });
-}
-
-export async function signPersonalMessage(supabaseUserId: string, privyWalletId: string, message: string) {
-    return callPrivyWalletApi(supabaseUserId, privyWalletId, 'personal_sign', {
-        message, // Hex-encoded string
-    });
-}
-
-export async function signTransaction(supabaseUserId: string, privyWalletId: string, transaction: object) {
-    return callPrivyWalletApi(supabaseUserId, privyWalletId, 'eth_sign_transaction', {
-        transaction, // EIP-1559 or legacy transaction
-        chain_id: 'eip155:84532' // Base Sepolia
-    });
-}
-
-export async function signTypedDataV4(supabaseUserId: string, privyWalletId: string, data: object) {
-    return callPrivyWalletApi(supabaseUserId, privyWalletId, 'eth_signTypedData_v4', {
-        data, // EIP-712 typed data
-    });
-}
 
 
 export async function getOrCreatePrivyWallet(supabaseUserId: string) {
