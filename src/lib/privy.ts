@@ -96,42 +96,38 @@ export async function assignWalletToUser(walletId: string, supabaseUserId: strin
  * @returns The Privy user ID.
  */
 export async function getPrivyUserIdForSupabaseUser(supabaseUserId: string): Promise<string | null> {
-  try {
-    // First try to find the user by ID (for UUIDs)
-    let { data, error } = await supabase
-      .from('users')
-      .select('privy_user_id')
-      .eq('id', supabaseUserId)
-      .single();
+  // Basic UUID check
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supabaseUserId);
 
-    // If not found, try to find by auth_id or other identifier
-    if ((error && error.code === 'PGRST116') || !data?.privy_user_id) {
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('privy_user_id')
-        .or(`user_id.eq.${supabaseUserId},username.eq.${supabaseUserId}`)
-        .single();
+  let query;
+  if (isUuid) {
+    console.log(`[getPrivyUserIdForSupabaseUser] Looking up user by UUID: ${supabaseUserId}`);
+    query = supabase.from('users').select('privy_user_id').eq('id', supabaseUserId);
+  } else {
+    console.log(`[getPrivyUserIdForSupabaseUser] Looking up user by username: ${supabaseUserId}`);
+    query = supabase.from('users').select('privy_user_id').eq('username', supabaseUserId);
+  }
 
-      if (userError && userError.code !== 'PGRST116') {
-        console.error(`[getPrivyUserIdForSupabaseUser] Error looking up user by auth_id/username ${supabaseUserId}:`, userError);
-        return null;
-      }
-      data = userData;
-    } else if (error && error.code !== 'PGRST116') {
-      console.error(`[getPrivyUserIdForSupabaseUser] Error fetching user ${supabaseUserId}:`, error);
+  const { data, error } = await query.single();
+
+  if (error) {
+    // 'PGRST116' means no rows found, which is a valid outcome, not a DB error.
+    if (error.code === 'PGRST116') {
+      console.log(`[getPrivyUserIdForSupabaseUser] User not found for identifier: ${supabaseUserId}`);
       return null;
     }
-
-    if (!data?.privy_user_id) {
-      console.error(`[getPrivyUserIdForSupabaseUser] No privy_user_id found for user ${supabaseUserId}`);
-      return null;
-    }
-
-    return data.privy_user_id;
-  } catch (error) {
-    console.error(`[getPrivyUserIdForSupabaseUser] Unexpected error for user ${supabaseUserId}:`, error);
+    // For all other errors, log it and return null.
+    console.error(`[getPrivyUserIdForSupabaseUser] Error fetching user ${supabaseUserId}:`, error);
     return null;
   }
+
+  if (!data?.privy_user_id) {
+    console.log(`[getPrivyUserIdForSupabaseUser] Found user ${supabaseUserId}, but 'privy_user_id' is null or missing.`);
+    return null;
+  }
+
+  return data.privy_user_id;
+}
 }
 
 async function _createOrUpdatePrivyUser(supabaseUserId: string, email: string) {
