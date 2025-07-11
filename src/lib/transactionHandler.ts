@@ -206,7 +206,8 @@ export async function sendPrivyTransaction({
   try {
     const chainId = transaction.chainId || getChainId(chain);
     const url = `https://auth.privy.io/api/v1/wallets/${walletId}/rpc`;
-    const valueHex = `0x${BigInt(transaction.value).toString(16)}`;
+    const weiValue = Math.floor(parseFloat(transaction.value) * 1e18);
+    const valueHex = `0x${BigInt(weiValue).toString(16)}`;
 
     const requestBody = {
       request: {
