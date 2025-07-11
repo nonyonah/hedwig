@@ -96,27 +96,20 @@ export async function assignWalletToUser(walletId: string, supabaseUserId: strin
  * @returns The Privy user ID.
  */
 export async function getPrivyUserIdForSupabaseUser(supabaseUserId: string): Promise<string | null> {
-  // Basic UUID check
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supabaseUserId);
-
-  let query;
-  if (isUuid) {
-    console.log(`[getPrivyUserIdForSupabaseUser] Looking up user by UUID: ${supabaseUserId}`);
-    query = supabase.from('users').select('privy_user_id').eq('id', supabaseUserId);
-  } else {
-    console.log(`[getPrivyUserIdForSupabaseUser] Looking up user by username: ${supabaseUserId}`);
-    query = supabase.from('users').select('privy_user_id').eq('username', supabaseUserId);
-  }
-
-  const { data, error } = await query.single();
+  console.log(`[getPrivyUserIdForSupabaseUser] Looking up user by ID: ${supabaseUserId}`);
+  const { data, error } = await supabase
+    .from('users')
+    .select('privy_user_id')
+    .eq('id', supabaseUserId)
+    .single();
 
   if (error) {
-    // 'PGRST116' means no rows found, which is a valid outcome, not a DB error.
+    // 'PGRST116' means no rows found, which is a valid outcome.
     if (error.code === 'PGRST116') {
-      console.log(`[getPrivyUserIdForSupabaseUser] User not found for identifier: ${supabaseUserId}`);
+      console.log(`[getPrivyUserIdForSupabaseUser] User not found for ID: ${supabaseUserId}`);
       return null;
     }
-    // For all other errors, log it and return null.
+    // For all other errors, log them and return null.
     console.error(`[getPrivyUserIdForSupabaseUser] Error fetching user ${supabaseUserId}:`, error);
     return null;
   }
@@ -128,7 +121,7 @@ export async function getPrivyUserIdForSupabaseUser(supabaseUserId: string): Pro
 
   return data.privy_user_id;
 }
-}
+
 
 async function _createOrUpdatePrivyUser(supabaseUserId: string, email: string) {
   let privyUser;

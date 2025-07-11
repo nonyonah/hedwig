@@ -659,22 +659,28 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         const { data: session } = await supabase
           .from("sessions")
           .select("context")
-          .eq("user_id", userId)
+          .eq("user_id", userId) // Use the correct Supabase ID for the session lookup
           .single();
         const pendingTx = session?.context?.find(
           (item: { role: string; content: string }) =>
             item.role === "system" &&
             JSON.parse(item.content)?.pending?.action === "send",
         );
-        let txParams = {};
+        let txParams: any = {};
         if (pendingTx) {
           txParams = JSON.parse(pendingTx.content)?.pending || {};
+        }
+
+        // Critical fix: The txParams from the session might contain an old or incorrect userId.
+        // We must always use the userId (Supabase UUID) fetched at the start of this function.
+        if ('userId' in txParams) {
+          delete txParams.userId;
         }
         // Execute the send transaction
         const actionResult = await handleAction(
           "send",
           { ...txParams, isExecute: true },
-          userId,
+          userId, // Always use the correct Supabase UUID
         );
         // Clear the session context after execution
         await supabase.from("sessions").upsert(

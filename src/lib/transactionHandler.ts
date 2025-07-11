@@ -26,7 +26,7 @@ export async function handleTransaction(
   } = {}
 ) {
   try {
-    console.log(`[TransactionHandler] Processing transaction for user ${userId}`);
+    console.log(`[TransactionHandler] Executing transaction for user ${userId} with params:`, transactionData);
     const chain = options.chain || transactionData.chain || 'base';
     console.log(`[TransactionHandler] Using chain: ${chain}`);
 
@@ -59,7 +59,8 @@ export async function handleTransaction(
     }
 
     const result = await sendPrivyTransaction({
-      userId: user.privy_user_id,
+      supabaseUserId: userId, // Pass the original Supabase UUID
+      privyUserId: user.privy_user_id, // Pass the looked-up Privy ID
       walletId: wallet.address, // For Privy, wallet.address is the wallet ID
       chain: chain,
       transaction: txData,
@@ -79,12 +80,14 @@ export async function handleTransaction(
  * Send a transaction via Privy API
  */
 export async function sendPrivyTransaction({
-  userId,
+  supabaseUserId,
+  privyUserId,
   walletId,
   chain,
   transaction,
 }: {
-  userId: string;
+  supabaseUserId: string;
+  privyUserId: string;
   walletId: string;
   chain: string;
   transaction: {
@@ -94,7 +97,8 @@ export async function sendPrivyTransaction({
   };
 }): Promise<{ hash: string; explorerUrl: string }> {
   try {
-    const authToken = await getPrivyUserAuthToken(userId);
+    // getPrivyUserAuthToken expects the Supabase UUID to perform its own lookup.
+    const authToken = await getPrivyUserAuthToken(supabaseUserId);
     const url = `https://api.privy.io/v1/wallets/${walletId}/eth_send_transaction`;
 
     const response = await fetch(url, {
