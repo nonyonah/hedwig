@@ -1,25 +1,14 @@
 // src/lib/privy.ts
 import { createClient } from '@supabase/supabase-js';
+import { PrivyClient } from '@privy-io/server-auth';
 import fetch from 'node-fetch';
 import { importPKCS8, SignJWT } from 'jose';
 
-// This function reconstructs the PEM format from a single-line private key string.
+// This function correctly formats the private key from the environment variable.
 function formatPrivateKey(key: string): string {
-  // Remove header, footer, and any existing newlines/whitespace.
-  const strippedKey = key
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s/g, '');
-
-  // Split the stripped key into 64-character chunks.
-  const chunks = strippedKey.match(/.{1,64}/g) || [];
-
-  // Reassemble the key in the correct PEM format.
-  return (
-    '-----BEGIN PRIVATE KEY-----\n' +
-    chunks.join('\n') +
-    '\n-----END PRIVATE KEY-----\n'
-  );
+  // The key from the environment variable comes in as a single line with '\n' as text.
+  // We need to replace the textual '\n' with actual newline characters.
+  return key.replace(/\\n/g, '\n');
 }
 
 // Ensure environment variables are set
