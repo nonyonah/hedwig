@@ -1,7 +1,26 @@
 // src/lib/privy.ts
 import { createClient } from '@supabase/supabase-js';
-import { PrivyClient } from '@privy-io/server-auth';
+import fetch from 'node-fetch';
 import { importPKCS8, SignJWT } from 'jose';
+
+// This function reconstructs the PEM format from a single-line private key string.
+function formatPrivateKey(key: string): string {
+  // Remove header, footer, and any existing newlines/whitespace.
+  const strippedKey = key
+    .replace('-----BEGIN PRIVATE KEY-----', '')
+    .replace('-----END PRIVATE KEY-----', '')
+    .replace(/\s/g, '');
+
+  // Split the stripped key into 64-character chunks.
+  const chunks = strippedKey.match(/.{1,64}/g) || [];
+
+  // Reassemble the key in the correct PEM format.
+  return (
+    '-----BEGIN PRIVATE KEY-----\n' +
+    chunks.join('\n') +
+    '\n-----END PRIVATE KEY-----\n'
+  );
+}
 
 // Ensure environment variables are set
 if (
@@ -247,7 +266,7 @@ export async function getPrivyUserAuthToken(supabaseUserId: string): Promise<str
 
   if (!signingKey) {
     signingKey = await importPKCS8(
-      process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+      formatPrivateKey(process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!),
       'ES256'
     );
   }
