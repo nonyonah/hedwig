@@ -108,9 +108,15 @@ export async function sendPrivyTransaction({
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `${process.env.PRIVY_APP_ID}:${timestamp}`;
     
-    // Use crypto to create signature
+    // Format and use private key for signature
     const crypto = require('crypto');
-    const privateKey = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!;
+    const privateKeyRaw = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!;
+    
+    // Convert the private key to proper PEM format if it isn't already
+    const privateKey = privateKeyRaw.includes('-----BEGIN PRIVATE KEY-----')
+      ? privateKeyRaw
+      : `-----BEGIN PRIVATE KEY-----\n${privateKeyRaw}\n-----END PRIVATE KEY-----`;
+    
     const signer = crypto.createSign('RSA-SHA256');
     signer.update(message);
     const signature = signer.sign(privateKey, 'base64');

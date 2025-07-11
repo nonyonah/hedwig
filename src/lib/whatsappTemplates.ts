@@ -499,22 +499,17 @@ export function sendFailed({ reason }: { reason: string }) {
 
 /**
  * Template: wallet_balance
- * Displays balances for ETH and USDC on Base and Ethereum networks.
- * @param {string} base_eth - Base ETH balance.
- * @param {string} base_usdc - Base USDC balance.
- * @param {string} eth_eth - Ethereum ETH balance.
- * @param {string} eth_usdc - Ethereum USDC balance.
+ * Parameter Format: POSITIONAL
+ * Parameters: eth_balance, usdc_base_balance, cngn_balance
  */
 export function walletBalance({ 
-  base_eth, 
-  base_usdc,
-  eth_eth,
-  eth_usdc
+  eth_balance, 
+  usdc_base_balance,
+  cngn_balance
 }: { 
-  base_eth: string, 
-  base_usdc: string,
-  eth_eth: string,
-  eth_usdc: string
+  eth_balance: string, 
+  usdc_base_balance: string,
+  cngn_balance: string
 }) {
   return {
     name: 'wallet_balance',
@@ -523,10 +518,9 @@ export function walletBalance({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(base_eth) },
-          { type: 'text', text: sanitizeWhatsAppParam(base_usdc) },
-          { type: 'text', text: sanitizeWhatsAppParam(eth_eth) },
-          { type: 'text', text: sanitizeWhatsAppParam(eth_usdc) }
+          { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
+          { type: 'text', text: sanitizeWhatsAppParam(cngn_balance) }
         ]
       }
     ]
@@ -564,6 +558,26 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
         type: 'BODY',
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: private_keys
+ * Parameter Format: POSITIONAL
+ * Parameters: privy_link
+ */
+export function privateKeys({ privy_link }: { privy_link: string }) {
+  return {
+    name: 'private_keys',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: sanitizeWhatsAppParam(privy_link) }
         ]
       }
     ]
@@ -747,33 +761,3 @@ export function priceAlert({
   };
 }
 */
-
-/**
- * Template: private_keys
- * Parameter Format: NAMED
- * Parameters: export_link (used in a URL button)
- */
-/**
- * Template: export_wallet
- * Parameter Format: POSITIONAL
- * Parameters: export_link
- */
-export function exportWallet({ export_link }: { export_link: string }) {
-  return {
-    name: 'private_keys',
-    language: { code: 'en' },
-    parameter_format: 'NAMED',
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          {
-            type: 'text',
-            parameter_name: 'export_link',
-            text: sanitizeWhatsAppParam(export_link, 'export_link'),
-          },
-        ],
-      },
-    ],
-  };
-}
