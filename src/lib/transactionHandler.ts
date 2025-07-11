@@ -1,7 +1,6 @@
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
+import { PrivyClient } from '@privy-io/server-auth';
 import { createClient } from '@supabase/supabase-js';
-import fetch from 'node-fetch';
+import fetch, { Response } from 'node-fetch';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -9,116 +8,21 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const CDP_API_BASE_URL = 'https://api.coinbase.com/v2';
-
-/**
- * Sign a typed data structure using EIP-712
- */
-export async function signTypedData({
-  walletAddress,
-  typedData,
-}: {
-  walletAddress: string;
-  typedData: {
-    types: Record<string, Array<{ name: string; type: string }>>;
-    primaryType: string;
-    domain: Record<string, any>;
-    message: Record<string, any>;
-  };
-}): Promise<string> {
-  try {
-    const response = await fetch(`${CDP_API_BASE_URL}/evm-accounts/${walletAddress}/sign-typed-data`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.CDP_API_KEY}`,
-      },
-      body: JSON.stringify({
-        typedData,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`CDP API Error (Sign Typed Data): ${response.status} ${errorBody}`);
-    }
-
-    const { signature } = await response.json();
-    return signature;
-  } catch (error) {
-    console.error('[signTypedData] Error:', error);
-    throw error;
+// Singleton PrivyClient
+let privyClient: PrivyClient | undefined;
+function getPrivyClient() {
+  if (!privyClient) {
+    privyClient = new PrivyClient(
+      process.env.PRIVY_APP_ID!,
+      process.env.PRIVY_APP_SECRET!,
+      {
+        walletApi: {
+          authorizationPrivateKey: process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!
+        }
+      }
+    );
   }
-}
-
-/**
- * Sign a message using EIP-191 personal_sign
- */
-export async function signMessage({
-  walletAddress,
-  message,
-}: {
-  walletAddress: string;
-  message: string;
-}): Promise<string> {
-  try {
-    const response = await fetch(`${CDP_API_BASE_URL}/evm-accounts/${walletAddress}/sign-message`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.CDP_API_KEY}`,
-      },
-      body: JSON.stringify({
-        message,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`CDP API Error (Sign Message): ${response.status} ${errorBody}`);
-    }
-
-    const { signature } = await response.json();
-    return signature;
-  } catch (error) {
-    console.error('[signMessage] Error:', error);
-    throw error;
-  }
-}
-
-/**
- * Sign a hash using raw ECDSA
- */
-export async function signHash({
-  walletAddress,
-  hash,
-}: {
-  walletAddress: string;
-  hash: string;
-}): Promise<string> {
-  try {
-    const response = await fetch(`${CDP_API_BASE_URL}/evm-accounts/${walletAddress}/sign-hash`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.CDP_API_KEY}`,
-      },
-      body: JSON.stringify({
-        hash,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`CDP API Error (Sign Hash): ${response.status} ${errorBody}`);
-    }
-
-    const { signature } = await response.json();
-    return signature;
-  } catch (error) {
-    console.error('[signHash] Error:', error);
-    throw error;
-  }
+  return privyClient;
 }
 
 /**
@@ -225,23 +129,27 @@ export async function sendPrivyTransaction({
       chainId: `eip155:${typeof chainId === 'string' ? chainId.split(':')[1] : chainId}`,
     };
 
-    const now = Math.floor(Date.now() / 1000);
-    const privateKeyPem = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!.replace(/\\n/g, '\n');
-    const formattedPrivateKey = crypto.createPrivateKey(privateKeyPem);
+    // Use Privy SDK to get a user-specific access token
+    const privyClient = getPrivyClient();
 
-    const token = jwt.sign(
-      {
-        iat: now,
-        exp: now + 300, // 5-minute expiration
-        iss: process.env.PRIVY_APP_ID!,
-        aud: 'privy.io',
-        sub: userId, // The user's Privy DID is critical for authorization
-      },
-      formattedPrivateKey,
-      { algorithm: 'ES256' }
-    );
+    async function getAccessTokenWithRetry(userId: string, maxRetries = 2, delayMs = 500): Promise<string> {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          return await (privyClient as any).createAccessToken(userId);
+        } catch (err) {
+          if (attempt < maxRetries) {
+            await new Promise(res => setTimeout(res, delayMs * (attempt + 1)));
+          } else {
+            throw err;
+          }
+        }
+      }
+      throw new Error('Failed to get Privy access token after retries');
+    }
 
-    const response = await fetch(url, {
+    let token = await getAccessTokenWithRetry(userId);
+    let response: Response;
+    response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -251,6 +159,25 @@ export async function sendPrivyTransaction({
       body: JSON.stringify(requestBody),
     });
 
+    // If 401 Invalid auth token, retry once with a new token
+    if (response.status === 401) {
+      const errorBody = await response.text();
+      if (errorBody.includes('Invalid auth token')) {
+        token = await getAccessTokenWithRetry(userId);
+        await new Promise(res => setTimeout(res, 500)); // short delay
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'privy-app-id': process.env.PRIVY_APP_ID!,
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(requestBody),
+        });
+      }
+    }
+
+    // response already declared above, just reuse it
     if (!response.ok) {
       const errorBody = await response.text();
       throw new Error(`Privy API Error: ${response.status} ${errorBody}`);
