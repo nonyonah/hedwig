@@ -32,7 +32,7 @@ export async function handleTransaction(
 
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('*')
+      .select('address, privy_wallet_id') // Select the correct Privy Wallet ID
       .eq('user_id', userId)
       .eq('chain', chain)
       .single();
@@ -61,7 +61,7 @@ export async function handleTransaction(
     const result = await sendPrivyTransaction({
       supabaseUserId: userId, // Pass the original Supabase UUID
       privyUserId: user.privy_user_id, // Pass the looked-up Privy ID
-      walletId: wallet.address, // For Privy, wallet.address is the wallet ID
+      privyWalletId: wallet.privy_wallet_id, // Use the correct Privy Wallet ID
       chain: chain,
       transaction: txData,
     });
@@ -82,13 +82,13 @@ export async function handleTransaction(
 export async function sendPrivyTransaction({
   supabaseUserId,
   privyUserId,
-  walletId,
+  privyWalletId,
   chain,
   transaction,
 }: {
   supabaseUserId: string;
   privyUserId: string;
-  walletId: string;
+  privyWalletId: string; // Corrected parameter name
   chain: string;
   transaction: {
     to: string;
@@ -99,7 +99,7 @@ export async function sendPrivyTransaction({
   try {
     // getPrivyUserAuthToken expects the Supabase UUID to perform its own lookup.
     const authToken = await getPrivyUserAuthToken(supabaseUserId);
-    const url = `https://api.privy.io/v1/wallets/${walletId}/eth_send_transaction`;
+    const url = `https://api.privy.io/v1/wallets/${privyWalletId}/rpc`;
 
     const requestOptions = {
       method: 'POST',
