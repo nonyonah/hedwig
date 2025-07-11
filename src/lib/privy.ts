@@ -24,15 +24,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export const privyClient = new PrivyClient(
-    appId, 
-    appSecret,
-    {
-        walletApi: {
-            authorizationPrivateKey: process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!
-        }
-    }
-);
+export const privyClient = new PrivyClient(appId, appSecret);
 
 /**
  * Generates a Basic Auth header for server-to-server Privy API requests.

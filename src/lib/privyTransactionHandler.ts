@@ -1,4 +1,4 @@
-import { getPrivyAuthHeader } from './privy';
+import { getPrivyServerAuthHeader } from './privy';
 import fetch from 'node-fetch';
 
 export class PrivyTransactionHandler {
@@ -44,7 +44,7 @@ export class PrivyTransactionHandler {
       },
     };
     const headers = {
-      'Authorization': getPrivyAuthHeader(),
+      'Authorization': getPrivyServerAuthHeader(),
       'Content-Type': 'application/json',
       'privy-app-id': process.env.PRIVY_APP_ID!,
     };

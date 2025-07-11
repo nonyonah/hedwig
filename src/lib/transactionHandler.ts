@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-
+import jwt from 'jsonwebtoken';
 import fetch from 'node-fetch';
-import { getPrivyServerAuthHeader } from './privy';
+import { privyClient } from './privy';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -196,51 +196,94 @@ export async function sendPrivyTransaction({
     console.log(`[sendPrivyTransaction] Sending transaction for wallet ${walletId} on chain ${chain}`);
     const chainId = transaction.chainId || getChainId(chain);
 
-        const url = `https://api.privy.io/v1/wallets/${walletId}/rpc`;
+    const url = `https://auth.privy.io/api/v1/wallets/${walletId}/rpc`;
     const valueHex = `0x${BigInt(transaction.value).toString(16)}`;
 
-    const numericChainId = typeof chainId === 'string' ? parseInt(chainId.split(':')[1]) : chainId;
-    const caip2 = `eip155:${numericChainId}`;
-    const hexChainId = `0x${numericChainId.toString(16)}`;
-
     const requestBody = {
-      method: 'eth_sendTransaction',
-      caip2: caip2,
-      params: {
-        transaction: {
-          to: transaction.to,
-          value: valueHex,
-          data: transaction.data || '0x',
-          from: walletId,
-          chainId: hexChainId,
-        },
+      request: {
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            to: transaction.to,
+            value: valueHex,
+            data: transaction.data || '0x',
+            from: walletId,
+          },
+        ],
       },
+      chainId: `eip155:${typeof chainId === 'string' ? chainId.split(':')[1] : chainId}`,
     };
 
-    // Send request to Privy API using Basic Auth for server-to-server calls
+    // Manually construct the JWT for user-authorized API calls as per Privy docs.
+    // This is necessary because the SDK's createAccessToken method is not available in the current environment.
+    const now = Math.floor(Date.now() / 1000);
+    // Format and validate the private key for ES256 JWT signing
+    let formattedPrivateKey = process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY!;
+    
+    // If the key starts with 'wallet-auth:', remove the prefix
+    if (formattedPrivateKey.startsWith('wallet-auth:')) {
+      formattedPrivateKey = formattedPrivateKey.replace('wallet-auth:', '');
+    }
+
+    // Ensure proper line endings first
+    formattedPrivateKey = formattedPrivateKey.replace(/\\n/g, '\n');
+
+    // Check if the key is already in PEM format
+    if (!formattedPrivateKey.includes('BEGIN EC PRIVATE KEY')) {
+      try {
+        // Try to decode if the key is base64 encoded
+        const decoded = Buffer.from(formattedPrivateKey, 'base64').toString();
+        if (decoded.includes('BEGIN EC PRIVATE KEY')) {
+          formattedPrivateKey = decoded;
+        } else {
+          // If not in PEM format, wrap it with EC key headers
+          formattedPrivateKey = `-----BEGIN EC PRIVATE KEY-----\n${formattedPrivateKey}\n-----END EC PRIVATE KEY-----`;
+        }
+      } catch (e) {
+        // If decoding fails, wrap with EC key headers
+        formattedPrivateKey = `-----BEGIN EC PRIVATE KEY-----\n${formattedPrivateKey}\n-----END EC PRIVATE KEY-----`;
+      }
+    }
+
+    // Line endings are already handled above
+
+    const token = jwt.sign(
+      {
+        iat: now,
+        exp: now + 300, // 5-minute expiration
+        iss: 'privy.io', // Must be 'privy.io'
+        aud: process.env.PRIVY_APP_ID!, // Must be your Privy App ID
+        sub: userId, // The user's Privy DID
+        sid: `session_${now}` // Required session ID
+      },
+      formattedPrivateKey,
+      { 
+        algorithm: 'ES256',
+        header: {
+          alg: 'ES256',
+          typ: 'JWT'
+        }
+      }
+    );
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': getPrivyServerAuthHeader(),
         'Content-Type': 'application/json',
         'privy-app-id': process.env.PRIVY_APP_ID!,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[sendPrivyTransaction] Error ${response.status}: ${errorText}`);
-      throw new Error(`Privy API error: ${errorText}`);
+      const errorBody = await response.text();
+      throw new Error(`Privy API Error: ${response.status} ${errorBody}`);
     }
 
     const { result: hash } = await response.json();
     const explorerUrl = getExplorerUrl(chain, hash);
-    return {
-      hash,
-      explorerUrl,
-    };
-
+    return { hash, explorerUrl };
 
   } catch (error) {
     console.error('[sendPrivyTransaction] Error:', error);
@@ -297,4 +340,4 @@ function getExplorerUrl(chain: string, txHash: string): string {
     default:
       return `https://etherscan.io/tx/${txHash}`;
   }
-} 
+}
