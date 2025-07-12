@@ -12,6 +12,15 @@ if (!process.env.NETLIFY) {
     process.env.PRIVY_APP_SECRET = 'demo-app-secret';
     console.log('NOTICE: Setting default PRIVY_APP_SECRET');
   }
+  // Default values for KeyQuorum - these should be properly set in production
+  if (!process.env.PRIVY_KEY_QUORUM_ID) {
+    process.env.PRIVY_KEY_QUORUM_ID = '';
+    console.log('WARNING: PRIVY_KEY_QUORUM_ID not set - KeyQuorum authorization will not work');
+  }
+  if (!process.env.PRIVY_AUTHORIZATION_KEY) {
+    process.env.PRIVY_AUTHORIZATION_KEY = '';
+    console.log('WARNING: PRIVY_AUTHORIZATION_KEY not set - KeyQuorum authorization will not work');
+  }
 }
 
 /**

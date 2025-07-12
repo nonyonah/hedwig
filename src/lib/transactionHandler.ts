@@ -1,7 +1,7 @@
-import { getPrivyUserAuthToken } from './privy';
-
+import { privy } from './privy';
 import { createClient } from '@supabase/supabase-js';
-import fetch, { Response } from 'node-fetch';
+import fetch from 'node-fetch';
+import crypto from 'crypto';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -59,8 +59,6 @@ export async function handleTransaction(
     }
 
     const result = await sendPrivyTransaction({
-      supabaseUserId: userId, // Pass the original Supabase UUID
-      privyUserId: user.privy_user_id, // Pass the looked-up Privy ID
       privyWalletId: wallet.privy_wallet_id, // Use the correct Privy Wallet ID
       chain: chain,
       transaction: txData,
@@ -79,16 +77,80 @@ export async function handleTransaction(
 /**
  * Send a transaction via Privy API
  */
+/**
+ * Generate Basic Auth credentials for Privy API authentication
+ * @returns The Basic Auth credentials
+ */
+function generatePrivyAuthCredentials(): string {
+  // Create Basic Auth credentials using APP_ID and APP_SECRET
+  const credentials = Buffer.from(`${process.env.PRIVY_APP_ID}:${process.env.PRIVY_APP_SECRET}`).toString('base64');
+  return credentials;
+}
+
+/**
+ * Generate authorization signature for Privy KeyQuorum
+ * @param method HTTP method (e.g., 'POST')
+ * @param path API path (e.g., '/v1/wallets/{wallet_id}/rpc')
+ * @param body Request body as a JSON object
+ * @returns The authorization signature for the Privy API request
+ */
+function generatePrivyAuthorizationSignature(method: string, path: string, body: any): string {
+  try {
+    // Check if the required environment variables are set
+    const privyAuthorizationKey = process.env.PRIVY_AUTHORIZATION_KEY;
+    const privyKeyQuorumId = process.env.PRIVY_KEY_QUORUM_ID;
+    
+    if (!privyAuthorizationKey || !privyKeyQuorumId) {
+      console.warn('[sendPrivyTransaction] Missing PRIVY_AUTHORIZATION_KEY or PRIVY_KEY_QUORUM_ID environment variables');
+      return '';
+    }
+    
+    // Create the payload for signing
+    const timestamp = Math.floor(Date.now() / 1000);
+    const payload = {
+      method: method.toUpperCase(),
+      path: path,
+      body: body ? JSON.stringify(body) : '',
+      timestamp: timestamp,
+      key_id: privyKeyQuorumId
+    };
+    
+    // Canonicalize the payload per RFC 8785
+    // For simplicity, we'll sort the keys and stringify without whitespace
+    const canonicalizedPayload = JSON.stringify(payload, Object.keys(payload).sort());
+    
+    // Sign the payload with ECDSA P-256 using the private key
+    const sign = crypto.createSign('SHA256');
+    sign.update(canonicalizedPayload);
+    sign.end();
+    
+    // The private key should be in PEM format
+    // If it's provided in another format, you may need to convert it
+    let privateKeyPem = privyAuthorizationKey;
+    if (!privateKeyPem.includes('-----BEGIN PRIVATE KEY-----')) {
+      // Assume it's a base64 encoded key and convert to PEM
+      privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privyAuthorizationKey}\n-----END PRIVATE KEY-----`;
+    }
+    
+    const signature = sign.sign(privateKeyPem, 'base64');
+    
+    console.log(`[sendPrivyTransaction] Generated authorization signature for KeyQuorum ID: ${privyKeyQuorumId}`);
+    return signature;
+  } catch (error) {
+    console.error('[sendPrivyTransaction] Error generating authorization signature:', error);
+    return '';
+  }
+}
+
+/**
+ * Send a transaction via Privy API with retry mechanism for expired session keys
+ */
 export async function sendPrivyTransaction({
-  supabaseUserId,
-  privyUserId,
   privyWalletId,
   chain,
   transaction,
 }: {
-  supabaseUserId: string;
-  privyUserId: string;
-  privyWalletId: string; // Corrected parameter name
+  privyWalletId: string;
   chain: string;
   transaction: {
     to: string;
@@ -96,48 +158,108 @@ export async function sendPrivyTransaction({
     data?: string;
   };
 }): Promise<{ hash: string; explorerUrl: string }> {
-  try {
-    // getPrivyUserAuthToken expects the Supabase UUID to perform its own lookup.
-    const authToken = await getPrivyUserAuthToken(supabaseUserId);
-    const url = `https://api.privy.io/v1/wallets/${privyWalletId}/rpc`;
-
-    const requestOptions = {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
+  // Maximum number of retry attempts
+  const MAX_RETRIES = 3;
+  // Initial delay in milliseconds before retrying (will be doubled each retry - exponential backoff)
+  const INITIAL_RETRY_DELAY = 1000;
+  
+  let retryCount = 0;
+  let lastError: any = null;
+  
+  while (retryCount <= MAX_RETRIES) {
+    try {
+      // Generate fresh Basic Auth credentials for each attempt
+      const credentials = generatePrivyAuthCredentials();
+      const path = `/v1/wallets/${privyWalletId}/rpc`;
+      const url = `https://api.privy.io${path}`;
+      
+      console.log(`[sendPrivyTransaction] Attempt ${retryCount + 1}/${MAX_RETRIES + 1}`);
+      
+      // Prepare request body
+      const requestBody = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_sendTransaction',
+        params: [transaction],
+      };
+      
+      // Generate authorization signature if KeyQuorum is configured
+      const authSignature = generatePrivyAuthorizationSignature('POST', path, requestBody);
+      
+      // Prepare headers
+      const headers: Record<string, string> = {
+        'Authorization': `Basic ${credentials}`,
         'privy-app-id': process.env.PRIVY_APP_ID!,
-      },
-      body: JSON.stringify({
-        transaction, // EIP-1559 or legacy transaction
-        chain_id: `eip155:${getChainId(chain)}`,
-      }),
-    };
+        'Content-Type': 'application/json',
+      };
+      
+      // Add authorization signature header if available
+      if (authSignature) {
+        headers['privy-authorization-signature'] = authSignature;
+        console.log('[sendPrivyTransaction] Using KeyQuorum authorization signature');
+      }
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
 
-    console.log('Request URL:', url);
-    console.log('Request headers:', requestOptions.headers);
-    console.log('Request body:', JSON.stringify(JSON.parse(requestOptions.body), null, 2));
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`[sendPrivyTransaction] Privy API error: ${response.status}`, errorBody);
+        
+        // Check if this is a KeyQuorum session key expired error
+        if (response.status === 401 && errorBody.includes('KeyQuorum user session key is expired')) {
+          if (retryCount < MAX_RETRIES) {
+            // Calculate delay with exponential backoff
+            const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+            console.log(`[sendPrivyTransaction] KeyQuorum session key expired. Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            retryCount++;
+            continue;
+          }
+        }
+        
+        throw new Error(`Failed to send transaction via Privy: ${errorBody}`);
+      }
 
-    const response = await fetch(url, requestOptions);
+      const result = await response.json() as { result: string };
+      const txHash = result.result;
+      if (!txHash) {
+          const errorBody = JSON.stringify(result);
+          console.error(`[sendPrivyTransaction] Privy API did not return a transaction hash. Full response:`, errorBody);
+          throw new Error(`Failed to send transaction via Privy: ${errorBody}`);
+      }
+      const explorerUrl = getExplorerUrl(chain, txHash);
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`[sendPrivyTransaction] Privy API error: ${response.status}`, errorBody);
-      throw new Error(`Failed to send transaction via Privy.`);
+      return { hash: txHash, explorerUrl };
+    } catch (error) {
+      lastError = error;
+      
+      // If this is not a retry-able error or we've exhausted retries, throw it
+      if (retryCount >= MAX_RETRIES || 
+          !(error instanceof Error && 
+            error.message.includes('KeyQuorum user session key is expired'))) {
+        console.error('[sendPrivyTransaction] Error:', error);
+        const errorMessage = getUserFriendlyErrorMessage(error);
+        throw new Error(errorMessage);
+      }
+      
+      // Calculate delay with exponential backoff
+      const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+      console.log(`[sendPrivyTransaction] Error: ${error.message}. Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      retryCount++;
     }
-
-    const result = await response.json();
-    const txHash = result.transaction_hash;
-    const explorerUrl = getExplorerUrl(chain, txHash);
-
-    return { hash: txHash, explorerUrl };
-
-  } catch (error) {
-    console.error('[sendPrivyTransaction] Error:', error);
-    const errorMessage = getUserFriendlyErrorMessage(error);
-    throw new Error(errorMessage);
   }
-}
+  
+  // If we've exhausted all retries, throw the last error with a user-friendly message
+  console.error('[sendPrivyTransaction] All retry attempts failed:', lastError);
+  const errorMessage = getUserFriendlyErrorMessage(lastError);
+  throw new Error(errorMessage);
+  }
+
 
 /**
  * Get a user-friendly error message from a technical error
@@ -147,7 +269,22 @@ function getUserFriendlyErrorMessage(error: any): string {
   
   const errorStr = error?.message || String(error);
   
-
+  // Privy-specific error handling
+  if (errorStr.includes('KeyQuorum user session key is expired')) {
+    return 'Your authentication session has expired. Please try again.'; 
+  }
+  
+  if (errorStr.includes('401') && errorStr.includes('Privy')) {
+    return 'Authentication failed. Please log out and log back in.'; 
+  }
+  
+  if (errorStr.includes('429') && errorStr.includes('Privy')) {
+    return 'Too many requests. Please wait a moment and try again.'; 
+  }
+  
+  if (errorStr.includes('500') && errorStr.includes('Privy')) {
+    return 'The wallet service is experiencing issues. Please try again later.'; 
+  }
 
   // Chain-specific error handling
   if (errorStr.includes('insufficient funds') || errorStr.includes('insufficient balance')) {
