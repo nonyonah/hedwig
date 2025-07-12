@@ -125,17 +125,42 @@ function generatePrivyAuthorizationSignature(method: string, path: string, body:
     sign.end();
     
     // The private key should be in PEM format
-    // If it's provided in another format, you may need to convert it
+    // Try different PEM formats if the key is not already in PEM format
+    let signature = '';
     let privateKeyPem = privyAuthorizationKey;
-    if (!privateKeyPem.includes('-----BEGIN PRIVATE KEY-----')) {
-      // Assume it's a base64 encoded key and convert to PEM
-      privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privyAuthorizationKey}\n-----END PRIVATE KEY-----`;
+    
+    // Try signing with the key as-is first (in case it's already in PEM format)
+    try {
+      if (privateKeyPem.includes('-----BEGIN')) {
+        // Key is already in PEM format
+        signature = sign.sign(privateKeyPem, 'base64');
+        console.log(`[sendPrivyTransaction] Generated signature using existing PEM format`);
+        return signature;
+      }
+    } catch (e) {
+      console.log(`[sendPrivyTransaction] Key is not in valid PEM format, trying conversions...`);
     }
     
-    const signature = sign.sign(privateKeyPem, 'base64');
+    // Try EC PRIVATE KEY format
+    try {
+      privateKeyPem = `-----BEGIN EC PRIVATE KEY-----\n${privyAuthorizationKey}\n-----END EC PRIVATE KEY-----`;
+      signature = sign.sign(privateKeyPem, 'base64');
+      console.log(`[sendPrivyTransaction] Generated signature using EC PRIVATE KEY format`);
+      return signature;
+    } catch (e) {
+      console.log(`[sendPrivyTransaction] Failed with EC PRIVATE KEY format, trying PRIVATE KEY format...`);
+    }
     
-    console.log(`[sendPrivyTransaction] Generated authorization signature for KeyQuorum ID: ${privyKeyQuorumId}`);
-    return signature;
+    // Try PRIVATE KEY format
+    try {
+      privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privyAuthorizationKey}\n-----END PRIVATE KEY-----`;
+      signature = sign.sign(privateKeyPem, 'base64');
+      console.log(`[sendPrivyTransaction] Generated signature using PRIVATE KEY format`);
+      return signature;
+    } catch (e) {
+      console.error(`[sendPrivyTransaction] Failed to sign with any key format:`, e);
+      return '';
+    }
   } catch (error) {
     console.error('[sendPrivyTransaction] Error generating authorization signature:', error);
     return '';
@@ -399,5 +424,63 @@ function getExplorerUrl(chain: string, txHash: string): string {
       return `https://arbiscan.io/tx/${txHash}`;
     default:
       return `https://etherscan.io/tx/${txHash}`;
+  }
+}
+
+/**
+ * Generate a P-256 key pair for Privy KeyQuorum authorization
+ * This function is intended for testing or production use
+ * The public key should be registered with Privy for your KeyQuorum account
+ * The private key should be set as PRIVY_AUTHORIZATION_KEY in your environment variables
+ * 
+ * @returns Object containing base64-encoded private and public keys
+ */
+export function generatePrivyAuthorizationKeyPair() {
+  try {
+    // Generate a P-256 key pair
+    const keyPair = crypto.generateKeyPairSync('ec', {
+      namedCurve: 'P-256',
+      publicKeyEncoding: {
+        type: 'spki',
+        format: 'pem'
+      },
+      privateKeyEncoding: {
+        type: 'pkcs8',
+        format: 'pem'
+      }
+    });
+
+    // Extract the raw keys (without PEM headers)
+    const privateKeyPem = keyPair.privateKey;
+    const publicKeyPem = keyPair.publicKey;
+    
+    // Convert PEM to raw base64 (remove headers, footers, and newlines)
+    const privateKeyRaw = privateKeyPem
+      .replace(/-----BEGIN PRIVATE KEY-----/, '')
+      .replace(/-----END PRIVATE KEY-----/, '')
+      .replace(/\n/g, '');
+    
+    const publicKeyRaw = publicKeyPem
+      .replace(/-----BEGIN PUBLIC KEY-----/, '')
+      .replace(/-----END PUBLIC KEY-----/, '')
+      .replace(/\n/g, '');
+
+    console.log('\n=== Privy KeyQuorum P-256 Key Pair ===');
+    console.log('PRIVATE KEY (base64, for PRIVY_AUTHORIZATION_KEY):');
+    console.log(privateKeyRaw);
+    console.log('\nPUBLIC KEY (base64, for Privy registration):');
+    console.log(publicKeyRaw);
+    console.log('\nInstructions:');
+    console.log('1. Set the PRIVY_AUTHORIZATION_KEY environment variable to the private key');
+    console.log('2. Register the public key with Privy for your KeyQuorum account');
+    console.log('3. Set the PRIVY_KEY_QUORUM_ID environment variable to the ID provided by Privy');
+
+    return {
+      privateKey: privateKeyRaw,
+      publicKey: publicKeyRaw
+    };
+  } catch (error) {
+    console.error('Error generating P-256 key pair:', error);
+    throw new Error('Failed to generate P-256 key pair');
   }
 }
