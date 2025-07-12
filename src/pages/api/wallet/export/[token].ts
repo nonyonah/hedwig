@@ -3,6 +3,10 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import PrivyService from '../../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
 import { WalletExportRequest, PrivyError } from '../../../../types/wallet';
+import { loadServerEnvironment } from '../../../../lib/serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 // Initialize Supabase client
 const supabase = createClient(

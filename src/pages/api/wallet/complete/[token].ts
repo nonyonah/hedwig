@@ -4,6 +4,10 @@ import PrivyService from '../../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
 import { sendFailed } from '../../../../lib/whatsappTemplates';
 import { WalletExportRequest, WhatsAppError, DecryptionError } from '../../../../types/wallet';
+import { loadServerEnvironment } from '../../../../lib/serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 // Initialize Supabase client
 const supabase = createClient(

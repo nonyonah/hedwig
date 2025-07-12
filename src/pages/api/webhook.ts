@@ -1,7 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { handleIncomingWhatsAppMessage } from '@/lib/whatsappUtils';
+import { loadServerEnvironment } from '@/lib/serverEnv';
 
 console.log('Loading /api/webhook module...');
+loadServerEnvironment();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log(`[Webhook] Received ${req.method} request.`);

@@ -5,6 +5,10 @@ import { createClient } from '@supabase/supabase-js';
 import { exportWallet } from '../../../lib/whatsappTemplates';
 import { WhatsAppError } from '../../../types/wallet';
 import { toE164 } from '../../../lib/phoneFormat';
+import { loadServerEnvironment } from '../../../lib/serverEnv';
+
+// Ensure environment variables are loaded
+loadServerEnvironment();
 
 // Initialize Supabase client
 const supabase = createClient(
