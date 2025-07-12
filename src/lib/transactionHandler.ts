@@ -7,6 +7,10 @@ import {
   generateP256KeyPair,
   validateCryptoEnvironment 
 } from './cryptoUtils';
+import { loadServerEnvironment } from './serverEnv';
+
+// Load environment variables for server-side execution
+loadServerEnvironment();
 
 // Initialize Supabase client
 const supabase = createClient(

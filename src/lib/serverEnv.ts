@@ -2,24 +2,83 @@ import fs from 'fs';
 import path from 'path';
 import { getRequiredEnvVar, getEnvVar } from './envUtils';
 
-// Only set default Privy environment variables in local development (not on Netlify)
+// Load environment variables first before setting any defaults
 if (!process.env.NETLIFY) {
+  // Load environment variables from .env files first
+  loadServerEnvironmentSync();
+  
+  // Only set defaults if still missing after loading .env files
   if (!process.env.PRIVY_APP_ID) {
-    process.env.PRIVY_APP_ID = 'demo-app-id'; // Simple placeholder
-    console.log('NOTICE: Setting default PRIVY_APP_ID');
+    console.log('WARNING: PRIVY_APP_ID not found in environment files');
   }
   if (!process.env.PRIVY_APP_SECRET) {
-    process.env.PRIVY_APP_SECRET = 'demo-app-secret';
-    console.log('NOTICE: Setting default PRIVY_APP_SECRET');
+    console.log('WARNING: PRIVY_APP_SECRET not found in environment files');
   }
-  // Default values for KeyQuorum - these should be properly set in production
   if (!process.env.PRIVY_KEY_QUORUM_ID) {
-    process.env.PRIVY_KEY_QUORUM_ID = '';
     console.log('WARNING: PRIVY_KEY_QUORUM_ID not set - KeyQuorum authorization will not work');
   }
   if (!process.env.PRIVY_AUTHORIZATION_KEY) {
-    process.env.PRIVY_AUTHORIZATION_KEY = '';
     console.log('WARNING: PRIVY_AUTHORIZATION_KEY not set - KeyQuorum authorization will not work');
+  }
+}
+
+/**
+ * Synchronous version of loadServerEnvironment for module initialization
+ */
+function loadServerEnvironmentSync() {
+  try {
+    // Only run this in serverless function environment
+    if (typeof window !== 'undefined') {
+      return;
+    }
+
+    // Try to load from .env files in different locations
+    const possiblePaths = [
+      path.join(process.cwd(), '.env.local'),
+      path.join(process.cwd(), '.env'),
+      path.join(process.cwd(), '.env.production'),
+    ];
+
+    // Try to load environment variables from the possible paths
+    let loaded = false;
+    for (const envPath of possiblePaths) {
+      try {
+        if (fs.existsSync(envPath)) {
+          const envConfig = fs.readFileSync(envPath, 'utf8');
+          
+          // Parse the .env file and set environment variables
+          const envVars = envConfig
+            .split('\n')
+            .filter(line => line.trim() && !line.startsWith('#'))
+            .map(line => {
+              const equalIndex = line.indexOf('=');
+              if (equalIndex === -1) return [];
+              const key = line.substring(0, equalIndex).trim();
+              const value = line.substring(equalIndex + 1).trim();
+              return [key, value];
+            })
+            .filter(parts => parts.length === 2);
+          
+          for (const [key, value] of envVars) {
+            if (key && value && !process.env[key]) {
+              process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
+            }
+          }
+          
+          console.log('Loaded environment variables from:', envPath);
+          loaded = true;
+          break; // Stop after loading the first found file
+        }
+      } catch (err) {
+        console.error(`Error loading env file from ${envPath}:`, err);
+      }
+    }
+    
+    if (!loaded) {
+      console.warn('No environment files found - using process.env values');
+    }
+  } catch (error) {
+    console.error('Error in loadServerEnvironmentSync:', error);
   }
 }
 

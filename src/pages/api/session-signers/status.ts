@@ -1,8 +1,12 @@
 // src/pages/api/session-signers/status.ts
 import { NextApiRequest, NextApiResponse } from 'next';
-import { PrivyApi } from '@privy-io/server-auth';
+import { PrivyClient } from '@privy-io/server-auth';
+import { loadServerEnvironment } from '../../../lib/serverEnv';
 
-const privy = new PrivyApi(
+// Load environment variables for server-side execution
+loadServerEnvironment();
+
+const privy = new PrivyClient(
   process.env.PRIVY_APP_ID!,
   process.env.PRIVY_APP_SECRET!
 );
