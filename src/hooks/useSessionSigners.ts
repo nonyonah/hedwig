@@ -4,83 +4,111 @@ import { useCallback, useEffect, useState } from 'react';
 
 /**
  * Hook to manage Privy session signers for KeyQuorum authorization
- * This enables server-side transaction signing with proper delegation
+ * Session signers are managed server-side through the Privy API
+ * This hook provides client-side utilities for checking session status
  */
 export function useSessionSigners() {
-  const { user, ready, authenticated, addSessionSigner } = usePrivy();
-  const [hasSessionSigners, setHasSessionSigners] = useState(false);
-  const [isAddingSessionSigner, setIsAddingSessionSigner] = useState(false);
+  const { user, ready, authenticated, getAccessToken } = usePrivy();
+  const [sessionStatus, setSessionStatus] = useState<'unknown' | 'active' | 'expired' | 'none'>('unknown');
+  const [isCheckingSession, setIsCheckingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if user has session signers
-  useEffect(() => {
-    if (ready && authenticated && user?.wallet) {
-      // Check if session signers exist
-      const sessionSigners = user.wallet.sessionSigners || [];
-      setHasSessionSigners(sessionSigners.length > 0);
-    } else {
-      setHasSessionSigners(false);
-    }
-  }, [ready, authenticated, user]);
-
   /**
-   * Add a session signer to enable server-side transaction signing
-   * This is required for KeyQuorum authorization to work
+   * Check session signer status via API
    */
-  const addSessionSignerForKeyQuorum = useCallback(async () => {
-    if (!authenticated || !user?.wallet) {
-      setError('User must be authenticated with a wallet');
-      return false;
+  const checkSessionStatus = useCallback(async () => {
+    if (!authenticated || !user) {
+      setSessionStatus('none');
+      return 'none';
     }
 
-    if (hasSessionSigners) {
-      console.log('[useSessionSigners] Session signers already exist');
-      return true;
-    }
-
-    setIsAddingSessionSigner(true);
+    setIsCheckingSession(true);
     setError(null);
 
     try {
-      console.log('[useSessionSigners] Adding session signer for KeyQuorum...');
+      const accessToken = await getAccessToken();
       
-      // Add session signer with appropriate permissions
-      await addSessionSigner({
-        // Allow the session signer to sign transactions
-        permissions: ['eth_sendTransaction'],
-        // Set expiration (optional, defaults to 1 hour)
-        expirationTime: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      // Call our API to check session signer status
+      const response = await fetch('/api/session-signers/status', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
       });
 
-      console.log('[useSessionSigners] Session signer added successfully');
-      setHasSessionSigners(true);
-      return true;
+      if (!response.ok) {
+        throw new Error(`Failed to check session status: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const status = data.status || 'none';
+      setSessionStatus(status);
+      return status;
     } catch (err) {
-      console.error('[useSessionSigners] Failed to add session signer:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add session signer');
-      return false;
+      console.error('[useSessionSigners] Failed to check session status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to check session status');
+      setSessionStatus('unknown');
+      return 'unknown';
     } finally {
-      setIsAddingSessionSigner(false);
+      setIsCheckingSession(false);
     }
-  }, [authenticated, user, hasSessionSigners, addSessionSigner]);
+  }, [authenticated, user, getAccessToken]);
 
   /**
-   * Ensure session signers are available for KeyQuorum
-   * Call this before making server-side transactions
+   * Request session signer creation via API
    */
-  const ensureSessionSigners = useCallback(async () => {
-    if (hasSessionSigners) {
-      return true;
+  const requestSessionSigner = useCallback(async () => {
+    if (!authenticated || !user) {
+      setError('User must be authenticated');
+      return false;
     }
-    return await addSessionSignerForKeyQuorum();
-  }, [hasSessionSigners, addSessionSignerForKeyQuorum]);
+
+    setIsCheckingSession(true);
+    setError(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      
+      // Call our API to create/refresh session signer
+      const response = await fetch('/api/session-signers/create', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create session signer: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setSessionStatus('active');
+      return true;
+    } catch (err) {
+      console.error('[useSessionSigners] Failed to create session signer:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create session signer');
+      return false;
+    } finally {
+      setIsCheckingSession(false);
+    }
+  }, [authenticated, user, getAccessToken]);
+
+  // Check session status on mount and when user changes
+  useEffect(() => {
+    if (ready && authenticated) {
+      checkSessionStatus();
+    }
+  }, [ready, authenticated, checkSessionStatus]);
 
   return {
-    hasSessionSigners,
-    isAddingSessionSigner,
+    sessionStatus,
+    hasActiveSession: sessionStatus === 'active',
+    isCheckingSession,
     error,
-    addSessionSignerForKeyQuorum,
-    ensureSessionSigners,
+    checkSessionStatus,
+    requestSessionSigner,
     ready: ready && authenticated,
   };
 }

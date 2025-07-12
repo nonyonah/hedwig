@@ -26,14 +26,9 @@ function MyApp({ Component, pageProps }: AppProps) {
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
           requireUserPasswordOnCreate: false,
-          noPromptOnSignature: false,
         },
-        // Configure session signers for server-side transaction signing
-        sessionSigners: {
-          enabled: true,
-          // Session signers will be automatically created and managed
-          // This enables KeyQuorum authorization for server-side transactions
-        },
+        // Session signers are configured through Privy Dashboard and managed via API
+        // KeyQuorum authorization is handled server-side through the Privy API
       }}
     >
       <Component {...pageProps} />

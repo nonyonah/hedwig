@@ -4,70 +4,59 @@
  * This script generates a P-256 key pair that can be used for signing Privy KeyQuorum API requests.
  * The private key should be set as PRIVY_AUTHORIZATION_KEY in your environment variables.
  * The public key should be registered with Privy for your KeyQuorum account.
+ * 
+ * Updated to use the dedicated cryptoUtils module for better security and maintainability.
  */
 
-import crypto from 'crypto';
+import { generateP256KeyPair, validateCryptoEnvironment } from '../src/lib/cryptoUtils.js';
 
-// Generate a P-256 key pair
-function generateP256KeyPair() {
-  // Generate the key pair
-  const keyPair = crypto.generateKeyPairSync('ec', {
-    namedCurve: 'P-256',
-    publicKeyEncoding: {
-      type: 'spki',
-      format: 'pem'
-    },
-    privateKeyEncoding: {
-      type: 'pkcs8',
-      format: 'pem'
+// Main function to generate and display the key pair
+async function main() {
+  try {
+    console.log('\n=== Privy KeyQuorum P-256 Key Pair Generator ===\n');
+    
+    // Validate crypto environment (optional for key generation)
+    const validation = validateCryptoEnvironment();
+    if (validation.warnings.length > 0) {
+      console.log('Environment warnings:');
+      validation.warnings.forEach(warning => console.log(`  - ${warning}`));
+      console.log('');
     }
-  });
-
-  // Extract the raw keys (without PEM headers)
-  const privateKeyPem = keyPair.privateKey;
-  const publicKeyPem = keyPair.publicKey;
-  
-  // Convert PEM to raw base64 (remove headers, footers, and newlines)
-  const privateKeyRaw = privateKeyPem
-    .replace(/-----BEGIN PRIVATE KEY-----/, '')
-    .replace(/-----END PRIVATE KEY-----/, '')
-    .replace(/\n/g, '');
-  
-  const publicKeyRaw = publicKeyPem
-    .replace(/-----BEGIN PUBLIC KEY-----/, '')
-    .replace(/-----END PUBLIC KEY-----/, '')
-    .replace(/\n/g, '');
-
-  return {
-    privateKey: {
-      raw: privateKeyRaw,
-      pem: privateKeyPem
-    },
-    publicKey: {
-      raw: publicKeyRaw,
-      pem: publicKeyPem
-    }
-  };
+    
+    console.log('Generating P-256 key pair...');
+    
+    // Generate the key pair using cryptoUtils
+    const keyPair = await generateP256KeyPair();
+    
+    console.log('\n=== Generated Key Pair ===\n');
+    
+    console.log('PRIVATE KEY (base64, for PRIVY_AUTHORIZATION_KEY):');
+    console.log(keyPair.privateKeyBase64);
+    console.log('\nPRIVATE KEY (PEM format):');
+    console.log(keyPair.privateKeyPem);
+    
+    console.log('\nPUBLIC KEY (base64, for Privy registration):');
+    console.log(keyPair.publicKeyBase64);
+    console.log('\nPUBLIC KEY (PEM format):');
+    console.log(keyPair.publicKeyPem);
+    
+    console.log('\n=== Instructions ===');
+    console.log('1. Set the PRIVY_AUTHORIZATION_KEY environment variable to the base64 private key');
+    console.log('2. Register the base64 public key with Privy for your KeyQuorum account');
+    console.log('3. Set the PRIVY_KEY_QUORUM_ID environment variable to the ID provided by Privy');
+    console.log('4. Ensure all other required environment variables are set (see ENVIRONMENT.md)');
+    
+    console.log('\n=== Security Notes ===');
+    console.log('- Keep the private key secure and never commit it to version control');
+    console.log('- The private key should only be stored in environment variables');
+    console.log('- The public key can be safely shared with Privy for registration');
+    console.log('- Use the cryptoUtils module for all cryptographic operations in your application');
+    
+  } catch (error) {
+    console.error('\nError generating key pair:', error);
+    process.exit(1);
+  }
 }
 
-// Generate and display the key pair
-const keyPair = generateP256KeyPair();
-
-console.log('\n=== Privy KeyQuorum P-256 Key Pair ===\n');
-
-console.log('PRIVATE KEY (raw base64, for PRIVY_AUTHORIZATION_KEY):');
-console.log(keyPair.privateKey.raw);
-console.log('\nPRIVATE KEY (PEM format, alternative for PRIVY_AUTHORIZATION_KEY):');
-console.log(keyPair.privateKey.pem);
-
-console.log('\nPUBLIC KEY (raw base64, for Privy registration):');
-console.log(keyPair.publicKey.raw);
-console.log('\nPUBLIC KEY (PEM format):');
-console.log(keyPair.publicKey.pem);
-
-console.log('\n=== Instructions ===');
-console.log('1. Set the PRIVY_AUTHORIZATION_KEY environment variable to either:');
-console.log('   - The raw base64 private key (recommended)');
-console.log('   - The full PEM format private key (including BEGIN/END headers)');
-console.log('2. Register the raw base64 public key with Privy for your KeyQuorum account');
-console.log('3. Set the PRIVY_KEY_QUORUM_ID environment variable to the ID provided by Privy');
+// Run the main function
+main();

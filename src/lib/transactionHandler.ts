@@ -1,7 +1,12 @@
 import { privy } from './privy';
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
-import crypto from 'crypto';
+import { 
+  signData, 
+  importPrivateKeyFromBase64, 
+  generateP256KeyPair,
+  validateCryptoEnvironment 
+} from './cryptoUtils';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -96,22 +101,27 @@ export function hasSessionSigners(user: any): boolean {
 }
 
 /**
- * Generate authorization signature for Privy KeyQuorum
+ * Generate authorization signature for Privy KeyQuorum using cryptoUtils
  * @param method HTTP method (e.g., 'POST')
  * @param path API path (e.g., '/v1/wallets/{wallet_id}/rpc')
  * @param body Request body as a JSON object
  * @returns The authorization signature for the Privy API request
  */
-function generatePrivyAuthorizationSignature(method: string, path: string, body: any): string {
+async function generatePrivyAuthorizationSignature(method: string, path: string, body: any): Promise<string> {
   try {
-    // Check if the required environment variables are set
-    const privyAuthorizationKey = process.env.PRIVY_AUTHORIZATION_KEY;
-    const privyKeyQuorumId = process.env.PRIVY_KEY_QUORUM_ID;
-    
-    if (!privyAuthorizationKey || !privyKeyQuorumId) {
-      console.warn('[sendPrivyTransaction] Missing PRIVY_AUTHORIZATION_KEY or PRIVY_KEY_QUORUM_ID environment variables');
+    // Validate crypto environment
+    const validation = validateCryptoEnvironment();
+    if (!validation.isValid) {
+      console.warn('[generatePrivyAuthorizationSignature] Missing environment variables:', validation.missingVars);
       return '';
     }
+    
+    if (validation.warnings.length > 0) {
+      console.warn('[generatePrivyAuthorizationSignature] Environment warnings:', validation.warnings);
+    }
+    
+    const privyAuthorizationKey = process.env.PRIVY_AUTHORIZATION_KEY!;
+    const privyKeyQuorumId = process.env.PRIVY_KEY_QUORUM_ID!;
     
     // Create the payload for signing
     const timestamp = Math.floor(Date.now() / 1000);
@@ -124,53 +134,16 @@ function generatePrivyAuthorizationSignature(method: string, path: string, body:
     };
     
     // Canonicalize the payload per RFC 8785
-    // For simplicity, we'll sort the keys and stringify without whitespace
     const canonicalizedPayload = JSON.stringify(payload, Object.keys(payload).sort());
     
-    // Sign the payload with ECDSA P-256 using the private key
-    const sign = crypto.createSign('SHA256');
-    sign.update(canonicalizedPayload);
-    sign.end();
+    // Import the private key and sign the payload
+    const privateKey = await importPrivateKeyFromBase64(privyAuthorizationKey);
+    const signature = await signData(canonicalizedPayload, privateKey);
     
-    // The private key should be in PEM format
-    // Try different PEM formats if the key is not already in PEM format
-    let signature = '';
-    let privateKeyPem = privyAuthorizationKey;
-    
-    // Try signing with the key as-is first (in case it's already in PEM format)
-    try {
-      if (privateKeyPem.includes('-----BEGIN')) {
-        // Key is already in PEM format
-        signature = sign.sign(privateKeyPem, 'base64');
-        console.log(`[sendPrivyTransaction] Generated signature using existing PEM format`);
-        return signature;
-      }
-    } catch (e) {
-      console.log(`[sendPrivyTransaction] Key is not in valid PEM format, trying conversions...`);
-    }
-    
-    // Try EC PRIVATE KEY format
-    try {
-      privateKeyPem = `-----BEGIN EC PRIVATE KEY-----\n${privyAuthorizationKey}\n-----END EC PRIVATE KEY-----`;
-      signature = sign.sign(privateKeyPem, 'base64');
-      console.log(`[sendPrivyTransaction] Generated signature using EC PRIVATE KEY format`);
-      return signature;
-    } catch (e) {
-      console.log(`[sendPrivyTransaction] Failed with EC PRIVATE KEY format, trying PRIVATE KEY format...`);
-    }
-    
-    // Try PRIVATE KEY format
-    try {
-      privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privyAuthorizationKey}\n-----END PRIVATE KEY-----`;
-      signature = sign.sign(privateKeyPem, 'base64');
-      console.log(`[sendPrivyTransaction] Generated signature using PRIVATE KEY format`);
-      return signature;
-    } catch (e) {
-      console.error(`[sendPrivyTransaction] Failed to sign with any key format:`, e);
-      return '';
-    }
+    console.log('[generatePrivyAuthorizationSignature] Generated signature using cryptoUtils');
+    return signature;
   } catch (error) {
-    console.error('[sendPrivyTransaction] Error generating authorization signature:', error);
+    console.error('[generatePrivyAuthorizationSignature] Error generating authorization signature:', error);
     return '';
   }
 }
@@ -217,7 +190,7 @@ export async function sendPrivyTransaction({
       };
       
       // Generate authorization signature if KeyQuorum is configured
-      const authSignature = generatePrivyAuthorizationSignature('POST', path, requestBody);
+      const authSignature = await generatePrivyAuthorizationSignature('POST', path, requestBody);
       
       // Prepare headers
       const headers: Record<string, string> = {
@@ -436,56 +409,36 @@ function getExplorerUrl(chain: string, txHash: string): string {
 }
 
 /**
- * Generate a P-256 key pair for Privy KeyQuorum authorization
+ * Generate a P-256 key pair for Privy KeyQuorum authorization using cryptoUtils
  * This function is intended for testing or production use
  * The public key should be registered with Privy for your KeyQuorum account
  * The private key should be set as PRIVY_AUTHORIZATION_KEY in your environment variables
  * 
- * @returns Object containing base64-encoded private and public keys
+ * @returns Promise containing object with base64-encoded private and public keys
  */
-export function generatePrivyAuthorizationKeyPair() {
+export async function generatePrivyAuthorizationKeyPair() {
   try {
-    // Generate a P-256 key pair
-    const keyPair = crypto.generateKeyPairSync('ec', {
-      namedCurve: 'P-256',
-      publicKeyEncoding: {
-        type: 'spki',
-        format: 'pem'
-      },
-      privateKeyEncoding: {
-        type: 'pkcs8',
-        format: 'pem'
-      }
-    });
-
-    // Extract the raw keys (without PEM headers)
-    const privateKeyPem = keyPair.privateKey;
-    const publicKeyPem = keyPair.publicKey;
-    
-    // Convert PEM to raw base64 (remove headers, footers, and newlines)
-    const privateKeyRaw = privateKeyPem
-      .replace(/-----BEGIN PRIVATE KEY-----/, '')
-      .replace(/-----END PRIVATE KEY-----/, '')
-      .replace(/\n/g, '');
-    
-    const publicKeyRaw = publicKeyPem
-      .replace(/-----BEGIN PUBLIC KEY-----/, '')
-      .replace(/-----END PUBLIC KEY-----/, '')
-      .replace(/\n/g, '');
+    const keyPair = await generateP256KeyPair();
 
     console.log('\n=== Privy KeyQuorum P-256 Key Pair ===');
     console.log('PRIVATE KEY (base64, for PRIVY_AUTHORIZATION_KEY):');
-    console.log(privateKeyRaw);
+    console.log(keyPair.privateKeyBase64);
     console.log('\nPUBLIC KEY (base64, for Privy registration):');
-    console.log(publicKeyRaw);
+    console.log(keyPair.publicKeyBase64);
+    console.log('\nPRIVATE KEY (PEM format):');
+    console.log(keyPair.privateKeyPem);
+    console.log('\nPUBLIC KEY (PEM format):');
+    console.log(keyPair.publicKeyPem);
     console.log('\nInstructions:');
-    console.log('1. Set the PRIVY_AUTHORIZATION_KEY environment variable to the private key');
+    console.log('1. Set the PRIVY_AUTHORIZATION_KEY environment variable to the private key (base64)');
     console.log('2. Register the public key with Privy for your KeyQuorum account');
     console.log('3. Set the PRIVY_KEY_QUORUM_ID environment variable to the ID provided by Privy');
 
     return {
-      privateKey: privateKeyRaw,
-      publicKey: publicKeyRaw
+      privateKey: keyPair.privateKeyBase64,
+      publicKey: keyPair.publicKeyBase64,
+      privateKeyPem: keyPair.privateKeyPem,
+      publicKeyPem: keyPair.publicKeyPem
     };
   } catch (error) {
     console.error('Error generating P-256 key pair:', error);
