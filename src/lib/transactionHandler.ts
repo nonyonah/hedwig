@@ -88,6 +88,14 @@ function generatePrivyAuthCredentials(): string {
 }
 
 /**
+ * Check if session signers are properly configured for KeyQuorum
+ * This helps diagnose "KeyQuorum user session key is expired" errors
+ */
+export function hasSessionSigners(user: any): boolean {
+  return user?.wallet?.sessionSigners?.length > 0;
+}
+
+/**
  * Generate authorization signature for Privy KeyQuorum
  * @param method HTTP method (e.g., 'POST')
  * @param path API path (e.g., '/v1/wallets/{wallet_id}/rpc')
@@ -296,7 +304,7 @@ function getUserFriendlyErrorMessage(error: any): string {
   
   // Privy-specific error handling
   if (errorStr.includes('KeyQuorum user session key is expired')) {
-    return 'Your authentication session has expired. Please try again.'; 
+    return 'Your wallet session has expired. Please refresh the page and try again. If the problem persists, you may need to reconnect your wallet.'; 
   }
   
   if (errorStr.includes('401') && errorStr.includes('Privy')) {

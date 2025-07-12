@@ -6,7 +6,7 @@
  * The public key should be registered with Privy for your KeyQuorum account.
  */
 
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 // Generate a P-256 key pair
 function generateP256KeyPair() {

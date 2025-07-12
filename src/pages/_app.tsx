@@ -22,6 +22,18 @@ function MyApp({ Component, pageProps }: AppProps) {
         },
         // Customize Privy's login methods here
         loginMethods: ['email'],
+        // Enable session signers for KeyQuorum authorization
+        embeddedWallets: {
+          createOnLogin: 'users-without-wallets',
+          requireUserPasswordOnCreate: false,
+          noPromptOnSignature: false,
+        },
+        // Configure session signers for server-side transaction signing
+        sessionSigners: {
+          enabled: true,
+          // Session signers will be automatically created and managed
+          // This enables KeyQuorum authorization for server-side transactions
+        },
       }}
     >
       <Component {...pageProps} />
