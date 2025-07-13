@@ -47,15 +47,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get user's wallet from database
     const wallet = await privyWalletApi.getUserWallet(userId, chain);
     
-    if (!wallet.wallet_id) {
-      return res.status(400).json({ 
-        error: 'Wallet does not have a Privy wallet ID' 
-      });
-    }
+    if (!wallet.privy_wallet_id) {
+    return res.status(400).json({ error: 'Wallet does not have a Privy wallet ID' });
+  }
 
-    // Sign EIP-7702 authorization using Privy
+  try {
+    // Sign the EIP-7702 authorization using Privy Wallet API
     const result = await privyWalletApi.sign7702Authorization(
-      wallet.wallet_id,
+      wallet.privy_wallet_id,
       authorization
     );
 

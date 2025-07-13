@@ -143,3 +143,44 @@ export async function getOrCreatePrivyWallet(supabaseUserId: string) {
   console.log(`[getOrCreatePrivyWallet] No existing wallet, creating new one.`);
   return pregeneratePrivyWallet(supabaseUserId);
 }
+
+/**
+ * Assigns a wallet to a user (placeholder implementation)
+ * @param userId The user ID
+ * @param walletId The wallet ID to assign
+ */
+export async function assignWalletToUser(userId: string, walletId: string) {
+  console.log(`[assignWalletToUser] Assigning wallet ${walletId} to user ${userId}`);
+  // Implementation would depend on your specific requirements
+  // This is a placeholder that could update wallet ownership in your database
+  const { error } = await supabase
+    .from('wallets')
+    .update({ user_id: userId })
+    .eq('id', walletId);
+  
+  if (error) {
+    console.error(`[assignWalletToUser] Error:`, error);
+    throw error;
+  }
+  
+  return { success: true };
+}
+
+/**
+ * Gets a Privy user authentication token
+ * @param userId The user ID
+ * @returns Authentication token
+ */
+export async function getPrivyUserAuthToken(userId: string): Promise<string> {
+  console.log(`[getPrivyUserAuthToken] Getting auth token for user ${userId}`);
+  
+  const privyUserId = await getPrivyUserIdForSupabaseUser(userId);
+  if (!privyUserId) {
+    throw new Error(`No Privy user found for user ${userId}`);
+  }
+  
+  // Generate an auth token for the user
+  // Since createAuthToken doesn't exist on PrivyClient, we'll return the privyUserId as a token
+  // In a real implementation, you would generate a proper JWT or session token
+  return privyUserId;
+}

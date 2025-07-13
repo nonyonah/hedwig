@@ -585,6 +585,26 @@ export function privateKeys({ privy_link }: { privy_link: string }) {
 }
 
 /**
+ * Template: export_wallet
+ * Parameter Format: POSITIONAL
+ * Parameters: export_link
+ */
+export function exportWallet({ export_link }: { export_link: string }) {
+  return {
+    name: 'export_wallet',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: sanitizeWhatsAppParam(export_link, 'export_link') }
+        ]
+      }
+    ]
+  };
+}
+
+/**
  * Template: no_wallet_yet
  * Parameter Format: POSITIONAL (no named parameters)
  * Has QUICK_REPLY button

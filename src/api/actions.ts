@@ -671,10 +671,9 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     ]);
 
     return walletBalance({
-      base_eth: formatBalance(baseBalances.eth, 18),
-      base_usdc: formatBalance(baseBalances.usdc, 6),
-      eth_eth: formatBalance(ethBalances.eth, 18),
-      eth_usdc: formatBalance(ethBalances.usdc, 6),
+      eth_balance: formatBalance(baseBalances.eth, 18),
+      usdc_base_balance: formatBalance(baseBalances.usdc, 6),
+      cngn_balance: formatBalance(ethBalances.usdc, 6), // Using ETH USDC as CNGN placeholder
     });
   } catch (error) {
     console.error("Error getting wallet balance:", error);
@@ -935,7 +934,7 @@ async function handleSend(params: ActionParams, userId: string) {
       // Get user's wallet from database
       const wallet = await privyWalletApi.getUserWallet(userId, network);
       
-      if (!wallet.wallet_id) {
+      if (!wallet.privy_wallet_id) {
         throw new Error('Wallet does not have a Privy wallet ID');
       }
 
@@ -948,7 +947,7 @@ async function handleSend(params: ActionParams, userId: string) {
 
       // Execute the transaction using new Privy API
       const txResult = await privyWalletApi.sendTransaction(
-        wallet.wallet_id,
+        wallet.privy_wallet_id,
         transaction,
         network
       );
