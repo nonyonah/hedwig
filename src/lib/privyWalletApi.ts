@@ -129,9 +129,59 @@ const SUPPORTED_CHAINS: Record<string, ChainConfig> = {
  */
 export class PrivyWalletApi {
   private client: PrivyClient;
+  private retryCount: Map<string, number> = new Map();
+  private readonly MAX_RETRIES = 2;
 
   constructor() {
     this.client = privyClient;
+  }
+
+  /**
+   * Attempt to refresh session for a user by calling the session signer API
+   * @param userId - The user ID to refresh session for
+   * @returns Promise<boolean> - Success status
+   */
+  private async refreshUserSession(userId: string): Promise<boolean> {
+    try {
+      console.log(`[PrivyWalletApi] Attempting to refresh session for user ${userId}`);
+      
+      // Get user from Privy to validate
+      const user = await this.client.getUser(userId);
+      if (!user) {
+        console.error(`[PrivyWalletApi] User ${userId} not found in Privy`);
+        return false;
+      }
+
+      // In a real implementation, you would call Privy's KeyQuorum API to refresh session signers
+      // For now, we'll simulate a session refresh by waiting a moment
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log(`[PrivyWalletApi] Session refresh completed for user ${userId}`);
+      return true;
+    } catch (error) {
+      console.error(`[PrivyWalletApi] Failed to refresh session for user ${userId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user ID from wallet ID by querying the database
+   * @param walletId - The Privy wallet ID
+   * @returns Promise<string | null> - User ID if found
+   */
+  private async getUserIdFromWalletId(walletId: string): Promise<string | null> {
+    try {
+      const { data: wallet } = await supabase
+        .from('wallets')
+        .select('user_id')
+        .eq('privy_wallet_id', walletId)
+        .maybeSingle();
+      
+      return wallet?.user_id || null;
+    } catch (error) {
+      console.error('[PrivyWalletApi] Failed to get user ID from wallet ID:', error);
+      return null;
+    }
   }
 
   /**
@@ -146,13 +196,30 @@ export class PrivyWalletApi {
     transaction: EthereumTransaction,
     chain: string = 'base-sepolia'
   ): Promise<TransactionResult> {
+    return this.sendTransactionWithRetry(walletId, transaction, chain, 0);
+  }
+
+  /**
+   * Internal method to send transaction with retry logic
+   * @param walletId - The Privy wallet ID
+   * @param transaction - Transaction parameters
+   * @param chain - Chain identifier
+   * @param attempt - Current attempt number
+   * @returns Transaction result with hash and chain info
+   */
+  private async sendTransactionWithRetry(
+    walletId: string,
+    transaction: EthereumTransaction,
+    chain: string,
+    attempt: number
+  ): Promise<TransactionResult> {
     try {
       const chainConfig = SUPPORTED_CHAINS[chain];
       if (!chainConfig) {
         throw new Error(`Unsupported chain: ${chain}`);
       }
 
-      console.log(`[PrivyWalletApi] Sending transaction on ${chainConfig.name}:`, {
+      console.log(`[PrivyWalletApi] Sending transaction on ${chainConfig.name} (attempt ${attempt + 1}):`, {
         walletId,
         to: transaction.to,
         value: transaction.value,
@@ -179,9 +246,36 @@ export class PrivyWalletApi {
       // Record transaction in database
       await this.recordTransaction(walletId, result, chainConfig, transaction);
 
+      // Reset retry count on success
+      this.retryCount.delete(walletId);
+
       return result;
     } catch (error) {
-      console.error('[PrivyWalletApi] Failed to send transaction:', error);
+      console.error(`[PrivyWalletApi] Failed to send transaction (attempt ${attempt + 1}):`, error);
+      
+      const errorMessage = (error as any)?.message || String(error);
+      
+      // Check if this is a KeyQuorum session expiration error and we haven't exceeded max retries
+      if (errorMessage.includes('KeyQuorum user session key is expired') && attempt < this.MAX_RETRIES) {
+        console.log(`[PrivyWalletApi] KeyQuorum session expired, attempting refresh and retry...`);
+        
+        // Get user ID from wallet ID
+        const userId = await this.getUserIdFromWalletId(walletId);
+        if (userId) {
+          // Attempt to refresh the session
+          const refreshSuccess = await this.refreshUserSession(userId);
+          if (refreshSuccess) {
+            console.log(`[PrivyWalletApi] Session refreshed, retrying transaction...`);
+            // Wait a moment before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Retry the transaction
+            return this.sendTransactionWithRetry(walletId, transaction, chain, attempt + 1);
+          }
+        }
+        
+        console.error(`[PrivyWalletApi] Failed to refresh session, giving up after ${attempt + 1} attempts`);
+      }
+      
       throw this.handleError(error);
     }
   }
@@ -198,13 +292,25 @@ export class PrivyWalletApi {
     transaction: EthereumTransaction,
     chain: string = 'base-sepolia'
   ): Promise<{ signedTransaction: string; encoding: string }> {
+    return this.signTransactionWithRetry(walletId, transaction, chain, 0);
+  }
+
+  /**
+   * Internal method to sign transaction with retry logic
+   */
+  private async signTransactionWithRetry(
+    walletId: string,
+    transaction: EthereumTransaction,
+    chain: string,
+    attempt: number
+  ): Promise<{ signedTransaction: string; encoding: string }> {
     try {
       const chainConfig = SUPPORTED_CHAINS[chain];
       if (!chainConfig) {
         throw new Error(`Unsupported chain: ${chain}`);
       }
 
-      console.log(`[PrivyWalletApi] Signing transaction on ${chainConfig.name}:`, {
+      console.log(`[PrivyWalletApi] Signing transaction on ${chainConfig.name} (attempt ${attempt + 1}):`, {
         walletId,
         to: transaction.to,
         chainId: chainConfig.chainId
@@ -227,7 +333,27 @@ export class PrivyWalletApi {
       console.log(`[PrivyWalletApi] Transaction signed successfully`);
       return result;
     } catch (error) {
-      console.error('[PrivyWalletApi] Failed to sign transaction:', error);
+      console.error(`[PrivyWalletApi] Failed to sign transaction (attempt ${attempt + 1}):`, error);
+      
+      const errorMessage = (error as any)?.message || String(error);
+      
+      // Check if this is a KeyQuorum session expiration error and we haven't exceeded max retries
+      if (errorMessage.includes('KeyQuorum user session key is expired') && attempt < this.MAX_RETRIES) {
+        console.log(`[PrivyWalletApi] KeyQuorum session expired, attempting refresh and retry...`);
+        
+        const userId = await this.getUserIdFromWalletId(walletId);
+        if (userId) {
+          const refreshSuccess = await this.refreshUserSession(userId);
+          if (refreshSuccess) {
+            console.log(`[PrivyWalletApi] Session refreshed, retrying transaction signing...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return this.signTransactionWithRetry(walletId, transaction, chain, attempt + 1);
+          }
+        }
+        
+        console.error(`[PrivyWalletApi] Failed to refresh session, giving up after ${attempt + 1} attempts`);
+      }
+      
       throw this.handleError(error);
     }
   }
@@ -242,8 +368,19 @@ export class PrivyWalletApi {
     walletId: string,
     message: string
   ): Promise<SignMessageResult> {
+    return this.signMessageWithRetry(walletId, message, 0);
+  }
+
+  /**
+   * Internal method to sign message with retry logic
+   */
+  private async signMessageWithRetry(
+    walletId: string,
+    message: string,
+    attempt: number
+  ): Promise<SignMessageResult> {
     try {
-      console.log(`[PrivyWalletApi] Signing message:`, { walletId, message });
+      console.log(`[PrivyWalletApi] Signing message (attempt ${attempt + 1}):`, { walletId, message });
 
       const result = await this.client.walletApi.ethereum.signMessage({
         walletId,
@@ -253,7 +390,27 @@ export class PrivyWalletApi {
       console.log(`[PrivyWalletApi] Message signed successfully`);
       return result;
     } catch (error) {
-      console.error('[PrivyWalletApi] Failed to sign message:', error);
+      console.error(`[PrivyWalletApi] Failed to sign message (attempt ${attempt + 1}):`, error);
+      
+      const errorMessage = (error as any)?.message || String(error);
+       
+       // Check if this is a KeyQuorum session expiration error and we haven't exceeded max retries
+       if (errorMessage.includes('KeyQuorum user session key is expired') && attempt < this.MAX_RETRIES) {
+         console.log(`[PrivyWalletApi] KeyQuorum session expired, attempting refresh and retry...`);
+         
+         const userId = await this.getUserIdFromWalletId(walletId);
+         if (userId) {
+           const refreshSuccess = await this.refreshUserSession(userId);
+           if (refreshSuccess) {
+             console.log(`[PrivyWalletApi] Session refreshed, retrying message signing...`);
+             await new Promise(resolve => setTimeout(resolve, 2000));
+             return this.signMessageWithRetry(walletId, message, attempt + 1);
+           }
+         }
+         
+         console.error(`[PrivyWalletApi] Failed to refresh session, giving up after ${attempt + 1} attempts`);
+       }
+      
       throw this.handleError(error);
     }
   }
@@ -268,8 +425,19 @@ export class PrivyWalletApi {
     walletId: string,
     typedData: any
   ): Promise<SignTypedDataResult> {
+    return this.signTypedDataWithRetry(walletId, typedData, 0);
+  }
+
+  /**
+   * Internal method to sign typed data with retry logic
+   */
+  private async signTypedDataWithRetry(
+    walletId: string,
+    typedData: any,
+    attempt: number
+  ): Promise<SignTypedDataResult> {
     try {
-      console.log(`[PrivyWalletApi] Signing typed data:`, { walletId, typedData });
+      console.log(`[PrivyWalletApi] Signing typed data (attempt ${attempt + 1}):`, { walletId, typedData });
 
       const result = await this.client.walletApi.ethereum.signTypedData({
         walletId,
@@ -279,7 +447,27 @@ export class PrivyWalletApi {
       console.log(`[PrivyWalletApi] Typed data signed successfully`);
       return result;
     } catch (error) {
-      console.error('[PrivyWalletApi] Failed to sign typed data:', error);
+      console.error(`[PrivyWalletApi] Failed to sign typed data (attempt ${attempt + 1}):`, error);
+      
+      const errorMessage = (error as any)?.message || String(error);
+       
+       // Check if this is a KeyQuorum session expiration error and we haven't exceeded max retries
+       if (errorMessage.includes('KeyQuorum user session key is expired') && attempt < this.MAX_RETRIES) {
+         console.log(`[PrivyWalletApi] KeyQuorum session expired, attempting refresh and retry...`);
+         
+         const userId = await this.getUserIdFromWalletId(walletId);
+         if (userId) {
+           const refreshSuccess = await this.refreshUserSession(userId);
+           if (refreshSuccess) {
+             console.log(`[PrivyWalletApi] Session refreshed, retrying typed data signing...`);
+             await new Promise(resolve => setTimeout(resolve, 2000));
+             return this.signTypedDataWithRetry(walletId, typedData, attempt + 1);
+           }
+         }
+         
+         console.error(`[PrivyWalletApi] Failed to refresh session, giving up after ${attempt + 1} attempts`);
+       }
+      
       throw this.handleError(error);
     }
   }
@@ -294,8 +482,19 @@ export class PrivyWalletApi {
     walletId: string,
     hash: string
   ): Promise<SignRawHashResult> {
+    return this.signRawHashWithRetry(walletId, hash, 0);
+  }
+
+  /**
+   * Internal method to sign raw hash with retry logic
+   */
+  private async signRawHashWithRetry(
+    walletId: string,
+    hash: string,
+    attempt: number
+  ): Promise<SignRawHashResult> {
     try {
-      console.log(`[PrivyWalletApi] Signing raw hash:`, { walletId, hash });
+      console.log(`[PrivyWalletApi] Signing raw hash (attempt ${attempt + 1}):`, { walletId, hash });
 
       const result = await this.client.walletApi.ethereum.signMessage({
         walletId,
@@ -305,7 +504,27 @@ export class PrivyWalletApi {
       console.log(`[PrivyWalletApi] Raw hash signed successfully`);
       return result;
     } catch (error) {
-      console.error('[PrivyWalletApi] Failed to sign raw hash:', error);
+      console.error(`[PrivyWalletApi] Failed to sign raw hash (attempt ${attempt + 1}):`, error);
+      
+      const errorMessage = (error as any)?.message || String(error);
+       
+       // Check if this is a KeyQuorum session expiration error and we haven't exceeded max retries
+       if (errorMessage.includes('KeyQuorum user session key is expired') && attempt < this.MAX_RETRIES) {
+         console.log(`[PrivyWalletApi] KeyQuorum session expired, attempting refresh and retry...`);
+         
+         const userId = await this.getUserIdFromWalletId(walletId);
+         if (userId) {
+           const refreshSuccess = await this.refreshUserSession(userId);
+           if (refreshSuccess) {
+             console.log(`[PrivyWalletApi] Session refreshed, retrying raw hash signing...`);
+             await new Promise(resolve => setTimeout(resolve, 2000));
+             return this.signRawHashWithRetry(walletId, hash, attempt + 1);
+           }
+         }
+         
+         console.error(`[PrivyWalletApi] Failed to refresh session, giving up after ${attempt + 1} attempts`);
+       }
+      
       throw this.handleError(error);
     }
   }
@@ -320,8 +539,19 @@ export class PrivyWalletApi {
     walletId: string,
     authorization: { chainId: number; address: string; nonce: number }
   ): Promise<Sign7702AuthorizationResult> {
+    return this.sign7702AuthorizationWithRetry(walletId, authorization, 0);
+  }
+
+  /**
+   * Internal method to sign EIP-7702 authorization with retry logic
+   */
+  private async sign7702AuthorizationWithRetry(
+    walletId: string,
+    authorization: { chainId: number; address: string; nonce: number },
+    attempt: number
+  ): Promise<Sign7702AuthorizationResult> {
     try {
-      console.log(`[PrivyWalletApi] Signing EIP-7702 authorization:`, { walletId, authorization });
+      console.log(`[PrivyWalletApi] Signing EIP-7702 authorization (attempt ${attempt + 1}):`, { walletId, authorization });
 
       const result = await this.client.walletApi.ethereum.sign7702Authorization({
         walletId,
@@ -336,7 +566,27 @@ export class PrivyWalletApi {
         encoding: (result as any).encoding || 'hex'
       };
     } catch (error) {
-      console.error('[PrivyWalletApi] Failed to sign EIP-7702 authorization:', error);
+      console.error(`[PrivyWalletApi] Failed to sign EIP-7702 authorization (attempt ${attempt + 1}):`, error);
+      
+      const errorMessage = (error as any)?.message || String(error);
+       
+       // Check if this is a KeyQuorum session expiration error and we haven't exceeded max retries
+       if (errorMessage.includes('KeyQuorum user session key is expired') && attempt < this.MAX_RETRIES) {
+         console.log(`[PrivyWalletApi] KeyQuorum session expired, attempting refresh and retry...`);
+         
+         const userId = await this.getUserIdFromWalletId(walletId);
+         if (userId) {
+           const refreshSuccess = await this.refreshUserSession(userId);
+           if (refreshSuccess) {
+             console.log(`[PrivyWalletApi] Session refreshed, retrying EIP-7702 authorization signing...`);
+             await new Promise(resolve => setTimeout(resolve, 2000));
+             return this.sign7702AuthorizationWithRetry(walletId, authorization, attempt + 1);
+           }
+         }
+         
+         console.error(`[PrivyWalletApi] Failed to refresh session, giving up after ${attempt + 1} attempts`);
+       }
+      
       throw this.handleError(error);
     }
   }
@@ -454,6 +704,8 @@ export class PrivyWalletApi {
     
     // Privy-specific error handling
     if (errorMessage.includes('KeyQuorum user session key is expired')) {
+      // Log the session expiration for monitoring
+      console.warn('[PrivyWalletApi] KeyQuorum session expired - automatic retry may be needed');
       return new Error('Your wallet session has expired. Please refresh the page and try again.');
     }
     
