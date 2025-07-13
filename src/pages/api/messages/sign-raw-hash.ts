@@ -48,10 +48,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const wallet = await privyWalletApi.getUserWallet(userId, chain);
     
     if (!wallet.privy_wallet_id) {
-    return res.status(400).json({ error: 'Wallet does not have a Privy wallet ID' });
-  }
+      return res.status(400).json({ error: 'Wallet does not have a Privy wallet ID' });
+    }
 
-  try {
+    // Sign the raw hash using Privy Wallet API
     // Sign the raw hash using Privy Wallet API
     const result = await privyWalletApi.signRawHash(
       wallet.privy_wallet_id,
