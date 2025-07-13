@@ -2,7 +2,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import PrivyService from '../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
-import { exportWallet } from '../../../lib/whatsappTemplates';
+import { privateKeys } from '../../../lib/whatsappTemplates';
 import { WhatsAppError } from '../../../types/wallet';
 import { toE164 } from '../../../lib/phoneFormat';
 import { loadServerEnvironment } from '../../../lib/serverEnv';
@@ -83,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         whatsappPhone = '+' + whatsappPhone;
       }
       console.log(`[export] Sending WhatsApp template to ${whatsappPhone} with export_link: ${exportLink}`);
-      const template = exportWallet({ export_link: exportLink });
+      const template = privateKeys({ privy_link: exportLink });
       await sendWhatsAppTemplate(whatsappPhone, template);
     } catch (whatsappError) {
       console.error('Failed to send WhatsApp message, but export request was created:', whatsappError);

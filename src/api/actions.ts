@@ -40,7 +40,7 @@ import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
-import { handleTransaction } from '../lib/transactionHandler';
+import { privyWalletApi, EthereumTransaction } from '../lib/privyWalletApi';
 
 
 // Example: Action handler interface
@@ -932,18 +932,36 @@ async function handleSend(params: ActionParams, userId: string) {
     }
 
     try {
-      // Execute the transaction
-      const txResult = await handleTransaction(userId, params, { ...params, isExecute: true, chain: network });
+      // Get user's wallet from database
+      const wallet = await privyWalletApi.getUserWallet(userId, network);
+      
+      if (!wallet.wallet_id) {
+        throw new Error('Wallet does not have a Privy wallet ID');
+      }
+
+      // Prepare transaction data
+      const transaction: EthereumTransaction = {
+        to: params.to || params.recipient,
+        value: params.value || '0',
+        data: params.data || '0x',
+      };
+
+      // Execute the transaction using new Privy API
+      const txResult = await privyWalletApi.sendTransaction(
+        wallet.wallet_id,
+        transaction,
+        network
+      );
       console.log(`[handleSend] Transaction result:`, txResult);
 
-      // Return success template
-      const explorerUrl = (txResult && typeof txResult === 'object' && 'explorerUrl' in txResult) ? txResult.explorerUrl : '';
+      // Get explorer URL
+      const explorerUrl = privyWalletApi.getExplorerUrl(network, txResult.hash);
       console.log(`[handleSend] Returning tx_sent_success template with explorerUrl: ${explorerUrl}`);
 
       const successResp = sendSuccessSanitized({
         amount: amount,
         token: token,
-        recipient: formatAddress(recipient),
+        recipient: formatAddress(params.to || params.recipient),
         explorerUrl: explorerUrl,
       });
       console.log('[handleSend] Returning:', successResp);
