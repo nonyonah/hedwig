@@ -121,11 +121,9 @@ export default function WalletExportPage() {
         // Set export context
         sessionStorage.setItem('hedwig_export_context', JSON.stringify(exportContext));
         
-        // Trigger the Privy export modal with isolated context
+        // Trigger the Privy export modal
         await exportWallet({ 
-          address: state.walletAddress,
-          // Add export-specific options to isolate from main app sessions
-          context: 'wallet_export'
+          address: state.walletAddress
         });
         
         // Mark the export as used in your backend

@@ -21,13 +21,23 @@ export default async function handler(
   }
 
   try {
+    // Verify user authentication first
+    const authToken = req.headers.authorization?.replace('Bearer ', '');
+    if (!authToken) {
+      return res.status(401).json({ error: 'No authorization token provided' });
+    }
+
+    // Verify the user's token
+    const verifiedClaims = await privy.verifyAuthToken(authToken);
+    const userId = verifiedClaims.userId;
+
     const { walletAddress } = req.body;
 
     if (!walletAddress) {
       return res.status(400).json({ error: 'Wallet address is required' });
     }
 
-    console.log(`Creating session signer for wallet: ${walletAddress}`);
+    console.log(`Creating session signer for wallet: ${walletAddress}, user: ${userId}`);
     
     // In production, implement the full Privy addSessionSigners approach:
     // 1. Use app authorization key (key quorum) to add session signers

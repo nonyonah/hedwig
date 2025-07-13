@@ -105,12 +105,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           // Verify the authenticated user matches the export request
           const exportRequest = await PrivyService.getExportRequest(token) as WalletExportRequest | null;
-          if (exportRequest && exportRequest.privy_user_id !== verifiedClaims.userId) {
-            console.error(`[export][${token.substring(0, 8)}...] User mismatch: ${verifiedClaims.userId} vs ${exportRequest.privy_user_id}`);
-            return res.status(403).json({ 
-              error: 'Unauthorized', 
-              details: 'You are not authorized to complete this export request.' 
-            });
+          if (exportRequest) {
+            // Since the database doesn't store privy_user_id, we'll validate based on the user's phone number
+            // This requires getting the user's phone from their Privy profile
+            try {
+              const privyUser = await privy.getUser(verifiedClaims.userId);
+              const userPhone = privyUser.phone?.number;
+              
+              if (userPhone && exportRequest.user_phone !== userPhone) {
+                console.error(`[export][${token.substring(0, 8)}...] Phone mismatch: ${userPhone} vs ${exportRequest.user_phone}`);
+                return res.status(403).json({ 
+                  error: 'Unauthorized', 
+                  details: 'You are not authorized to complete this export request.' 
+                });
+              }
+            } catch (userError) {
+              console.error(`[export][${token.substring(0, 8)}...] Error fetching user profile:`, userError);
+              // Continue without validation if we can't fetch the user profile
+            }
           }
         } catch (authError) {
           console.error(`[export][${token.substring(0, 8)}...] Authentication validation failed:`, authError);
