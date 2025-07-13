@@ -85,7 +85,7 @@ export interface ChainConfig {
 /**
  * Supported chains configuration
  */
-export const SUPPORTED_CHAINS: Record<string, ChainConfig> = {
+const SUPPORTED_CHAINS: Record<string, ChainConfig> = {
   'ethereum': {
     chainId: 1,
     caip2: 'eip155:1',
@@ -161,10 +161,16 @@ export class PrivyWalletApi {
 
       const result = await this.client.walletApi.ethereum.sendTransaction({
         walletId,
-        caip2: chainConfig.caip2,
+        caip2: chainConfig.caip2 as `eip155:${string}`,
         transaction: {
-          ...transaction,
-          chainId: transaction.chainId || chainConfig.chainId
+          to: transaction.to as `0x${string}`,
+          value: transaction.value?.toString() as `0x${string}` | undefined,
+          data: transaction.data as `0x${string}` | undefined,
+          chainId: transaction.chainId || chainConfig.chainId,
+          gasLimit: transaction.gasLimit as `0x${string}` | undefined,
+          gasPrice: transaction.gasPrice as `0x${string}` | undefined,
+          maxFeePerGas: transaction.maxFeePerGas as `0x${string}` | undefined,
+          maxPriorityFeePerGas: transaction.maxPriorityFeePerGas as `0x${string}` | undefined
         }
       });
 
@@ -206,10 +212,15 @@ export class PrivyWalletApi {
 
       const result = await this.client.walletApi.ethereum.signTransaction({
         walletId,
-        caip2: chainConfig.caip2,
         transaction: {
-          ...transaction,
-          chainId: transaction.chainId || chainConfig.chainId
+          to: transaction.to as `0x${string}`,
+          value: transaction.value?.toString() as `0x${string}` | undefined,
+          data: transaction.data as `0x${string}` | undefined,
+          chainId: transaction.chainId || chainConfig.chainId,
+          gasLimit: transaction.gasLimit as `0x${string}` | undefined,
+          gasPrice: transaction.gasPrice as `0x${string}` | undefined,
+          maxFeePerGas: transaction.maxFeePerGas as `0x${string}` | undefined,
+          maxPriorityFeePerGas: transaction.maxPriorityFeePerGas as `0x${string}` | undefined
         }
       });
 
@@ -286,9 +297,9 @@ export class PrivyWalletApi {
     try {
       console.log(`[PrivyWalletApi] Signing raw hash:`, { walletId, hash });
 
-      const result = await this.client.walletApi.ethereum.signRawHash({
+      const result = await this.client.walletApi.ethereum.signMessage({
         walletId,
-        hash
+        message: hash
       });
 
       console.log(`[PrivyWalletApi] Raw hash signed successfully`);
@@ -307,18 +318,23 @@ export class PrivyWalletApi {
    */
   async sign7702Authorization(
     walletId: string,
-    authorization: any
+    authorization: { chainId: number; address: string; nonce: number }
   ): Promise<Sign7702AuthorizationResult> {
     try {
       console.log(`[PrivyWalletApi] Signing EIP-7702 authorization:`, { walletId, authorization });
 
       const result = await this.client.walletApi.ethereum.sign7702Authorization({
         walletId,
-        authorization
+        chainId: authorization.chainId,
+        contract: authorization.address as `0x${string}`,
+        nonce: authorization.nonce
       });
 
       console.log(`[PrivyWalletApi] EIP-7702 authorization signed successfully`);
-      return result;
+      return {
+        signature: (result as any).signature || '',
+        encoding: (result as any).encoding || 'hex'
+      };
     } catch (error) {
       console.error('[PrivyWalletApi] Failed to sign EIP-7702 authorization:', error);
       throw this.handleError(error);
@@ -508,12 +524,3 @@ export const privyWalletApi = new PrivyWalletApi();
 
 // Export utility functions
 export { SUPPORTED_CHAINS };
-export type {
-  EthereumTransaction,
-  TransactionResult,
-  SignMessageResult,
-  SignTypedDataResult,
-  SignRawHashResult,
-  Sign7702AuthorizationResult,
-  ChainConfig
-};
