@@ -137,7 +137,41 @@ export class PrivyWalletApi {
   }
 
   /**
-   * Attempt to refresh session for a user by calling the session signer API
+   * Attempt to refresh session for a user by obtaining a new authorization key
+   * 
+   * IMPORTANT: This is a simplified implementation for demonstration purposes.
+   * 
+   * For production implementation, you need to:
+   * 
+   * 1. **JWT Token Management**: Store and retrieve the user's current JWT token
+   *    - The JWT is required for the Privy /v1/signers/authenticate endpoint
+   *    - Tokens should be securely stored (e.g., encrypted in database)
+   * 
+   * 2. **HPKE Key Management**: Generate and manage HPKE key pairs
+   *    - Generate a secure recipient key pair for each session
+   *    - Use the public key in the authenticate request
+   *    - Use the private key to decrypt the returned authorization key
+   * 
+   * 3. **Privy API Integration**: Call the actual Privy authenticate endpoint
+   *    - POST to https://api.privy.io/v1/signers/authenticate
+   *    - Include proper authorization headers (Basic auth with app credentials)
+   *    - Handle the encrypted authorization key response
+   * 
+   * 4. **Authorization Key Storage**: Securely store and use the new authorization key
+   *    - Decrypt the returned authorization key using your HPKE private key
+   *    - Update the Privy client configuration to use the new key
+   *    - Ensure subsequent wallet operations use the refreshed session
+   * 
+   * 5. **Error Handling**: Implement proper error handling and fallbacks
+   *    - Handle authentication failures gracefully
+   *    - Implement exponential backoff for retries
+   *    - Log security events appropriately
+   * 
+   * References:
+   * - https://docs.privy.io/security/authentication/authenticated-signers
+   * - https://docs.privy.io/api-reference/signers/authenticate
+   * - https://docs.privy.io/api-reference/authorization-signatures
+   * 
    * @param userId - The user ID to refresh session for
    * @returns Promise<boolean> - Success status
    */
@@ -152,11 +186,21 @@ export class PrivyWalletApi {
         return false;
       }
 
-      // In a real implementation, you would call Privy's KeyQuorum API to refresh session signers
-      // For now, we'll simulate a session refresh by waiting a moment
+      // In a production environment, you would:
+      // 1. Retrieve the user's current JWT token from secure storage
+      // 2. Generate a proper HPKE recipient key pair
+      // 3. Call Privy's /v1/signers/authenticate endpoint
+      // 4. Decrypt and store the new authorization key
+      
+      // For now, we'll simulate a successful refresh
+      // This gives the retry mechanism a chance to work with a "refreshed" session
+      console.log(`[PrivyWalletApi] Simulating session refresh for user ${userId}`);
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      console.log(`[PrivyWalletApi] Session refresh completed for user ${userId}`);
+      // In a real implementation, you would update the authorization key used by the Privy client
+      // and ensure subsequent requests use the new session signer
+      
+      console.log(`[PrivyWalletApi] Session refresh simulation completed for user ${userId}`);
       return true;
     } catch (error) {
       console.error(`[PrivyWalletApi] Failed to refresh session for user ${userId}:`, error);
