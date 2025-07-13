@@ -565,19 +565,19 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
 }
 
 /**
- * Template: private_keys
+ * Template: export_wallet
  * Parameter Format: POSITIONAL
- * Parameters: privy_link
+ * Parameters: export_link
  */
 export function privateKeys({ privy_link }: { privy_link: string }) {
   return {
-    name: 'private_keys',
+    name: 'export_wallet',
     language: { code: 'en' },
     components: [
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(privy_link) }
+          { type: 'text', text: sanitizeWhatsAppParam(privy_link, 'export_link') }
         ]
       }
     ]

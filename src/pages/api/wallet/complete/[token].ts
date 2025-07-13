@@ -87,27 +87,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         // Import WhatsApp messaging function
         const { sendWhatsAppTemplate } = await import('../../../../lib/whatsapp');
+        const { walletExportSuccess } = await import('../../../../lib/walletExportTemplate');
         
-        // Send success message using text template since there's no specific template for this
-        await sendWhatsAppTemplate(exportRequest.user_phone, {
-          name: 'private_keys_success',
-          language: { code: 'en' },
-          components: [
-            {
-              type: 'BODY',
-              parameters: [
-                { type: 'text', text: exportRequest.wallet_address }
-              ]
-            }
-          ]
-        });
+        // Send success message using the wallet export success template
+        const template = walletExportSuccess({ wallet_address: exportRequest.wallet_address });
+        await sendWhatsAppTemplate(exportRequest.user_phone, template);
 
         // Log successful message sending
         await supabase.from('message_logs').insert([
           {
             user_id: exportRequest.user_phone,
             message_type: 'template',
-            content: 'private_keys_success',
+            content: 'wallet_export_success',
             direction: 'outgoing',
             metadata: { walletAddress: exportRequest.wallet_address }
           }
