@@ -1001,7 +1001,7 @@ async function handleExportWallet(userId: string) {
     const authToken = await getPrivyUserAuthToken(privyUserId);
 
     // 3. Construct the export URL with the auth token
-    const exportUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/export-wallet?token=${authToken}`;
+    const exportUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/wallet/export/${authToken}`;
 
     // 4. Send the URL to the user via the WhatsApp template
     console.log(`[handleExportWallet] Sending export link to user ${userId}`);

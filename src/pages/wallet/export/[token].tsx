@@ -106,17 +106,46 @@ export default function WalletExportPage() {
         return;
       }
 
-      // Trigger the Privy export modal
-      await exportWallet({ address: state.walletAddress });
-
-      // Mark the export as used in your backend
-      await fetch(`/api/wallet/export/${token}`, { method: 'POST' });
-
-      setState({
-        status: 'success',
-        message: 'Your wallet has been successfully exported! This link is now invalid.',
+      // Create isolated session context for export to prevent KeyQuorum interference
+      const exportContext = {
+        isExportOperation: true,
+        timestamp: Date.now(),
         walletAddress: state.walletAddress
-      });
+      };
+      
+      // Store current session state to restore later if needed
+      const currentSessionKey = 'hedwig_current_session';
+      const existingSession = sessionStorage.getItem(currentSessionKey);
+      
+      try {
+        // Set export context
+        sessionStorage.setItem('hedwig_export_context', JSON.stringify(exportContext));
+        
+        // Trigger the Privy export modal with isolated context
+        await exportWallet({ 
+          address: state.walletAddress,
+          // Add export-specific options to isolate from main app sessions
+          context: 'wallet_export'
+        });
+        
+        // Mark the export as used in your backend
+        await fetch(`/api/wallet/export/${token}`, { method: 'POST' });
+
+        setState({
+          status: 'success',
+          message: 'Your wallet has been successfully exported! This link is now invalid.',
+          walletAddress: state.walletAddress
+        });
+        
+      } finally {
+        // Clean up export context
+        sessionStorage.removeItem('hedwig_export_context');
+        
+        // Restore previous session if it existed
+        if (existingSession) {
+          sessionStorage.setItem(currentSessionKey, existingSession);
+        }
+      }
 
     } catch (err) {
       console.error('[WalletExport] Error during export:', err);

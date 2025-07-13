@@ -179,8 +179,12 @@ export async function getPrivyUserAuthToken(userId: string): Promise<string> {
     throw new Error(`No Privy user found for user ${userId}`);
   }
   
-  // Generate an auth token for the user
-  // Since createAuthToken doesn't exist on PrivyClient, we'll return the privyUserId as a token
-  // In a real implementation, you would generate a proper JWT or session token
-  return privyUserId;
+  try {
+    // Generate a proper authentication token using Privy's createUserAuthToken method
+    const authToken = await privy.createUserAuthToken(privyUserId);
+    return authToken;
+  } catch (error) {
+    console.error(`[getPrivyUserAuthToken] Error creating auth token for user ${privyUserId}:`, error);
+    throw new Error(`Failed to create authentication token for user ${userId}`);
+  }
 }

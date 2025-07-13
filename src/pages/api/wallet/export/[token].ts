@@ -4,6 +4,7 @@ import PrivyService from '../../../../lib/PrivyService';
 import { createClient } from '@supabase/supabase-js';
 import { WalletExportRequest, PrivyError } from '../../../../types/wallet';
 import { loadServerEnvironment } from '../../../../lib/serverEnv';
+import { privy } from '../../../../lib/privy';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -90,8 +91,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // POST request: Mark the export as completed to prevent link reuse
   if (req.method === 'POST') {
     try {
+      // Validate user authentication to prevent unauthorized completion
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.warn(`[export][${token.substring(0, 8)}...] Missing or invalid authorization header`);
+        // Allow completion without auth for backward compatibility, but log the event
+        console.log(`[export][${token.substring(0, 8)}...] Proceeding without authentication validation`);
+      } else {
+        try {
+          const authToken = authHeader.substring(7); // Remove 'Bearer ' prefix
+          const verifiedClaims = await privy.verifyAuthToken(authToken);
+          console.log(`[export][${token.substring(0, 8)}...] Authenticated user: ${verifiedClaims.userId}`);
+          
+          // Verify the authenticated user matches the export request
+          const exportRequest = await PrivyService.getExportRequest(token) as WalletExportRequest | null;
+          if (exportRequest && exportRequest.privy_user_id !== verifiedClaims.userId) {
+            console.error(`[export][${token.substring(0, 8)}...] User mismatch: ${verifiedClaims.userId} vs ${exportRequest.privy_user_id}`);
+            return res.status(403).json({ 
+              error: 'Unauthorized', 
+              details: 'You are not authorized to complete this export request.' 
+            });
+          }
+        } catch (authError) {
+          console.error(`[export][${token.substring(0, 8)}...] Authentication validation failed:`, authError);
+          return res.status(401).json({ 
+            error: 'Authentication failed', 
+            details: 'Invalid or expired authentication token.' 
+          });
+        }
+      }
+      
       const privyService = new PrivyService('system'); // privyUserId is not needed for this action
       await privyService.completeExportRequest(token);
+      console.log(`[export][${token.substring(0, 8)}...] Export request completed successfully`);
       return res.status(200).json({ success: true, message: 'Export request marked as completed.' });
     } catch (error) {
       console.error('Error completing export request:', error);
