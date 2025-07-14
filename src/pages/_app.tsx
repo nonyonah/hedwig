@@ -26,11 +26,7 @@ function MyApp({ Component, pageProps }: AppProps) {
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
           requireUserPasswordOnCreate: false,
-        },
-        // Enable session signers for server-side transaction signing
-        // This is critical for resolving "KeyQuorum user session key is expired" errors
-        sessionSigners: {
-          enabled: true,
+          noPromptOnSignature: true,
         },
       }}
     >
