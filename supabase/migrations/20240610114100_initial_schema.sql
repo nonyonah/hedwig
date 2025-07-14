@@ -112,6 +112,11 @@ alter table public.errors enable row level security;
 alter table public.rate_limits enable row level security;
 
 -- Users RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own data" ON public.users;
+DROP POLICY IF EXISTS "Users can insert their own data" ON public.users;
+DROP POLICY IF EXISTS "Users can update their own data" ON public.users;
+
 create policy "Users can view their own data"
     on public.users for select
     using (auth.uid() = id);
@@ -125,42 +130,64 @@ create policy "Users can update their own data"
     using (auth.uid() = id);
 
 -- Wallets RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own wallets" ON public.wallets;
+DROP POLICY IF EXISTS "Users can insert their own wallets" ON public.wallets;
+
 create policy "Users can view their own wallets"
     on public.wallets for select
-    using (auth.uid() = user_id);
+    using (auth.uid()::TEXT = user_id);
 
 create policy "Users can insert their own wallets"
     on public.wallets for insert
-    with check (auth.uid() = user_id);
+    with check (auth.uid()::TEXT = user_id);
 
 -- Sessions RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can manage their own sessions" ON public.sessions;
+
 create policy "Users can manage their own sessions"
     on public.sessions for all
     using (auth.uid() = user_id)
     with check (auth.uid() = user_id);
 
 -- Tokens RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own tokens" ON public.tokens;
+
 create policy "Users can view their own tokens"
     on public.tokens for select
     using (auth.uid() = user_id);
 
 -- NFTs RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own NFTs" ON public.nfts;
+
 create policy "Users can view their own NFTs"
     on public.nfts for select
     using (auth.uid() = owner_id);
 
 -- Message logs RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own message logs" ON public.message_logs;
+
 create policy "Users can view their own message logs"
     on public.message_logs for select
     using (auth.uid() = user_id);
 
 -- Errors RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Service role can manage all errors" ON public.errors;
+
 create policy "Service role can manage all errors"
     on public.errors for all
     using (auth.role() = 'service_role')
     with check (auth.role() = 'service_role');
 
 -- Rate limits RLS policies
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Service role can manage all rate limits" ON public.rate_limits;
+
 create policy "Service role can manage all rate limits"
     on public.rate_limits for all
     using (auth.role() = 'service_role')

@@ -1,8 +1,22 @@
 -- Add privy_user_id column to wallets table
 -- This column is needed for session management and Privy integration
+-- Migration is idempotent and can be run multiple times safely
 
-ALTER TABLE public.wallets
-ADD COLUMN IF NOT EXISTS privy_user_id text;
+-- Check if column already exists to avoid conflicts
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'wallets' 
+        AND column_name = 'privy_user_id'
+    ) THEN
+        ALTER TABLE public.wallets ADD COLUMN privy_user_id text;
+        RAISE NOTICE 'Added privy_user_id column to wallets table';
+    ELSE
+        RAISE NOTICE 'privy_user_id column already exists in wallets table';
+    END IF;
+END $$;
 
 -- Add comment explaining the column
 COMMENT ON COLUMN public.wallets.privy_user_id IS 'Privy user ID for session management and authentication';
@@ -74,7 +88,20 @@ END;
 $$;
 
 -- Update RLS policies to allow service role access for session management
+-- Drop existing policies if they exist to avoid conflicts
 DROP POLICY IF EXISTS "Service role can manage wallets" ON public.wallets;
+DROP POLICY IF EXISTS "Users can view their own wallets" ON public.wallets;
+DROP POLICY IF EXISTS "Users can insert their own wallets" ON public.wallets;
+
+-- Recreate wallet policies with service role access
+CREATE POLICY "Users can view their own wallets"
+    ON public.wallets FOR SELECT
+    USING (auth.uid()::TEXT = user_id OR auth.role() = 'service_role');
+
+CREATE POLICY "Users can insert their own wallets"
+    ON public.wallets FOR INSERT
+    WITH CHECK (auth.uid()::TEXT = user_id OR auth.role() = 'service_role');
+
 CREATE POLICY "Service role can manage wallets"
     ON public.wallets FOR ALL
     USING (auth.role() = 'service_role')

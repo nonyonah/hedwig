@@ -34,7 +34,7 @@ CREATE POLICY "Allow users to see their own data"
 CREATE POLICY "Allow users to see their own wallets"
   ON public.wallets
   FOR SELECT
-  USING (auth.uid() = user_id);
+  USING (auth.uid()::TEXT = user_id);
 
 -- Grant necessary privileges to the service role
 GRANT ALL ON public.users TO service_role;
@@ -48,4 +48,4 @@ GRANT SELECT ON public.wallets TO authenticated;
 -- Verify the policies
 SELECT tablename, policyname, permissive, roles, cmd, qual, with_check 
 FROM pg_policies 
-WHERE schemaname = 'public' AND tablename IN ('users', 'wallets'); 
+WHERE schemaname = 'public' AND tablename IN ('users', 'wallets');

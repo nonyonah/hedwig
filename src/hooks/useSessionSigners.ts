@@ -85,7 +85,70 @@ export function useSessionSigners() {
   }, [user, authenticated]);
 
   /**
+   * Authenticate user signer via Privy API
+   * This implements the proper user signer authentication flow as per Privy documentation
+   */
+  const authenticateUserSigner = useCallback(async (walletAddress?: string) => {
+    if (!authenticated || !user) {
+      setError('User must be authenticated');
+      return false;
+    }
+
+    // If no wallet address provided, try to get it from user's linked accounts
+    let targetWalletAddress = walletAddress;
+    if (!targetWalletAddress) {
+      const embeddedWallet = user.linkedAccounts?.find(
+        (account: any) => account.type === 'wallet' && account.walletClient === 'privy'
+      ) as any;
+      if (embeddedWallet && embeddedWallet.address) {
+        targetWalletAddress = embeddedWallet.address;
+      }
+    }
+
+    if (!targetWalletAddress) {
+      setError('No wallet address available for authentication');
+      return false;
+    }
+
+    setIsCheckingSession(true);
+    setError(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      
+      // Call our user signer authentication endpoint
+      const response = await fetch('/api/user-signers/authenticate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: targetWalletAddress
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to authenticate user signer: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setSessionStatus('active');
+      console.log('[useSessionSigners] User signer authenticated successfully');
+      return data;
+    } catch (err) {
+      console.error('[useSessionSigners] Failed to authenticate user signer:', err);
+      setError(err instanceof Error ? err.message : 'Failed to authenticate user signer');
+      return false;
+    } finally {
+      setIsCheckingSession(false);
+    }
+  }, [authenticated, user, getAccessToken]);
+
+  /**
    * Request session signer creation via API
+   * This now uses the new user signer authentication flow
    */
   const requestSessionSigner = useCallback(async () => {
     if (!authenticated || !user) {
@@ -99,7 +162,7 @@ export function useSessionSigners() {
     try {
       const accessToken = await getAccessToken();
       
-      // Call our API to create/refresh session signer
+      // Call our API to create session signer (now with user signer re-authentication)
       const response = await fetch('/api/session-signers/create', {
         method: 'POST',
         headers: {
@@ -109,7 +172,8 @@ export function useSessionSigners() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create session signer: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to create session signer: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -137,6 +201,7 @@ export function useSessionSigners() {
     isCheckingSession,
     error,
     checkSessionStatus,
+    authenticateUserSigner,
     requestSessionSigner,
     checkActiveUserSession,
     ready: ready && authenticated,

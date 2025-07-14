@@ -27,7 +27,12 @@ export interface UserSessionInfo {
   walletAddress: string;
   isActive: boolean;
   lastActivity: Date;
+  createdAt: Date;
+  isExpired: boolean;
   sessionKeyPair?: SessionKeyPair;
+  encryptedAuthorizationKey?: string; // HPKE encrypted authorization key from Privy
+  encapsulatedKey?: string; // HPKE ephemeral public key for decryption
+  wallets?: any[]; // Wallets returned from Privy authentication
 }
 
 /**
@@ -112,12 +117,15 @@ export class SessionManager {
       }
 
       // Create new session info using user ID as privy user ID for now
+      const now = new Date();
       const sessionInfo: UserSessionInfo = {
         userId: wallet.user_id,
         privyUserId: user.id, // Using user ID as fallback
         walletAddress,
         isActive: true,
-        lastActivity: new Date(),
+        lastActivity: now,
+        createdAt: now,
+        isExpired: false,
       };
 
       // Cache the session
@@ -132,40 +140,82 @@ export class SessionManager {
   }
 
   /**
-   * Refresh a user session with new ECDH P-256 keypair
-   * Implements the complete flow recommended by Privy support
+   * Re-authenticate user signer by calling the authentication endpoint
+   * This replaces the old session refresh logic as per Privy documentation
+   * @param walletAddress - The wallet address to re-authenticate
+   * @param authToken - User's JWT token for authentication
+   * @returns Promise containing the re-authenticated session info
    */
-  async refreshUserSession(walletAddress: string): Promise<boolean> {
+  async reAuthenticateUserSigner(walletAddress: string, authToken: string): Promise<UserSessionInfo | null> {
     try {
-      console.log(`[SessionManager] Refreshing session for wallet ${walletAddress}`);
+      console.log(`[SessionManager] Re-authenticating user signer for wallet: ${walletAddress}`);
       
-      // Validate current session
-      const sessionInfo = await this.validateUserSession(walletAddress);
-      if (!sessionInfo) {
-        console.error(`[SessionManager] Cannot refresh session - no valid user found for ${walletAddress}`);
-        return false;
+      const existingSession = this.sessionCache.get(walletAddress);
+      if (!existingSession) {
+        console.log(`[SessionManager] No existing session found for ${walletAddress}`);
+        return null;
       }
 
-      // Generate new session keypair
+      // Generate new ECDH P-256 keypair for re-authentication
       const newKeyPair = await this.generateSessionKeyPair();
       
-      // Update session info
-      const updatedSession: UserSessionInfo = {
-        ...sessionInfo,
+      // Call the user signer authentication endpoint
+      const authResponse = await fetch('/api/user-signers/authenticate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipient_public_key: newKeyPair.publicKeyBase64,
+          wallet_address: walletAddress
+        })
+      });
+
+      if (!authResponse.ok) {
+        const errorText = await authResponse.text();
+        console.error(`[SessionManager] User signer re-authentication failed:`, errorText);
+        return null;
+      }
+
+      const authResult = await authResponse.json();
+      const { authorization_key, encapsulated_key, wallets } = authResult;
+
+      if (!authorization_key || !encapsulated_key) {
+        console.error(`[SessionManager] Missing authorization key or encapsulated key in response`);
+        return null;
+      }
+
+      // Update session with new authentication data
+      const reAuthenticatedSession: UserSessionInfo = {
+        ...existingSession,
         sessionKeyPair: newKeyPair,
+        encryptedAuthorizationKey: authorization_key,
+        encapsulatedKey: encapsulated_key,
         lastActivity: new Date(),
         isActive: true,
+        wallets: wallets || []
       };
 
       // Update cache
-      this.sessionCache.set(walletAddress, updatedSession);
+      this.sessionCache.set(walletAddress, reAuthenticatedSession);
       
-      console.log(`[SessionManager] Session refreshed successfully for ${walletAddress}`);
-      return true;
+      console.log(`[SessionManager] User signer re-authenticated successfully for ${walletAddress}`);
+      return reAuthenticatedSession;
+      
     } catch (error) {
-      console.error(`[SessionManager] Failed to refresh session for ${walletAddress}:`, error);
-      return false;
+      console.error(`[SessionManager] Failed to re-authenticate user signer for ${walletAddress}:`, error);
+      return null;
     }
+  }
+
+  /**
+   * @deprecated Use reAuthenticateUserSigner instead
+   * This method is deprecated as per Privy documentation for user signers
+   */
+  async refreshUserSession(walletAddress: string): Promise<boolean> {
+    console.warn(`[SessionManager] refreshUserSession is deprecated. Use reAuthenticateUserSigner instead.`);
+    return false;
   }
 
   /**
