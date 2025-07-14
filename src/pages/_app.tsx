@@ -22,13 +22,16 @@ function MyApp({ Component, pageProps }: AppProps) {
         },
         // Customize Privy's login methods here
         loginMethods: ['email'],
-        // Enable session signers for KeyQuorum authorization
+        // Enable embedded wallets for users
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
           requireUserPasswordOnCreate: false,
         },
-        // Session signers are configured through Privy Dashboard and managed via API
-        // KeyQuorum authorization is handled server-side through the Privy API
+        // Enable session signers for server-side transaction signing
+        // This is critical for resolving "KeyQuorum user session key is expired" errors
+        sessionSigners: {
+          enabled: true,
+        },
       }}
     >
       <Component {...pageProps} />

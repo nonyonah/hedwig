@@ -8,6 +8,58 @@ import * as hpke from 'hpke-js';
  */
 
 /**
+ * Generate an ECDH P-256 key pair for Privy user signers
+ * This follows Privy's recommendation for session signer authorization
+ * @returns Promise containing the generated key pair
+ */
+export async function generateECDHP256KeyPair(): Promise<{
+  privateKey: CryptoKey;
+  publicKey: CryptoKey;
+  privateKeyBase64: string;
+  publicKeyBase64: string;
+  privateKeyPem: string;
+  publicKeyPem: string;
+}> {
+  try {
+    // Generate ECDH P-256 keypair as recommended by Privy support
+    const keypair = await webcrypto.subtle.generateKey(
+      {
+        name: 'ECDH',
+        namedCurve: 'P-256',
+      },
+      true, // extractable
+      ['deriveKey', 'deriveBits']
+    );
+
+    // Export keys in different formats
+    const [publicKeySpki, privateKeyPkcs8] = await Promise.all([
+      webcrypto.subtle.exportKey('spki', keypair.publicKey),
+      webcrypto.subtle.exportKey('pkcs8', keypair.privateKey),
+    ]);
+
+    // Convert to base64
+    const publicKeyBase64 = Buffer.from(publicKeySpki).toString('base64');
+    const privateKeyBase64 = Buffer.from(privateKeyPkcs8).toString('base64');
+
+    // Convert to PEM format
+    const publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKeyBase64}\n-----END PUBLIC KEY-----`;
+    const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64}\n-----END PRIVATE KEY-----`;
+
+    return {
+      privateKey: keypair.privateKey,
+      publicKey: keypair.publicKey,
+      privateKeyBase64,
+      publicKeyBase64,
+      privateKeyPem,
+      publicKeyPem,
+    };
+  } catch (error) {
+    console.error('[generateECDHP256KeyPair] Failed to generate ECDH P-256 keypair:', error);
+    throw new Error(`Failed to generate ECDH P-256 keypair: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
  * Generate a P-256 key pair for Privy KeyQuorum authorization
  * @returns Promise containing the generated key pair
  */

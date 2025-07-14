@@ -56,6 +56,35 @@ export function useSessionSigners() {
   }, [authenticated, user, getAccessToken]);
 
   /**
+   * Check if the user has an active session in the app
+   * This is recommended by Privy support to prevent session expiration errors
+   */
+  const checkActiveUserSession = useCallback(() => {
+    if (!user) {
+      console.log('[useSessionSigners] No user session - user not logged in');
+      return false;
+    }
+
+    if (!authenticated) {
+      console.log('[useSessionSigners] No active user session - user not authenticated');
+      return false;
+    }
+
+    // Check if user has embedded wallets
+    const hasEmbeddedWallet = user.linkedAccounts?.some(
+      (account: any) => account.type === 'wallet' && account.walletClient === 'privy'
+    );
+
+    if (!hasEmbeddedWallet) {
+      console.log('[useSessionSigners] No embedded wallet found for user');
+      return false;
+    }
+
+    console.log('[useSessionSigners] Active user session confirmed');
+    return true;
+  }, [user, authenticated]);
+
+  /**
    * Request session signer creation via API
    */
   const requestSessionSigner = useCallback(async () => {
@@ -109,6 +138,7 @@ export function useSessionSigners() {
     error,
     checkSessionStatus,
     requestSessionSigner,
+    checkActiveUserSession,
     ready: ready && authenticated,
   };
 }
