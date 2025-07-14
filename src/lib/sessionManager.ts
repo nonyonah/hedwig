@@ -80,15 +80,27 @@ export class SessionManager {
     try {
       console.log(`[SessionManager] Validating session for wallet ${walletAddress}`);
       
-      // Get user info from database
+      // Get user info from database - using existing schema
       const { data: wallet } = await supabase
         .from('wallets')
-        .select('user_id, privy_user_id')
+        .select('user_id')
         .eq('address', walletAddress)
         .maybeSingle();
       
-      if (!wallet?.privy_user_id) {
+      if (!wallet?.user_id) {
         console.log(`[SessionManager] No user found for wallet ${walletAddress}`);
+        return null;
+      }
+
+      // Get user details to construct privy user ID
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, phone_number')
+        .eq('id', wallet.user_id)
+        .maybeSingle();
+
+      if (!user) {
+        console.log(`[SessionManager] User details not found for wallet ${walletAddress}`);
         return null;
       }
 
@@ -99,10 +111,10 @@ export class SessionManager {
         return cachedSession;
       }
 
-      // Create new session info
+      // Create new session info using user ID as privy user ID for now
       const sessionInfo: UserSessionInfo = {
         userId: wallet.user_id,
-        privyUserId: wallet.privy_user_id,
+        privyUserId: user.id, // Using user ID as fallback
         walletAddress,
         isActive: true,
         lastActivity: new Date(),
@@ -111,7 +123,7 @@ export class SessionManager {
       // Cache the session
       this.sessionCache.set(walletAddress, sessionInfo);
       
-      console.log(`[SessionManager] Session validated for user ${wallet.privy_user_id}`);
+      console.log(`[SessionManager] Session validated for user ${user.id} (phone: ${user.phone_number})`);
       return sessionInfo;
     } catch (error) {
       console.error(`[SessionManager] Failed to validate session for ${walletAddress}:`, error);

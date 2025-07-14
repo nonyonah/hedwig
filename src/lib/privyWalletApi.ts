@@ -212,16 +212,16 @@ export class PrivyWalletApi {
   }
 
   /**
-   * Get wallet information from wallet ID by querying the database
-   * @param walletId - The Privy wallet ID
+   * Get wallet information from wallet address by querying the database
+   * @param walletAddress - The wallet address
    * @returns Promise<{userId: string, address: string} | null> - Wallet info if found
    */
-  private async getWalletInfo(walletId: string): Promise<{userId: string, address: string} | null> {
+  private async getWalletInfo(walletAddress: string): Promise<{userId: string, address: string} | null> {
     try {
       const { data: wallet } = await supabase
         .from('wallets')
         .select('user_id, address')
-        .eq('privy_wallet_id', walletId)
+        .eq('address', walletAddress)
         .maybeSingle();
       
       if (wallet?.user_id && wallet?.address) {
@@ -232,7 +232,7 @@ export class PrivyWalletApi {
       }
       return null;
     } catch (error) {
-      console.error('[PrivyWalletApi] Failed to get wallet info from wallet ID:', error);
+      console.error('[PrivyWalletApi] Failed to get wallet info from wallet address:', error);
       return null;
     }
   }

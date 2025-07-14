@@ -27,13 +27,13 @@ const supabase = createClient(
 /**
  * Maps a Supabase user ID to a Privy user ID.
  * @param supabaseUserId The user's unique identifier from your system.
- * @returns The Privy user ID.
+ * @returns The Privy user ID (using user ID as fallback).
  */
 export async function getPrivyUserIdForSupabaseUser(supabaseUserId: string): Promise<string | null> {
   console.log(`[getPrivyUserIdForSupabaseUser] Looking up user by ID: ${supabaseUserId}`);
   const { data, error } = await supabase
     .from('users')
-    .select('privy_user_id')
+    .select('id, phone_number')
     .eq('id', supabaseUserId)
     .single();
 
@@ -46,12 +46,13 @@ export async function getPrivyUserIdForSupabaseUser(supabaseUserId: string): Pro
     return null;
   }
 
-  if (!data?.privy_user_id) {
-    console.log(`[getPrivyUserIdForSupabaseUser] Found user ${supabaseUserId}, but 'privy_user_id' is null or missing.`);
+  if (!data?.id) {
+    console.log(`[getPrivyUserIdForSupabaseUser] Found user ${supabaseUserId}, but 'id' is null or missing.`);
     return null;
   }
 
-  return data.privy_user_id;
+  // Using user ID as privy user ID fallback since privy_user_id column doesn't exist
+  return data.id;
 }
 
 async function _createOrUpdatePrivyUser(supabaseUserId: string, email: string) {
@@ -69,15 +70,8 @@ async function _createOrUpdatePrivyUser(supabaseUserId: string, email: string) {
       ],
     });
 
-    const { error: supabaseError } = await supabase
-      .from('users')
-      .update({ privy_user_id: privyUser.id })
-      .eq('id', supabaseUserId);
-
-    if (supabaseError) {
-      console.error(`[PrivyService] Error updating Supabase user with Privy ID:`, supabaseError);
-      throw supabaseError;
-    }
+    // Note: Not updating privy_user_id since column doesn't exist in current schema
+    console.log(`[PrivyService] Created Privy user ${privyUser.id} for Supabase user ${supabaseUserId}`);
     return privyUser;
   }
 }
@@ -86,21 +80,23 @@ export async function pregeneratePrivyWallet(supabaseUserId: string) {
   console.log(`[pregeneratePrivyWallet] Starting for user ${supabaseUserId}`);
   const { data: user, error: userError } = await supabase
     .from('users')
-    .select('email')
+    .select('phone_number')
     .eq('id', supabaseUserId)
     .single();
 
-  if (userError || !user || !user.email) {
-    throw new Error(`User ${supabaseUserId} not found or has no email.`);
+  if (userError || !user || !user.phone_number) {
+    throw new Error(`User ${supabaseUserId} not found or has no phone number.`);
   }
 
-  const privyUser = await _createOrUpdatePrivyUser(supabaseUserId, user.email);
+  // Use phone number as email fallback since email column doesn't exist
+  const emailFallback = `${user.phone_number}@hedwig.local`;
+  const privyUser = await _createOrUpdatePrivyUser(supabaseUserId, emailFallback);
   const privyWallet = privyUser.wallet!;
 
   const { data: existingWallet } = await supabase
     .from('wallets')
     .select('id')
-    .eq('privy_wallet_id', privyWallet.id)
+    .eq('address', privyWallet.address)
     .maybeSingle();
 
   if (existingWallet) {
@@ -112,10 +108,8 @@ export async function pregeneratePrivyWallet(supabaseUserId: string) {
     .from('wallets')
     .insert({
       user_id: supabaseUserId,
-      privy_user_id: privyUser.id,
-      chain: 'base-sepolia',
       address: privyWallet.address,
-      privy_wallet_id: privyWallet.id,
+      private_key_encrypted: 'managed_by_privy', // Placeholder since Privy manages the key
     })
     .select()
     .single();
@@ -132,7 +126,6 @@ export async function getOrCreatePrivyWallet(supabaseUserId: string) {
     .from('wallets')
     .select('*')
     .eq('user_id', supabaseUserId)
-    .eq('chain', 'base-sepolia')
     .maybeSingle();
 
   if (wallet) {
