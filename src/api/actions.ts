@@ -174,21 +174,13 @@ async function askForUserName(userId: string): Promise<any> {
 
 // Onboarding handler for first-time and returning users
 async function handleOnboarding(userId: string) {
-  // Fetch user info, including email
+  // Fetch user info
   const { data: user } = await supabase
     .from("users")
-    .select("name, email")
+    .select("name")
     .eq("id", userId)
     .single();
   const userName = user?.name || `User_${userId.substring(0, 8)}`;
-
-  // If user has no email, ask for it and set a pending action.
-  if (!user?.email) {
-    await updateSession(userId, { pending_action: 'COLLECT_EMAIL' });
-    return {
-      text: `👋 Hi ${userName}! To get the most out of Hedwig, please provide your email address. This is used for important notifications and to secure your account.`,
-    };
-  }
 
   // Check for wallet
   const { data: wallets } = await supabase
@@ -241,49 +233,7 @@ export async function handleAction(
     }
   }
 
-  if (pendingAction === 'COLLECT_EMAIL') {
-    // When collecting email, the raw text is the email address.
-    const email = params.text?.trim();
-    // Basic email validation regex
-    const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g;
-
-    if (email && emailRegex.test(email)) {
-      // Save the email to the users table
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ email })
-        .eq('id', userId);
-
-      if (updateError) {
-        console.error(`[handleAction] Error saving email for user ${userId}:`, updateError);
-        return { text: "I'm sorry, there was an error saving your email. Please try again." };
-      }
-
-      // Clear the pending action
-      await updateSession(userId, { pending_action: null });
-
-      // Create a wallet for the user now that we have their email
-      try {
-        const newWallet = await getOrCreateCdpWallet(userId);
-        if (!newWallet || !newWallet.address) {
-          throw new Error('Wallet creation did not return a valid wallet.');
-        }
-
-        // Confirmation message with wallet address
-        return {
-          text: `✅ Your email has been saved and your new wallet is ready!\n\nYour wallet address is: ${newWallet.address}`,
-        };
-      } catch (error) {
-        console.error(`[handleAction] Failed to create wallet for user ${userId}:`, error);
-        return { text: "I've saved your email, but there was an error creating your wallet. You can try again by typing 'create wallet'." };
-      }
-    } else {
-      // Ask again if the email is invalid
-      return {
-        text: "That doesn't look like a valid email address. Please provide a valid email so I can keep your account secure.",
-      };
-    }
-  }
+  // Email collection has been removed
 
   // Special handling for create_wallets intent from button click
   if (intent === "create_wallets" || intent === "CREATE_WALLET" || 
@@ -471,20 +421,12 @@ async function handleCreateWallets(userId: string) {
   try {
     console.log(`[handleCreateWallets] Creating wallet for user ${userId}`);
 
-    // Fetch user name and email
+    // Fetch user name
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("name, phone_number, email")
+      .select("name, phone_number")
       .eq("id", userId)
       .single();
-
-    // Before creating a wallet, ensure the user has provided an email.
-    if (!userData?.email) {
-      await updateSession(userId, { pending_action: 'COLLECT_EMAIL' });
-      return {
-        text: "Before I can create a wallet for you, please provide your email address. This is required to secure your account.",
-      };
-    }
 
     if (userError) {
       console.error(`[handleCreateWallets] Error fetching user:`, userError);
@@ -524,6 +466,12 @@ async function handleCreateWallets(userId: string) {
         })
       };
     }
+
+    // First, show the createNewWallet template to indicate wallet creation is in progress
+    await sendWhatsAppTemplate(
+      userData?.phone_number || '',
+      createNewWallet(userName)
+    );
 
     // Create EVM wallet (base-sepolia)
     const evmWallet = await getOrCreateCdpWallet(userId, 'base-sepolia');
