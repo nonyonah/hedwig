@@ -652,7 +652,14 @@ export async function handleIncomingWhatsAppMessage(body: any) {
 
     // Handle wallet creation flow if the user has no wallet
     if (!wallet) {
-      const message = body.entry[0].changes[0].value.messages[0];
+      // First check if this is a message (not a status update)
+      if (!value?.messages || !value.messages[0]) {
+        // This is likely a status update, not a message - skip processing
+        console.log("Received a status update or non-message webhook, skipping wallet creation flow");
+        return;
+      }
+      
+      const message = value.messages[0];
       // Check if the user clicked the 'Create Wallet' button
       if (message.type === 'interactive' && message.interactive.type === 'button_reply' && message.interactive.button_reply.id === 'create-wallet-action') {
         console.log(`[Wallet Creation] User ${userId} initiated wallet creation.`);
