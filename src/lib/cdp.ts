@@ -128,7 +128,7 @@ export async function createWallet(userId: string, network: string = 'base-sepol
       .insert({
         user_id: userId,
         address: account.address,
-        cdp_wallet_id: account.id,
+        cdp_wallet_id: account.address, // Use address as identifier since CDP manages the account
         chain: network.includes('solana') ? 'solana' : 'evm',
         // No need to store wallet_secret separately as it's managed by CDP
       })
@@ -276,7 +276,7 @@ export async function transferNativeToken(
         network: networkConfig.name as any,
         transaction: {
           to: toAddress as `0x${string}`,
-          value: parsedAmount,
+          value: BigInt(parsedAmount) as bigint,
         },
       });
       txHash = tx.transactionHash;
