@@ -116,12 +116,14 @@ async function verifyWalletExists(userId: string) {
     // Check if user has a wallet in CDP
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet) {
-      return createNewWallet();
+      // Return a simple message instead of the template to avoid duplication
+      return { text: "You need to create a wallet first." };
     }
     return null;
   } catch (error) {
     console.error("Error verifying wallet:", error);
-    return createNewWallet();
+    // Return a simple message instead of the template to avoid duplication
+    return { text: "You need to create a wallet first." };
   }
 }
 
@@ -632,7 +634,8 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       .single();
 
     if (!wallet) {
-      return createNewWallet();
+      // Return a simple message instead of the template to avoid duplication
+      return { text: "You need to create a wallet first." };
     }
 
     const address = wallet.address;
@@ -993,7 +996,8 @@ async function handleExportWallet(userId: string) {
     // Get user's wallet from CDP
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return createNewWallet();
+      // Return a simple message instead of the template to avoid duplication
+      return { text: "You need to create a wallet first." };
     }
 
     // For CDP wallets, we can't export private keys directly as they're managed by CDP
@@ -1060,7 +1064,8 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     // Get wallet address
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return createNewWallet();
+      // Return a simple message instead of the template to avoid duplication
+      return { text: "You need to create a wallet first." };
     }
 
     // Ensure we have a valid phone number for WhatsApp
@@ -1166,7 +1171,8 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
     // Get wallet address
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return createNewWallet();
+      // Return a simple message instead of the template to avoid duplication
+      return { text: "You need to create a wallet first." };
     }
     // Get last swap quote from session
     const { data: session } = await supabase
@@ -1336,7 +1342,8 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
     // Get user's wallet from CDP
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return createNewWallet();
+      // Return a simple message instead of the template to avoid duplication
+      return { text: "You need to create a wallet first." };
     }
 
     // For CDP wallets, we can't export private keys directly as they're managed by CDP
