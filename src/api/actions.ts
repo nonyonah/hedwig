@@ -512,12 +512,21 @@ async function handleCreateWallets(userId: string) {
       };
     }
 
-    // Use CDP to create or get wallet using the user's ID
-    const wallet = await getOrCreateCdpWallet(userId);
+    // Create EVM wallet (base-sepolia)
+    const evmWallet = await getOrCreateCdpWallet(userId, 'base-sepolia');
+    console.log(`[handleCreateWallets] Successfully created EVM wallet: ${evmWallet.address}`);
+    
+    // Create Solana wallet (solana-devnet)
+    try {
+      await getOrCreateCdpWallet(userId, 'solana-devnet');
+      console.log(`[handleCreateWallets] Successfully created Solana wallet for user ${userId}`);
+    } catch (solanaError) {
+      console.error(`[handleCreateWallets] Error creating Solana wallet:`, solanaError);
+      // Continue even if Solana wallet creation fails
+    }
 
-
-    console.log(`[handleCreateWallets] Successfully created wallet: ${wallet.address}`);
-    const response = walletCreatedMulti({ evm_wallet: wallet.address });
+    // Return response with EVM wallet address
+    const response = walletCreatedMulti({ evm_wallet: evmWallet.address });
     console.log(`[handleCreateWallets] Response: ${JSON.stringify(response)}`);
     
     return {

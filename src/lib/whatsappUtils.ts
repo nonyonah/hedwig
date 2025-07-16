@@ -661,21 +661,36 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       
       const message = value.messages[0];
       // Check if the user clicked the 'Create Wallet' button
-      if (message.type === 'interactive' && message.interactive.type === 'button_reply' && message.interactive.button_reply.id === 'create-wallet-action') {
+      if (message.type === 'interactive' && message.interactive.type === 'button_reply' && message.interactive.button_reply.id === 'create_wallets') {
         console.log(`[Wallet Creation] User ${userId} initiated wallet creation.`);
-        await sendWhatsAppMessage(from, { text: "Got it! Creating your secure wallet now, this may take a moment..." });
-        try {
-          const newWallet = await createWallet(userId);
-          if (newWallet && newWallet.address) {
-            console.log(`[Wallet Creation] Successfully created wallet ${newWallet.address} for user ${userId}.`);
-            const confirmation = walletCreated({ address: newWallet.address });
-            await sendWhatsAppReplyButtons(from, confirmation.text, confirmation.buttons);
-          } else {
-            throw new Error('Wallet creation did not return the expected wallet object.');
-          }
-        } catch (creationError) {
-          console.error(`[Wallet Creation] Failed to create wallet for user ${userId}:`, creationError);
-          await sendWhatsAppMessage(from, { text: "I ran into an issue while creating your wallet. Please try again later." });
+        await sendWhatsAppMessage(from, { text: "Got it! Creating your secure wallets now, this may take a moment..." });
+        
+        // Use handleAction to create both EVM and Solana wallets
+        const actionResult = await handleAction("create_wallets", {}, userId);
+        
+        if (!actionResult) {
+          console.error("No action result returned from create_wallets");
+          await sendWhatsAppMessage(from, {
+            text: "I couldn't create your wallets. Please try again.",
+          });
+          return;
+        }
+
+        if ("name" in actionResult) {
+          await sendWhatsAppTemplate(from, actionResult);
+        } else if (
+          "text" in actionResult &&
+          typeof actionResult.text === "string"
+        ) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+        } else {
+          console.error(
+            "Unknown action result format from create_wallets:",
+            actionResult,
+          );
+          await sendWhatsAppMessage(from, {
+            text: "I couldn't process your wallet creation properly.",
+          });
         }
         return; // End processing after handling wallet creation
       } else {
