@@ -1,4 +1,4 @@
-import { getOrCreateCdpWallet, createWallet, sendTransaction } from "@/lib/cdp";
+import { getOrCreateCdpWallet, createWallet, getTransaction } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 
 import fetch from "node-fetch";
@@ -983,7 +983,7 @@ async function handleSend(params: ActionParams, userId: string) {
       }
 
       // Use CDP to send the transaction
-      const txResult = await sendTransaction(wallet, recipient, ethAmount.toString(), token);
+      const txResult = await transferNativeToken(wallet, recipient, ethAmount.toString());
       console.log(`[handleSend] Transaction result:`, txResult);
 
       // Get explorer URL (Base Sepolia)
@@ -1330,6 +1330,7 @@ async function handleBridgeQuote(params: ActionParams, userId: string) {
 }
 
 import { toE164 } from '@/lib/phoneFormat';
+import { transferNativeToken } from "@/lib/cdp";
 
 async function handleExportPrivateKey(params: ActionParams, userId: string) {
   try {
