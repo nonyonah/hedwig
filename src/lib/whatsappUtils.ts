@@ -680,8 +680,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         return; // End processing after handling wallet creation
       } else {
         // If no wallet and not a creation request, prompt the user to create one.
-        console.log(`[Wallet Check] User ${userId} has no wallet. Sending creation prompt.`);
-        await sendWhatsAppTemplate(from, noWalletYet());
+        console.log(`[Wallet Check] User ${userId} has no wallet. Sending creation prompt with name: ${profileName || 'not provided'}`);
+        await sendWhatsAppTemplate(from, noWalletYet(profileName));
         return; // Stop further processing
       }
     }
