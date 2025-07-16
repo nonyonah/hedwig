@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import fetch from "node-fetch";
 import { textTemplate, txPending, sendTokenPrompt, sendFailed } from "./whatsappTemplates";
 import { runLLM } from "./llmAgent";
+import { createWallet } from "./cdp";
+import { noWalletYet, walletCreated } from "./whatsappTemplates";
 import { parseIntentAndParams } from "./intentParser";
 import { handleAction } from "../api/actions";
 
@@ -633,7 +635,49 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     // Generate a proper UUID for the user based on the phone number
     // This ensures we have a valid UUID for database operations
     // Pass the profile name to store it with the user
-    const userId = await getUserIdFromPhone(from, profileName);
+        const userId = await getUserIdFromPhone(from, profileName);
+
+    // Check if the user has a wallet
+    const { data: wallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('id, address')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (walletError) {
+      console.error(`[Wallet Check] Error fetching wallet for user ${userId}:`, walletError);
+      await sendWhatsAppMessage(from, { text: "I'm having trouble accessing your wallet information right now. Please try again in a moment." });
+      return; // Stop processing
+    }
+
+    // Handle wallet creation flow if the user has no wallet
+    if (!wallet) {
+      const message = body.entry[0].changes[0].value.messages[0];
+      // Check if the user clicked the 'Create Wallet' button
+      if (message.type === 'interactive' && message.interactive.type === 'button_reply' && message.interactive.button_reply.id === 'create-wallet-action') {
+        console.log(`[Wallet Creation] User ${userId} initiated wallet creation.`);
+        await sendWhatsAppMessage(from, { text: "Got it! Creating your secure wallet now, this may take a moment..." });
+        try {
+          const newWallet = await createWallet(userId);
+          if (newWallet && newWallet.address) {
+            console.log(`[Wallet Creation] Successfully created wallet ${newWallet.address} for user ${userId}.`);
+            const confirmation = walletCreated({ address: newWallet.address });
+            await sendWhatsAppReplyButtons(from, confirmation.text, confirmation.buttons);
+          } else {
+            throw new Error('Wallet creation did not return the expected wallet object.');
+          }
+        } catch (creationError) {
+          console.error(`[Wallet Creation] Failed to create wallet for user ${userId}:`, creationError);
+          await sendWhatsAppMessage(from, { text: "I ran into an issue while creating your wallet. Please try again later." });
+        }
+        return; // End processing after handling wallet creation
+      } else {
+        // If no wallet and not a creation request, prompt the user to create one.
+        console.log(`[Wallet Check] User ${userId} has no wallet. Sending creation prompt.`);
+        await sendWhatsAppTemplate(from, noWalletYet());
+        return; // Stop further processing
+      }
+    }
 
     // Handle button clicks
     if (buttonReply) {

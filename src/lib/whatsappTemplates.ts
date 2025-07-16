@@ -474,11 +474,8 @@ export function bridgeSuccess({ amount, from_network, to_network, balance }: { a
   };
 }
 
-/**
- * Template: send_failed
- * Parameter Format: NAMED (not POSITIONAL)
- * Parameters: reason
- */
+
+
 export function sendFailed({ reason }: { reason: string }) {
   const safeReason = reason || 'Unknown error';
   console.log('[sendFailed] Reason:', safeReason);
