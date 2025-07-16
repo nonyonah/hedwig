@@ -23,7 +23,7 @@ export async function sendEthTransfer(userId: string, recipientAddress: string, 
 
     // Send a transaction
   const txResult = await privyWalletApi.sendTransaction(
-    wallet.privy_wallet_id,
+    wallet.cdp_wallet_id,
       transaction,
       'base-sepolia'
     );
@@ -65,7 +65,7 @@ export async function sendTokenTransfer(
 
     // Send transaction
     const result = await privyWalletApi.sendTransaction(
-      wallet.privy_wallet_id,
+      wallet.cdp_wallet_id,
       transaction,
       'base-sepolia'
     );
@@ -88,7 +88,7 @@ export async function signUserMessage(userId: string, message: string) {
     
     // Sign message
     const result = await privyWalletApi.signMessage(
-      wallet.privy_wallet_id,
+      wallet.cdp_wallet_id,
       message
     );
 
@@ -136,7 +136,7 @@ export async function signTypedDataExample(userId: string) {
     
     // Sign typed data
     const result = await privyWalletApi.signTypedData(
-      wallet.privy_wallet_id,
+      wallet.cdp_wallet_id,
       typedData
     );
 
@@ -165,7 +165,7 @@ export async function signTransactionOnly(userId: string, recipientAddress: stri
 
     // Sign transaction (without sending)
     const result = await privyWalletApi.signTransaction(
-      wallet.privy_wallet_id,
+      wallet.cdp_wallet_id,
       transaction,
       'base-sepolia'
     );
@@ -187,7 +187,7 @@ export async function getWalletInfo(userId: string) {
     const dbWallet = await privyWalletApi.getUserWallet(userId, 'base-sepolia');
     
     // Get wallet info from Privy
-    const privyWallet = await privyWalletApi.getWallet(dbWallet.privy_wallet_id);
+    const privyWallet = await privyWalletApi.getWallet(dbWallet.cdp_wallet_id);
 
     console.log('Wallet info:', {
       address: privyWallet.address,
@@ -224,7 +224,7 @@ export async function sendTransactionOnDifferentChains(userId: string, recipient
 
       // Send transaction
       const result = await privyWalletApi.sendTransaction(
-        wallet.privy_wallet_id,
+        wallet.cdp_wallet_id,
         transaction,
         chain
       );
@@ -281,7 +281,7 @@ export async function robustTransactionSend(userId: string, recipientAddress: st
     // Get user's wallet
     const wallet = await privyWalletApi.getUserWallet(userId, 'base-sepolia');
     
-    if (!wallet.privy_wallet_id) {
+    if (!wallet.cdp_wallet_id) {
       throw new Error('User wallet does not have a Privy wallet ID');
     }
 
@@ -301,7 +301,7 @@ export async function robustTransactionSend(userId: string, recipientAddress: st
 
     // Send transaction
     const result = await privyWalletApi.sendTransaction(
-      wallet.privy_wallet_id,
+      wallet.cdp_wallet_id,
       transaction,
       'base-sepolia'
     );
@@ -343,8 +343,8 @@ export async function batchWalletOperations(userId: string) {
     
     // Perform multiple operations
     const [walletInfo, messageSignature] = await Promise.all([
-      privyWalletApi.getWallet(wallet.privy_wallet_id),
-      privyWalletApi.signMessage(wallet.privy_wallet_id, 'Batch operation test')
+      privyWalletApi.getWallet(wallet.cdp_wallet_id),
+      privyWalletApi.signMessage(wallet.cdp_wallet_id, 'Batch operation test')
     ]);
 
     return {

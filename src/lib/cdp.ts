@@ -1,5 +1,15 @@
 // src/lib/cdp.ts
-import { CdpClient } from '@coinbase/cdp-sdk';
+import { CdpClient as BaseCdpClient } from '@coinbase/cdp-sdk';
+
+// Extend the CdpClient type to include the getOrCreateAccount method, which is not in the base SDK types
+interface CdpClient extends BaseCdpClient {
+  evm: BaseCdpClient['evm'] & {
+    getOrCreateAccount: (args: { name: string }) => Promise<{ address: string }>;
+  };
+  solana: BaseCdpClient['solana'] & {
+    getOrCreateAccount: (args: { name: string }) => Promise<{ address: string }>;
+  };
+}
 import { parseUnits } from 'viem';
 import { loadServerEnvironment } from './serverEnv';
 import { createClient } from '@supabase/supabase-js';
@@ -16,7 +26,7 @@ const supabase = createClient(
 );
 
 // Initialize CDP client
-const cdp = new CdpClient({
+const cdp = new BaseCdpClient({
   apiKeyId: process.env.CDP_API_KEY_ID!,
   apiKeySecret: process.env.CDP_API_KEY_SECRET!,
   walletSecret: process.env.CDP_WALLET_SECRET
@@ -100,7 +110,27 @@ export function formatNetworkName(chain: string): string {
  */
 export async function createWallet(userId: string, network: string = 'base-sepolia') {
   try {
-    console.log(`[CDP] Creating wallet for user ${userId} on network ${network}`);
+    // Fetch user details to get a unique name for the account
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('phone_number')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      console.error(`[CDP] Failed to fetch user details for ${userId}:`, userError);
+      throw new Error('Could not fetch user details to create a named wallet.');
+    }
+
+    // Use the phone number as a unique, persistent name for the account.
+    const accountName = user.phone_number;
+    // Basic validation for account name
+    if (!accountName || !/^[a-zA-Z0-9+-]{2,36}$/.test(accountName)) {
+        console.error(`[CDP] Invalid account name generated from phone number: ${accountName}`);
+        throw new Error('Cannot create wallet with an invalid account name.');
+    }
+
+    console.log(`[CDP] Creating wallet for user ${userId} on network ${network} with name ${accountName}`);
     
     // Get network configuration
     const networkConfig = SUPPORTED_NETWORKS[network];
@@ -112,10 +142,10 @@ export async function createWallet(userId: string, network: string = 'base-sepol
     let account;
     if (networkConfig.chainId) {
       // Create EVM account
-      account = await evmClient.createAccount();
+      account = await (evmClient as any).getOrCreateAccount({ name: accountName });
     } else if (networkConfig.networkId) {
       // Create Solana account
-      account = await solanaClient.createAccount();
+      account = await (solanaClient as any).getOrCreateAccount({ name: accountName });
     } else {
       throw new Error(`Invalid network configuration for ${network}`);
     }
