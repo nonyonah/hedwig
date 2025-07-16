@@ -32,11 +32,14 @@ async function testCDPIntegration() {
     
     // Test creating a wallet on Base Sepolia
     const network = 'base-sepolia';
-    const wallet = await createWallet(network);
+    // Use a test user ID
+    const testUserId = 'test-user-' + Date.now();
+    const wallet = await createWallet(testUserId, network);
     
     console.log('Wallet created successfully:');
     console.log('- Address:', wallet.address);
-    console.log('- Network:', wallet.network);
+    console.log('- Network:', network);
+    console.log('- CDP Wallet ID:', wallet.cdp_wallet_id);
     
     // Test getting balances
     console.log('\nFetching balances for the new wallet...');
@@ -54,4 +57,4 @@ async function testCDPIntegration() {
 }
 
 // Run the test
-testCDPIntegration(); 
+testCDPIntegration();

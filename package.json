@@ -12,6 +12,7 @@
     "prebuild": "node node-polyfill-check.js",
     "fix-rls": "node scripts/apply-rls-fix.js",
     "test-cdp": "node scripts/test-cdp.js",
+    "test-cdp-transfer": "node scripts/test-cdp-transfer.js",
     "sync-cdp": "node scripts/sync-cdp-wallets.js",
     "cleanup-db": "node scripts/cleanup-db.js",
     "update-schema": "node scripts/update-schema.js",

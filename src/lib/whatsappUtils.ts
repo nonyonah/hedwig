@@ -6,6 +6,32 @@ import { textTemplate, txPending, sendTokenPrompt, sendFailed } from "./whatsapp
 import { runLLM } from "./llmAgent";
 import { parseIntentAndParams } from "./intentParser";
 import { handleAction } from "../api/actions";
+
+// Helper function to extract and clean Ethereum addresses from text
+function extractEthereumAddress(text: string): string | null {
+  if (!text) return null;
+  
+  // Remove extra whitespace and convert to lowercase for processing
+  const cleanText = text.trim();
+  
+  // Look for Ethereum addresses (0x followed by 40 hex characters)
+  const ethAddressRegex = /0x[a-fA-F0-9]{40}/g;
+  const matches = cleanText.match(ethAddressRegex);
+  
+  if (matches && matches.length > 0) {
+    return matches[0]; // Return the first valid address found
+  }
+  
+  // Look for ENS names
+  const ensRegex = /\b[a-zA-Z0-9-]+\.eth\b/g;
+  const ensMatches = cleanText.match(ensRegex);
+  
+  if (ensMatches && ensMatches.length > 0) {
+    return ensMatches[0]; // Return the first ENS name found
+  }
+  
+  return null;
+}
 import { createClient } from "@supabase/supabase-js";
 import { toE164 } from "@/lib/phoneFormat";
 
@@ -824,6 +850,39 @@ export async function handleIncomingWhatsAppMessage(body: any) {
 
       // Normalize token field in params
       params.token = params.token || params.asset || params.symbol;
+      
+      // Enhanced address extraction as fallback if LLM didn't extract it
+      if (intent === 'send' && !params.recipient) {
+        const extractedAddress = extractEthereumAddress(text);
+        if (extractedAddress) {
+          params.recipient = extractedAddress;
+          console.log('Extracted address from text:', extractedAddress);
+        }
+      }
+      
+      // Enhanced context preservation for send transactions
+      if (intent === 'send' && (!params.amount || !params.recipient)) {
+        // Store partial transaction data in session for context preservation
+        const partialTxData = {
+          action: 'send',
+          ...params, // Include any parameters we did extract
+          timestamp: new Date().toISOString()
+        };
+        
+        await supabase.from('sessions').upsert([
+          {
+            user_id: userId,
+            context: [{
+              role: 'system',
+              content: JSON.stringify({ pending: partialTxData })
+            }],
+            updated_at: new Date().toISOString()
+          }
+        ], { onConflict: 'user_id' });
+        
+        console.log('Stored partial transaction data:', partialTxData);
+      }
+      
       // Check for pending action in session
       const { data: session } = await supabase
         .from("sessions")
@@ -934,19 +993,55 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           }
         }
         
-        // Only merge params if we didn't handle it as a direct confirmation above
-        // Fix merge order: params first, then pendingObj
-        const mergedParams = { ...params, ...pendingObj };
-        mergedParams.token =
-          mergedParams.token || mergedParams.asset || mergedParams.symbol;
+        // Enhanced parameter merging with better context awareness
+        // If user just provided an address (detected by LLM), merge it with pending data
+        const mergedParams = { ...pendingObj, ...params }; // Pending first, then new params override
+        mergedParams.token = mergedParams.token || mergedParams.asset || mergedParams.symbol;
+        
+        // Special handling for address-only responses
+        const isAddressOnlyResponse = params.recipient && !params.amount && !params.token;
+        if (isAddressOnlyResponse && pendingObj?.action === 'send') {
+          console.log('Detected address-only response, merging with pending transaction');
+          mergedParams.recipient = params.recipient;
+        }
+        
         const hasAll =
           mergedParams.token &&
           mergedParams.amount &&
           mergedParams.recipient &&
           (mergedParams.network || mergedParams.chain);
-        // More debug logging
-        console.log("Merged params:", mergedParams);
+          
+        console.log('Enhanced merged params:', mergedParams);
+        console.log('Is address-only response:', isAddressOnlyResponse);
         console.log("Has all required fields:", hasAll);
+        
+        // Auto-proceed with transaction if we have all parameters after address input
+        if (hasAll && isAddressOnlyResponse) {
+          console.log('All parameters available after address input, showing confirmation prompt');
+          
+          // Update session with complete transaction data
+          await supabase.from('sessions').upsert([
+            {
+              user_id: userId,
+              context: [{
+                role: 'system',
+                content: JSON.stringify({ pending: mergedParams })
+              }],
+              updated_at: new Date().toISOString()
+            }
+          ], { onConflict: 'user_id' });
+          
+          // Show confirmation prompt instead of executing immediately
+          const actionResult = await handleAction('send', mergedParams, userId);
+          if (actionResult) {
+            if ('name' in actionResult) {
+              await sendWhatsAppTemplate(from, actionResult);
+            } else if ('text' in actionResult) {
+              await sendWhatsAppMessage(from, { text: actionResult.text });
+            }
+          }
+          return;
+        }
         if (
           hasAll &&
           (text.trim().toLowerCase() === "yes" ||

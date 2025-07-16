@@ -148,6 +148,40 @@ export async function createWallet(userId: string, network: string = 'base-sepol
 }
 
 /**
+ * Get or create CDP wallet for a user
+ * @param userId - User ID
+ * @param network - Network to create wallet on (default: base-sepolia)
+ * @returns Wallet information
+ */
+export async function getOrCreateCdpWallet(userId: string, network: string = 'base-sepolia') {
+  try {
+    console.log(`[CDP] Getting or creating wallet for user ${userId} on network ${network}`);
+    
+    // Check if user already has a wallet on this network
+    const { data: existingWallet, error: walletError } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('chain', network)
+      .single();
+    
+    if (existingWallet && !walletError) {
+      console.log(`[CDP] Found existing wallet for user ${userId}:`, existingWallet.address);
+      return existingWallet;
+    }
+    
+    console.log(`[CDP] No existing wallet found, creating new one for user ${userId}`);
+    
+    // Create new wallet using CDP
+    const newWallet = await createWallet(userId, network);
+    return newWallet;
+  } catch (error) {
+    console.error(`[CDP] Failed to get or create wallet:`, error);
+    throw error;
+  }
+}
+
+/**
  * Get wallet by address
  * @param address - Wallet address
  * @returns Wallet information
@@ -520,6 +554,7 @@ export async function getTransaction(txHash: string, network: string) {
 
 export default {
   createWallet,
+  getOrCreateCdpWallet,
   getWallet,
   getBalances,
   transferNativeToken,
