@@ -546,7 +546,14 @@ export function walletBalance({
 // }
 
 // EVM-only wallet created template
-export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
+/**
+ * Template: wallet_created_multi
+ * Status: APPROVED
+ * Category: UTILITY
+ * Language: en
+ * Parameters: evm_wallet, solana_wallet
+ */
+export function walletCreatedMulti({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet?: string }) {
   return {
     name: 'wallet_created_multi',
     language: { code: 'en' },
@@ -554,7 +561,8 @@ export function walletCreatedMulti({ evm_wallet }: { evm_wallet: string }) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) }
+          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
+          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet || 'Not available') }
         ]
       }
     ]
@@ -602,13 +610,20 @@ export function exportWallet({ export_link }: { export_link: string }) {
 }
 
 /**
- * Template: no_wallet_yet
+ * Template: create_new_wallet
  * Parameter Format: POSITIONAL (no named parameters)
- * Has QUICK_REPLY button
+ * Approved template for wallet creation
  */
-export function noWalletYet(name?: string) {
+/**
+ * Template: create_new_wallet
+ * Status: APPROVED
+ * Category: MARKETING
+ * Language: en
+ * Parameters: name (user's WhatsApp name)
+ */
+export function createNewWallet(name?: string) {
   return {
-    name: 'no_wallet_yet',
+    name: 'create_new_wallet',
     language: { code: 'en' },
     components: [
       {
@@ -616,17 +631,17 @@ export function noWalletYet(name?: string) {
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(name, 'name') }
         ]
-      },
-      {
-        type: 'BUTTON',
-        sub_type: 'QUICK_REPLY',
-        index: '0',
-        parameters: [
-          { type: 'payload', payload: 'create_wallets' }
-        ]
       }
     ]
   };
+}
+
+/**
+ * @deprecated Use createNewWallet instead
+ * Kept for backward compatibility
+ */
+export function noWalletYet(name?: string) {
+  return createNewWallet(name);
 }
 
 // For error messages, use send_failed template

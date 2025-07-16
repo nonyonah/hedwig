@@ -22,6 +22,7 @@ import {
   walletCreatedMulti,
   exportWallet,
   noWalletYet,
+  createNewWallet,
   textTemplate,
   usersWalletAddresses,
   cryptoDepositNotification,
@@ -108,19 +109,19 @@ async function checkUserWallets(userId: string) {
 /**
  * Verify user has wallets before proceeding with blockchain actions
  * @param userId User ID to check
- * @returns noWalletYet template if no wallet, or null if wallet exists
+ * @returns createNewWallet template if no wallet, or null if wallet exists
  */
 async function verifyWalletExists(userId: string) {
   try {
     // Check if user has a wallet in CDP
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet) {
-      return noWalletYet();
+      return createNewWallet();
     }
     return null;
   } catch (error) {
     console.error("Error verifying wallet:", error);
-    return noWalletYet();
+    return createNewWallet();
   }
 }
 
@@ -454,7 +455,7 @@ export async function handleAction(
     if (!hasEvm && !hasSolana) {
       return {
         text: `Hi ${userName}, you don't have a wallet yet. Would you like to create one?`,
-        ...noWalletYet(),
+        ...createNewWallet(),
       };
     }
   } catch (error) {
@@ -505,10 +506,22 @@ async function handleCreateWallets(userId: string) {
     }
       
     if (existingWallet) {
-      console.log(`[handleCreateWallets] Wallet already exists: ${existingWallet.address}`);
+      console.log(`[handleCreateWallets] EVM Wallet already exists: ${existingWallet.address}`);
+      
+      // Check for existing Solana wallet
+      const { data: existingSolanaWallet } = await supabase
+        .from("wallets")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("chain", "solana-devnet")
+        .maybeSingle();
+      
       return {
         text: `You already have a wallet, ${userName}!` ,
-        ...walletCreatedMulti({ evm_wallet: existingWallet.address })
+        ...walletCreatedMulti({ 
+          evm_wallet: existingWallet.address,
+          solana_wallet: existingSolanaWallet?.address
+        })
       };
     }
 
@@ -517,16 +530,20 @@ async function handleCreateWallets(userId: string) {
     console.log(`[handleCreateWallets] Successfully created EVM wallet: ${evmWallet.address}`);
     
     // Create Solana wallet (solana-devnet)
+    let solanaWallet = null;
     try {
-      await getOrCreateCdpWallet(userId, 'solana-devnet');
-      console.log(`[handleCreateWallets] Successfully created Solana wallet for user ${userId}`);
+      solanaWallet = await getOrCreateCdpWallet(userId, 'solana-devnet');
+      console.log(`[handleCreateWallets] Successfully created Solana wallet: ${solanaWallet.address}`);
     } catch (solanaError) {
       console.error(`[handleCreateWallets] Error creating Solana wallet:`, solanaError);
       // Continue even if Solana wallet creation fails
     }
 
-    // Return response with EVM wallet address
-    const response = walletCreatedMulti({ evm_wallet: evmWallet.address });
+    // Return response with both EVM and Solana wallet addresses
+    const response = walletCreatedMulti({ 
+      evm_wallet: evmWallet.address,
+      solana_wallet: solanaWallet?.address
+    });
     console.log(`[handleCreateWallets] Response: ${JSON.stringify(response)}`);
     
     return {
@@ -667,7 +684,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       .single();
 
     if (!wallet) {
-      return noWalletYet();
+      return createNewWallet();
     }
 
     const address = wallet.address;
@@ -966,7 +983,7 @@ async function handleSend(params: ActionParams, userId: string) {
       console.log('[handleSend] Wallet fetched/created:', wallet);
       if (!wallet || !wallet.address) {
         console.log('[handleSend] Wallet missing or no address, returning noWalletYet');
-        const noWalletResp = noWalletYet();
+        const noWalletResp = createNewWallet();
         console.log('[handleSend] Returning:', noWalletResp);
         return noWalletResp;
       }
@@ -1028,7 +1045,7 @@ async function handleExportWallet(userId: string) {
     // Get user's wallet from CDP
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return noWalletYet();
+      return createNewWallet();
     }
 
     // For CDP wallets, we can't export private keys directly as they're managed by CDP
@@ -1095,7 +1112,7 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     // Get wallet address
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return noWalletYet();
+      return createNewWallet();
     }
 
     // Ensure we have a valid phone number for WhatsApp
@@ -1201,7 +1218,7 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
     // Get wallet address
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return noWalletYet();
+      return createNewWallet();
     }
     // Get last swap quote from session
     const { data: session } = await supabase
@@ -1371,7 +1388,7 @@ async function handleExportPrivateKey(params: ActionParams, userId: string) {
     // Get user's wallet from CDP
     const wallet = await getOrCreateCdpWallet(userId);
     if (!wallet || !wallet.address) {
-      return noWalletYet();
+      return createNewWallet();
     }
 
     // For CDP wallets, we can't export private keys directly as they're managed by CDP
