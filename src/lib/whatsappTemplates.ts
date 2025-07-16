@@ -614,7 +614,7 @@ export function noWalletYet(name?: string) {
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: name || '' }
+          { type: 'text', text: sanitizeWhatsAppParam(name, 'name') }
         ]
       },
       {
