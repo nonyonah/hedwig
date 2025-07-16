@@ -122,11 +122,27 @@ export async function createWallet(userId: string, network: string = 'base-sepol
       throw new Error('Could not fetch user details to create a named wallet.');
     }
 
-    // Use the phone number as a unique, persistent name for the account.
-    const accountName = user.phone_number;
+    // Format the phone number to create a valid account name
+    // CDP requires alphanumeric characters and hyphens, between 2 and 36 characters
+    let accountName = user.phone_number;
+    // Remove any non-alphanumeric characters except hyphens
+    accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
+    // If it starts with a plus, replace it with 'p'
+    if (accountName.startsWith('+')) {
+      accountName = 'p' + accountName.substring(1);
+    }
+    // Ensure it's between 2 and 36 characters
+    if (accountName.length < 2) {
+      accountName = 'user-' + accountName;
+    } else if (accountName.length > 36) {
+      accountName = accountName.substring(0, 36);
+    }
+    
+    console.log(`[CDP] Formatted account name: ${accountName}`);
+    
     // Basic validation for account name
-    if (!accountName || !/^[a-zA-Z0-9+-]{2,36}$/.test(accountName)) {
-        console.error(`[CDP] Invalid account name generated from phone number: ${accountName}`);
+    if (!accountName || !/^[a-zA-Z0-9-]{2,36}$/.test(accountName)) {
+        console.error(`[CDP] Invalid account name after formatting: ${accountName}`);
         throw new Error('Cannot create wallet with an invalid account name.');
     }
 
@@ -188,15 +204,23 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
     console.log(`[CDP] Getting or creating wallet for user ${userId} on network ${network}`);
     
     // Check if user already has a wallet on this network
-    const { data: existingWallet, error: walletError } = await supabase
+    const { data: wallets, error: walletError } = await supabase
       .from('wallets')
       .select('*')
       .eq('user_id', userId)
-      .eq('chain', network)
-      .single();
+      .eq('chain', network);
+      
+    // If multiple wallets found, use the first one
+    const existingWallet = wallets && wallets.length > 0 ? wallets[0] : null;
     
-    if (existingWallet && !walletError) {
+    if (existingWallet) {
       console.log(`[CDP] Found existing wallet for user ${userId}:`, existingWallet.address);
+      
+      // If there are multiple wallets, log a warning
+      if (wallets && wallets.length > 1) {
+        console.warn(`[CDP] Multiple wallets found for user ${userId} on network ${network}. Using the first one.`);
+      }
+      
       return existingWallet;
     }
     

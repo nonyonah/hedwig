@@ -496,10 +496,7 @@ async function handleCreateWallets(userId: string) {
     });
     console.log(`[handleCreateWallets] Response: ${JSON.stringify(response)}`);
     
-    return {
-      text: `Wallet created for ${userName}!` ,
-      ...response
-    };
+    return response;
   } catch (error) {
     console.error("[handleCreateWallets] Error:", error);
     return { text: "Error creating wallet. Please try again later." };
