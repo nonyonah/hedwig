@@ -527,14 +527,20 @@ async function handleGetWalletAddress(userId: string) {
   // Get Solana wallet if it exists
   let solanaWallet = null;
   try {
-    const { data: solanaWalletData } = await supabase
+    // Get all Solana wallets for this user
+    const { data: solanaWallets } = await supabase
       .from("wallets")
       .select("*")
       .eq("user_id", userId)
-      .eq("chain", "solana-devnet")
-      .maybeSingle();
+      .eq("chain", "solana-devnet");
     
-    solanaWallet = solanaWalletData;
+    // Use the first wallet if multiple exist
+    solanaWallet = solanaWallets && solanaWallets.length > 0 ? solanaWallets[0] : null;
+    
+    // Log warning if multiple wallets found
+    if (solanaWallets && solanaWallets.length > 1) {
+      console.warn(`[handleGetWalletAddress] Multiple Solana wallets found for user ${userId}. Using the first one.`);
+    }
   } catch (error) {
     console.error(`[handleGetWalletAddress] Error fetching Solana wallet:`, error);
     // Continue even if Solana wallet fetch fails
@@ -642,12 +648,19 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     }
 
     // Get EVM wallet
-    const { data: evmWallet } = await supabase
+    const { data: evmWallets } = await supabase
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", "base-sepolia")
-      .single();
+      .eq("chain", "base-sepolia");
+
+    // Use the first wallet if multiple exist
+    const evmWallet = evmWallets && evmWallets.length > 0 ? evmWallets[0] : null;
+    
+    // Log warning if multiple wallets found
+    if (evmWallets && evmWallets.length > 1) {
+      console.warn(`[handleGetWalletBalance] Multiple EVM wallets found for user ${userId}. Using the first one.`);
+    }
 
     if (!evmWallet) {
       // Return a simple message instead of the template to avoid duplication
@@ -655,12 +668,19 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     }
 
     // Get Solana wallet if it exists
-    const { data: solanaWallet } = await supabase
+    const { data: solanaWallets } = await supabase
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", "solana-devnet")
-      .maybeSingle();
+      .eq("chain", "solana-devnet");
+      
+    // Use the first wallet if multiple exist
+    const solanaWallet = solanaWallets && solanaWallets.length > 0 ? solanaWallets[0] : null;
+    
+    // Log warning if multiple wallets found
+    if (solanaWallets && solanaWallets.length > 1) {
+      console.warn(`[handleGetWalletBalance] Multiple Solana wallets found for user ${userId}. Using the first one.`);
+    }
 
     // Fetch balances from Alchemy for both EVM networks
     const [baseBalances, ethBalances] = await Promise.all([
