@@ -54,6 +54,7 @@ Always respond ONLY with a JSON object in this format:
 Valid intents:
 - create_wallets: For creating new wallets
 - get_wallet_balance: For checking wallet balance
+- get_wallet_address: For showing wallet addresses or deposit instructions
 - send: For sending crypto or tokens
 - swap: For swapping between tokens
 - bridge: For bridging tokens between chains
@@ -61,43 +62,60 @@ Valid intents:
 - get_price: For checking crypto prices
 - get_news: For crypto news
 - welcome: For greetings and help
-- clarification: Only when you absolutely cannot determine intent and need specific information
+- clarification: ONLY when you absolutely cannot determine intent and need specific information
 
-IMPORTANT PARAMETER EXTRACTION RULES:
+IMPORTANT INTENT RECOGNITION RULES:
 
-1. For "send" intent, ALWAYS extract these parameters when available:
+1. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
+   - "wallet address", "my address", "show address", "view address"
+   - "what is my address", "what are my addresses", "wallet addresses"
+   - "deposit", "receive", "how to deposit", "where to send"
+   - "show me my wallet", "wallet info", "address info"
+   - Any request about viewing or getting wallet addresses
+
+2. BALANCE REQUESTS: Always use "get_wallet_balance" intent for:
+   - "balance", "how much", "check wallet", "wallet balance"
+   - "what do I have", "my funds", "my tokens", "my crypto"
+
+3. PARAMETER EXTRACTION for "send" intent:
    - amount: Extract numerical value (e.g., "0.01", "5", "100")
    - token: Extract token symbol (e.g., "ETH", "USDC", "BTC")
    - recipient: Extract wallet address (0x...) or ENS name (.eth)
    - network: Extract network name (e.g., "Base", "Ethereum", "Polygon")
 
-2. CONTEXT AWARENESS: Look at the conversation history to find missing parameters:
+4. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it
    - If amount was specified earlier, carry it forward
    - If token type was discussed, maintain consistency
 
-3. ADDRESS RECOGNITION: Recognize these as recipient addresses:
+5. ADDRESS RECOGNITION: Recognize these as recipient addresses:
    - Ethereum addresses: 0x followed by 40 hexadecimal characters
    - ENS names: ending with .eth
    - Shortened addresses: 0x...abc (when context suggests it's an address)
    - Extract addresses from text like "here's my address: 0x123..." or "send to 0x123..."
    - Clean up addresses by removing extra spaces, quotes, or surrounding text
 
-4. AMOUNT EXTRACTION: Extract amounts from phrases like:
+6. AMOUNT EXTRACTION: Extract amounts from phrases like:
    - "send 0.01 ETH"
    - "transfer 100 USDC"
    - "move 5 tokens"
 
-5. When user provides an address after being asked, ALWAYS include it in the send parameters.
+7. When user provides an address after being asked, ALWAYS include it in the send parameters.
 
 EXAMPLES:
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"
 Response: {"intent": "send", "params": {"amount": "0.01", "token": "ETH", "recipient": "0x1234567890123456789012345678901234567890"}}
 
+User: "wallet address" or "my address" or "show address"
+Response: {"intent": "get_wallet_address", "params": {}}
+
+User: "balance" or "how much do I have"
+Response: {"intent": "get_wallet_balance", "params": {}}
+
 User: "0x1234567890123456789012345678901234567890" (after being asked for address)
 Response: {"intent": "send", "params": {"recipient": "0x1234567890123456789012345678901234567890"}}
 
-Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
+AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.
 If the user mentions blockchain, crypto, wallet, tokens, etc., assume they want to perform a blockchain action.
 

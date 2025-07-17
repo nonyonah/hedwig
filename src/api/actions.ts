@@ -537,15 +537,25 @@ async function handleGetWalletAddress(userId: string) {
     return { text: "Error fetching wallet address. Please try again." };
   }
 
-  // Get Solana wallet if it exists
+  // Get Solana wallet if it exists - check both 'solana' and 'solana-devnet' chains
   let solanaWallet = null;
   try {
-    // Get all Solana wallets for this user
-    const { data: solanaWallets } = await supabase
+    // First try 'solana' chain
+    let { data: solanaWallets } = await supabase
       .from("wallets")
       .select("*")
       .eq("user_id", userId)
-      .eq("chain", "solana-devnet");
+      .eq("chain", "solana");
+    
+    // If no wallets found with 'solana', try 'solana-devnet'
+    if (!solanaWallets || solanaWallets.length === 0) {
+      const { data: devnetWallets } = await supabase
+        .from("wallets")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("chain", "solana-devnet");
+      solanaWallets = devnetWallets;
+    }
     
     // Use the first wallet if multiple exist
     solanaWallet = solanaWallets && solanaWallets.length > 0 ? solanaWallets[0] : null;
@@ -554,6 +564,8 @@ async function handleGetWalletAddress(userId: string) {
     if (solanaWallets && solanaWallets.length > 1) {
       console.warn(`[handleGetWalletAddress] Multiple Solana wallets found for user ${userId}. Using the first one.`);
     }
+    
+    console.log(`[handleGetWalletAddress] Solana wallet found:`, solanaWallet?.address || 'None');
   } catch (error) {
     console.error(`[handleGetWalletAddress] Error fetching Solana wallet:`, error);
     // Continue even if Solana wallet fetch fails
@@ -698,12 +710,22 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       return { text: "You need to create a wallet first." };
     }
 
-    // Get Solana wallet if it exists
-    const { data: solanaWallets } = await supabase
+    // Get Solana wallet if it exists - check both 'solana' and 'solana-devnet' chains
+    let { data: solanaWallets } = await supabase
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
-      .eq("chain", "solana-devnet");
+      .eq("chain", "solana");
+      
+    // If no wallets found with 'solana', try 'solana-devnet'
+    if (!solanaWallets || solanaWallets.length === 0) {
+      const { data: devnetWallets } = await supabase
+        .from("wallets")
+        .select("address")
+        .eq("user_id", userId)
+        .eq("chain", "solana-devnet");
+      solanaWallets = devnetWallets;
+    }
       
     // Use the first wallet if multiple exist
     const solanaWallet = solanaWallets && solanaWallets.length > 0 ? solanaWallets[0] : null;
@@ -712,6 +734,8 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     if (solanaWallets && solanaWallets.length > 1) {
       console.warn(`[handleGetWalletBalance] Multiple Solana wallets found for user ${userId}. Using the first one.`);
     }
+    
+    console.log(`[handleGetWalletBalance] Solana wallet found:`, solanaWallet?.address || 'None');
 
     // Fetch balances from Alchemy for both EVM networks
     const [baseBalances, ethBalances] = await Promise.all([

@@ -71,36 +71,28 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
     
-    // Wallet address keywords for deposit instructions
-    if ((text.includes('wallet address') || 
+    // Wallet address keywords - broader matching for better recognition
+    if (text.includes('wallet address') || 
         text.includes('my address') || 
         text.includes('show address') || 
         text.includes('view address') ||
         text.includes('what is my address') ||
         text.includes('what are my addresses') ||
         text.includes('what are my wallet addresses') ||
+        text.includes('wallet addresses') ||
         text.includes('address') && text.includes('wallet') ||
-        text.includes('show me my') && text.includes('address')) &&
-        (text.includes('how') || text.includes('instruct') || text.includes('help') || text.includes('want'))) {
-      console.log('Intent parser detected deposit instruction request');
-      const result = { intent: 'instruction_deposit', params: {} };
+        text.includes('show me my') && text.includes('address') ||
+        text.includes('deposit') ||
+        text.includes('receive') ||
+        text.includes('where to send') ||
+        text.includes('how to deposit') ||
+        text.includes('deposit instructions') ||
+        text.includes('receive crypto') ||
+        text.includes('receive tokens')) {
+      console.log('Intent parser detected wallet address request');
+      const result = { intent: 'get_wallet_address', params: {} };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
-    }
-    
-    // Simple deposit keywords (without asking for instructions)
-    if (text.includes('deposit') || text.includes('receive crypto')) {
-      if (text.includes('how') || text.includes('instruct') || text.includes('help') || text.includes('want')) {
-        // User is asking for deposit instructions
-        const result = { intent: 'instruction_deposit', params: {} };
-        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
-        return result;
-      } else {
-        // User is just mentioning deposits, show addresses
-        const result = { intent: 'get_wallet_address', params: {} };
-        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
-        return result;
-      }
     }
     
     // Balance check keywords
@@ -215,4 +207,4 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
     console.error('Error in parseIntentAndParams:', error);
     return { intent: 'unknown', params: {} };
   }
-} 
+}
