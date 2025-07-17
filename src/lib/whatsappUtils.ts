@@ -638,16 +638,23 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         const userId = await getUserIdFromPhone(from, profileName);
 
     // Check if the user has a wallet
-    const { data: wallet, error: walletError } = await supabase
+    const { data: wallets, error: walletError } = await supabase
       .from('wallets')
       .select('id, address')
-      .eq('user_id', userId)
-      .maybeSingle();
+      .eq('user_id', userId);
 
     if (walletError) {
       console.error(`[Wallet Check] Error fetching wallet for user ${userId}:`, walletError);
       await sendWhatsAppMessage(from, { text: "I'm having trouble accessing your wallet information right now. Please try again in a moment." });
       return; // Stop processing
+    }
+    
+    // Use the first wallet if multiple exist
+    const wallet = wallets && wallets.length > 0 ? wallets[0] : null;
+    
+    // Log warning if multiple wallets found
+    if (wallets && wallets.length > 1) {
+      console.warn(`[Wallet Check] Multiple wallets found for user ${userId}. Using the first one.`);
     }
 
     // Handle wallet creation flow if the user has no wallet
@@ -1458,6 +1465,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
             await sendWhatsAppMessage(from, { text: actionResult.text });
           }
         }
+        return; // Prevent duplicate handling by the general action handler
       }
 
       const actionResult = await handleAction(intent, { ...params, text }, userId);

@@ -330,8 +330,14 @@ export async function handleAction(
         .from("wallets")
         .select("*")
         .eq("user_id", userId);
+      
+      console.log(`[handleAction] Checking wallets for user ${userId}:`, wallets?.map(w => ({ chain: w.chain, address: w.address })));
+      
       const hasEvm = wallets?.some((w) => w.chain === "base-sepolia");
-      const hasSolana = wallets?.some((w) => w.chain === "solana");
+      const hasSolana = wallets?.some((w) => w.chain === "solana" || w.chain === "solana-devnet");
+      
+      console.log(`[handleAction] Wallet check results - hasEvm: ${hasEvm}, hasSolana: ${hasSolana}`);
+      
       if (!hasEvm && !hasSolana) {
         // Block blockchain action and instruct user to create a wallet first
         return {
@@ -416,7 +422,7 @@ export async function handleAction(
       .select("*")
       .eq("user_id", userId);
     const hasEvm = wallets?.some((w) => w.chain === "base-sepolia");
-    const hasSolana = wallets?.some((w) => w.chain === "solana");
+    const hasSolana = wallets?.some((w) => w.chain === "solana" || w.chain === "solana-devnet");
     if (!hasEvm && !hasSolana) {
       return {
         text: `Hi ${userName}, you don't have a wallet yet. Would you like to create one?`,
