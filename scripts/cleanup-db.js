@@ -81,13 +81,13 @@ async function findOrphanedWallets() {
     
     // Check each wallet for a valid user
     for (const wallet of wallets) {
-      const { data: user, error: userError } = await supabase
+      const { data: users, error: userError } = await supabase
         .from('users')
         .select('id')
-        .eq('id', wallet.user_id)
-        .single();
+        .eq('id', wallet.user_id);
         
-      if (userError || !user) {
+      // If no users found or error occurred, consider it an orphaned wallet
+      if (userError || !users || users.length === 0) {
         console.log(`Found orphaned wallet: ${wallet.address} (user_id: ${wallet.user_id})`);
         orphanedWallets.push(wallet);
       }
@@ -241,4 +241,4 @@ async function main() {
 }
 
 // Run the script
-main(); 
+main();

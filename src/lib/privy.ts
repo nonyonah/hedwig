@@ -122,11 +122,18 @@ export async function pregeneratePrivyWallet(supabaseUserId: string) {
 
 export async function getOrCreatePrivyWallet(supabaseUserId: string) {
   console.log(`[getOrCreatePrivyWallet] Starting for user ${supabaseUserId}`);
-  const { data: wallet } = await supabase
+  const { data: wallets } = await supabase
     .from('wallets')
     .select('*')
-    .eq('user_id', supabaseUserId)
-    .maybeSingle();
+    .eq('user_id', supabaseUserId);
+
+  // Use the first wallet if multiple exist
+  const wallet = wallets && wallets.length > 0 ? wallets[0] : null;
+  
+  // Log warning if multiple wallets found
+  if (wallets && wallets.length > 1) {
+    console.warn(`[getOrCreatePrivyWallet] Multiple wallets found for user ${supabaseUserId}. Using the first one.`);
+  }
 
   if (wallet) {
     console.log(`[getOrCreatePrivyWallet] Found existing wallet.`);

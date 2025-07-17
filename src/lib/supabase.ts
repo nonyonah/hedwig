@@ -51,19 +51,34 @@ export const db = {
     const { data, error } = await supabase
       .from('wallets')
       .select('*')
-      .eq('user_id', userId)
-      .single();
-    return error ? null : data;
+      .eq('user_id', userId);
+    
+    if (error) return null;
+    
+    // If multiple wallets found, use the first one and log a warning
+    if (data && data.length > 1) {
+      console.warn(`[getUserWallet] Multiple wallets found for user ${userId}. Using the first one.`);
+    }
+    
+    return data && data.length > 0 ? data[0] : null;
   },
 
   async createWallet(wallet: Omit<Wallet, 'id' | 'created_at'>): Promise<Wallet> {
     const { data, error } = await supabase
       .from('wallets')
       .insert(wallet)
-      .select()
-      .single();
+      .select();
+    
     if (error) throw error;
-    return data;
+    
+    // If multiple records were returned (unlikely but possible), use the first one
+    if (Array.isArray(data) && data.length > 1) {
+      console.warn(`[createWallet] Multiple wallet records returned after insert. Using the first one.`);
+      return data[0];
+    }
+    
+    // Handle both array and single object responses
+    return Array.isArray(data) ? data[0] : data;
   },
 
   // Session operations
