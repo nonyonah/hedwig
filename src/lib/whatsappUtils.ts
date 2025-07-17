@@ -5,7 +5,7 @@ import fetch from "node-fetch";
 import { textTemplate, txPending, sendTokenPrompt, sendFailed } from "./whatsappTemplates";
 import { runLLM } from "./llmAgent";
 import { createWallet } from "./cdp";
-import { noWalletYet, walletCreated } from "./whatsappTemplates";
+import { createNewWallet, walletCreated } from "./whatsappTemplates";
 import { parseIntentAndParams } from "./intentParser";
 import { handleAction } from "../api/actions";
 
@@ -656,10 +656,13 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       if (!value?.messages || !value.messages[0]) {
         // This is likely a status update, not a message - skip processing
         console.log("Received a status update or non-message webhook, skipping wallet creation flow");
+        console.log("Full webhook value:", JSON.stringify(value, null, 2));
         return;
       }
       
       const message = value.messages[0];
+      console.log(`[DEBUG] Message type: ${message.type}, Interactive type: ${message.interactive?.type}, Button ID: ${message.interactive?.button_reply?.id}`);
+      console.log(`[DEBUG] Full message:`, JSON.stringify(message, null, 2));
       // Check if the user clicked the 'Create Wallet' button
       if (message.type === 'interactive' && message.interactive.type === 'button_reply' && message.interactive.button_reply.id === 'create_wallets') {
         console.log(`[Wallet Creation] User ${userId} initiated wallet creation.`);
@@ -696,7 +699,36 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       } else {
         // If no wallet and not a creation request, prompt the user to create one.
         console.log(`[Wallet Check] User ${userId} has no wallet. Sending creation prompt with name: ${profileName || 'not provided'}`);
-        await sendWhatsAppTemplate(from, noWalletYet(profileName));
+        await sendWhatsAppTemplate(from, createNewWallet(profileName));
+        
+        // Automatically create wallet for the user after sending the template
+        console.log(`[Wallet Creation] Automatically creating wallet for user ${userId}`);
+        const actionResult = await handleAction("create_wallets", {}, userId);
+        
+        if (!actionResult) {
+          console.error("No action result returned from create_wallets");
+          await sendWhatsAppMessage(from, {
+            text: "I couldn't create your wallets. Please try again.",
+          });
+          return;
+        }
+
+        if ("name" in actionResult) {
+          await sendWhatsAppTemplate(from, actionResult);
+        } else if (
+          "text" in actionResult &&
+          typeof actionResult.text === "string"
+        ) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+        } else {
+          console.error(
+            "Unknown action result format from create_wallets:",
+            actionResult,
+          );
+          await sendWhatsAppMessage(from, {
+            text: "I couldn't process your wallet creation properly.",
+          });
+        }
         return; // Stop further processing
       }
     }

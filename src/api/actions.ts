@@ -1,4 +1,4 @@
-import { getOrCreateCdpWallet, createWallet, getTransaction } from "@/lib/cdp";
+import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 
 import fetch from "node-fetch";
@@ -517,15 +517,32 @@ async function handleGetWalletAddress(userId: string) {
     return { text: "Error fetching user details. Please try again." };
   }
 
-  // Get wallet using CDP, passing user details
-  const wallet = await getOrCreateCdpWallet(userId);
+  // Get EVM wallet using CDP, passing user details
+  const evmWallet = await getOrCreateCdpWallet(userId);
 
-  if (!wallet || !wallet.address) {
+  if (!evmWallet || !evmWallet.address) {
     return { text: "Error fetching wallet address. Please try again." };
   }
 
+  // Get Solana wallet if it exists
+  let solanaWallet = null;
+  try {
+    const { data: solanaWalletData } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("chain", "solana-devnet")
+      .maybeSingle();
+    
+    solanaWallet = solanaWalletData;
+  } catch (error) {
+    console.error(`[handleGetWalletAddress] Error fetching Solana wallet:`, error);
+    // Continue even if Solana wallet fetch fails
+  }
+
   return usersWalletAddresses({
-    evm_wallet: wallet.address,
+    evm_wallet: evmWallet.address,
+    solana_wallet: solanaWallet?.address
   });
 }
 
@@ -624,29 +641,69 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       return walletCheck;
     }
 
-    const { data: wallet } = await supabase
+    // Get EVM wallet
+    const { data: evmWallet } = await supabase
       .from("wallets")
       .select("address")
       .eq("user_id", userId)
+      .eq("chain", "base-sepolia")
       .single();
 
-    if (!wallet) {
+    if (!evmWallet) {
       // Return a simple message instead of the template to avoid duplication
       return { text: "You need to create a wallet first." };
     }
 
-    const address = wallet.address;
+    // Get Solana wallet if it exists
+    const { data: solanaWallet } = await supabase
+      .from("wallets")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("chain", "solana-devnet")
+      .maybeSingle();
 
-    // Fetch balances from Alchemy for both networks
+    // Fetch balances from Alchemy for both EVM networks
     const [baseBalances, ethBalances] = await Promise.all([
-      getTokenBalances(address, 'base'),
-      getTokenBalances(address, 'eth')
+      getTokenBalances(evmWallet.address, 'base'),
+      getTokenBalances(evmWallet.address, 'eth')
     ]);
 
+    // Get Solana balances if wallet exists
+    let solanaBalances = {
+      sol: '0.00',
+      usdc: '0.00'
+    };
+
+    if (solanaWallet?.address) {
+      try {
+        // Get Solana balances using CDP's getBalances function
+        const solBalances = await getBalances(solanaWallet.address, 'solana-devnet');
+        
+        // Extract SOL balance if available
+        // Ensure solBalances is treated as an array
+        const solBalancesArray = Array.isArray(solBalances) ? solBalances : [];
+        const solBalance = solBalancesArray.find((b: { asset: { symbol: string; decimals: number }; amount: string }) => 
+          b.asset.symbol === 'SOL'
+        );
+        if (solBalance) {
+          solanaBalances.sol = formatBalance(solBalance.amount, solBalance.asset.decimals);
+        }
+        
+        // For now, USDC on Solana is not implemented, so we leave it as 0.00
+        // This can be updated when USDC on Solana is supported
+      } catch (solanaError) {
+        console.error("Error getting Solana balances:", solanaError);
+        // Keep default values if there's an error
+      }
+    }
+
     return walletBalance({
-      eth_balance: formatBalance(baseBalances.eth, 18),
-      usdc_base_balance: formatBalance(baseBalances.usdc, 6),
-      cngn_balance: formatBalance(ethBalances.usdc, 6), // Using ETH USDC as CNGN placeholder
+      base_eth: formatBalance(baseBalances.eth, 18),
+      base_usdc: formatBalance(baseBalances.usdc, 6),
+      eth_eth: formatBalance(ethBalances.eth, 18),
+      eth_usdc: formatBalance(ethBalances.usdc, 6),
+      sol_sol: solanaBalances.sol,
+      sol_usdc: solanaBalances.usdc
     });
   } catch (error) {
     console.error("Error getting wallet balance:", error);

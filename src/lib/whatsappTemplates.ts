@@ -497,16 +497,22 @@ export function sendFailed({ reason }: { reason: string }) {
 /**
  * Template: wallet_balance
  * Parameter Format: POSITIONAL
- * Parameters: eth_balance, usdc_base_balance, cngn_balance
+ * Parameters: base_eth, base_usdc, eth_eth, eth_usdc, sol_sol, sol_usdc
  */
 export function walletBalance({ 
-  eth_balance, 
-  usdc_base_balance,
-  cngn_balance
+  base_eth, 
+  base_usdc,
+  eth_eth,
+  eth_usdc,
+  sol_sol,
+  sol_usdc
 }: { 
-  eth_balance: string, 
-  usdc_base_balance: string,
-  cngn_balance: string
+  base_eth: string, 
+  base_usdc: string,
+  eth_eth: string,
+  eth_usdc: string,
+  sol_sol: string,
+  sol_usdc: string
 }) {
   return {
     name: 'wallet_balance',
@@ -515,9 +521,12 @@ export function walletBalance({
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(eth_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(usdc_base_balance) },
-          { type: 'text', text: sanitizeWhatsAppParam(cngn_balance) }
+          { type: 'text', text: sanitizeWhatsAppParam(base_eth) },
+          { type: 'text', text: sanitizeWhatsAppParam(base_usdc) },
+          { type: 'text', text: sanitizeWhatsAppParam(eth_eth) },
+          { type: 'text', text: sanitizeWhatsAppParam(eth_usdc) },
+          { type: 'text', text: sanitizeWhatsAppParam(sol_sol) },
+          { type: 'text', text: sanitizeWhatsAppParam(sol_usdc) }
         ]
       }
     ]
@@ -744,16 +753,17 @@ export function walletCreated({ address }: { address: string }) {
 //   };
 // }
 
-// EVM-only wallet addresses template
-export function usersWalletAddresses({ evm_wallet }: { evm_wallet: string }) {
+// Wallet addresses template supporting both EVM and Solana
+export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet?: string }) {
   return {
     name: 'users_wallet_address',
-    language: { code: 'en' },
+    language: { code: 'en_US' },
     components: [
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) }
+          { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
+          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet || 'Not available') }
         ]
       }
     ]
