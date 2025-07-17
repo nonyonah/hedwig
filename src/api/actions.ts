@@ -602,84 +602,58 @@ async function getTestnetBalances(address: string, network: 'ethereum-sepolia' |
     console.log(`[getTestnetBalances] Fetching balances for address: ${address} on network: ${network}`);
 
     if (network === 'solana-devnet') {
-      // Handle Solana Devnet using CDP REST API
+      // Handle Solana Devnet using direct RPC calls with @solana/web3.js
       try {
-        console.log(`[getTestnetBalances] Using CDP REST API for Solana devnet balances`);
+        console.log(`[getTestnetBalances] Using direct Solana RPC for devnet balances`);
         
-        // Generate JWT token for CDP API authentication
-        const crypto = await import('crypto');
-        const timestamp = Math.floor(Date.now() / 1000).toString();
-        const jti = crypto.randomBytes(16).toString('hex');
-        const uri = `GET api.cdp.coinbase.com/platform/v2/solana/token-balances/${address}`;
+        const { Connection, PublicKey, clusterApiUrl } = await import('@solana/web3.js');
         
-        const header = {
-          alg: "HS256",
-          typ: "JWT"
-        };
+        // Create connection to Solana devnet
+        const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
         
-        const payload = {
-          iss: "cdp",
-          sub: process.env.CDP_API_KEY_ID,
-          aud: ["cdp_service"],
-          nbf: parseInt(timestamp),
-          exp: parseInt(timestamp) + 120, // 2 minutes
-          iat: parseInt(timestamp),
-          jti: jti,
-          uri: uri
-        };
+        // Create PublicKey from address string
+        const publicKey = new PublicKey(address);
         
-        const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
-        const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
-        const message = `${encodedHeader}.${encodedPayload}`;
+        // Get SOL balance (in lamports)
+        const solBalanceLamports = await connection.getBalance(publicKey);
+        console.log(`[getTestnetBalances] SOL Balance in lamports:`, solBalanceLamports);
         
-        const signature = crypto.createHmac('sha256', process.env.CDP_API_KEY_SECRET!)
-          .update(message)
-          .digest('base64url');
-        
-        const jwt = `${message}.${signature}`;
-        
-        // Make API call to CDP Solana token balances endpoint
-        const response = await fetch(`https://api.cdp.coinbase.com/platform/v2/solana/token-balances/${address}?network=solana-devnet`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${jwt}`,
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (!response.ok) {
-          throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        console.log(`[getTestnetBalances] CDP Solana Response:`, JSON.stringify(result, null, 2));
-
         // Initialize balances
-        let solBalance = '0';
+        let solBalance = solBalanceLamports.toString();
         let usdcBalance = '0';
-
-        // Parse balances from CDP response
-        if (result?.balances && Array.isArray(result.balances)) {
-          for (const balance of result.balances) {
-            if (balance.token?.symbol === 'SOL' || !balance.token) {
-              // SOL balance (native token)
-              solBalance = balance.amount?.amount || '0';
-            } else if (balance.token?.symbol === 'USDC' || 
-                      (balance.token?.mintAddress && balance.token.mintAddress === USDC_MINT_SOLANA)) {
-              // USDC balance from CDP
-              usdcBalance = balance.amount?.amount || '0';
+        
+        // Get USDC token balance if USDC mint address is available
+        if (USDC_MINT_SOLANA) {
+          try {
+            const usdcMintPublicKey = new PublicKey(USDC_MINT_SOLANA);
+            
+            // Get token accounts for this wallet
+            const tokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
+              mint: usdcMintPublicKey,
+            });
+            
+            if (tokenAccounts.value.length > 0) {
+              // Get the balance of the first USDC token account
+              const tokenAccountInfo = await connection.getTokenAccountBalance(
+                tokenAccounts.value[0].pubkey
+              );
+              usdcBalance = tokenAccountInfo.value.amount;
+              console.log(`[getTestnetBalances] USDC Balance:`, usdcBalance);
             }
+          } catch (usdcError) {
+            console.warn(`[getTestnetBalances] Could not fetch USDC balance:`, usdcError);
+            // Keep usdcBalance as '0' if there's an error
           }
         }
 
-        console.log(`[getTestnetBalances] Parsed Solana balances - SOL: ${solBalance}, USDC: ${usdcBalance}`);
+        console.log(`[getTestnetBalances] Parsed Solana balances - SOL: ${solBalance} lamports, USDC: ${usdcBalance}`);
 
         return {
           native: solBalance,
           usdc: usdcBalance,
         };
       } catch (error) {
-        console.error(`[getTestnetBalances] Error fetching Solana devnet balances via CDP:`, error);
+        console.error(`[getTestnetBalances] Error fetching Solana devnet balances via RPC:`, error);
         return { native: '0', usdc: '0' };
       }
     }
