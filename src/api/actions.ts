@@ -232,13 +232,14 @@ export async function handleAction(
         const parsed = typeof systemItem.content === 'string' ? JSON.parse(systemItem.content) : systemItem.content;
         pendingAction = parsed.pending_action;
         
-        // Clear collect_email pending action if it exists
-        if (pendingAction === 'collect_email') {
+        // Clear collect_email pending action if it exists (case-insensitive)
+        if (pendingAction && pendingAction.toLowerCase() === 'collect_email') {
           // Remove the pending action by updating the session context
           const updatedContext = { ...parsed };
           delete updatedContext.pending_action;
           await updateSession(userId, updatedContext);
           pendingAction = undefined;
+          console.log(`[handleAction] Cleared ${pendingAction} pending action for user ${userId}`);
         }
       } catch (e) { /* ignore parse errors */ }
     }
@@ -364,7 +365,10 @@ export async function handleAction(
     case "show_balance":
     case "wallet":
     case "wallet_balance":
+    case "get_wallet_balance":
+      return await handleGetWalletBalance(params, userId);
     case "instruction_deposit":
+    case "get_wallet_address":
       // For deposit instructions or wallet address requests, show the wallet address
       return await handleGetWalletAddress(userId);
     case "send":
@@ -663,7 +667,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       if (systemItem) {
         try {
           const parsed = typeof systemItem.content === 'string' ? JSON.parse(systemItem.content) : systemItem.content;
-          if (parsed.pending_action === 'collect_email') {
+          if (parsed.pending_action && parsed.pending_action.toLowerCase() === 'collect_email') {
             // Remove the pending action
             const updatedContext = { ...parsed };
             delete updatedContext.pending_action;
