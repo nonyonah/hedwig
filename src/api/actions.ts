@@ -583,11 +583,194 @@ async function handleGetWalletAddress(userId: string) {
   });
 }
 
-// Legacy Alchemy configuration (kept for fallback)
+// Alchemy API configuration for testnet balance fetching
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
 const ALCHEMY_URL_ETH = process.env.ALCHEMY_URL_ETH_SEPOLIA;
 const ALCHEMY_URL_BASE = process.env.ALCHEMY_URL_BASE_SEPOLIA;
+const ALCHEMY_URL_SOLANA = process.env.ALCHEMY_URL_SOLANA_DEVNET;
 const USDC_CONTRACT_ETH = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // Ethereum Sepolia USDC
 const USDC_CONTRACT_BASE = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
+const USDC_MINT_SOLANA = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr'; // Solana Devnet USDC mint
+
+/**
+ * Get token balances using Alchemy Token API for testnets
+ * @param address Wallet address
+ * @param network Network ('ethereum-sepolia', 'base-sepolia', or 'solana-devnet')
+ * @returns Object with native token and USDC balances
+ */
+async function getTestnetBalances(address: string, network: 'ethereum-sepolia' | 'base-sepolia' | 'solana-devnet'): Promise<{ native: string, usdc: string }> {
+  try {
+    console.log(`[getTestnetBalances] Fetching balances for address: ${address} on network: ${network}`);
+
+    if (network === 'solana-devnet') {
+      // Handle Solana Devnet using Alchemy Solana API
+      if (!ALCHEMY_URL_SOLANA) {
+        throw new Error('Alchemy Solana URL is not set. Please set ALCHEMY_URL_SOLANA_DEVNET in your environment.');
+      }
+
+      try {
+        // Get SOL balance using Alchemy's getBalance endpoint
+        const solBalanceResponse = await fetch(ALCHEMY_URL_SOLANA, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: 1,
+            jsonrpc: '2.0',
+            method: 'getBalance',
+            params: [address]
+          }),
+        });
+
+        // Get USDC token balance using getTokenAccountsByOwner
+        const usdcBalanceResponse = await fetch(ALCHEMY_URL_SOLANA, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: 2,
+            jsonrpc: '2.0',
+            method: 'getTokenAccountsByOwner',
+            params: [
+              address,
+              {
+                mint: USDC_MINT_SOLANA
+              },
+              {
+                encoding: 'jsonParsed'
+              }
+            ]
+          }),
+        });
+
+        const [solData, usdcData] = await Promise.all([
+          solBalanceResponse.json(),
+          usdcBalanceResponse.json()
+        ]);
+
+        console.log(`[getTestnetBalances] Alchemy Solana SOL Response:`, JSON.stringify(solData, null, 2));
+        console.log(`[getTestnetBalances] Alchemy Solana USDC Response:`, JSON.stringify(usdcData, null, 2));
+
+        // Check for API errors
+        if (solData.error) {
+          console.error(`[getTestnetBalances] Alchemy Solana SOL API Error:`, solData.error);
+          throw new Error(`Alchemy Solana SOL API error: ${solData.error.message}`);
+        }
+        
+        if (usdcData.error) {
+          console.error(`[getTestnetBalances] Alchemy Solana USDC API Error:`, usdcData.error);
+          throw new Error(`Alchemy Solana USDC API error: ${usdcData.error.message}`);
+        }
+
+        // Parse SOL balance (in lamports, convert to SOL)
+        const solBalance = solData.result?.value ? solData.result.value.toString() : '0';
+        
+        // Parse USDC balance from token accounts
+        let usdcBalance = '0';
+        if (usdcData.result?.value && Array.isArray(usdcData.result.value) && usdcData.result.value.length > 0) {
+          const tokenAccount = usdcData.result.value[0];
+          if (tokenAccount?.account?.data?.parsed?.info?.tokenAmount?.amount) {
+            usdcBalance = tokenAccount.account.data.parsed.info.tokenAmount.amount;
+          }
+        }
+
+        console.log(`[getTestnetBalances] Parsed Solana balances - SOL: ${solBalance}, USDC: ${usdcBalance}`);
+
+        return {
+          native: solBalance,
+          usdc: usdcBalance,
+        };
+      } catch (error) {
+        console.error(`[getTestnetBalances] Error fetching Solana devnet balances:`, error);
+        return { native: '0', usdc: '0' };
+      }
+    }
+
+    // Handle EVM testnets using Alchemy Token API
+    const alchemyUrl = network === 'ethereum-sepolia' ? ALCHEMY_URL_ETH : ALCHEMY_URL_BASE;
+    const usdcContract = network === 'ethereum-sepolia' ? USDC_CONTRACT_ETH : USDC_CONTRACT_BASE;
+    
+    if (!alchemyUrl) {
+      throw new Error(`Alchemy URL for ${network} is not set. Please set ALCHEMY_URL_${network.toUpperCase().replace('-', '_')} in your environment.`);
+    }
+
+    // Get token balances using Alchemy's getTokenBalances endpoint
+    const tokenBalancesResponse = await fetch(`${alchemyUrl}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenBalances',
+        params: [
+          address,
+          [usdcContract] // Get USDC balance
+        ]
+      }),
+    });
+
+    // Get native token balance (ETH)
+    const nativeBalanceResponse = await fetch(`${alchemyUrl}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 2,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      }),
+    });
+
+    const [tokenData, nativeData] = await Promise.all([
+      tokenBalancesResponse.json(),
+      nativeBalanceResponse.json()
+    ]);
+
+    console.log(`[getTestnetBalances] Alchemy Token Response for ${network}:`, JSON.stringify(tokenData, null, 2));
+    console.log(`[getTestnetBalances] Alchemy Native Response for ${network}:`, JSON.stringify(nativeData, null, 2));
+
+    // Check for API errors
+    if (tokenData.error) {
+      console.error(`[getTestnetBalances] Alchemy Token API Error for ${network}:`, tokenData.error);
+      throw new Error(`Alchemy Token API error: ${tokenData.error.message}`);
+    }
+    
+    if (nativeData.error) {
+      console.error(`[getTestnetBalances] Alchemy Native API Error for ${network}:`, nativeData.error);
+      throw new Error(`Alchemy Native API error: ${nativeData.error.message}`);
+    }
+
+    // Parse native balance (ETH)
+    const nativeBalance = BigInt(nativeData.result && nativeData.result !== '0x' ? nativeData.result : '0x0').toString();
+    
+    // Parse USDC balance
+    let usdcBalance = '0';
+    if (tokenData.result && tokenData.result.tokenBalances && tokenData.result.tokenBalances.length > 0) {
+      const usdcTokenBalance = tokenData.result.tokenBalances[0];
+      if (usdcTokenBalance && usdcTokenBalance.tokenBalance && usdcTokenBalance.tokenBalance !== '0x') {
+        usdcBalance = BigInt(usdcTokenBalance.tokenBalance).toString();
+      }
+    }
+
+    console.log(`[getTestnetBalances] Parsed balances for ${network} - Native: ${nativeBalance}, USDC: ${usdcBalance}`);
+
+    return {
+      native: nativeBalance,
+      usdc: usdcBalance,
+    };
+
+  } catch (error) {
+    console.error(`[getTestnetBalances] Error fetching balances for ${network}:`, error);
+    // Return zero balances on failure to prevent crashes
+    return { native: '0', usdc: '0' };
+  }
+}
 
 /**
  * Legacy function to get token balances using Alchemy (fallback)
@@ -755,50 +938,28 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // Fetch EVM balances if wallet exists
     if (evmWallet?.address) {
       try {
-        console.log(`[handleGetWalletBalance] Fetching EVM balances for ${evmWallet.address}`);
+        console.log(`[handleGetWalletBalance] Fetching EVM testnet balances for ${evmWallet.address}`);
         
-        // Use CDP getBalances function for mainnet networks
+        // Use Alchemy Token API for testnet networks
         const [baseBalanceData, ethBalanceData] = await Promise.all([
-          getBalances(evmWallet.address, 'base').catch(error => {
-            console.warn(`[handleGetWalletBalance] CDP Base mainnet failed, trying fallback:`, error);
-            return getTokenBalances(evmWallet.address, 'base');
-          }),
-          getBalances(evmWallet.address, 'ethereum').catch(error => {
-            console.warn(`[handleGetWalletBalance] CDP Ethereum mainnet failed, trying fallback:`, error);
-            return getTokenBalances(evmWallet.address, 'eth');
-          })
+          getTestnetBalances(evmWallet.address, 'base-sepolia'),
+          getTestnetBalances(evmWallet.address, 'ethereum-sepolia')
         ]);
         
-        // Process CDP balance data
-        if (Array.isArray(baseBalanceData)) {
-          for (const balance of baseBalanceData) {
-            if (balance.asset?.symbol === 'ETH') {
-              baseBalances.eth = balance.amount || '0';
-            } else if (balance.asset?.symbol === 'USDC') {
-              baseBalances.usdc = balance.amount || '0';
-            }
-          }
-        } else if (baseBalanceData && typeof baseBalanceData === 'object') {
-          // Fallback format from getTokenBalances
-          baseBalances = baseBalanceData as { eth: string, usdc: string };
-        }
+        // Update balance objects with testnet data
+        baseBalances = {
+          eth: baseBalanceData.native,
+          usdc: baseBalanceData.usdc
+        };
         
-        if (Array.isArray(ethBalanceData)) {
-          for (const balance of ethBalanceData) {
-            if (balance.asset?.symbol === 'ETH') {
-              ethBalances.eth = balance.amount || '0';
-            } else if (balance.asset?.symbol === 'USDC') {
-              ethBalances.usdc = balance.amount || '0';
-            }
-          }
-        } else if (ethBalanceData && typeof ethBalanceData === 'object') {
-          // Fallback format from getTokenBalances
-          ethBalances = ethBalanceData as { eth: string, usdc: string };
-        }
+        ethBalances = {
+          eth: ethBalanceData.native,
+          usdc: ethBalanceData.usdc
+        };
         
-        console.log(`[handleGetWalletBalance] EVM balances fetched - Base: ${JSON.stringify(baseBalances)}, Eth: ${JSON.stringify(ethBalances)}`);
+        console.log(`[handleGetWalletBalance] EVM testnet balances fetched - Base Sepolia: ${JSON.stringify(baseBalances)}, Ethereum Sepolia: ${JSON.stringify(ethBalances)}`);
       } catch (error) {
-        console.error(`[handleGetWalletBalance] Error fetching EVM balances:`, error);
+        console.error(`[handleGetWalletBalance] Error fetching EVM testnet balances:`, error);
         // Keep default zero values
       }
     }
@@ -806,28 +967,20 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // Fetch Solana balances if wallet exists
     if (solanaWallet?.address) {
       try {
-        console.log(`[handleGetWalletBalance] Fetching Solana balances for ${solanaWallet.address}`);
+        console.log(`[handleGetWalletBalance] Fetching Solana devnet balances for ${solanaWallet.address}`);
         
-        // Use CDP getBalances function for Solana mainnet
-        const solanaBalanceData = await getBalances(solanaWallet.address, 'solana').catch(error => {
-          console.warn(`[handleGetWalletBalance] CDP Solana mainnet failed, trying devnet:`, error);
-          return getBalances(solanaWallet.address, 'solana-devnet');
-        });
+        // Use getTestnetBalances for Solana devnet
+        const solanaBalanceData = await getTestnetBalances(solanaWallet.address, 'solana-devnet');
         
-        // Process Solana balance data
-        if (Array.isArray(solanaBalanceData)) {
-          for (const balance of solanaBalanceData) {
-            if (balance.asset?.symbol === 'SOL') {
-              solanaBalances.sol = balance.amount || '0';
-            } else if (balance.asset?.symbol === 'USDC') {
-              solanaBalances.usdc = balance.amount || '0';
-            }
-          }
-        }
+        // Update balance object with devnet data
+        solanaBalances = {
+          sol: solanaBalanceData.native,
+          usdc: solanaBalanceData.usdc
+        };
         
-        console.log(`[handleGetWalletBalance] Solana balances fetched:`, JSON.stringify(solanaBalances));
+        console.log(`[handleGetWalletBalance] Solana devnet balances fetched:`, JSON.stringify(solanaBalances));
       } catch (error) {
-        console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, error);
+        console.error(`[handleGetWalletBalance] Error fetching Solana devnet balances:`, error);
         // Keep default zero values
       }
     }
@@ -852,10 +1005,24 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
 }
 
 // Helper to get ETH and USDC balance as a string for swap success
-async function getWalletBalanceString(address: string): Promise<string> {
+async function getWalletBalanceString(userId: string): Promise<string> {
   try {
-    const baseBalances = await getTokenBalances(address, 'base');
-    return `ETH: ${formatBalance(baseBalances.eth, 18)}, USDC: ${formatBalance(baseBalances.usdc, 6)}`;
+    // Get user's EVM wallet
+    const { data: evmWallets } = await supabase
+      .from("wallets")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("chain", "evm");
+
+    const evmWallet = evmWallets && evmWallets.length > 0 ? evmWallets[0] : null;
+    
+    if (!evmWallet?.address) {
+      return 'ETH: ?, USDC: ?';
+    }
+
+    // Get Base Sepolia testnet balances
+    const baseBalances = await getTestnetBalances(evmWallet.address, 'base-sepolia');
+    return `ETH: ${formatBalance(baseBalances.native, 18)}, USDC: ${formatBalance(baseBalances.usdc, 6)}`;
   } catch (error) {
     console.error('Error in getWalletBalanceString:', error);
     return 'ETH: ?, USDC: ?';
@@ -1250,15 +1417,55 @@ async function handleCryptoDeposit(params: ActionParams, userId: string) {
   }
 }
 
-// Handler for getting a swap quote using 0x API and CDP wallet
+// Generate JWT for CDP API authentication
+async function generateCDPJWT(method: string, path: string, body?: string): Promise<string> {
+  const apiKeyId = process.env.CDP_API_KEY_ID;
+  const apiKeySecret = process.env.CDP_API_KEY_SECRET;
+  
+  if (!apiKeyId || !apiKeySecret) {
+    throw new Error('CDP API credentials not configured');
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: apiKeyId,
+    iat: timestamp,
+    exp: timestamp + 300, // 5 minutes
+    aud: 'cdp',
+    sub: apiKeyId,
+    method: method,
+    path: path,
+    body: body || ''
+  };
+
+  // Create JWT header
+  const header = {
+    alg: 'ES256',
+    typ: 'JWT',
+    kid: apiKeyId
+  };
+
+  // Encode header and payload
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  
+  // Create signature using the API key secret
+  const crypto = require('crypto');
+  const sign = crypto.createSign('SHA256');
+  sign.update(`${encodedHeader}.${encodedPayload}`);
+  const signature = sign.sign(apiKeySecret, 'base64url');
+  
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+// Handler for getting a swap quote using CDP Swap API
 async function handleSwapQuote(params: ActionParams, userId: string) {
   try {
     console.log(`[Swap] Getting swap quote for user ${userId}, params:`, params);
 
     // Get wallet address
-    const wallet = await getOrCreateCdpWallet(userId);
+    const wallet = await getOrCreateCdpWallet(userId, 'base-sepolia');
     if (!wallet || !wallet.address) {
-      // Return a simple message instead of the template to avoid duplication
       return { text: "You need to create a wallet first." };
     }
 
@@ -1283,7 +1490,9 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     }
 
     const amount = params.amount || '1';
-    const chainId = 8453; // Base Sepolia
+    const network = 'base-sepolia'; // Using testnet
+    
+    // Token addresses for Base Sepolia testnet
     const USDC_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
     const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
     const fromTokenAddress = fromToken === 'USDC' ? USDC_ADDRESS : ETH_ADDRESS;
@@ -1291,28 +1500,74 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     const decimals = fromToken === 'USDC' ? 6 : 18;
     const formattedAmount = (Number(amount) * 10 ** decimals).toString();
 
-    // Fetch quote from 0x API
-    const apiKey = process.env.API_KEY_0X;
-    const quoteUrl = `https://api.0x.org/swap/permit2/quote?chainId=${chainId}&sellToken=${fromTokenAddress}&buyToken=${toTokenAddress}&sellAmount=${formattedAmount}&taker=${wallet.address}`;
-    const quoteResponse = await fetch(quoteUrl, {
+    // First get price estimate from CDP API
+    const priceEstimateUrl = `https://api.cdp.coinbase.com/v2/swaps/price-estimate`;
+    const priceEstimateBody = {
+      network: network,
+      from_token: fromTokenAddress,
+      to_token: toTokenAddress,
+      from_amount: formattedAmount,
+      taker: wallet.address
+    };
+
+    console.log('[Swap] Getting price estimate:', priceEstimateBody);
+
+    const priceResponse = await fetch(priceEstimateUrl, {
+      method: 'POST',
       headers: {
-        '0x-api-key': apiKey ?? '',
-        '0x-version': 'v2',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${await generateCDPJWT('POST', '/v2/swaps/price-estimate', JSON.stringify(priceEstimateBody))}`,
       },
+      body: JSON.stringify(priceEstimateBody),
     });
+
+    if (!priceResponse.ok) {
+      const errorText = await priceResponse.text();
+      console.error('[handleSwapQuote] CDP price estimate error:', errorText);
+      return { text: 'Failed to get price estimate from CDP. Please try again later.' };
+    }
+
+    const priceData = await priceResponse.json();
+    console.log("[Swap] CDP Price Estimate Response:", JSON.stringify(priceData, null, 2));
+
+    if (!priceData.to_amount || !priceData.from_amount) {
+      console.error('[Swap] Invalid price estimate response from CDP', priceData);
+      return { text: 'Could not fetch a valid price estimate. There might be an issue with the trading pair or liquidity.' };
+    }
+
+    // Create swap quote from CDP API
+    const swapQuoteUrl = `https://api.cdp.coinbase.com/v2/swaps/quote`;
+    const swapQuoteBody = {
+      network: network,
+      from_token: fromTokenAddress,
+      to_token: toTokenAddress,
+      from_amount: formattedAmount,
+      taker: wallet.address
+    };
+
+    console.log('[Swap] Creating swap quote:', swapQuoteBody);
+
+    const quoteResponse = await fetch(swapQuoteUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${await generateCDPJWT('POST', '/v2/swaps/quote', JSON.stringify(swapQuoteBody))}`,
+      },
+      body: JSON.stringify(swapQuoteBody),
+    });
+
     if (!quoteResponse.ok) {
       const errorText = await quoteResponse.text();
-      console.error('[handleSwapQuote] 0x API error:', errorText);
-      return { text: 'Failed to get swap quote from 0x.' };
+      console.error('[handleSwapQuote] CDP swap quote error:', errorText);
+      return { text: 'Failed to create swap quote from CDP. Please try again later.' };
     }
+
     const quoteData = await quoteResponse.json();
+    console.log("[Swap] CDP Swap Quote Response:", JSON.stringify(quoteData, null, 2));
 
-    console.log("[Swap] 0x Quote Response:", JSON.stringify(quoteData, null, 2));
-
-    if (!quoteData.buyAmount || !quoteData.sellAmount) {
-      console.error('[Swap] Invalid quote response from 0x', quoteData);
-      const errorMessage = quoteData.validationErrors?.[0]?.description || 'Could not fetch a valid swap quote. There might be an issue with the trading pair or liquidity.';
-      return { text: errorMessage };
+    if (!quoteData.to_amount || !quoteData.from_amount) {
+      console.error('[Swap] Invalid swap quote response from CDP', quoteData);
+      return { text: 'Could not create a valid swap quote. Please try again later.' };
     }
 
     // Save quote info in session for use in swapProcess
@@ -1335,10 +1590,12 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
     // Format output amount and fee
     const fromTokenDecimals = fromToken === 'USDC' ? 6 : 18;
     const toTokenDecimals = toToken === 'USDC' ? 6 : 18;
-    const fromAmountFmt = formatUnits(BigInt(quoteData.sellAmount), fromTokenDecimals);
-    const toAmountFmt = formatUnits(BigInt(quoteData.buyAmount), toTokenDecimals);
-    const gasFee = quoteData.estimatedGas ? formatUnits(BigInt(quoteData.estimatedGas), 18) : '0';
-    const gasFeeFormatted = parseFloat(gasFee).toFixed(8);
+    const fromAmountFmt = formatUnits(BigInt(quoteData.from_amount), fromTokenDecimals);
+    const toAmountFmt = formatUnits(BigInt(quoteData.to_amount), toTokenDecimals);
+    
+    // Estimate gas fee (CDP provides gas estimate in the quote)
+    const gasFee = quoteData.gas_estimate ? formatUnits(BigInt(quoteData.gas_estimate), 18) : '0.001';
+    const gasFeeFormatted = parseFloat(gasFee).toFixed(6);
 
     // Send swapPrompt via WhatsApp with all quote details
     if (phoneNumber) {
@@ -1346,11 +1603,11 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
         from_amount: `${parseFloat(fromAmountFmt).toFixed(4)} ${fromToken}`,
         to_amount: `${parseFloat(toAmountFmt).toFixed(4)} ${toToken}`,
         fee: `${gasFeeFormatted} ETH`,
-        chain: 'Base',
-        est_time: '10s',
+        chain: 'Base Sepolia',
+        est_time: '30s',
       }));
     }
-    // Optionally, return a confirmation object or nothing
+
     return { text: "Swap quote sent. Please check WhatsApp for details and confirmation." };
   } catch (error) {
     console.error("[Swap] Error getting swap quote:", error);
@@ -1358,22 +1615,35 @@ async function handleSwapQuote(params: ActionParams, userId: string) {
   }
 }
 
-// Handler for processing a swap using CDP wallet and 0x
+// Handler for processing a swap using CDP Swap API
 async function handleSwapProcess(params: ActionParams, userId: string) {
   try {
     console.log(`[Swap] Processing swap for user ${userId}`);
+    
     // Get wallet address
-    const wallet = await getOrCreateCdpWallet(userId);
+    const wallet = await getOrCreateCdpWallet(userId, 'base-sepolia');
     if (!wallet || !wallet.address) {
-      // Return a simple message instead of the template to avoid duplication
       return { text: "You need to create a wallet first." };
     }
+
+    // Ensure we have a valid phone number for WhatsApp
+    let phoneNumber = params.phoneNumber;
+    if (!phoneNumber) {
+      const { data: user } = await supabase
+        .from("users")
+        .select("phone_number")
+        .eq("id", userId)
+        .single();
+      phoneNumber = user?.phone_number || '';
+    }
+
     // Get last swap quote from session
     const { data: session } = await supabase
       .from('sessions')
       .select('context')
       .eq('user_id', userId)
       .single();
+      
     let lastSwapQuote = null;
     let lastSwapParams = null;
     if (session?.context) {
@@ -1384,14 +1654,87 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
         lastSwapParams = content.lastSwapParams;
       }
     }
+    
     if (!lastSwapQuote) {
       return { text: "No swap quote found to process. Please request a new quote." };
     }
-    // For CDP wallets, we need to use a different approach for swaps
-    // This is a simplified implementation - in production you'd want to use CDP's swap functionality
-    return {
-      text: `Swap functionality is being updated for CDP wallets. Please try again later or contact support for assistance with swapping ${lastSwapParams?.amount} ${lastSwapParams?.fromToken} to ${lastSwapParams?.toToken}.`
-    };
+
+    // Send processing notification
+    if (phoneNumber) {
+      await sendWhatsAppTemplate(phoneNumber, swapProcessing());
+    }
+
+    try {
+      // Execute the swap using CDP Wallet API
+      const swapUrl = `https://api.cdp.coinbase.com/v2/wallets/${wallet.address}/swaps`;
+      const swapBody = {
+        quote_id: lastSwapQuote.quote_id || lastSwapQuote.id,
+        network: 'base-sepolia'
+      };
+
+      console.log('[Swap] Executing swap:', swapBody);
+
+      const swapResponse = await fetch(swapUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await generateCDPJWT('POST', `/v2/wallets/${wallet.address}/swaps`, JSON.stringify(swapBody))}`,
+        },
+        body: JSON.stringify(swapBody),
+      });
+
+      if (!swapResponse.ok) {
+        const errorText = await swapResponse.text();
+        console.error('[handleSwapProcess] CDP swap execution error:', errorText);
+        
+        if (phoneNumber) {
+          await sendWhatsAppTemplate(phoneNumber, swapFailed({ 
+            reason: 'Failed to execute swap. Please try again later.' 
+          }));
+        }
+        return { text: 'Failed to execute swap. Please try again later.' };
+      }
+
+      const swapResult = await swapResponse.json();
+      console.log("[Swap] CDP Swap Execution Response:", JSON.stringify(swapResult, null, 2));
+
+      // Get transaction hash from the result
+      const txHash = swapResult.transaction_hash || swapResult.hash;
+      
+      if (txHash) {
+        // Send success notification
+        if (phoneNumber) {
+          const fromToken = lastSwapParams?.fromToken || 'USDC';
+          const toToken = lastSwapParams?.toToken || 'ETH';
+          const amount = lastSwapParams?.amount || '1';
+          
+          await sendWhatsAppTemplate(phoneNumber, swapSuccessful({
+            success_message: `Successfully swapped ${amount} ${fromToken} to ${toToken}`,
+            wallet_balance: await getWalletBalanceString(userId),
+            tx_hash: txHash
+          }));
+        }
+
+        return { 
+          text: `Swap completed successfully! Transaction hash: ${txHash}. Check WhatsApp for details.` 
+        };
+      } else {
+        console.error('[Swap] No transaction hash in swap result:', swapResult);
+        return { text: 'Swap initiated but transaction hash not available. Please check your wallet.' };
+      }
+
+    } catch (swapError) {
+      console.error('[Swap] Error executing swap:', swapError);
+      
+      if (phoneNumber) {
+        await sendWhatsAppTemplate(phoneNumber, swapFailed({ 
+          reason: 'Swap execution failed. Please try again later.' 
+        }));
+      }
+      
+      return { text: 'Failed to execute swap. Please try again later.' };
+    }
+
   } catch (error) {
     console.error("[Swap] Error processing swap:", error);
     return { text: "Failed to process swap. Please try again later." };
