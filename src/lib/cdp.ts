@@ -110,6 +110,26 @@ export function formatNetworkName(chain: string): string {
  */
 export async function createWallet(userId: string, network: string = 'base-sepolia') {
   try {
+    // First check if a wallet already exists for this user and chain
+    const chain = network.includes('solana') ? 'solana' : 'evm';
+    const { data: existingWallets } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('chain', chain);
+    
+    // If wallet already exists, return the first one
+    if (existingWallets && existingWallets.length > 0) {
+      console.log(`[CDP] Wallet already exists for user ${userId} on chain ${chain}. Returning existing wallet.`);
+      
+      // Log warning if multiple wallets found
+      if (existingWallets.length > 1) {
+        console.warn(`[CDP] Multiple wallets found for user ${userId} on chain ${chain}. Using the first one.`);
+      }
+      
+      return existingWallets[0];
+    }
+    
     // Fetch user details to get a unique name for the account
     const { data: user, error: userError } = await supabase
       .from('users')
@@ -168,25 +188,58 @@ export async function createWallet(userId: string, network: string = 'base-sepol
     
     console.log(`[CDP] Created wallet with address ${account.address}`);
     
-    // Store wallet in database
-    const { data: wallet, error } = await supabase
-      .from('wallets')
-      .insert({
-        user_id: userId,
-        address: account.address,
-        cdp_wallet_id: account.address, // Use address as identifier since CDP manages the account
-        chain: network.includes('solana') ? 'solana' : 'evm',
-        // No need to store wallet_secret separately as it's managed by CDP
-      })
-      .select()
-      .single();
-    
-    if (error) {
-      console.error(`[CDP] Failed to store wallet in database:`, error);
-      throw error;
+    try {
+      // Store wallet in database
+      const { data: wallet, error } = await supabase
+        .from('wallets')
+        .insert({
+          user_id: userId,
+          address: account.address,
+          cdp_wallet_id: account.address, // Use address as identifier since CDP manages the account
+          chain: chain,
+          // No need to store wallet_secret separately as it's managed by CDP
+        })
+        .select();
+      
+      if (error) {
+        console.error(`[CDP] Failed to store wallet in database:`, error);
+        
+        // If error is due to unique constraint, try to fetch the existing wallet
+        if (typeof error === 'object' && 'code' in error && error.code === '23505' && 
+            'message' in error && typeof error.message === 'string' && error.message.includes('wallets_user_id_chain_key')) {
+          console.log(`[CDP] Wallet already exists for user ${userId} on chain ${chain}. Fetching existing wallet.`);
+          const { data: existingWallet } = await supabase
+            .from('wallets')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('chain', chain);
+          
+          if (existingWallet && existingWallet.length > 0) {
+            return existingWallet[0];
+          }
+        }
+        
+        throw error;
+      }
+      
+      return Array.isArray(wallet) ? wallet[0] : wallet;
+    } catch (dbError) {
+      console.error(`[CDP] Database error when storing wallet:`, dbError);
+      
+      // If we can't store the wallet, check if one already exists (race condition)
+      const { data: existingWallet } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('chain', chain);
+      
+      if (existingWallet && existingWallet.length > 0) {
+        console.log(`[CDP] Found existing wallet after creation failure. Using that instead.`);
+        return existingWallet[0];
+      }
+      
+      throw dbError;
     }
-    
-    return wallet;
   } catch (error) {
     console.error(`[CDP] Failed to create wallet:`, error);
     throw error;
@@ -203,12 +256,15 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
   try {
     console.log(`[CDP] Getting or creating wallet for user ${userId} on network ${network}`);
     
-    // Check if user already has a wallet on this network
+    // Determine the chain type based on the network
+    const chain = network.includes('solana') ? 'solana' : 'evm';
+    
+    // Check if user already has a wallet on this chain
     const { data: wallets, error: walletError } = await supabase
       .from('wallets')
       .select('*')
       .eq('user_id', userId)
-      .eq('chain', network);
+      .eq('chain', chain);
       
     // If multiple wallets found, use the first one
     const existingWallet = wallets && wallets.length > 0 ? wallets[0] : null;
@@ -218,7 +274,7 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
       
       // If there are multiple wallets, log a warning
       if (wallets && wallets.length > 1) {
-        console.warn(`[CDP] Multiple wallets found for user ${userId} on network ${network}. Using the first one.`);
+        console.warn(`[CDP] Multiple wallets found for user ${userId} on chain ${chain}. Using the first one.`);
       }
       
       return existingWallet;
@@ -229,8 +285,27 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
     // Create new wallet using CDP
     const newWallet = await createWallet(userId, network);
     return newWallet;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[CDP] Failed to get or create wallet:`, error);
+    
+    // If the error is related to a unique constraint violation, try to fetch the existing wallet
+    if (error && typeof error === 'object' && 'code' in error && error.code === '23505' && 
+        'message' in error && typeof error.message === 'string' && error.message.includes('wallets_user_id_chain_key')) {
+      console.log(`[CDP] Wallet creation failed due to unique constraint. Attempting to fetch existing wallet.`);
+      const chain = network.includes('solana') ? 'solana' : 'evm';
+      
+      const { data: existingWallet } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('chain', chain);
+      
+      if (existingWallet && existingWallet.length > 0) {
+        console.log(`[CDP] Found existing wallet after creation failure. Using that instead.`);
+        return existingWallet[0];
+      }
+    }
+    
     throw error;
   }
 }
