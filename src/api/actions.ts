@@ -231,6 +231,15 @@ export async function handleAction(
       try {
         const parsed = typeof systemItem.content === 'string' ? JSON.parse(systemItem.content) : systemItem.content;
         pendingAction = parsed.pending_action;
+        
+        // Clear collect_email pending action if it exists
+        if (pendingAction === 'collect_email') {
+          // Remove the pending action by updating the session context
+          const updatedContext = { ...parsed };
+          delete updatedContext.pending_action;
+          await updateSession(userId, updatedContext);
+          pendingAction = undefined;
+        }
       } catch (e) { /* ignore parse errors */ }
     }
   }
@@ -642,9 +651,27 @@ async function getTokenBalances(address: string, network: 'eth' | 'base'): Promi
  */
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    const walletCheck = await verifyWalletExists(userId);
-    if (walletCheck) {
-      return walletCheck;
+    // Clear any pending actions in the session context
+    const { data: session } = await supabase
+      .from('sessions')
+      .select('context')
+      .eq('user_id', userId)
+      .single();
+
+    if (session?.context && Array.isArray(session.context)) {
+      const systemItem = session.context.find((item: any) => item.role === 'system' && item.content);
+      if (systemItem) {
+        try {
+          const parsed = typeof systemItem.content === 'string' ? JSON.parse(systemItem.content) : systemItem.content;
+          if (parsed.pending_action === 'collect_email') {
+            // Remove the pending action
+            const updatedContext = { ...parsed };
+            delete updatedContext.pending_action;
+            await updateSession(userId, updatedContext);
+            console.log(`[handleGetWalletBalance] Cleared collect_email pending action for user ${userId}`);
+          }
+        } catch (e) { /* ignore parse errors */ }
+      }
     }
 
     // Get EVM wallet

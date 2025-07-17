@@ -757,13 +757,13 @@ export function walletCreated({ address }: { address: string }) {
 export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet: string, solana_wallet?: string }) {
   return {
     name: 'users_wallet_address',
-    language: { code: 'en_US' },
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(evm_wallet) },
-          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet || 'Not available') }
+          { type: 'text', text: sanitizeWhatsAppParam(solana_wallet || '?') }
         ]
       }
     ]
