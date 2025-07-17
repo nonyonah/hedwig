@@ -583,13 +583,161 @@ async function handleGetWalletAddress(userId: string) {
   });
 }
 
+// CDP API configuration
+const CDP_API_URL = 'https://api.cdp.coinbase.com/v2';
+const CDP_API_KEY_ID = process.env.CDP_API_KEY_ID;
+const CDP_API_KEY_SECRET = process.env.CDP_API_KEY_SECRET;
+
+// Legacy Alchemy configuration (kept for fallback)
 const ALCHEMY_URL_ETH = process.env.ALCHEMY_URL_ETH_SEPOLIA;
 const ALCHEMY_URL_BASE = process.env.ALCHEMY_URL_BASE_SEPOLIA;
-
 const USDC_CONTRACT_ETH = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // Ethereum Sepolia USDC
 const USDC_CONTRACT_BASE = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
 
-async function getTokenBalances(address: string, network: 'eth' | 'base'): Promise<{ eth: string, usdc: string }> {
+/**
+ * Generate JWT token for CDP API authentication
+ */
+async function generateCDPJWT(method: string, path: string, body?: any): Promise<string> {
+  const crypto = await import('crypto');
+  
+  if (!CDP_API_KEY_ID || !CDP_API_KEY_SECRET) {
+    throw new Error('CDP API credentials not configured');
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const nonce = crypto.randomBytes(16).toString('hex');
+  
+  // Create the message to sign
+  const message = `${timestamp}${nonce}${method}${path}${body ? JSON.stringify(body) : ''}`;
+  
+  // Sign the message
+  const signature = crypto.createHmac('sha256', CDP_API_KEY_SECRET).update(message).digest('hex');
+  
+  // Create JWT payload
+  const payload = {
+    iss: CDP_API_KEY_ID,
+    nbf: timestamp,
+    exp: timestamp + 120, // 2 minutes
+    sub: CDP_API_KEY_ID,
+    uri: method + ' ' + path,
+    nonce: nonce
+  };
+  
+  // Create JWT header
+  const header = {
+    alg: 'HS256',
+    typ: 'JWT',
+    kid: CDP_API_KEY_ID
+  };
+  
+  // Encode JWT
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const encodedSignature = Buffer.from(signature, 'hex').toString('base64url');
+  
+  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+}
+
+/**
+ * Fetch EVM token balances using CDP API
+ */
+async function getCDPEVMBalances(address: string, network: string): Promise<{ eth: string, usdc: string }> {
+  try {
+    console.log(`[getCDPEVMBalances] Fetching balances for address: ${address} on network: ${network}`);
+    
+    const path = `/accounts/${address}/balances`;
+    const method = 'GET';
+    const jwt = await generateCDPJWT(method, path);
+    
+    const response = await fetch(`${CDP_API_URL}${path}?network=${network}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${jwt}`,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('CDP EVM Response:', JSON.stringify(data, null, 2));
+    
+    // Extract ETH and USDC balances
+    let ethBalance = '0';
+    let usdcBalance = '0';
+    
+    if (data.data && Array.isArray(data.data)) {
+      for (const balance of data.data) {
+        if (balance.asset && balance.asset.symbol === 'ETH') {
+          ethBalance = balance.amount || '0';
+        } else if (balance.asset && balance.asset.symbol === 'USDC') {
+          usdcBalance = balance.amount || '0';
+        }
+      }
+    }
+    
+    return { eth: ethBalance, usdc: usdcBalance };
+  } catch (error) {
+    console.error('Error fetching CDP EVM balances:', error);
+    // Fallback to legacy Alchemy method
+    return getLegacyTokenBalances(address, network as 'eth' | 'base');
+  }
+}
+
+/**
+ * Fetch Solana token balances using CDP API
+ */
+async function getCDPSolanaBalances(address: string): Promise<{ sol: string, usdc: string }> {
+  try {
+    console.log(`[getCDPSolanaBalances] Fetching balances for address: ${address}`);
+    
+    const path = `/accounts/${address}/balances`;
+    const method = 'GET';
+    const jwt = await generateCDPJWT(method, path);
+    
+    const response = await fetch(`${CDP_API_URL}${path}?network=solana-devnet`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${jwt}`,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('CDP Solana Response:', JSON.stringify(data, null, 2));
+    
+    // Extract SOL and USDC balances
+    let solBalance = '0';
+    let usdcBalance = '0';
+    
+    if (data.data && Array.isArray(data.data)) {
+      for (const balance of data.data) {
+        if (balance.asset && balance.asset.symbol === 'SOL') {
+          solBalance = balance.amount || '0';
+        } else if (balance.asset && balance.asset.symbol === 'USDC') {
+          usdcBalance = balance.amount || '0';
+        }
+      }
+    }
+    
+    return { sol: solBalance, usdc: usdcBalance };
+  } catch (error) {
+    console.error('Error fetching CDP Solana balances:', error);
+    // Return zero balances on failure
+    return { sol: '0', usdc: '0' };
+  }
+}
+
+/**
+ * Legacy function to get token balances using Alchemy (fallback)
+ */
+async function getLegacyTokenBalances(address: string, network: 'eth' | 'base'): Promise<{ eth: string, usdc: string }> {
   const url = network === 'eth' ? ALCHEMY_URL_ETH : ALCHEMY_URL_BASE;
   const usdcContract = network === 'eth' ? USDC_CONTRACT_ETH : USDC_CONTRACT_BASE;
 
@@ -597,7 +745,7 @@ async function getTokenBalances(address: string, network: 'eth' | 'base'): Promi
     throw new Error(`Alchemy URL for ${network} is not set. Please set the respective environment variables.`);
   }
 
-  console.log(`[getTokenBalances] Fetching balances for address: ${address} on network: ${network}`);
+  console.log(`[getLegacyTokenBalances] Fetching balances for address: ${address} on network: ${network}`);
 
   // Create payload for eth_getBalance
   const ethBalancePayload = {
@@ -664,15 +812,31 @@ async function getTokenBalances(address: string, network: 'eth' | 'base'): Promi
   }
 }
 
+/**
+ * Get token balances using CDP API with fallback to legacy method
+ */
+async function getTokenBalances(address: string, network: 'eth' | 'base'): Promise<{ eth: string, usdc: string }> {
+  try {
+    // Try CDP API first
+    const networkName = network === 'eth' ? 'ethereum-sepolia' : 'base-sepolia';
+    return await getCDPEVMBalances(address, networkName);
+  } catch (error) {
+    console.warn(`CDP API failed for ${network}, falling back to legacy method:`, error);
+    return getLegacyTokenBalances(address, network);
+  }
+}
+
 
 /**
- * Handle wallet balance action - Fetches balances from Base and Ethereum mainnets using Alchemy.
+ * Handle wallet balance action - Fetches balances from Base and Ethereum mainnets using CDP API.
  * @param params Action parameters
  * @param userId User ID
  * @returns Response with wallet balance template
  */
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
+    console.log(`[handleGetWalletBalance] Starting balance check for user ${userId}`);
+    
     // Clear any pending actions in the session context
     const { data: session } = await supabase
       .from('sessions')
@@ -711,11 +875,6 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       console.warn(`[handleGetWalletBalance] Multiple EVM wallets found for user ${userId}. Using the first one.`);
     }
 
-    if (!evmWallet) {
-      // Return a simple message instead of the template to avoid duplication
-      return { text: "You need to create a wallet first." };
-    }
-
     // Get Solana wallet if it exists - check both 'solana' and 'solana-devnet' chains
     let { data: solanaWallets } = await supabase
       .from("wallets")
@@ -741,51 +900,60 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       console.warn(`[handleGetWalletBalance] Multiple Solana wallets found for user ${userId}. Using the first one.`);
     }
     
+    console.log(`[handleGetWalletBalance] EVM wallet found:`, evmWallet?.address || 'None');
     console.log(`[handleGetWalletBalance] Solana wallet found:`, solanaWallet?.address || 'None');
 
-    // Fetch balances from Alchemy for both EVM networks
-    const [baseBalances, ethBalances] = await Promise.all([
-      getTokenBalances(evmWallet.address, 'base'),
-      getTokenBalances(evmWallet.address, 'eth')
-    ]);
+    // Check if user has any wallets at all
+    if (!evmWallet && !solanaWallet) {
+      console.log(`[handleGetWalletBalance] No wallets found for user ${userId}`);
+      return { text: "You need to create a wallet first." };
+    }
 
-    // Get Solana balances if wallet exists
-    let solanaBalances = {
-      sol: '0.00',
-      usdc: '0.00'
-    };
+    // Initialize balance objects with default values
+    let baseBalances = { eth: '0', usdc: '0' };
+    let ethBalances = { eth: '0', usdc: '0' };
+    let solanaBalances = { sol: '0', usdc: '0' };
 
-    if (solanaWallet?.address) {
+    // Fetch EVM balances if wallet exists
+    if (evmWallet?.address) {
       try {
-        // Get Solana balances using CDP's getBalances function
-        const solBalances = await getBalances(solanaWallet.address, 'solana-devnet');
-        
-        // Extract SOL balance if available
-        // Ensure solBalances is treated as an array
-        const solBalancesArray = Array.isArray(solBalances) ? solBalances : [];
-        const solBalance = solBalancesArray.find((b: { asset: { symbol: string; decimals: number }; amount: string }) => 
-          b.asset.symbol === 'SOL'
-        );
-        if (solBalance) {
-          solanaBalances.sol = formatBalance(solBalance.amount, solBalance.asset.decimals);
-        }
-        
-        // For now, USDC on Solana is not implemented, so we leave it as 0.00
-        // This can be updated when USDC on Solana is supported
-      } catch (solanaError) {
-        console.error("Error getting Solana balances:", solanaError);
-        // Keep default values if there's an error
+        console.log(`[handleGetWalletBalance] Fetching EVM balances for ${evmWallet.address}`);
+        [baseBalances, ethBalances] = await Promise.all([
+          getTokenBalances(evmWallet.address, 'base'),
+          getTokenBalances(evmWallet.address, 'eth')
+        ]);
+        console.log(`[handleGetWalletBalance] EVM balances fetched - Base: ${JSON.stringify(baseBalances)}, Eth: ${JSON.stringify(ethBalances)}`);
+      } catch (error) {
+        console.error(`[handleGetWalletBalance] Error fetching EVM balances:`, error);
+        // Keep default zero values
       }
     }
 
-    return walletBalance({
+    // Fetch Solana balances if wallet exists
+    if (solanaWallet?.address) {
+      try {
+        console.log(`[handleGetWalletBalance] Fetching Solana balances for ${solanaWallet.address}`);
+        solanaBalances = await getCDPSolanaBalances(solanaWallet.address);
+        console.log(`[handleGetWalletBalance] Solana balances fetched:`, JSON.stringify(solanaBalances));
+      } catch (error) {
+        console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, error);
+        // Keep default zero values
+      }
+    }
+
+    // Format balances for the template
+    const formattedBalances = {
       base_eth: formatBalance(baseBalances.eth, 18),
       base_usdc: formatBalance(baseBalances.usdc, 6),
       eth_eth: formatBalance(ethBalances.eth, 18),
       eth_usdc: formatBalance(ethBalances.usdc, 6),
-      sol_sol: solanaBalances.sol,
-      sol_usdc: solanaBalances.usdc
-    });
+      sol_sol: formatBalance(solanaBalances.sol, 9), // SOL has 9 decimals
+      sol_usdc: formatBalance(solanaBalances.usdc, 6) // USDC has 6 decimals
+    };
+
+    console.log(`[handleGetWalletBalance] Formatted balances:`, JSON.stringify(formattedBalances));
+
+    return walletBalance(formattedBalances);
   } catch (error) {
     console.error("Error getting wallet balance:", error);
     return sendFailed({ reason: "Could not fetch wallet balance." });
