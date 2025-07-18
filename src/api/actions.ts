@@ -35,8 +35,8 @@ import {
   bridgeProcessing,
   bridgeQuoteConfirm,
   bridgeQuotePending,
-  priceAlert,
 } from "@/lib/whatsappTemplates";
+import { analyzeTokenPrice, formatPriceResponse } from "@/lib/tokenPriceService";
 // import { PrivyClient } from '@privy-io/server-auth'; // Privy EVM support is now disabled
 import crypto from "crypto";
 import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
@@ -777,11 +777,24 @@ export async function handleAction(
     }
   }
 
-  // Handle price and news requests with placeholder responses since we've commented out the actual handlers
+  // Handle price requests with new Alchemy-based token price functionality
   if (intent === "get_price") {
-    return {
-      text: "Price information is currently unavailable. This feature will be enabled soon.",
-    };
+    try {
+      const token = params.token || 'ETH';
+      console.log(`[handleAction] Getting price for token: ${token}`);
+      
+      const priceData = await analyzeTokenPrice(token);
+      const response = formatPriceResponse(priceData);
+      
+      return {
+        text: response,
+      };
+    } catch (error) {
+      console.error(`[handleAction] Error getting price for token:`, error);
+      return {
+        text: `Sorry, I couldn't fetch the price for ${params.token || 'that token'} right now. Please try again later.`,
+      };
+    }
   }
 
   if (intent === "get_news") {
@@ -828,8 +841,6 @@ export async function handleAction(
     return handleSendInstructions();
   case "export_keys":
     return await handleExportPrivateKey(params, userId);
-  case "price_alert":
-    return await handlePriceAlert(params, userId);
 
   default:
     return {
@@ -2824,39 +2835,5 @@ export async function handleAlchemyWebhook(
   } catch (err) {
     console.error("[Alchemy Webhook] Error:", err);
     res.status(500).json({ error: "Webhook handler error" });
-  }
-}
-
-// Handler for price alert functionality
-async function handlePriceAlert(params: ActionParams, userId: string) {
-  try {
-    const { token, price, change_percentage } = params;
-    
-    if (!token) {
-      return {
-        text: "Please specify a token for the price alert. For example: 'Set price alert for BTC at $50000'"
-      };
-    }
-
-    // Mock price alert functionality - in a real implementation, you would:
-    // 1. Store the alert in the database
-    // 2. Set up a background job to monitor prices
-    // 3. Send notifications when price targets are reached
-    
-    const alertPrice = price || "current price";
-    const changePercent = change_percentage || "5%";
-    
-    // Return the price alert template
-    return priceAlert({
-      token: token.toUpperCase(),
-      price: alertPrice.toString(),
-      change_percentage: changePercent.toString()
-    });
-    
-  } catch (error) {
-    console.error("Error in handlePriceAlert:", error);
-    return {
-      text: "Failed to set up price alert. Please try again."
-    };
   }
 }

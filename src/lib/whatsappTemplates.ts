@@ -769,33 +769,3 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
     ]
   };
 }
-
-/**
- * Template: price_alert
- * Parameter Format: POSITIONAL
- * Parameters: token, price, change_percentage
- */
-export function priceAlert({ 
-  token, 
-  price, 
-  change_percentage 
-}: { 
-  token: string, 
-  price: string, 
-  change_percentage: string 
-}) {
-  return {
-    name: 'price_alert',
-    language: { code: 'en' },
-    components: [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(token, 'token') },
-          { type: 'text', text: sanitizeWhatsAppParam(price, 'price') },
-          { type: 'text', text: sanitizeWhatsAppParam(change_percentage, 'change_percentage') }
-        ]
-      }
-    ]
-  };
-}
