@@ -405,7 +405,7 @@ export async function transferNativeToken(
     // Get wallet from database
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('cdp_wallet_id, wallet_secret')
+      .select('cdp_wallet_id')
       .eq('address', fromAddress)
       .single();
     
@@ -517,7 +517,7 @@ export async function transferToken(
     // Get wallet from database
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('cdp_wallet_id, wallet_secret')
+      .select('cdp_wallet_id')
       .eq('address', fromAddress)
       .single();
     

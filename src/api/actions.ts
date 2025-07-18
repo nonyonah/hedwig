@@ -1643,28 +1643,87 @@ function isValidEthereumAddress(address: string): boolean {
   return false;
 }
 
+function isValidSolanaAddress(address: string): boolean {
+  if (!address) return false;
+  
+  // Solana addresses are base58 encoded and typically 32-44 characters long
+  const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return solanaAddressRegex.test(address);
+}
+
+function detectAddressType(address: string): 'ethereum' | 'solana' | 'invalid' {
+  if (isValidEthereumAddress(address)) {
+    return 'ethereum';
+  }
+  if (isValidSolanaAddress(address)) {
+    return 'solana';
+  }
+  return 'invalid';
+}
+
+function isValidAddress(address: string): boolean {
+  return detectAddressType(address) !== 'invalid';
+}
+
 async function handleSend(params: ActionParams, userId: string) {
   try {
     console.log(`[handleSend] Processing send request for user ${userId}:`, params);
+    
+    // Get current session context to check for stored parameters
+    const { data: session } = await supabase
+      .from('sessions')
+      .select('context')
+      .eq('user_id', userId)
+      .single();
+
+    let storedContext: any = {};
+    if (session?.context && Array.isArray(session.context)) {
+      const systemItem = session.context.find((item: any) => item.role === 'system' && item.content);
+      if (systemItem) {
+        try {
+          const parsed = typeof systemItem.content === 'string' ? JSON.parse(systemItem.content) : systemItem.content;
+          if (parsed.pending_transaction) {
+            storedContext = parsed.pending_transaction;
+            console.log(`[handleSend] Found stored transaction context:`, storedContext);
+          }
+        } catch (e) {
+          console.log(`[handleSend] Could not parse stored context:`, e);
+        }
+      }
+    }
+
     const isExecute = params.isExecute === true;
-    const token = params.token || 'ETH';
-    const amount = params.amount || '';
-    const recipient = params.recipient || '';
-    const network = (params.network as string || 'base').toLowerCase().replace(' ', '-'); // e.g., 'base-sepolia'
+    
+    // Merge stored context with new parameters (new parameters take precedence)
+    const token = params.token || storedContext.token || 'ETH';
+    const amount = params.amount || storedContext.amount || '';
+    const recipient = params.recipient || storedContext.recipient || '';
+    const network = (params.network || storedContext.network || 'base').toLowerCase().replace(' ', '-');
 
-    console.log(`[handleSend] Token: ${token}, Amount: ${amount}, Recipient: ${recipient}, Network: ${network}, isExecute: ${isExecute}`);
+    console.log(`[handleSend] Merged parameters - Token: ${token}, Amount: ${amount}, Recipient: ${recipient}, Network: ${network}, isExecute: ${isExecute}`);
 
+    // Check if we have all required parameters
     if (!amount || !recipient) {
       console.log(`[handleSend] Missing parameters: amount=${amount}, recipient=${recipient}`);
       
-      // Provide more specific error messages based on what's missing
+      // Store partial transaction data in session context
+      const partialTransaction = {
+        token,
+        amount: amount || undefined,
+        recipient: recipient || undefined,
+        network
+      };
+
+      await updateSession(userId, { pending_transaction: partialTransaction });
+      
+      // Provide context-aware error messages
       let errorMessage = '';
       if (!amount && !recipient) {
-        errorMessage = 'Please specify both the amount and recipient address for the transaction. For example: "send 0.01 ETH to 0x1234..."';
+        errorMessage = 'Please specify both the amount and recipient address for the transaction. For example: "send 0.01 ETH to 0x1234..." or "send 1 SOL to ABC123..."';
       } else if (!amount) {
-        errorMessage = 'Please specify the amount to send. For example: "send 0.01 ETH"';
+        errorMessage = `Please specify the amount to send to ${recipient}. For example: "send 0.01 ${token}"`;
       } else if (!recipient) {
-        errorMessage = 'Please provide the recipient wallet address. You can paste the full address (0x...) or ENS name (.eth).';
+        errorMessage = `Please provide the recipient wallet address for sending ${amount} ${token}. You can paste the full address.`;
       }
       
       const failResp = sendFailed({ reason: errorMessage });
@@ -1672,32 +1731,48 @@ async function handleSend(params: ActionParams, userId: string) {
       return failResp;
     }
     
-    // Validate recipient address format
-    if (recipient && !isValidEthereumAddress(recipient)) {
+    // Validate recipient address format and detect address type
+    const addressType = detectAddressType(recipient);
+    if (addressType === 'invalid') {
       console.log(`[handleSend] Invalid recipient address format: ${recipient}`);
       const failResp = sendFailed({ 
-        reason: 'Invalid recipient address format. Please provide a valid Ethereum address (0x...) or ENS name (.eth). Make sure the address is complete and correctly formatted.' 
+        reason: 'Invalid recipient address format. Please provide a valid Ethereum address (0x...), ENS name (.eth), or Solana address. Make sure the address is complete and correctly formatted.' 
       });
       console.log('[handleSend] Returning:', failResp);
       return failResp;
     }
 
-    if (token.toLowerCase() !== 'eth') {
-      console.log(`[handleSend] Unsupported token: ${token}`);
-      const failResp = sendFailed({ reason: 'Currently only ETH transfers are supported. Please try again with ETH.' });
-      console.log('[handleSend] Returning:', failResp);
-      return failResp;
+    // Determine the appropriate network and token based on address type
+    let finalNetwork = network;
+    let finalToken = token;
+    
+    if (addressType === 'solana') {
+      // For Solana addresses, use Solana network and SOL token
+      finalNetwork = 'solana-devnet';
+      if (token.toLowerCase() === 'eth') {
+        finalToken = 'SOL';
+      }
+    } else if (addressType === 'ethereum') {
+      // For Ethereum addresses, ensure we're using an EVM network
+      if (network.includes('solana')) {
+        finalNetwork = 'base-sepolia';
+      }
     }
+
+    console.log(`[handleSend] Address type: ${addressType}, Final network: ${finalNetwork}, Final token: ${finalToken}`);
+
+    // Clear stored transaction context since we have all parameters
+    await updateSession(userId, {});
 
     // If this is not an execution request, return the confirmation prompt template
     if (!isExecute) {
       console.log(`[handleSend] Returning send_token_prompt template for confirmation`);
       const promptResp = sendTokenPrompt({
         amount: amount,
-        token: token,
+        token: finalToken,
         recipient: formatAddress(recipient),
-        network: params.network as string, // Use original network string for display
-        fee: '~0.0001 ETH',
+        network: finalNetwork === 'solana-devnet' ? 'Solana Devnet' : 'Base Sepolia',
+        fee: addressType === 'solana' ? '~0.000005 SOL' : '~0.0001 ETH',
         estimatedTime: '30-60 seconds',
       });
       console.log('[handleSend] Returning:', promptResp);
@@ -1705,52 +1780,50 @@ async function handleSend(params: ActionParams, userId: string) {
     }
 
     // This is an execution request
-    console.log(`[handleSend] Executing transaction: ${amount} ${token} to ${recipient} on ${network}`);
+    console.log(`[handleSend] Executing transaction: ${amount} ${finalToken} to ${recipient} on ${finalNetwork}`);
 
-    // --- Wallet Fetch/Create and Logging ---
-    let wallet = null;
     try {
-      wallet = await getOrCreateCdpWallet(userId);
-      console.log('[handleSend] Wallet fetched/created:', wallet);
-      if (!wallet || !wallet.address) {
-        console.log('[handleSend] Wallet missing or no address, returning noWalletYet');
-        const noWalletResp = createNewWallet();
-        console.log('[handleSend] Returning:', noWalletResp);
-        return noWalletResp;
+      // Get user's appropriate wallet based on address type
+      let wallet;
+      if (addressType === 'solana') {
+        // Get or create Solana wallet
+        wallet = await getOrCreateCdpWallet(userId, 'solana-devnet');
+      } else {
+        // Get or create EVM wallet
+        wallet = await getOrCreateCdpWallet(userId, 'base-sepolia');
       }
-    } catch (werr) {
-      console.error('[handleSend] Error fetching/creating wallet:', werr);
-      const failResp = sendFailed({ reason: 'Could not fetch or create wallet.' });
-      console.log('[handleSend] Returning:', failResp);
-      return failResp;
-    }
-
-    try {
-      // Get user's wallet from CDP
-      const wallet = await getOrCreateCdpWallet(userId);
       
       if (!wallet || !wallet.address) {
         throw new Error('Could not get CDP wallet');
       }
 
-      // Prepare transaction data with proper ETH value conversion
-      const ethAmount = parseFloat(amount);
-      if (isNaN(ethAmount) || ethAmount <= 0) {
+      // Validate amount
+      const numericAmount = parseFloat(amount);
+      if (isNaN(numericAmount) || numericAmount <= 0) {
         throw new Error('Invalid amount specified. Please provide a valid positive number.');
       }
 
-      // Use CDP to send the transaction
-      const txResult = await transferNativeToken(wallet, recipient, ethAmount.toString());
-      console.log(`[handleSend] Transaction result:`, txResult);
+      // Execute the transaction based on address type
+      let txResult;
+      let explorerUrl;
 
-      // Get explorer URL (Base Sepolia)
-      const explorerUrl = `https://sepolia.basescan.org/tx/${txResult.hash}`;
+      if (addressType === 'solana') {
+        // Use CDP to send SOL transaction
+        txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'solana-devnet');
+        explorerUrl = `https://explorer.solana.com/tx/${txResult.hash}?cluster=devnet`;
+      } else {
+        // Use CDP to send ETH transaction
+        txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'base-sepolia');
+        explorerUrl = `https://sepolia.basescan.org/tx/${txResult.hash}`;
+      }
+
+      console.log(`[handleSend] Transaction result:`, txResult);
       console.log(`[handleSend] Returning tx_sent_success template with explorerUrl: ${explorerUrl}`);
 
       const successResp = sendSuccessSanitized({
         amount: amount,
-        token: token,
-        recipient: formatAddress(params.to || params.recipient),
+        token: finalToken,
+        recipient: formatAddress(recipient),
         explorerUrl: explorerUrl,
       });
       console.log('[handleSend] Returning:', successResp);
