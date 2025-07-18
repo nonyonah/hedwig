@@ -42,6 +42,429 @@ import { sendWhatsAppTemplate } from "@/lib/whatsappUtils";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
 
+// Import CDP signing function
+function cdpSign({
+  secret,
+  timestamp,
+  method,
+  requestPath,
+  body = '',
+}: {
+  secret: string;
+  timestamp: string;
+  method: string;
+  requestPath: string;
+  body?: string;
+}) {
+  const message = timestamp + method + requestPath + body;
+  return crypto.createHmac('sha256', secret).update(message).digest('hex');
+}
+
+// ===== CDP TRANSACTION FUNCTIONS =====
+
+/**
+ * Send EVM transaction using CDP API
+ * @param walletId CDP wallet ID
+ * @param networkId Network ID (e.g., 'base-sepolia', 'ethereum-sepolia')
+ * @param to Recipient address
+ * @param value Amount in wei (as string)
+ * @param data Optional transaction data (for contract calls)
+ * @returns Transaction result
+ */
+export async function sendEvmTransaction({
+  walletId,
+  networkId,
+  to,
+  value,
+  data = '0x',
+}: {
+  walletId: string;
+  networkId: string;
+  to: string;
+  value: string;
+  data?: string;
+}) {
+  try {
+    console.log(`[sendEvmTransaction] Sending EVM transaction:`, {
+      walletId,
+      networkId,
+      to,
+      value,
+      data,
+    });
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = 'POST';
+    const requestPath = `/platform/v2/wallets/${walletId}/accounts/${networkId}/transactions`;
+    const body = JSON.stringify({
+      to,
+      value,
+      data,
+    });
+
+    const signature = cdpSign({
+      secret: process.env.CDP_API_KEY_SECRET!,
+      timestamp,
+      method,
+      requestPath,
+      body,
+    });
+
+    const response = await fetch(`https://api.cdp.coinbase.com${requestPath}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'CB-ACCESS-KEY': process.env.CDP_API_KEY_ID!,
+        'CB-ACCESS-SIGN': signature,
+        'CB-ACCESS-TIMESTAMP': timestamp,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[sendEvmTransaction] CDP API error: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`[sendEvmTransaction] Transaction sent successfully:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[sendEvmTransaction] Error:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Sign EVM transaction using CDP API
+ * @param walletId CDP wallet ID
+ * @param networkId Network ID
+ * @param to Recipient address
+ * @param value Amount in wei
+ * @param data Transaction data
+ * @returns Signed transaction
+ */
+export async function signEvmTransaction({
+  walletId,
+  networkId,
+  to,
+  value,
+  data = '0x',
+}: {
+  walletId: string;
+  networkId: string;
+  to: string;
+  value: string;
+  data?: string;
+}) {
+  try {
+    console.log(`[signEvmTransaction] Signing EVM transaction:`, {
+      walletId,
+      networkId,
+      to,
+      value,
+      data,
+    });
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = 'POST';
+    const requestPath = `/platform/v2/wallets/${walletId}/accounts/${networkId}/sign-transaction`;
+    const body = JSON.stringify({
+      to,
+      value,
+      data,
+    });
+
+    const signature = cdpSign({
+      secret: process.env.CDP_API_KEY_SECRET!,
+      timestamp,
+      method,
+      requestPath,
+      body,
+    });
+
+    const response = await fetch(`https://api.cdp.coinbase.com${requestPath}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'CB-ACCESS-KEY': process.env.CDP_API_KEY_ID!,
+        'CB-ACCESS-SIGN': signature,
+        'CB-ACCESS-TIMESTAMP': timestamp,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[signEvmTransaction] CDP API error: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`[signEvmTransaction] Transaction signed successfully:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[signEvmTransaction] Error:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Sign EVM hash using CDP API
+ * @param walletId CDP wallet ID
+ * @param networkId Network ID
+ * @param hash Hash to sign
+ * @returns Signature
+ */
+export async function signEvmHash({
+  walletId,
+  networkId,
+  hash,
+}: {
+  walletId: string;
+  networkId: string;
+  hash: string;
+}) {
+  try {
+    console.log(`[signEvmHash] Signing EVM hash:`, {
+      walletId,
+      networkId,
+      hash,
+    });
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = 'POST';
+    const requestPath = `/platform/v2/wallets/${walletId}/accounts/${networkId}/sign-hash`;
+    const body = JSON.stringify({
+      hash,
+    });
+
+    const signature = cdpSign({
+      secret: process.env.CDP_API_KEY_SECRET!,
+      timestamp,
+      method,
+      requestPath,
+      body,
+    });
+
+    const response = await fetch(`https://api.cdp.coinbase.com${requestPath}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'CB-ACCESS-KEY': process.env.CDP_API_KEY_ID!,
+        'CB-ACCESS-SIGN': signature,
+        'CB-ACCESS-TIMESTAMP': timestamp,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[signEvmHash] CDP API error: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`[signEvmHash] Hash signed successfully:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[signEvmHash] Error:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Send Solana transaction using CDP API
+ * @param walletId CDP wallet ID
+ * @param networkId Network ID (e.g., 'solana-devnet')
+ * @param instructions Array of Solana instructions
+ * @returns Transaction result
+ */
+export async function sendSolanaTransaction({
+  walletId,
+  networkId,
+  instructions,
+}: {
+  walletId: string;
+  networkId: string;
+  instructions: any[];
+}) {
+  try {
+    console.log(`[sendSolanaTransaction] Sending Solana transaction:`, {
+      walletId,
+      networkId,
+      instructions,
+    });
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = 'POST';
+    const requestPath = `/platform/v2/wallets/${walletId}/accounts/${networkId}/transactions`;
+    const body = JSON.stringify({
+      instructions,
+    });
+
+    const signature = cdpSign({
+      secret: process.env.CDP_API_KEY_SECRET!,
+      timestamp,
+      method,
+      requestPath,
+      body,
+    });
+
+    const response = await fetch(`https://api.cdp.coinbase.com${requestPath}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'CB-ACCESS-KEY': process.env.CDP_API_KEY_ID!,
+        'CB-ACCESS-SIGN': signature,
+        'CB-ACCESS-TIMESTAMP': timestamp,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[sendSolanaTransaction] CDP API error: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`[sendSolanaTransaction] Transaction sent successfully:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[sendSolanaTransaction] Error:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Sign Solana transaction using CDP API
+ * @param walletId CDP wallet ID
+ * @param networkId Network ID
+ * @param instructions Array of Solana instructions
+ * @returns Signed transaction
+ */
+export async function signSolanaTransaction({
+  walletId,
+  networkId,
+  instructions,
+}: {
+  walletId: string;
+  networkId: string;
+  instructions: any[];
+}) {
+  try {
+    console.log(`[signSolanaTransaction] Signing Solana transaction:`, {
+      walletId,
+      networkId,
+      instructions,
+    });
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = 'POST';
+    const requestPath = `/platform/v2/wallets/${walletId}/accounts/${networkId}/sign-transaction`;
+    const body = JSON.stringify({
+      instructions,
+    });
+
+    const signature = cdpSign({
+      secret: process.env.CDP_API_KEY_SECRET!,
+      timestamp,
+      method,
+      requestPath,
+      body,
+    });
+
+    const response = await fetch(`https://api.cdp.coinbase.com${requestPath}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'CB-ACCESS-KEY': process.env.CDP_API_KEY_ID!,
+        'CB-ACCESS-SIGN': signature,
+        'CB-ACCESS-TIMESTAMP': timestamp,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[signSolanaTransaction] CDP API error: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`[signSolanaTransaction] Transaction signed successfully:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[signSolanaTransaction] Error:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Sign Solana message using CDP API
+ * @param walletId CDP wallet ID
+ * @param networkId Network ID
+ * @param message Message to sign (base64 encoded)
+ * @returns Signature
+ */
+export async function signSolanaMessage({
+  walletId,
+  networkId,
+  message,
+}: {
+  walletId: string;
+  networkId: string;
+  message: string;
+}) {
+  try {
+    console.log(`[signSolanaMessage] Signing Solana message:`, {
+      walletId,
+      networkId,
+      message,
+    });
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = 'POST';
+    const requestPath = `/platform/v2/wallets/${walletId}/accounts/${networkId}/sign-message`;
+    const body = JSON.stringify({
+      message,
+    });
+
+    const signature = cdpSign({
+      secret: process.env.CDP_API_KEY_SECRET!,
+      timestamp,
+      method,
+      requestPath,
+      body,
+    });
+
+    const response = await fetch(`https://api.cdp.coinbase.com${requestPath}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'CB-ACCESS-KEY': process.env.CDP_API_KEY_ID!,
+        'CB-ACCESS-SIGN': signature,
+        'CB-ACCESS-TIMESTAMP': timestamp,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[signSolanaMessage] CDP API error: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`CDP API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`[signSolanaMessage] Message signed successfully:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[signSolanaMessage] Error:`, error);
+    throw error;
+  }
+}
 
 // Example: Action handler interface
 export type ActionParams = Record<string, any>;
@@ -589,7 +1012,7 @@ const ALCHEMY_URL_ETH = process.env.ALCHEMY_URL_ETH_SEPOLIA;
 const ALCHEMY_URL_BASE = process.env.ALCHEMY_URL_BASE_SEPOLIA;
 const USDC_CONTRACT_ETH = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // Ethereum Sepolia USDC
 const USDC_CONTRACT_BASE = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
-const USDC_MINT_SOLANA = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr'; // Solana Devnet USDC mint
+const USDC_MINT_SOLANA = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Circle's official Solana Devnet USDC mint
 
 /**
  * Get token balances using Alchemy Token API for testnets
@@ -623,28 +1046,54 @@ async function getTestnetBalances(address: string, network: 'ethereum-sepolia' |
         let usdcBalance = '0';
         
         // Get USDC token balance if USDC mint address is available
-        if (USDC_MINT_SOLANA) {
-          try {
-            const usdcMintPublicKey = new PublicKey(USDC_MINT_SOLANA);
-            
-            // Get token accounts for this wallet
-            const tokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
-              mint: usdcMintPublicKey,
-            });
-            
-            if (tokenAccounts.value.length > 0) {
-              // Get the balance of the first USDC token account
-              const tokenAccountInfo = await connection.getTokenAccountBalance(
-                tokenAccounts.value[0].pubkey
-              );
-              usdcBalance = tokenAccountInfo.value.amount;
-              console.log(`[getTestnetBalances] USDC Balance:`, usdcBalance);
-            }
-          } catch (usdcError) {
-            console.warn(`[getTestnetBalances] Could not fetch USDC balance:`, usdcError);
-            // Keep usdcBalance as '0' if there's an error
-          }
-        }
+         if (USDC_MINT_SOLANA) {
+           try {
+             console.log(`[getTestnetBalances] Looking for USDC token accounts with mint: ${USDC_MINT_SOLANA}`);
+             const usdcMintPublicKey = new PublicKey(USDC_MINT_SOLANA);
+             
+             // Get token accounts for this wallet
+             const tokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
+               mint: usdcMintPublicKey,
+             });
+             
+             console.log(`[getTestnetBalances] Found ${tokenAccounts.value.length} USDC token accounts`);
+             
+             if (tokenAccounts.value.length > 0) {
+               // Get the balance of the first USDC token account
+               const tokenAccountInfo = await connection.getTokenAccountBalance(
+                 tokenAccounts.value[0].pubkey
+               );
+               usdcBalance = tokenAccountInfo.value.amount;
+               console.log(`[getTestnetBalances] USDC Balance from token account:`, {
+                 amount: usdcBalance,
+                 decimals: tokenAccountInfo.value.decimals,
+                 uiAmount: tokenAccountInfo.value.uiAmount
+               });
+             } else {
+               console.log(`[getTestnetBalances] No USDC token accounts found for address ${address}`);
+               
+               // Also try to get all token accounts to see what tokens this address has
+               const allTokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
+                 programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), // SPL Token Program ID
+               });
+               
+               console.log(`[getTestnetBalances] Address has ${allTokenAccounts.value.length} total token accounts:`);
+               for (const account of allTokenAccounts.value) {
+                 try {
+                   const accountInfo = await connection.getTokenAccountBalance(account.pubkey);
+                   console.log(`[getTestnetBalances] Token account: ${account.pubkey.toString()}, Balance: ${accountInfo.value.amount}`);
+                 } catch (e) {
+                   console.log(`[getTestnetBalances] Could not get balance for token account: ${account.pubkey.toString()}`);
+                 }
+               }
+             }
+           } catch (usdcError) {
+             console.error(`[getTestnetBalances] Error fetching USDC balance:`, usdcError);
+             // Keep usdcBalance as '0' if there's an error
+           }
+         } else {
+           console.warn(`[getTestnetBalances] USDC_MINT_SOLANA is not defined`);
+         }
 
         console.log(`[getTestnetBalances] Parsed Solana balances - SOL: ${solBalance} lamports, USDC: ${usdcBalance}`);
 
@@ -2035,23 +2484,6 @@ function sendSuccessSanitized(args: any) {
     recipient: sanitizeWhatsAppParam(args.recipient),
     explorerUrl: sanitizeWhatsAppParam(args.explorerUrl),
   });
-}
-
-function cdpSign({
-  secret,
-  timestamp,
-  method,
-  requestPath,
-  body,
-}: {
-  secret: string;
-  timestamp: string;
-  method: string;
-  requestPath: string;
-  body: string;
-}): string {
-  const prehash = timestamp + method.toUpperCase() + requestPath + body;
-  return crypto.createHmac("sha256", secret).update(prehash).digest("hex");
 }
 
 // Helper function to format network names for CDP API
