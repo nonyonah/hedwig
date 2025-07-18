@@ -802,6 +802,7 @@ export async function handleAction(
       // For deposit instructions or wallet address requests, show the wallet address
       return await handleGetWalletAddress(userId);
     case "send":
+      console.log(`[handleAction] Processing 'send' intent with params:`, params);
       return await handleSend(params, userId);
     case "swap": {
       const swapState = params.swap_state;
@@ -816,6 +817,8 @@ export async function handleAction(
       }
     }
   case "send_token_prompt":
+    console.log(`[handleAction] Processing 'send_token_prompt' intent with params:`, params);
+    console.log(`[handleAction] WARNING: Using handleSendInit which has hardcoded fees!`);
     return await handleSendInit(params, userId);
   case "instruction_swap":
     return handleSwapInstructions();
@@ -1790,10 +1793,12 @@ async function handleSend(params: ActionParams, userId: string) {
       // Determine transaction type for fee estimation
       const transactionType = finalToken === 'USDC' ? 'token' : 'native';
       console.log(`[handleSend] Fee estimation - Network: ${finalNetwork}, Transaction type: ${transactionType}, Token: ${finalToken}`);
+      console.log(`[handleSend] About to call estimateTransactionFee with network: "${finalNetwork}" and type: "${transactionType}"`);
       
       // Get actual estimated fee
       const estimatedFee = await estimateTransactionFee(finalNetwork, transactionType);
       console.log(`[handleSend] Estimated fee result: ${estimatedFee}`);
+      console.log(`[handleSend] Fee estimation complete - returning fee: "${estimatedFee}" for network: "${finalNetwork}"`);
       
       // Format network name for display
       let networkDisplayName = finalNetwork;
@@ -1804,6 +1809,8 @@ async function handleSend(params: ActionParams, userId: string) {
       } else if (finalNetwork === 'base-sepolia') {
         networkDisplayName = 'Base Sepolia';
       }
+      
+      console.log(`[handleSend] Creating sendTokenPrompt with fee: "${estimatedFee}" and network display: "${networkDisplayName}"`);
       
       const promptResp = sendTokenPrompt({
         amount: amount,
@@ -2321,26 +2328,55 @@ async function handleSwapProcess(params: ActionParams, userId: string) {
 // Handler for initiating a token send
 async function handleSendInit(params: ActionParams, userId: string) {
   try {
-    console.log(`Initiating send for user ${userId}`);
+    console.log(`[handleSendInit] Initiating send for user ${userId} with params:`, params);
 
     // Get send parameters
     const token = params.token || "ETH";
     const amount = params.amount || "0.01";
     const recipient = params.recipient || params.to || "0x...";
     const network = params.network || params.chain || "Base Sepolia";
-    const fee = params.fee || (token === "SOL" ? "0.000005 SOL" : "0.0001 ETH");
     const estimatedTime = params.estimatedTime || "1-5 mins";
+    
+    // Determine transaction type for fee estimation
+    const transactionType = token === 'USDC' ? 'token' : 'native';
+    console.log(`[handleSendInit] Fee estimation - Network: ${network}, Transaction type: ${transactionType}, Token: ${token}`);
+    
+    // Get actual estimated fee instead of using hardcoded values
+    let estimatedFee;
+    try {
+      // Map display network names to internal network names
+      let internalNetwork = network;
+      if (network === 'Solana Devnet') {
+        internalNetwork = 'solana-devnet';
+      } else if (network === 'Base Sepolia') {
+        internalNetwork = 'base-sepolia';
+      } else if (network === 'Ethereum Sepolia') {
+        internalNetwork = 'ethereum-sepolia';
+      }
+      
+      console.log(`[handleSendInit] Calling estimateTransactionFee with network: "${internalNetwork}" and type: "${transactionType}"`);
+      estimatedFee = await estimateTransactionFee(internalNetwork, transactionType);
+      console.log(`[handleSendInit] Estimated fee result: ${estimatedFee}`);
+    } catch (error) {
+      console.error(`[handleSendInit] Error estimating fee:`, error);
+      // Fallback to network-appropriate default
+      estimatedFee = network.toLowerCase().includes('solana') ? "0.000005 SOL" : "0.0001 ETH";
+      console.log(`[handleSendInit] Using fallback fee: ${estimatedFee}`);
+    }
+    
     // Return the interactive message with confirm/cancel buttons
+    console.log(`[handleSendInit] Creating sendTokenPrompt with fee: "${estimatedFee}"`);
     return sendTokenPrompt({
       amount,
       token,
       recipient,
       network,
-      fee,
+      fee: estimatedFee,
       estimatedTime,
     });
   } catch (error) {
-    console.error("Error initiating send:", error);
+    console.error("[handleSendInit] Error initiating send:", error);
+    return { text: "Failed to initiate send. Please try again later." };
   }
 }
 
