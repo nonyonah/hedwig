@@ -784,7 +784,7 @@ export async function handleAction(
       console.log(`[handleAction] Getting price for token: ${token}`);
       
       const priceData = await analyzeTokenPrice(token);
-      const response = formatPriceResponse(priceData);
+      const response = formatPriceResponse(token, priceData);
       
       return {
         text: response,
