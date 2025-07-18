@@ -774,10 +774,7 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
  * Template: price_alert
  * Parameter Format: POSITIONAL
  * Parameters: token, price, change_percentage
- * 
- * Note: This template is currently commented out as it will be enabled later
  */
-/*
 export function priceAlert({ 
   token, 
   price, 
@@ -789,17 +786,16 @@ export function priceAlert({
 }) {
   return {
     name: 'price_alert',
-    language: 'en',
+    language: { code: 'en' },
     components: [
       {
         type: 'BODY',
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(token) },
-          { type: 'text', text: sanitizeWhatsAppParam(price) },
-          { type: 'text', text: sanitizeWhatsAppParam(change_percentage) }
+          { type: 'text', text: sanitizeWhatsAppParam(token, 'token') },
+          { type: 'text', text: sanitizeWhatsAppParam(price, 'price') },
+          { type: 'text', text: sanitizeWhatsAppParam(change_percentage, 'change_percentage') }
         ]
       }
     ]
   };
 }
-*/

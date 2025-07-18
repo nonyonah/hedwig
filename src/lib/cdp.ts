@@ -657,15 +657,19 @@ export async function estimateTransactionFee(
   transactionType: 'native' | 'token' = 'native'
 ): Promise<string> {
   try {
-    console.log(`[estimateTransactionFee] Starting estimation for network: ${network}, type: ${transactionType}`);
+    console.log(`[estimateTransactionFee] Starting estimation for network: "${network}", type: "${transactionType}"`);
     
     const networkConfig = SUPPORTED_NETWORKS[network];
     if (!networkConfig) {
       console.error(`[estimateTransactionFee] Unsupported network: ${network}`);
+      console.error(`[estimateTransactionFee] Available networks:`, Object.keys(SUPPORTED_NETWORKS));
       throw new Error(`Unsupported network: ${network}`);
     }
 
     console.log(`[estimateTransactionFee] Network config found:`, networkConfig);
+    console.log(`[estimateTransactionFee] Network includes 'solana':`, network.includes('solana'));
+    console.log(`[estimateTransactionFee] Network config has chainId:`, !!networkConfig.chainId);
+    console.log(`[estimateTransactionFee] Network config has networkId:`, !!networkConfig.networkId);
 
     // Check if this is a Solana network first
     if (network.includes('solana')) {
@@ -691,7 +695,9 @@ export async function estimateTransactionFee(
          return result;
        } catch (error) {
          console.warn(`[estimateTransactionFee] Failed to estimate Solana fee:`, error);
-         return '~0.000005 SOL'; // Fallback
+         const fallback = '~0.000005 SOL';
+         console.log(`[estimateTransactionFee] Returning Solana fallback: ${fallback}`);
+         return fallback;
        }
     } else if (networkConfig.chainId) {
       // EVM network - estimate gas fee
@@ -715,20 +721,22 @@ export async function estimateTransactionFee(
         return result;
       } catch (error) {
         console.warn(`[estimateTransactionFee] Failed to estimate EVM fee:`, error);
-        return '~0.0001 ETH'; // Fallback
+        const fallback = '~0.0001 ETH';
+        console.log(`[estimateTransactionFee] Returning EVM fallback: ${fallback}`);
+        return fallback;
       }
     } else {
       // Unknown network type
       console.warn(`[estimateTransactionFee] Unknown network type for: ${network}`);
       const fallback = network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
-      console.log(`[estimateTransactionFee] Returning fallback: ${fallback}`);
+      console.log(`[estimateTransactionFee] Returning unknown type fallback: ${fallback}`);
       return fallback;
     }
   } catch (error) {
     console.error(`[estimateTransactionFee] Error estimating fee:`, error);
     // Return network-appropriate fallback
     const fallback = network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
-    console.log(`[estimateTransactionFee] Returning fallback: ${fallback}`);
+    console.log(`[estimateTransactionFee] Returning error fallback: ${fallback}`);
     return fallback;
   }
 }
