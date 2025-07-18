@@ -9,11 +9,13 @@ export interface TokenPrice {
   price: number;
   currency: string;
   lastUpdated: string;
+  change24h?: number; // 24-hour percentage change
 }
 
 export interface HistoricalPrice {
   timestamp: string;
   price: number;
+  currency: string;
 }
 
 export interface PriceAnalysis {
@@ -26,7 +28,7 @@ export interface PriceAnalysis {
 }
 
 /**
- * Get current token prices by symbol using Alchemy API
+ * Get current token prices by symbol using CoinGecko API (fallback)
  * @param symbols Array of token symbols (e.g., ['ETH', 'BTC', 'SOL'])
  * @returns Promise<TokenPrice[]>
  */
@@ -34,47 +36,67 @@ export async function getTokenPricesBySymbol(symbols: string[]): Promise<TokenPr
   try {
     console.log(`[TokenPriceService] Fetching prices for symbols:`, symbols);
     
-    const alchemyApiKey = process.env.ALCHEMY_API_KEY;
-    if (!alchemyApiKey) {
-      throw new Error('ALCHEMY_API_KEY not configured');
+    if (!symbols || symbols.length === 0) {
+      throw new Error('Symbols array cannot be empty');
     }
 
-    // Alchemy API endpoint for token prices by symbol
-    const url = `https://api.g.alchemy.com/prices/v1/${alchemyApiKey}/tokens/by-symbol`;
+    // Map common symbols to CoinGecko IDs
+    const symbolToId: Record<string, string> = {
+      'ETH': 'ethereum',
+      'BTC': 'bitcoin',
+      'SOL': 'solana',
+      'USDC': 'usd-coin',
+      'USDT': 'tether',
+      'ADA': 'cardano',
+      'DOT': 'polkadot',
+      'LINK': 'chainlink',
+      'MATIC': 'matic-network',
+      'AVAX': 'avalanche-2'
+    };
+
+    // Convert symbols to CoinGecko IDs
+    const coinIds = symbols.map(symbol => {
+      const upperSymbol = symbol.toUpperCase();
+      return symbolToId[upperSymbol] || upperSymbol.toLowerCase();
+    });
+
+    console.log(`[TokenPriceService] Using CoinGecko IDs:`, coinIds);
+
+    // CoinGecko API endpoint
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds.join(',')}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`;
     
     const response = await fetch(url, {
-      method: 'POST',
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        symbols: symbols.map(s => s.toUpperCase())
-      })
+        'Accept': 'application/json',
+      }
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[TokenPriceService] Alchemy API error:`, errorText);
-      throw new Error(`Alchemy API error: ${response.status} ${errorText}`);
+      console.error(`[TokenPriceService] CoinGecko API error:`, errorText);
+      throw new Error(`CoinGecko API error: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
-    console.log(`[TokenPriceService] Alchemy response:`, JSON.stringify(data, null, 2));
+    console.log(`[TokenPriceService] CoinGecko response:`, JSON.stringify(data, null, 2));
 
-    // Transform Alchemy response to our format
+    // Transform CoinGecko response to our format
     const prices: TokenPrice[] = [];
     
-    if (data.data && Array.isArray(data.data)) {
-      for (const tokenData of data.data) {
-        if (tokenData.prices && tokenData.prices.length > 0) {
-          const latestPrice = tokenData.prices[0]; // Most recent price
-          prices.push({
-            symbol: tokenData.symbol,
-            price: latestPrice.value,
-            currency: latestPrice.currency,
-            lastUpdated: latestPrice.lastUpdatedAt
-          });
-        }
+    for (let i = 0; i < symbols.length; i++) {
+      const symbol = symbols[i].toUpperCase();
+      const coinId = coinIds[i];
+      const coinData = data[coinId];
+      
+      if (coinData && coinData.usd) {
+        prices.push({
+          symbol: symbol,
+          price: coinData.usd,
+          currency: 'USD',
+          lastUpdated: coinData.last_updated_at ? new Date(coinData.last_updated_at * 1000).toISOString() : new Date().toISOString(),
+          change24h: coinData.usd_24h_change || undefined
+        });
       }
     }
 
@@ -87,66 +109,72 @@ export async function getTokenPricesBySymbol(symbols: string[]): Promise<TokenPr
 }
 
 /**
- * Get historical token prices using Alchemy API
- * @param symbol Token symbol (e.g., 'ETH')
- * @param startTime Start timestamp (ISO string)
- * @param endTime End timestamp (ISO string)
+ * Get historical token prices using CoinGecko API
+ * @param symbol Token symbol (e.g., 'ETH', 'BTC', 'SOL')
+ * @param days Number of days of historical data (default: 7)
  * @returns Promise<HistoricalPrice[]>
  */
-export async function getHistoricalTokenPrices(
-  symbol: string,
-  startTime: string,
-  endTime: string
-): Promise<HistoricalPrice[]> {
+export async function getHistoricalTokenPrices(symbol: string, days: number = 7): Promise<HistoricalPrice[]> {
   try {
-    console.log(`[TokenPriceService] Fetching historical prices for ${symbol} from ${startTime} to ${endTime}`);
+    console.log(`[TokenPriceService] Fetching ${days} days of historical data for ${symbol}`);
     
-    const alchemyApiKey = process.env.ALCHEMY_API_KEY;
-    if (!alchemyApiKey) {
-      throw new Error('ALCHEMY_API_KEY not configured');
-    }
+    // Map symbol to CoinGecko ID
+    const symbolToId: Record<string, string> = {
+      'ETH': 'ethereum',
+      'BTC': 'bitcoin',
+      'SOL': 'solana',
+      'USDC': 'usd-coin',
+      'USDT': 'tether',
+      'ADA': 'cardano',
+      'DOT': 'polkadot',
+      'LINK': 'chainlink',
+      'MATIC': 'matic-network',
+      'AVAX': 'avalanche-2'
+    };
 
-    // Alchemy API endpoint for historical token prices
-    const url = `https://api.g.alchemy.com/prices/v1/${alchemyApiKey}/tokens/historical`;
+    const coinId = symbolToId[symbol.toUpperCase()] || symbol.toLowerCase();
+    console.log(`[TokenPriceService] Using CoinGecko ID: ${coinId}`);
+
+    // CoinGecko API endpoint for historical data
+    const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
     
     const response = await fetch(url, {
-      method: 'POST',
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        symbol: symbol.toUpperCase(),
-        startTime,
-        endTime,
-        interval: 'daily' // Can be 'hourly', 'daily', 'weekly'
-      })
+        'Accept': 'application/json',
+      }
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[TokenPriceService] Alchemy historical API error:`, errorText);
-      throw new Error(`Alchemy API error: ${response.status} ${errorText}`);
+      console.error(`[TokenPriceService] CoinGecko historical API error:`, errorText);
+      throw new Error(`CoinGecko historical API error: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
-    console.log(`[TokenPriceService] Historical data response:`, JSON.stringify(data, null, 2));
+    console.log(`[TokenPriceService] CoinGecko historical response sample:`, {
+      pricesCount: data.prices?.length,
+      firstPrice: data.prices?.[0],
+      lastPrice: data.prices?.[data.prices?.length - 1]
+    });
 
-    // Transform Alchemy response to our format
+    // Transform CoinGecko response to our format
     const historicalPrices: HistoricalPrice[] = [];
     
-    if (data.data && Array.isArray(data.data)) {
-      for (const pricePoint of data.data) {
-        historicalPrices.push({
-          timestamp: pricePoint.timestamp,
-          price: pricePoint.value
-        });
-      }
-    }
+    if (data.prices && Array.isArray(data.prices)) {
+       for (const [timestamp, price] of data.prices) {
+         historicalPrices.push({
+           timestamp: new Date(timestamp).toISOString(),
+           price: price,
+           currency: 'USD'
+         });
+       }
+     }
 
-    console.log(`[TokenPriceService] Processed historical prices:`, historicalPrices.length, 'data points');
+    console.log(`[TokenPriceService] Processed ${historicalPrices.length} historical prices`);
     return historicalPrices;
   } catch (error) {
-    console.error(`[TokenPriceService] Error fetching historical prices:`, error);
+    console.error(`[TokenPriceService] Error fetching historical token prices:`, error);
     throw error;
   }
 }
@@ -169,16 +197,13 @@ export async function analyzeTokenPrice(symbol: string): Promise<PriceAnalysis> 
     const currentPrice = currentPrices[0];
     
     // Get historical data for the last 7 days
-    const endTime = new Date().toISOString();
-    const startTime = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    
     let historicalData: HistoricalPrice[] = [];
     let change24h: number | undefined;
     let changePercent24h: number | undefined;
     let trend: 'up' | 'down' | 'stable' = 'stable';
     
     try {
-      historicalData = await getHistoricalTokenPrices(symbol, startTime, endTime);
+      historicalData = await getHistoricalTokenPrices(symbol, 7);
       
       // Calculate 24h change if we have historical data
       if (historicalData.length >= 2) {
