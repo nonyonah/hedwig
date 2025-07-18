@@ -481,10 +481,7 @@ export async function transferNativeToken(
       txHash = signature;
     }
     
-    console.log(`[CDP] Transfer successful with hash: ${txHash}`);
-    
-    // Record transaction in database
-    await recordTransaction(fromAddress, toAddress, amount, txHash, network);
+    console.log(`[CDP] Native token transfer successful with hash: ${txHash}`);
     
     return { hash: txHash };
   } catch (error) {
@@ -596,53 +593,10 @@ export async function transferToken(
     
     console.log(`[CDP] Token transfer successful with hash: ${txHash}`);
     
-    // Record transaction in database
-    await recordTransaction(fromAddress, toAddress, amount, txHash, network, tokenAddress);
-    
     return { hash: txHash };
   } catch (error) {
     console.error(`[CDP] Failed to transfer token:`, error);
     throw error;
-  }
-}
-
-/**
- * Record transaction in database
- * @param fromAddress - Sender address
- * @param toAddress - Recipient address
- * @param amount - Amount sent
- * @param txHash - Transaction hash
- * @param network - Network name
- * @param tokenAddress - Token address (optional)
- */
-async function recordTransaction(
-  fromAddress: string,
-  toAddress: string,
-  amount: string,
-  txHash: string,
-  network: string,
-  tokenAddress?: string
-) {
-  try {
-    console.log(`[CDP] Recording transaction ${txHash} in database`);
-    
-    const { error } = await supabase
-      .from('transactions')
-      .insert({
-        from_address: fromAddress,
-        to_address: toAddress,
-        amount,
-        tx_hash: txHash,
-        network,
-        token_address: tokenAddress,
-        status: 'confirmed',
-      });
-    
-    if (error) {
-      console.error(`[CDP] Failed to record transaction in database:`, error);
-    }
-  } catch (error) {
-    console.error(`[CDP] Failed to record transaction:`, error);
   }
 }
 
@@ -662,19 +616,13 @@ export async function getTransaction(txHash: string, network: string) {
       throw new Error(`Unsupported network: ${network}`);
     }
     
-    // Get transaction from database
-    const { data: transaction, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('tx_hash', txHash)
-      .single();
-    
-    if (error) {
-      console.error(`[CDP] Failed to get transaction from database:`, error);
-      throw error;
-    }
-    
-    return transaction;
+    // For now, just return basic transaction info
+    // In the future, this could query blockchain explorers or CDP APIs
+    return {
+      tx_hash: txHash,
+      network: network,
+      status: 'confirmed'
+    };
   } catch (error) {
     console.error(`[CDP] Failed to get transaction:`, error);
     throw error;

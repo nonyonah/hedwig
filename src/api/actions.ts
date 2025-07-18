@@ -1,4 +1,4 @@
-import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances } from "@/lib/cdp";
+import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 
 import fetch from "node-fetch";
@@ -1772,7 +1772,7 @@ async function handleSend(params: ActionParams, userId: string) {
         token: finalToken,
         recipient: formatAddress(recipient),
         network: finalNetwork === 'solana-devnet' ? 'Solana Devnet' : 'Base Sepolia',
-        fee: addressType === 'solana' ? '~0.000005 SOL' : '~0.0001 ETH',
+        fee: finalNetwork === 'solana-devnet' ? '~0.000005 SOL' : '~0.0001 ETH',
         estimatedTime: '30-60 seconds',
       });
       console.log('[handleSend] Returning:', promptResp);
@@ -1803,17 +1803,45 @@ async function handleSend(params: ActionParams, userId: string) {
         throw new Error('Invalid amount specified. Please provide a valid positive number.');
       }
 
-      // Execute the transaction based on address type
+      // Execute the transaction based on token type and network
       let txResult;
       let explorerUrl;
 
-      if (addressType === 'solana') {
-        // Use CDP to send SOL transaction
-        txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'solana-devnet');
+      // Define token contract addresses
+      const USDC_BASE_SEPOLIA = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+      const USDC_SOLANA_DEVNET = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
+
+      if (finalNetwork === 'solana-devnet') {
+        if (finalToken === 'USDC') {
+          // Transfer USDC on Solana
+          txResult = await transferToken(
+            wallet.address, 
+            recipient, 
+            USDC_SOLANA_DEVNET, 
+            numericAmount.toString(), 
+            6, // USDC has 6 decimals
+            'solana-devnet'
+          );
+        } else {
+          // Transfer SOL
+          txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'solana-devnet');
+        }
         explorerUrl = `https://explorer.solana.com/tx/${txResult.hash}?cluster=devnet`;
       } else {
-        // Use CDP to send ETH transaction
-        txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'base-sepolia');
+        if (finalToken === 'USDC') {
+          // Transfer USDC on Base Sepolia
+          txResult = await transferToken(
+            wallet.address, 
+            recipient, 
+            USDC_BASE_SEPOLIA, 
+            numericAmount.toString(), 
+            6, // USDC has 6 decimals
+            'base-sepolia'
+          );
+        } else {
+          // Transfer ETH
+          txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'base-sepolia');
+        }
         explorerUrl = `https://sepolia.basescan.org/tx/${txResult.hash}`;
       }
 
@@ -2339,7 +2367,6 @@ async function handleBridgeQuote(params: ActionParams, userId: string) {
 }
 
 import { toE164 } from '@/lib/phoneFormat';
-import { transferNativeToken } from "@/lib/cdp";
 
 async function handleExportPrivateKey(params: ActionParams, userId: string) {
   try {
