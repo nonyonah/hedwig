@@ -1742,7 +1742,7 @@ async function handleSend(params: ActionParams, userId: string) {
       return failResp;
     }
 
-    // Determine the appropriate network and token based on address type
+    // Determine the appropriate network and token based on address type and user preference
     let finalNetwork = network;
     let finalToken = token;
     
@@ -1753,8 +1753,18 @@ async function handleSend(params: ActionParams, userId: string) {
         finalToken = 'SOL';
       }
     } else if (addressType === 'ethereum') {
-      // For Ethereum addresses, ensure we're using an EVM network
+      // For Ethereum addresses, determine the appropriate EVM network
       if (network.includes('solana')) {
+        // If user specified Solana but address is Ethereum, default to Base Sepolia
+        finalNetwork = 'base-sepolia';
+      } else if (network.toLowerCase().includes('ethereum') || network.toLowerCase().includes('sepolia')) {
+        // User wants Ethereum Sepolia
+        finalNetwork = 'ethereum-sepolia';
+      } else if (network.toLowerCase().includes('base')) {
+        // User wants Base Sepolia
+        finalNetwork = 'base-sepolia';
+      } else {
+        // Default to Base Sepolia if no specific network mentioned
         finalNetwork = 'base-sepolia';
       }
     }
@@ -1774,11 +1784,21 @@ async function handleSend(params: ActionParams, userId: string) {
       // Get actual estimated fee
       const estimatedFee = await estimateTransactionFee(finalNetwork, transactionType);
       
+      // Format network name for display
+      let networkDisplayName = finalNetwork;
+      if (finalNetwork === 'solana-devnet') {
+        networkDisplayName = 'Solana Devnet';
+      } else if (finalNetwork === 'ethereum-sepolia') {
+        networkDisplayName = 'Ethereum Sepolia';
+      } else if (finalNetwork === 'base-sepolia') {
+        networkDisplayName = 'Base Sepolia';
+      }
+      
       const promptResp = sendTokenPrompt({
         amount: amount,
         token: finalToken,
         recipient: formatAddress(recipient),
-        network: finalNetwork === 'solana-devnet' ? 'Solana Devnet' : 'Base Sepolia',
+        network: networkDisplayName,
         fee: estimatedFee,
         estimatedTime: '30-60 seconds',
       });
@@ -1796,8 +1816,8 @@ async function handleSend(params: ActionParams, userId: string) {
         // Get or create Solana wallet
         wallet = await getOrCreateCdpWallet(userId, 'solana-devnet');
       } else {
-        // Get or create EVM wallet
-        wallet = await getOrCreateCdpWallet(userId, 'base-sepolia');
+        // Get or create EVM wallet based on the final network
+        wallet = await getOrCreateCdpWallet(userId, finalNetwork);
       }
       
       if (!wallet || !wallet.address) {
@@ -1817,6 +1837,7 @@ async function handleSend(params: ActionParams, userId: string) {
       // Define token contract addresses
       const USDC_BASE_SEPOLIA = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
       const USDC_SOLANA_DEVNET = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
+      const USDC_ETHEREUM_SEPOLIA = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'; // USDC on Ethereum Sepolia
 
       if (finalNetwork === 'solana-devnet') {
         if (finalToken === 'USDC') {
@@ -1834,7 +1855,24 @@ async function handleSend(params: ActionParams, userId: string) {
           txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'solana-devnet');
         }
         explorerUrl = `https://explorer.solana.com/tx/${txResult.hash}?cluster=devnet`;
+      } else if (finalNetwork === 'ethereum-sepolia') {
+        if (finalToken === 'USDC') {
+          // Transfer USDC on Ethereum Sepolia
+          txResult = await transferToken(
+            wallet.address, 
+            recipient, 
+            USDC_ETHEREUM_SEPOLIA, 
+            numericAmount.toString(), 
+            6, // USDC has 6 decimals
+            'ethereum-sepolia'
+          );
+        } else {
+          // Transfer ETH
+          txResult = await transferNativeToken(wallet.address, recipient, numericAmount.toString(), 'ethereum-sepolia');
+        }
+        explorerUrl = `https://sepolia.etherscan.io/tx/${txResult.hash}`;
       } else {
+        // Default to Base Sepolia
         if (finalToken === 'USDC') {
           // Transfer USDC on Base Sepolia
           txResult = await transferToken(
