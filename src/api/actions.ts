@@ -1698,7 +1698,7 @@ async function handleSend(params: ActionParams, userId: string) {
     const token = params.token || storedContext.token || 'ETH';
     const amount = params.amount || storedContext.amount || '';
     const recipient = params.recipient || storedContext.recipient || '';
-    const network = (params.network || storedContext.network || 'base').toLowerCase().replace(' ', '-');
+    const network = (params.network || storedContext.network || 'base-sepolia').toLowerCase().replace(' ', '-');
 
     console.log(`[handleSend] Merged parameters - Token: ${token}, Amount: ${amount}, Recipient: ${recipient}, Network: ${network}, isExecute: ${isExecute}`);
 
@@ -1747,24 +1747,30 @@ async function handleSend(params: ActionParams, userId: string) {
     let finalToken = token;
     
     if (addressType === 'solana') {
-      // For Solana addresses, use Solana network and SOL token
+      // For Solana addresses, always use Solana network
       finalNetwork = 'solana-devnet';
       if (token.toLowerCase() === 'eth') {
         finalToken = 'SOL';
       }
     } else if (addressType === 'ethereum') {
-      // For Ethereum addresses, determine the appropriate EVM network
+      // For Ethereum addresses, determine the appropriate EVM network based on explicit user intent
+      console.log(`[handleSend] Processing Ethereum address with network input: "${network}"`);
+      
       if (network.includes('solana')) {
         // If user specified Solana but address is Ethereum, default to Base Sepolia
+        console.log(`[handleSend] User specified Solana but address is Ethereum, defaulting to Base Sepolia`);
         finalNetwork = 'base-sepolia';
-      } else if (network.toLowerCase().includes('ethereum') || network.toLowerCase().includes('sepolia')) {
-        // User wants Ethereum Sepolia
+      } else if (network.includes('ethereum') || network === 'ethereum-sepolia') {
+        // User explicitly wants Ethereum Sepolia
+        console.log(`[handleSend] User wants Ethereum Sepolia`);
         finalNetwork = 'ethereum-sepolia';
-      } else if (network.toLowerCase().includes('base')) {
-        // User wants Base Sepolia
+      } else if (network.includes('base') || network === 'base-sepolia') {
+        // User explicitly wants Base Sepolia
+        console.log(`[handleSend] User wants Base Sepolia`);
         finalNetwork = 'base-sepolia';
       } else {
-        // Default to Base Sepolia if no specific network mentioned
+        // For any other case, default to Base Sepolia (safer default)
+        console.log(`[handleSend] No specific network detected, defaulting to Base Sepolia`);
         finalNetwork = 'base-sepolia';
       }
     }
@@ -1780,9 +1786,11 @@ async function handleSend(params: ActionParams, userId: string) {
       
       // Determine transaction type for fee estimation
       const transactionType = finalToken === 'USDC' ? 'token' : 'native';
+      console.log(`[handleSend] Fee estimation - Network: ${finalNetwork}, Transaction type: ${transactionType}, Token: ${finalToken}`);
       
       // Get actual estimated fee
       const estimatedFee = await estimateTransactionFee(finalNetwork, transactionType);
+      console.log(`[handleSend] Estimated fee result: ${estimatedFee}`);
       
       // Format network name for display
       let networkDisplayName = finalNetwork;

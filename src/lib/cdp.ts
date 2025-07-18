@@ -657,13 +657,19 @@ export async function estimateTransactionFee(
   transactionType: 'native' | 'token' = 'native'
 ): Promise<string> {
   try {
+    console.log(`[estimateTransactionFee] Starting estimation for network: ${network}, type: ${transactionType}`);
+    
     const networkConfig = SUPPORTED_NETWORKS[network];
     if (!networkConfig) {
+      console.error(`[estimateTransactionFee] Unsupported network: ${network}`);
       throw new Error(`Unsupported network: ${network}`);
     }
 
+    console.log(`[estimateTransactionFee] Network config found:`, networkConfig);
+
     if (networkConfig.chainId) {
       // EVM network - estimate gas fee
+      console.log(`[estimateTransactionFee] Processing EVM network with chainId: ${networkConfig.chainId}`);
       try {
         // For EVM networks, we can use a rough estimate
         // Native transfers typically cost ~21,000 gas
@@ -678,13 +684,16 @@ export async function estimateTransactionFee(
         const estimatedFeeWei = gasLimit * gasPriceWei;
         const estimatedFeeEth = estimatedFeeWei / 1e18;
         
-        return `~${estimatedFeeEth.toFixed(6)} ETH`;
+        const result = `~${estimatedFeeEth.toFixed(6)} ETH`;
+        console.log(`[estimateTransactionFee] EVM fee calculated: ${result}`);
+        return result;
       } catch (error) {
         console.warn(`[estimateTransactionFee] Failed to estimate EVM fee:`, error);
         return '~0.0001 ETH'; // Fallback
       }
     } else {
       // Solana network - estimate SOL fee
+      console.log(`[estimateTransactionFee] Processing Solana network`);
        try {
          const connection = new Connection(
            networkConfig.networkId === 'devnet' 
@@ -692,13 +701,17 @@ export async function estimateTransactionFee(
              : 'https://api.mainnet-beta.solana.com'
          );
          
+         console.log(`[estimateTransactionFee] Solana connection created for ${networkConfig.networkId}`);
+         
          // Solana fees are typically very low
          // Native transfers: ~5,000 lamports
          // Token transfers: ~10,000 lamports (may need to create ATA)
          const estimatedLamports = transactionType === 'native' ? 5000 : 10000;
          const estimatedSol = estimatedLamports / LAMPORTS_PER_SOL;
          
-         return `~${estimatedSol.toFixed(6)} SOL`;
+         const result = `~${estimatedSol.toFixed(6)} SOL`;
+         console.log(`[estimateTransactionFee] Solana fee calculated: ${result} (${estimatedLamports} lamports)`);
+         return result;
        } catch (error) {
          console.warn(`[estimateTransactionFee] Failed to estimate Solana fee:`, error);
          return '~0.000005 SOL'; // Fallback
@@ -707,7 +720,9 @@ export async function estimateTransactionFee(
   } catch (error) {
     console.error(`[estimateTransactionFee] Error estimating fee:`, error);
     // Return network-appropriate fallback
-    return network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
+    const fallback = network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
+    console.log(`[estimateTransactionFee] Returning fallback: ${fallback}`);
+    return fallback;
   }
 }
 
