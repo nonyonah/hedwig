@@ -667,31 +667,8 @@ export async function estimateTransactionFee(
 
     console.log(`[estimateTransactionFee] Network config found:`, networkConfig);
 
-    if (networkConfig.chainId) {
-      // EVM network - estimate gas fee
-      console.log(`[estimateTransactionFee] Processing EVM network with chainId: ${networkConfig.chainId}`);
-      try {
-        // For EVM networks, we can use a rough estimate
-        // Native transfers typically cost ~21,000 gas
-        // Token transfers typically cost ~65,000 gas
-        const gasLimit = transactionType === 'native' ? 21000 : 65000;
-        
-        // Use a conservative gas price estimate (in gwei)
-        // Base Sepolia typically has low gas prices
-        const gasPriceGwei = 0.1; // 0.1 gwei
-        const gasPriceWei = gasPriceGwei * 1e9;
-        
-        const estimatedFeeWei = gasLimit * gasPriceWei;
-        const estimatedFeeEth = estimatedFeeWei / 1e18;
-        
-        const result = `~${estimatedFeeEth.toFixed(6)} ETH`;
-        console.log(`[estimateTransactionFee] EVM fee calculated: ${result}`);
-        return result;
-      } catch (error) {
-        console.warn(`[estimateTransactionFee] Failed to estimate EVM fee:`, error);
-        return '~0.0001 ETH'; // Fallback
-      }
-    } else {
+    // Check if this is a Solana network first
+    if (network.includes('solana')) {
       // Solana network - estimate SOL fee
       console.log(`[estimateTransactionFee] Processing Solana network`);
        try {
@@ -716,6 +693,36 @@ export async function estimateTransactionFee(
          console.warn(`[estimateTransactionFee] Failed to estimate Solana fee:`, error);
          return '~0.000005 SOL'; // Fallback
        }
+    } else if (networkConfig.chainId) {
+      // EVM network - estimate gas fee
+      console.log(`[estimateTransactionFee] Processing EVM network with chainId: ${networkConfig.chainId}`);
+      try {
+        // For EVM networks, we can use a rough estimate
+        // Native transfers typically cost ~21,000 gas
+        // Token transfers typically cost ~65,000 gas
+        const gasLimit = transactionType === 'native' ? 21000 : 65000;
+        
+        // Use a conservative gas price estimate (in gwei)
+        // Base Sepolia typically has low gas prices
+        const gasPriceGwei = 0.1; // 0.1 gwei
+        const gasPriceWei = gasPriceGwei * 1e9;
+        
+        const estimatedFeeWei = gasLimit * gasPriceWei;
+        const estimatedFeeEth = estimatedFeeWei / 1e18;
+        
+        const result = `~${estimatedFeeEth.toFixed(6)} ETH`;
+        console.log(`[estimateTransactionFee] EVM fee calculated: ${result}`);
+        return result;
+      } catch (error) {
+        console.warn(`[estimateTransactionFee] Failed to estimate EVM fee:`, error);
+        return '~0.0001 ETH'; // Fallback
+      }
+    } else {
+      // Unknown network type
+      console.warn(`[estimateTransactionFee] Unknown network type for: ${network}`);
+      const fallback = network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
+      console.log(`[estimateTransactionFee] Returning fallback: ${fallback}`);
+      return fallback;
     }
   } catch (error) {
     console.error(`[estimateTransactionFee] Error estimating fee:`, error);
