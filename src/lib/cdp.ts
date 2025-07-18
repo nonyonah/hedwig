@@ -14,7 +14,7 @@ import { parseUnits } from 'viem';
 import { loadServerEnvironment } from './serverEnv';
 import { createClient } from '@supabase/supabase-js';
 import { Connection, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { createTransferInstruction, getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { createTransferInstruction, getAssociatedTokenAddress, TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getAccount } from '@solana/spl-token';
 
 // Ensure environment variables are loaded
 loadServerEnvironment();
@@ -561,6 +561,25 @@ export async function transferToken(
       const fromTokenAccount = await getAssociatedTokenAddress(mintPubkey, fromPubkey);
       const toTokenAccount = await getAssociatedTokenAddress(mintPubkey, toPubkey);
       
+      // Create transaction
+      const transaction = new Transaction();
+      
+      // Check if recipient's ATA exists, if not, create it
+      try {
+        await getAccount(connection, toTokenAccount);
+        console.log(`[CDP] Recipient ATA exists: ${toTokenAccount.toString()}`);
+      } catch (error) {
+        console.log(`[CDP] Recipient ATA does not exist, creating: ${toTokenAccount.toString()}`);
+        // Add instruction to create the ATA
+        const createATAInstruction = createAssociatedTokenAccountInstruction(
+          fromPubkey, // payer
+          toTokenAccount, // ata
+          toPubkey, // owner
+          mintPubkey // mint
+        );
+        transaction.add(createATAInstruction);
+      }
+      
       // Create transfer instruction
       const transferInstruction = createTransferInstruction(
         fromTokenAccount,
@@ -571,8 +590,6 @@ export async function transferToken(
         TOKEN_PROGRAM_ID
       );
       
-      // Create transaction
-      const transaction = new Transaction();
       transaction.add(transferInstruction);
       
       // Get recent blockhash
@@ -629,6 +646,71 @@ export async function getTransaction(txHash: string, network: string) {
   }
 }
 
+/**
+ * Estimate transaction fee for a network
+ * @param network - Network name
+ * @param transactionType - Type of transaction ('native' or 'token')
+ * @returns Estimated fee string
+ */
+export async function estimateTransactionFee(
+  network: string,
+  transactionType: 'native' | 'token' = 'native'
+): Promise<string> {
+  try {
+    const networkConfig = SUPPORTED_NETWORKS[network];
+    if (!networkConfig) {
+      throw new Error(`Unsupported network: ${network}`);
+    }
+
+    if (networkConfig.chainId) {
+      // EVM network - estimate gas fee
+      try {
+        // For EVM networks, we can use a rough estimate
+        // Native transfers typically cost ~21,000 gas
+        // Token transfers typically cost ~65,000 gas
+        const gasLimit = transactionType === 'native' ? 21000 : 65000;
+        
+        // Use a conservative gas price estimate (in gwei)
+        // Base Sepolia typically has low gas prices
+        const gasPriceGwei = 0.1; // 0.1 gwei
+        const gasPriceWei = gasPriceGwei * 1e9;
+        
+        const estimatedFeeWei = gasLimit * gasPriceWei;
+        const estimatedFeeEth = estimatedFeeWei / 1e18;
+        
+        return `~${estimatedFeeEth.toFixed(6)} ETH`;
+      } catch (error) {
+        console.warn(`[estimateTransactionFee] Failed to estimate EVM fee:`, error);
+        return '~0.0001 ETH'; // Fallback
+      }
+    } else {
+      // Solana network - estimate SOL fee
+       try {
+         const connection = new Connection(
+           networkConfig.networkId === 'devnet' 
+             ? 'https://api.devnet.solana.com' 
+             : 'https://api.mainnet-beta.solana.com'
+         );
+         
+         // Solana fees are typically very low
+         // Native transfers: ~5,000 lamports
+         // Token transfers: ~10,000 lamports (may need to create ATA)
+         const estimatedLamports = transactionType === 'native' ? 5000 : 10000;
+         const estimatedSol = estimatedLamports / LAMPORTS_PER_SOL;
+         
+         return `~${estimatedSol.toFixed(6)} SOL`;
+       } catch (error) {
+         console.warn(`[estimateTransactionFee] Failed to estimate Solana fee:`, error);
+         return '~0.000005 SOL'; // Fallback
+       }
+    }
+  } catch (error) {
+    console.error(`[estimateTransactionFee] Error estimating fee:`, error);
+    // Return network-appropriate fallback
+    return network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
+  }
+}
+
 export default {
   createWallet,
   getOrCreateCdpWallet,
@@ -637,6 +719,7 @@ export default {
   transferNativeToken,
   transferToken,
   getTransaction,
+  estimateTransactionFee,
   formatNetworkName,
   SUPPORTED_NETWORKS,
 };

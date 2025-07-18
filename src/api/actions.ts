@@ -1,4 +1,4 @@
-import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken } from "@/lib/cdp";
+import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 
 import fetch from "node-fetch";
@@ -1767,12 +1767,19 @@ async function handleSend(params: ActionParams, userId: string) {
     // If this is not an execution request, return the confirmation prompt template
     if (!isExecute) {
       console.log(`[handleSend] Returning send_token_prompt template for confirmation`);
+      
+      // Determine transaction type for fee estimation
+      const transactionType = finalToken === 'USDC' ? 'token' : 'native';
+      
+      // Get actual estimated fee
+      const estimatedFee = await estimateTransactionFee(finalNetwork, transactionType);
+      
       const promptResp = sendTokenPrompt({
         amount: amount,
         token: finalToken,
         recipient: formatAddress(recipient),
         network: finalNetwork === 'solana-devnet' ? 'Solana Devnet' : 'Base Sepolia',
-        fee: finalNetwork === 'solana-devnet' ? '~0.000005 SOL' : '~0.0001 ETH',
+        fee: estimatedFee,
         estimatedTime: '30-60 seconds',
       });
       console.log('[handleSend] Returning:', promptResp);
