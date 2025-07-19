@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { useAccount, useBalance, useSwitchChain, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useBalance, useSwitchChain, useWriteContract, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
 import { parseEther, parseUnits, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { useState, useEffect } from 'react'
@@ -29,10 +29,16 @@ export default function PaymentSummary({
 }: PaymentSummaryProps) {
   const { address, isConnected, chain } = useAccount()
   const { switchChain } = useSwitchChain()
-  const { writeContract, data: hash, error, isPending } = useWriteContract()
+  const { writeContract, data: contractHash, error: contractError, isPending: isContractPending } = useWriteContract()
+  const { sendTransaction, data: ethHash, error: ethError, isPending: isEthPending } = useSendTransaction()
   const [isProcessing, setIsProcessing] = useState(false)
   const [txStatus, setTxStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string>('')
+
+  // Use the appropriate hash and error based on transaction type
+  const hash = contractHash || ethHash
+  const error = contractError || ethError
+  const isPending = isContractPending || isEthPending
 
   // Get balance for the connected wallet
   const { data: balance } = useBalance({
@@ -85,7 +91,7 @@ export default function PaymentSummary({
     try {
       if (paymentData.currency === 'ETH') {
         // ETH transfer
-        writeContract({
+        sendTransaction({
           to: paymentData.recipient as `0x${string}`,
           value: parseEther(paymentData.amount),
         })
@@ -125,7 +131,8 @@ export default function PaymentSummary({
     }
   }
 
-  const formatAddress = (addr: string) => {
+  const formatAddress = (addr: string | undefined) => {
+    if (!addr) return 'Unknown'
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`
   }
 
