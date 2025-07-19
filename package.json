@@ -22,6 +22,7 @@
   "dependencies": {
     "@ai-sdk/google": "^1.2.18",
     "@coinbase/cdp-sdk": "^1.15.0",
+    "@coinbase/onchainkit": "^0.38.17",
     "@coinbase/wallet-sdk": "^4.3.4",
     "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.4",
@@ -36,8 +37,10 @@
     "@openrouter/ai-sdk-provider": "^0.7.1",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.0",
+    "@tanstack/react-query": "^5.83.0",
     "@untitled-ui/icons-react": "^0.1.4",
     "alchemy-sdk": "^3.6.0",
+    "bs58": "^6.0.0",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.4",
     "ethers": "^6.14.4",
@@ -55,7 +58,8 @@
     "url": "^0.11.4",
     "util": "^0.12.5",
     "uuid": "^11.1.0",
-    "viem": "^2.31.2",
+    "viem": "^2.32.1",
+    "wagmi": "^2.15.7",
     "whatwg-url": "^12.0.1",
     "zod": "^3.25.74"
   },

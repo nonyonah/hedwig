@@ -3,32 +3,43 @@ import { useRouter } from 'next/router';
 import { createClient } from '@supabase/supabase-js';
 import { CheckCircleIcon, ExclamationTriangleIcon, ClockIcon, DocumentDuplicateIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { WalletIcon } from '@heroicons/react/24/solid';
+import { Wallet, ConnectWallet } from '@coinbase/onchainkit/wallet';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useSendTransaction } from 'wagmi';
+import { parseEther, parseUnits, formatUnits } from 'viem';
+import { base, mainnet } from 'wagmi/chains';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Token contract addresses for different networks
+// Token contract addresses for supported networks (Base and Ethereum only)
 const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
   'base': {
     'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-    'USDT': '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
-    'DAI': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
-    'WETH': '0x4200000000000000000000000000000000000006'
   },
   'ethereum': {
     'USDC': '0xA0b86a33E6441b8C0b8b2B4B3d4B3e4B3d4B3e4B',
-    'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-    'DAI': '0x6B175474E89094C44Da98b954EedeAC495271d0F',
-    'WETH': '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
   },
-  'polygon': {
-    'USDC': '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
-    'USDT': '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
-    'DAI': '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
-    'WETH': '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619'
-  }
+  // Commented out unsupported networks
+  // 'polygon': {
+  //   'USDC': '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+  //   'USDT': '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+  //   'DAI': '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
+  //   'WETH': '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619'
+  // },
+  // 'arbitrum': {
+  //   'USDC': '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8',
+  //   'USDT': '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+  //   'DAI': '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+  //   'WETH': '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'
+  // },
+  // 'optimism': {
+  //   'USDC': '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
+  //   'USDT': '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+  //   'DAI': '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+  //   'WETH': '0x4200000000000000000000000000000000000006'
+  // }
 };
 
 interface PaymentData {
@@ -52,11 +63,21 @@ export default function PaymentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [userWalletAddress, setUserWalletAddress] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [provider, setProvider] = useState<any>(null);
-  const [signer, setSigner] = useState<any>(null);
+
+  const { address, isConnected, chain } = useAccount();
+  const { writeContract, data: contractHash, error: writeError, isPending: isContractPending } = useWriteContract();
+  const { sendTransaction, data: ethHash, error: sendError, isPending: isSendPending } = useSendTransaction();
+  
+  // Use the appropriate hash based on transaction type
+  const hash = contractHash || ethHash;
+  const isPending = isContractPending || isSendPending;
+  const transactionError = writeError || sendError;
+  
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash,
+  });
+  const { switchChain } = useSwitchChain();
 
   useEffect(() => {
     if (id) {
@@ -90,6 +111,17 @@ export default function PaymentPage() {
         return;
       }
 
+      // Validate supported networks and tokens
+      if (!['base', 'ethereum'].includes(data.network)) {
+        setError(`Network ${data.network} is not supported. Only Base and Ethereum are supported.`);
+        return;
+      }
+
+      if (!['ETH', 'USDC'].includes(data.token)) {
+        setError(`Token ${data.token} is not supported. Only ETH and USDC are supported.`);
+        return;
+      }
+
       setPaymentData(data);
     } catch (err) {
       setError('Failed to load payment data');
@@ -103,51 +135,18 @@ export default function PaymentPage() {
     const chainIds: Record<string, number> = {
       'ethereum': 1,
       'base': 8453,
-      'polygon': 137,
-      'arbitrum': 42161,
-      'optimism': 10
     };
     return chainIds[network] || 8453; // Default to Base
   };
 
-  const addNetwork = async (network: string) => {
-    const networkConfigs: Record<string, any> = {
-      'base': {
-        chainId: '0x2105',
-        chainName: 'Base',
-        nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
-        rpcUrls: ['https://mainnet.base.org'],
-        blockExplorerUrls: ['https://basescan.org']
-      },
-      'polygon': {
-        chainId: '0x89',
-        chainName: 'Polygon',
-        nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
-        rpcUrls: ['https://polygon-rpc.com'],
-        blockExplorerUrls: ['https://polygonscan.com']
-      },
-      'arbitrum': {
-        chainId: '0xa4b1',
-        chainName: 'Arbitrum One',
-        nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
-        rpcUrls: ['https://arb1.arbitrum.io/rpc'],
-        blockExplorerUrls: ['https://arbiscan.io']
-      },
-      'optimism': {
-        chainId: '0xa',
-        chainName: 'Optimism',
-        nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
-        rpcUrls: ['https://mainnet.optimism.io'],
-        blockExplorerUrls: ['https://optimistic.etherscan.io']
-      }
-    };
-
-    const config = networkConfigs[network];
-    if (config && window.ethereum) {
-      await window.ethereum.request({
-        method: 'wallet_addEthereumChain',
-        params: [config],
-      });
+  const getChainFromNetwork = (network: string) => {
+    switch (network) {
+      case 'ethereum':
+        return mainnet;
+      case 'base':
+        return base;
+      default:
+        return base;
     }
   };
 
@@ -161,159 +160,104 @@ export default function PaymentPage() {
     }
   };
 
-  const connectWallet = async () => {
-    try {
-      setIsProcessing(true);
-      setError(null);
-      
-      // Check if MetaMask or other wallet is available
-      if (typeof window !== 'undefined' && window.ethereum) {
-        // Use existing wallet provider (MetaMask, etc.)
-        const provider = new (await import('ethers')).ethers.BrowserProvider(window.ethereum);
-        
-        // Request account access
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-        
-        // Get signer
-        const signer = await provider.getSigner();
-        const address = await signer.getAddress();
-        
-        // Check if we're on the correct network
-        const network = await provider.getNetwork();
-        const expectedChainId = getChainId(paymentData?.network || 'base');
-        
-        if (Number(network.chainId) !== expectedChainId) {
-          // Request network switch
-          try {
-            await window.ethereum.request({
-              method: 'wallet_switchEthereumChain',
-              params: [{ chainId: `0x${expectedChainId.toString(16)}` }],
-            });
-          } catch (switchError: any) {
-            if (switchError.code === 4902) {
-              // Network not added, add it
-              await addNetwork(paymentData?.network || 'base');
-            } else {
-              throw switchError;
-            }
-          }
-        }
-        
-        setProvider(provider);
-        setSigner(signer);
-        setUserWalletAddress(address);
-        setWalletConnected(true);
-        
-      } else {
-        // Fallback to Coinbase Wallet SDK
-        const { Wallet } = await import('@coinbase/wallet-sdk');
-        
-        const wallet = new Wallet({
-          appName: 'Hedwig Payment',
-          appLogoUrl: 'https://hedwig.xyz/logo.png',
-          darkMode: false
-        });
-        
-        const provider = wallet.makeWeb3Provider();
-        const ethersProvider = new (await import('ethers')).ethers.BrowserProvider(provider);
-        
-        // Request account access
-        const accounts = await provider.request({ method: 'eth_requestAccounts' });
-        
-        if (!accounts || accounts.length === 0) {
-          throw new Error('No accounts found');
-        }
-        
-        const signer = await ethersProvider.getSigner();
-        const address = accounts[0];
-        
-        setProvider(ethersProvider);
-        setSigner(signer);
-        setUserWalletAddress(address);
-        setWalletConnected(true);
-      }
-      
-    } catch (err: any) {
-      console.error('Wallet connection error:', err);
-      setError(err.message || 'Failed to connect wallet');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const processPayment = async () => {
-    if (!paymentData || !userWalletAddress || !signer) return;
+    if (!paymentData || !address || !isConnected) return;
 
     try {
       setIsProcessing(true);
       setError(null);
-      
+
+      // Check if we're on the correct network
+      const expectedChain = getChainFromNetwork(paymentData.network);
+      if (chain?.id !== expectedChain.id) {
+        try {
+          await switchChain({ chainId: expectedChain.id });
+        } catch (switchError) {
+          setError(`Please switch to ${expectedChain.name} network`);
+          return;
+        }
+      }
+
       console.log('Processing payment:', {
         amount: paymentData.amount,
         token: paymentData.token,
         network: paymentData.network,
         to: paymentData.wallet_address,
-        from: userWalletAddress
+        from: address
       });
 
-      let txHash: string;
-
-      if (paymentData.token === 'ETH' || paymentData.token === 'MATIC' || paymentData.token === 'AVAX') {
-        // Native token transfer
-        const tx = await signer.sendTransaction({
-          to: paymentData.wallet_address,
-          value: (await import('ethers')).ethers.parseEther(paymentData.amount.toString()),
+      if (paymentData.token === 'ETH') {
+        // Native ETH transfer
+        sendTransaction({
+          to: paymentData.wallet_address as `0x${string}`,
+          value: parseEther(paymentData.amount.toString()),
         });
-        
-        console.log('Transaction sent:', tx.hash);
-        await tx.wait(); // Wait for confirmation
-        txHash = tx.hash;
-        
       } else {
-        // ERC-20 token transfer
+        // ERC-20 token transfer (USDC)
         const tokenAddress = TOKEN_ADDRESSES[paymentData.network]?.[paymentData.token];
         
         if (!tokenAddress) {
           throw new Error(`Token ${paymentData.token} not supported on ${paymentData.network}`);
         }
-        
+
         // ERC-20 ABI for transfer function
         const erc20Abi = [
-          'function transfer(address to, uint256 amount) returns (bool)',
-          'function decimals() view returns (uint8)',
-          'function balanceOf(address owner) view returns (uint256)'
-        ];
-        
-        const tokenContract = new (await import('ethers')).ethers.Contract(tokenAddress, erc20Abi, signer);
-        
-        // Get token decimals
-        const decimals = await tokenContract.decimals();
-        
-        // Check balance
-        const balance = await tokenContract.balanceOf(userWalletAddress);
-        const amountWei = (await import('ethers')).ethers.parseUnits(paymentData.amount.toString(), decimals);
-        
-        if (balance < amountWei) {
-          throw new Error(`Insufficient ${paymentData.token} balance`);
-        }
-        
-        // Send token transfer transaction
-        const tx = await tokenContract.transfer(paymentData.wallet_address, amountWei);
-        
-        console.log('Token transfer sent:', tx.hash);
-        await tx.wait(); // Wait for confirmation
-        txHash = tx.hash;
+          {
+            name: 'transfer',
+            type: 'function',
+            stateMutability: 'nonpayable',
+            inputs: [
+              { name: 'to', type: 'address' },
+              { name: 'amount', type: 'uint256' }
+            ],
+            outputs: [{ name: '', type: 'bool' }]
+          }
+        ] as const;
+
+        // USDC has 6 decimals
+        const decimals = 6;
+        const amountWei = parseUnits(paymentData.amount.toString(), decimals);
+
+        writeContract({
+          address: tokenAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [paymentData.wallet_address as `0x${string}`, amountWei],
+        });
       }
 
-      // Update payment status in database
+    } catch (err: any) {
+      console.error('Payment error:', err);
+      setError(err.message || 'Payment failed. Please try again.');
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle transaction confirmation
+  useEffect(() => {
+    if (isConfirmed && hash && paymentData) {
+      updatePaymentStatus(hash);
+    }
+  }, [isConfirmed, hash, paymentData]);
+
+  // Handle transaction errors
+  useEffect(() => {
+    if (transactionError) {
+      setError(transactionError.message || 'Transaction failed');
+      setIsProcessing(false);
+    }
+  }, [transactionError]);
+
+  const updatePaymentStatus = async (transactionHash: string) => {
+    try {
       const response = await fetch('/api/update-payment-status', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          paymentId: paymentData.id,
-          transactionHash: txHash,
+          paymentId: paymentData!.id,
+          transactionHash,
           status: 'paid'
         }),
       });
@@ -322,13 +266,12 @@ export default function PaymentPage() {
         throw new Error('Failed to update payment status');
       }
 
-      // Refresh payment data to show success state
-      await fetchPaymentData();
-      
-    } catch (err: any) {
-      console.error('Payment error:', err);
-      setError(err.message || 'Payment failed. Please try again.');
-    } finally {
+      // Update local state
+      setPaymentData(prev => prev ? { ...prev, status: 'paid', transaction_hash: transactionHash } : null);
+      setIsProcessing(false);
+    } catch (err) {
+      console.error('Error updating payment status:', err);
+      setError('Payment sent but failed to update status. Please contact support.');
       setIsProcessing(false);
     }
   };
@@ -341,9 +284,6 @@ export default function PaymentPage() {
     const networkNames: Record<string, string> = {
       'base': 'Base',
       'ethereum': 'Ethereum',
-      'polygon': 'Polygon',
-      'arbitrum': 'Arbitrum',
-      'optimism': 'Optimism'
     };
     return networkNames[network] || network.charAt(0).toUpperCase() + network.slice(1);
   };
@@ -464,24 +404,15 @@ export default function PaymentPage() {
 
         {/* Payment Action */}
         <div className="space-y-4">
-          {!walletConnected ? (
-            <button
-              onClick={connectWallet}
-              disabled={isProcessing}
-              className="w-full flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isProcessing ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Connecting...
-                </>
-              ) : (
-                <>
+          {!isConnected ? (
+            <div className="w-full">
+              <Wallet>
+                <ConnectWallet className="w-full flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                   <WalletIcon className="w-4 h-4 mr-2" />
                   Connect Wallet
-                </>
-              )}
-            </button>
+                </ConnectWallet>
+              </Wallet>
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
@@ -491,18 +422,34 @@ export default function PaymentPage() {
               
               <button
                 onClick={processPayment}
-                disabled={isProcessing}
+                disabled={isProcessing || isPending || isConfirming}
                 className="w-full flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isProcessing ? (
+                {isProcessing || isPending || isConfirming ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Processing Payment...
+                    {isPending ? 'Confirming...' : isConfirming ? 'Processing...' : 'Processing Payment...'}
                   </>
                 ) : (
                   `Pay ${formatAmount(paymentData.amount, paymentData.token)}`
                 )}
               </button>
+
+              {transactionError && (
+                <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <p className="text-sm text-red-800">
+                    Error: {transactionError.message}
+                  </p>
+                </div>
+              )}
+
+              {hash && (
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-blue-800">
+                    Transaction submitted: {hash.slice(0, 10)}...{hash.slice(-8)}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
