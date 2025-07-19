@@ -14,7 +14,7 @@ const wagmiConfig = createConfig({
   connectors: [
     coinbaseWallet({
       appName: 'Hedwig Payment',
-      preference: 'smartWalletOnly',
+      preference: 'all', // Changed from 'smartWalletOnly' to 'all' to show wallet selection
     }),
     metaMask(),
   ],

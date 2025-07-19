@@ -845,12 +845,6 @@ export async function handleAction(
   case "create_payment_link":
     console.log(`[handleAction] Processing 'create_payment_link' intent with params:`, params);
     return await handleCreatePaymentLink(params, userId);
-  case "send_payment_email":
-    console.log(`[handleAction] Processing 'send_payment_email' intent with params:`, params);
-    return await handleSendPaymentEmail(params, userId);
-  case "share_payment_manually":
-    console.log(`[handleAction] Processing 'share_payment_manually' intent with params:`, params);
-    return await handleSharePaymentManually(params, userId);
 
   default:
     return {
@@ -2969,33 +2963,19 @@ async function handleCreatePaymentLink(params: any, userId: string) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const paymentUrl = `${baseUrl}/pay/${paymentLink.id}`;
 
-    // If sendEmail is explicitly set to false, don't send email
-    if (sendEmail === false) {
-      return {
-        text: `✅ Payment link created successfully!\n\n💰 Amount: ${amount} ${token.toUpperCase()}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n👤 Your wallet: ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days. You can share this link manually with the recipient.`
-      };
-    }
-
-    // If sendEmail is not specified, ask the user
-    if (sendEmail === undefined) {
-      return {
-        text: `✅ Payment link created successfully!\n\n💰 Amount: ${amount} ${token.toUpperCase()}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n👤 Your wallet: ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days.\n\n📧 Would you like me to send an email to ${recipientEmail} with the payment link, or would you prefer to share it manually?\n\nReply with:\n• "Send email" - I'll send the payment link via email\n• "Share manually" - I'll just give you the link to share yourself`,
-        paymentLinkId: paymentLink.id,
-        awaitingEmailDecision: true
-      };
-    }
-
-    // Send email notification if requested
+    // Always attempt to send email notification
     try {
-      await fetch(`${baseUrl}/api/send-payment-email`, {
+      const response = await fetch(`${baseUrl}/api/send-payment-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          paymentLinkId: paymentLink.id,
-          recipientEmail,
-          senderName: userName
+          paymentId: paymentLink.id
         })
       });
+
+      if (!response.ok) {
+        throw new Error(`Email API error: ${response.status}`);
+      }
 
       return {
         text: `✅ Payment link created and email sent successfully!\n\n💰 Amount: ${amount} ${token.toUpperCase()}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n👤 Your wallet: ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days. An email with payment instructions has been sent to ${recipientEmail}.`
@@ -3003,107 +2983,12 @@ async function handleCreatePaymentLink(params: any, userId: string) {
     } catch (emailError) {
       console.error(`[handleCreatePaymentLink] Error sending email:`, emailError);
       return {
-        text: `✅ Payment link created successfully!\n\n💰 Amount: ${amount} ${token.toUpperCase()}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n👤 Your wallet: ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days.\n\n⚠️ Note: There was an issue sending the email. You can share the link manually with the recipient.`
+        text: `✅ Payment link created successfully!\n\n💰 Amount: ${amount} ${token.toUpperCase()}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n👤 Your wallet: ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days.\n\n⚠️ Note: There was an issue sending the email. You can copy and share this link with your client directly.`
       };
     }
 
   } catch (error) {
     console.error("[handleCreatePaymentLink] Error:", error);
     return { text: "Error creating payment link. Please try again later." };
-  }
-}
-
-// Handler for sending payment email (follow-up to payment link creation)
-async function handleSendPaymentEmail(params: any, userId: string) {
-  try {
-    console.log(`[handleSendPaymentEmail] Sending payment email with params:`, params);
-
-    // Get user info
-    const { data: user } = await supabase
-      .from("users")
-      .select("name, phone_number")
-      .eq("id", userId)
-      .single();
-
-    if (!user) {
-      return { text: "Error fetching user details. Please try again." };
-    }
-
-    const userName = user.name || `User_${userId.substring(0, 8)}`;
-
-    // Get the most recent payment link created by this user
-    const { data: paymentLink, error } = await supabase
-      .from("payment_links")
-      .select("*")
-      .eq("created_by", userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error || !paymentLink) {
-      return { text: "No recent payment link found. Please create a payment link first." };
-    }
-
-    // Generate payment URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const paymentUrl = `${baseUrl}/pay/${paymentLink.id}`;
-
-    // Send email notification
-    try {
-      await fetch(`${baseUrl}/api/send-payment-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentLinkId: paymentLink.id,
-          recipientEmail: paymentLink.recipient_email,
-          senderName: userName
-        })
-      });
-
-      return {
-        text: `📧 Email sent successfully!\n\nPayment link has been sent to ${paymentLink.recipient_email} with instructions on how to complete the payment.\n\n💰 Amount: ${paymentLink.amount} ${paymentLink.token}\n📝 Description: ${paymentLink.payment_reason}\n🔗 Payment URL: ${paymentUrl}`
-      };
-    } catch (emailError) {
-      console.error(`[handleSendPaymentEmail] Error sending email:`, emailError);
-      return {
-        text: `⚠️ There was an issue sending the email to ${paymentLink.recipient_email}. Please try again or share the payment link manually:\n\n🔗 Payment URL: ${paymentUrl}`
-      };
-    }
-
-  } catch (error) {
-    console.error("[handleSendPaymentEmail] Error:", error);
-    return { text: "Error sending payment email. Please try again later." };
-  }
-}
-
-// Handler for manual payment sharing (follow-up to payment link creation)
-async function handleSharePaymentManually(params: any, userId: string) {
-  try {
-    console.log(`[handleSharePaymentManually] Manual sharing with params:`, params);
-
-    // Get the most recent payment link created by this user
-    const { data: paymentLink, error } = await supabase
-      .from("payment_links")
-      .select("*")
-      .eq("created_by", userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error || !paymentLink) {
-      return { text: "No recent payment link found. Please create a payment link first." };
-    }
-
-    // Generate payment URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const paymentUrl = `${baseUrl}/pay/${paymentLink.id}`;
-
-    return {
-      text: `✅ Perfect! Here's your payment link to share manually:\n\n💰 Amount: ${paymentLink.amount} ${paymentLink.token}\n🌐 Network: ${paymentLink.network}\n📧 Recipient: ${paymentLink.recipient_email}\n📝 Description: ${paymentLink.payment_reason}\n\n🔗 Payment URL:\n${paymentUrl}\n\nYou can copy and share this link with ${paymentLink.recipient_email} through your preferred method (email, message, etc.). The link expires in 7 days.`
-    };
-
-  } catch (error) {
-    console.error("[handleSharePaymentManually] Error:", error);
-    return { text: "Error retrieving payment link. Please try again later." };
   }
 }

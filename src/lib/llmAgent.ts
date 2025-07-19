@@ -62,8 +62,6 @@ Valid intents:
 - get_price: For checking crypto prices
 - get_news: For crypto news
 - create_payment_link: For creating payment links or payment requests
-- send_payment_email: Send payment link via email (follow-up to payment link creation)
-- share_payment_manually: User wants to share payment link manually (follow-up to payment link creation)
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 
@@ -100,7 +98,6 @@ IMPORTANT INTENT RECOGNITION RULES:
    - network: Extract network name if specified (e.g., "Base", "Ethereum", "Polygon") - defaults to "base"
    - description/for: Extract payment description, reason, or purpose (e.g., "consulting services", "freelance work", "payment for goods")
    - recipient_email: Extract email address (REQUIRED)
-   - send_email: Extract email preference (true for "send email", false for "share manually", undefined for ask user)
    
    Context awareness for payment links:
    - Always require both amount and recipient_email
@@ -110,16 +107,6 @@ IMPORTANT INTENT RECOGNITION RULES:
      * "Create payment link for 0.1 ETH to user@example.com for consulting services"
      * "Make payment request of 50 USDC to client@company.com for freelance work"
      * "Generate payment link: 0.05 ETH to john@example.com for website design"
-     * "Create payment link for 0.1 ETH to user@example.com and send email" (send_email: true)
-     * "Create payment link for 0.1 ETH to user@example.com but don't send email" (send_email: false)
-
-5a. PARAMETER EXTRACTION for "send_payment_email" intent:
-   - Triggered by phrases like "send email", "send the email", "email it", "send payment email"
-   - Usually follows a payment link creation where user was asked about email preference
-
-5b. PARAMETER EXTRACTION for "share_payment_manually" intent:
-   - Triggered by phrases like "share manually", "I'll share it myself", "don't send email", "manual share"
-   - Usually follows a payment link creation where user was asked about email preference
 
 6. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it

@@ -1,11 +1,11 @@
-// import { type ClassValue, clsx } from "clsx"
-// import { twMerge } from "tailwind-merge"
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
 
-// export function cn(...inputs: ClassValue[]) {
-//   return twMerge(clsx(inputs))
-// }
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
 
-// // Add this to your existing utils.ts file
+// Add this to your existing utils.ts file
 
 /**
  * Formats an Ethereum address for display by showing the first 6 and last 4 characters
