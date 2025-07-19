@@ -739,6 +739,7 @@ export async function handleAction(
     "send",
     "swap",
     "bridge",
+    "create_payment_link",
   ];
 
   if (blockchainIntents.includes(intent)) {
@@ -2863,27 +2864,72 @@ async function handleCreatePaymentLink(params: any, userId: string) {
     const amount = params.amount;
     const token = params.token || 'ETH';
     const network = params.network || 'base';
-    const description = params.description || 'Payment request';
+    const description = params.description || params.for || 'Payment request';
     const recipientEmail = params.recipient_email;
 
+    // Check for missing parameters and provide context-aware guidance
+    if (!amount && !recipientEmail) {
+      return { 
+        text: "To create a payment link, I need both an amount and recipient email.\n\nExample: 'Create payment link for 0.1 ETH to user@example.com for consulting services'\n\nPlease provide:\n• Amount (e.g., 0.1 ETH, 50 USDC)\n• Recipient email\n• Reason/description (optional)" 
+      };
+    }
+
     if (!amount) {
-      return { text: "Please specify an amount for the payment link. For example: 'Create payment link for 0.1 ETH'" };
+      return { 
+        text: "Please specify an amount for the payment link.\n\nExample: 'Create payment link for 0.1 ETH to user@example.com'\n\nSupported tokens: ETH, USDC\nSupported networks: Base, Ethereum" 
+      };
     }
 
     if (!recipientEmail) {
-      return { text: "Please specify a recipient email. For example: 'Create payment link for 0.1 ETH to user@example.com'" };
+      return { 
+        text: "Please specify a recipient email address.\n\nExample: 'Create payment link for 0.1 ETH to user@example.com'\n\nThe recipient will receive an email with payment instructions and the payment link." 
+      };
     }
 
-    // Get user's wallet address as the recipient
-    const { data: wallet } = await supabase
-      .from("wallets")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("chain", formatNetworkName(network))
-      .single();
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(recipientEmail)) {
+      return { 
+        text: "Please provide a valid email address.\n\nExample: 'Create payment link for 0.1 ETH to user@example.com'" 
+      };
+    }
+
+    // Get user's wallet address - try multiple chain formats
+    let wallet = null;
+    const chainFormats = [formatNetworkName(network), network.toLowerCase()];
+    
+    for (const chainFormat of chainFormats) {
+      const { data: walletData } = await supabase
+        .from("wallets")
+        .select("address, chain")
+        .eq("user_id", userId)
+        .eq("chain", chainFormat)
+        .single();
+      
+      if (walletData) {
+        wallet = walletData;
+        break;
+      }
+    }
+
+    // If no wallet found with specific chain, try to get any wallet for the user
+    if (!wallet) {
+      const { data: wallets } = await supabase
+        .from("wallets")
+        .select("address, chain")
+        .eq("user_id", userId);
+      
+      if (wallets && wallets.length > 0) {
+        // Use the first available wallet
+        wallet = wallets[0];
+        console.log(`[handleCreatePaymentLink] Using available wallet with chain: ${wallet.chain}`);
+      }
+    }
 
     if (!wallet) {
-      return { text: "You need a wallet to create payment links. Please create a wallet first by typing 'create wallet'." };
+      return { 
+        text: "You need a wallet to create payment links. Please create a wallet first by typing 'create wallet'." 
+      };
     }
 
     // Create payment link in database
@@ -2893,11 +2939,12 @@ async function handleCreatePaymentLink(params: any, userId: string) {
     const { data: paymentLink, error } = await supabase
       .from("payment_links")
       .insert({
-        amount: amount.toString(),
-        token,
-        network,
-        recipient_address: wallet.address,
-        description,
+        amount: parseFloat(amount).toString(),
+        token: token.toUpperCase(),
+        network: network.toLowerCase(),
+        wallet_address: wallet.address,
+        user_name: userName,
+        payment_reason: description,
         recipient_email: recipientEmail,
         created_by: userId,
         expires_at: expiresAt.toISOString(),
@@ -2932,7 +2979,7 @@ async function handleCreatePaymentLink(params: any, userId: string) {
     }
 
     return {
-      text: `✅ Payment link created successfully!\n\n💰 Amount: ${amount} ${token}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days. The recipient will receive an email with payment instructions.`
+      text: `✅ Payment link created successfully!\n\n💰 Amount: ${amount} ${token.toUpperCase()}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n👤 Your wallet: ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days. The recipient will receive an email with payment instructions.`
     };
 
   } catch (error) {

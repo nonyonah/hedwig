@@ -94,10 +94,19 @@ IMPORTANT INTENT RECOGNITION RULES:
 
 5. PARAMETER EXTRACTION for "create_payment_link" intent:
    - amount: Extract numerical value if specified
-   - token: Extract token symbol if specified (e.g., "ETH", "USDC", "USDT")
-   - network: Extract network name if specified (e.g., "Base", "Ethereum", "Polygon")
-   - description: Extract payment description or reason if provided
-   - recipient_email: Extract email address if provided
+   - token: Extract token symbol if specified (e.g., "ETH", "USDC", "USDT") - defaults to "ETH"
+   - network: Extract network name if specified (e.g., "Base", "Ethereum", "Polygon") - defaults to "base"
+   - description/for: Extract payment description, reason, or purpose (e.g., "consulting services", "freelance work", "payment for goods")
+   - recipient_email: Extract email address (REQUIRED)
+   
+   Context awareness for payment links:
+   - Always require both amount and recipient_email
+   - Look for keywords like "for", "because", "reason" to extract description
+   - If description is missing, the system will prompt for it
+   - Examples of good payment link requests:
+     * "Create payment link for 0.1 ETH to user@example.com for consulting services"
+     * "Make payment request of 50 USDC to client@company.com for freelance work"
+     * "Generate payment link: 0.05 ETH to john@example.com for website design"
 
 6. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it
