@@ -841,6 +841,9 @@ export async function handleAction(
     return handleSendInstructions();
   case "export_keys":
     return await handleExportPrivateKey(params, userId);
+  case "create_payment_link":
+    console.log(`[handleAction] Processing 'create_payment_link' intent with params:`, params);
+    return await handleCreatePaymentLink(params, userId);
 
   default:
     return {
@@ -2835,5 +2838,105 @@ export async function handleAlchemyWebhook(
   } catch (err) {
     console.error("[Alchemy Webhook] Error:", err);
     res.status(500).json({ error: "Webhook handler error" });
+  }
+}
+
+// Handler for creating payment links
+async function handleCreatePaymentLink(params: any, userId: string) {
+  try {
+    console.log(`[handleCreatePaymentLink] Creating payment link with params:`, params);
+
+    // Get user info
+    const { data: user } = await supabase
+      .from("users")
+      .select("name, phone_number")
+      .eq("id", userId)
+      .single();
+
+    if (!user) {
+      return { text: "Error fetching user details. Please try again." };
+    }
+
+    const userName = user.name || `User_${userId.substring(0, 8)}`;
+
+    // Validate required parameters
+    const amount = params.amount;
+    const token = params.token || 'ETH';
+    const network = params.network || 'base';
+    const description = params.description || 'Payment request';
+    const recipientEmail = params.recipient_email;
+
+    if (!amount) {
+      return { text: "Please specify an amount for the payment link. For example: 'Create payment link for 0.1 ETH'" };
+    }
+
+    if (!recipientEmail) {
+      return { text: "Please specify a recipient email. For example: 'Create payment link for 0.1 ETH to user@example.com'" };
+    }
+
+    // Get user's wallet address as the recipient
+    const { data: wallet } = await supabase
+      .from("wallets")
+      .select("address")
+      .eq("user_id", userId)
+      .eq("chain", formatNetworkName(network))
+      .single();
+
+    if (!wallet) {
+      return { text: "You need a wallet to create payment links. Please create a wallet first by typing 'create wallet'." };
+    }
+
+    // Create payment link in database
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+
+    const { data: paymentLink, error } = await supabase
+      .from("payment_links")
+      .insert({
+        amount: amount.toString(),
+        token,
+        network,
+        recipient_address: wallet.address,
+        description,
+        recipient_email: recipientEmail,
+        created_by: userId,
+        expires_at: expiresAt.toISOString(),
+        status: 'pending'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[handleCreatePaymentLink] Error creating payment link:`, error);
+      return { text: "Error creating payment link. Please try again." };
+    }
+
+    // Generate payment URL
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const paymentUrl = `${baseUrl}/pay/${paymentLink.id}`;
+
+    // Send email notification (optional - could be done via API call)
+    try {
+      await fetch(`${baseUrl}/api/send-payment-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentLinkId: paymentLink.id,
+          recipientEmail,
+          senderName: userName
+        })
+      });
+    } catch (emailError) {
+      console.error(`[handleCreatePaymentLink] Error sending email:`, emailError);
+      // Continue even if email fails
+    }
+
+    return {
+      text: `✅ Payment link created successfully!\n\n💰 Amount: ${amount} ${token}\n🌐 Network: ${network}\n📧 Recipient: ${recipientEmail}\n📝 Description: ${description}\n\n🔗 Payment URL:\n${paymentUrl}\n\nThe link expires in 7 days. The recipient will receive an email with payment instructions.`
+    };
+
+  } catch (error) {
+    console.error("[handleCreatePaymentLink] Error:", error);
+    return { text: "Error creating payment link. Please try again later." };
   }
 }

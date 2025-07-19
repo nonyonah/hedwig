@@ -9,6 +9,28 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Token contract addresses for different networks
+const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
+  'base': {
+    'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    'USDT': '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
+    'DAI': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
+    'WETH': '0x4200000000000000000000000000000000000006'
+  },
+  'ethereum': {
+    'USDC': '0xA0b86a33E6441b8C0b8b2B4B3d4B3e4B3d4B3e4B',
+    'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+    'DAI': '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+    'WETH': '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+  },
+  'polygon': {
+    'USDC': '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+    'USDT': '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+    'DAI': '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
+    'WETH': '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619'
+  }
+};
+
 interface PaymentData {
   id: string;
   amount: number;
@@ -33,6 +55,8 @@ export default function PaymentPage() {
   const [walletConnected, setWalletConnected] = useState(false);
   const [userWalletAddress, setUserWalletAddress] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [provider, setProvider] = useState<any>(null);
+  const [signer, setSigner] = useState<any>(null);
 
   useEffect(() => {
     if (id) {
@@ -75,6 +99,58 @@ export default function PaymentPage() {
     }
   };
 
+  const getChainId = (network: string): number => {
+    const chainIds: Record<string, number> = {
+      'ethereum': 1,
+      'base': 8453,
+      'polygon': 137,
+      'arbitrum': 42161,
+      'optimism': 10
+    };
+    return chainIds[network] || 8453; // Default to Base
+  };
+
+  const addNetwork = async (network: string) => {
+    const networkConfigs: Record<string, any> = {
+      'base': {
+        chainId: '0x2105',
+        chainName: 'Base',
+        nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://mainnet.base.org'],
+        blockExplorerUrls: ['https://basescan.org']
+      },
+      'polygon': {
+        chainId: '0x89',
+        chainName: 'Polygon',
+        nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+        rpcUrls: ['https://polygon-rpc.com'],
+        blockExplorerUrls: ['https://polygonscan.com']
+      },
+      'arbitrum': {
+        chainId: '0xa4b1',
+        chainName: 'Arbitrum One',
+        nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://arb1.arbitrum.io/rpc'],
+        blockExplorerUrls: ['https://arbiscan.io']
+      },
+      'optimism': {
+        chainId: '0xa',
+        chainName: 'Optimism',
+        nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://mainnet.optimism.io'],
+        blockExplorerUrls: ['https://optimistic.etherscan.io']
+      }
+    };
+
+    const config = networkConfigs[network];
+    if (config && window.ethereum) {
+      await window.ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [config],
+      });
+    }
+  };
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -88,33 +164,89 @@ export default function PaymentPage() {
   const connectWallet = async () => {
     try {
       setIsProcessing(true);
-      // For now, we'll simulate wallet connection
-      // In a real implementation, this would integrate with CDP wallet connection
+      setError(null);
       
-      // Simulate wallet connection delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Check if MetaMask or other wallet is available
+      if (typeof window !== 'undefined' && window.ethereum) {
+        // Use existing wallet provider (MetaMask, etc.)
+        const provider = new (await import('ethers')).ethers.BrowserProvider(window.ethereum);
+        
+        // Request account access
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        
+        // Get signer
+        const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+        
+        // Check if we're on the correct network
+        const network = await provider.getNetwork();
+        const expectedChainId = getChainId(paymentData?.network || 'base');
+        
+        if (Number(network.chainId) !== expectedChainId) {
+          // Request network switch
+          try {
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: `0x${expectedChainId.toString(16)}` }],
+            });
+          } catch (switchError: any) {
+            if (switchError.code === 4902) {
+              // Network not added, add it
+              await addNetwork(paymentData?.network || 'base');
+            } else {
+              throw switchError;
+            }
+          }
+        }
+        
+        setProvider(provider);
+        setSigner(signer);
+        setUserWalletAddress(address);
+        setWalletConnected(true);
+        
+      } else {
+        // Fallback to Coinbase Wallet SDK
+        const { Wallet } = await import('@coinbase/wallet-sdk');
+        
+        const wallet = new Wallet({
+          appName: 'Hedwig Payment',
+          appLogoUrl: 'https://hedwig.xyz/logo.png',
+          darkMode: false
+        });
+        
+        const provider = wallet.makeWeb3Provider();
+        const ethersProvider = new (await import('ethers')).ethers.BrowserProvider(provider);
+        
+        // Request account access
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        
+        if (!accounts || accounts.length === 0) {
+          throw new Error('No accounts found');
+        }
+        
+        const signer = await ethersProvider.getSigner();
+        const address = accounts[0];
+        
+        setProvider(ethersProvider);
+        setSigner(signer);
+        setUserWalletAddress(address);
+        setWalletConnected(true);
+      }
       
-      // Mock wallet address for demonstration
-      const mockWalletAddress = '0x1234567890123456789012345678901234567890';
-      setUserWalletAddress(mockWalletAddress);
-      setWalletConnected(true);
-      
-    } catch (err) {
-      setError('Failed to connect wallet');
+    } catch (err: any) {
       console.error('Wallet connection error:', err);
+      setError(err.message || 'Failed to connect wallet');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const processPayment = async () => {
-    if (!paymentData || !userWalletAddress) return;
+    if (!paymentData || !userWalletAddress || !signer) return;
 
     try {
       setIsProcessing(true);
-      
-      // Here we would integrate with CDP to process the payment
-      // For now, we'll simulate the payment process
+      setError(null);
       
       console.log('Processing payment:', {
         amount: paymentData.amount,
@@ -124,33 +256,78 @@ export default function PaymentPage() {
         from: userWalletAddress
       });
 
-      // Simulate payment processing delay
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      let txHash: string;
 
-      // Mock transaction hash
-      const mockTxHash = '0x' + Math.random().toString(16).substr(2, 64);
+      if (paymentData.token === 'ETH' || paymentData.token === 'MATIC' || paymentData.token === 'AVAX') {
+        // Native token transfer
+        const tx = await signer.sendTransaction({
+          to: paymentData.wallet_address,
+          value: (await import('ethers')).ethers.parseEther(paymentData.amount.toString()),
+        });
+        
+        console.log('Transaction sent:', tx.hash);
+        await tx.wait(); // Wait for confirmation
+        txHash = tx.hash;
+        
+      } else {
+        // ERC-20 token transfer
+        const tokenAddress = TOKEN_ADDRESSES[paymentData.network]?.[paymentData.token];
+        
+        if (!tokenAddress) {
+          throw new Error(`Token ${paymentData.token} not supported on ${paymentData.network}`);
+        }
+        
+        // ERC-20 ABI for transfer function
+        const erc20Abi = [
+          'function transfer(address to, uint256 amount) returns (bool)',
+          'function decimals() view returns (uint8)',
+          'function balanceOf(address owner) view returns (uint256)'
+        ];
+        
+        const tokenContract = new (await import('ethers')).ethers.Contract(tokenAddress, erc20Abi, signer);
+        
+        // Get token decimals
+        const decimals = await tokenContract.decimals();
+        
+        // Check balance
+        const balance = await tokenContract.balanceOf(userWalletAddress);
+        const amountWei = (await import('ethers')).ethers.parseUnits(paymentData.amount.toString(), decimals);
+        
+        if (balance < amountWei) {
+          throw new Error(`Insufficient ${paymentData.token} balance`);
+        }
+        
+        // Send token transfer transaction
+        const tx = await tokenContract.transfer(paymentData.wallet_address, amountWei);
+        
+        console.log('Token transfer sent:', tx.hash);
+        await tx.wait(); // Wait for confirmation
+        txHash = tx.hash;
+      }
 
       // Update payment status in database
-      const { error } = await supabase
-        .from('payment_links')
-        .update({
-          status: 'paid',
-          transaction_hash: mockTxHash,
-          paid_amount: paymentData.amount,
-          paid_at: new Date().toISOString()
-        })
-        .eq('id', paymentData.id);
+      const response = await fetch('/api/update-payment-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paymentId: paymentData.id,
+          transactionHash: txHash,
+          status: 'paid'
+        }),
+      });
 
-      if (error) {
+      if (!response.ok) {
         throw new Error('Failed to update payment status');
       }
 
       // Refresh payment data to show success state
       await fetchPaymentData();
       
-    } catch (err) {
-      setError('Payment failed. Please try again.');
+    } catch (err: any) {
       console.error('Payment error:', err);
+      setError(err.message || 'Payment failed. Please try again.');
     } finally {
       setIsProcessing(false);
     }

@@ -61,50 +61,74 @@ Valid intents:
 - export_keys: For exporting private keys
 - get_price: For checking crypto prices
 - get_news: For crypto news
+- create_payment_link: For creating payment links or payment requests
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 
 IMPORTANT INTENT RECOGNITION RULES:
 
-1. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
+1. PAYMENT LINK REQUESTS: Always use "create_payment_link" intent for:
+   - "payment link", "create payment link", "generate payment link"
+   - "payment request", "request payment", "invoice"
+   - "send me a payment link", "I need a payment link"
+   - "create invoice", "bill someone", "charge someone"
+   - "request money", "ask for payment"
+   - Any request about creating payment links or invoices
+
+2. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
    - "wallet address", "my address", "show address", "view address"
    - "what is my address", "what are my addresses", "wallet addresses"
    - "deposit", "receive", "how to deposit", "where to send"
    - "show me my wallet", "wallet info", "address info"
    - Any request about viewing or getting wallet addresses
 
-2. BALANCE REQUESTS: Always use "get_wallet_balance" intent for:
+3. BALANCE REQUESTS: Always use "get_wallet_balance" intent for:
    - "balance", "how much", "check wallet", "wallet balance"
    - "what do I have", "my funds", "my tokens", "my crypto"
 
-3. PARAMETER EXTRACTION for "send" intent:
+4. PARAMETER EXTRACTION for "send" intent:
    - amount: Extract numerical value (e.g., "0.01", "5", "100")
    - token: Extract token symbol (e.g., "ETH", "USDC", "BTC")
    - recipient: Extract wallet address (0x...) or ENS name (.eth)
    - network: Extract network name (e.g., "Base", "Ethereum", "Polygon")
 
-4. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
+5. PARAMETER EXTRACTION for "create_payment_link" intent:
+   - amount: Extract numerical value if specified
+   - token: Extract token symbol if specified (e.g., "ETH", "USDC", "USDT")
+   - network: Extract network name if specified (e.g., "Base", "Ethereum", "Polygon")
+   - description: Extract payment description or reason if provided
+   - recipient_email: Extract email address if provided
+
+6. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it
    - If amount was specified earlier, carry it forward
    - If token type was discussed, maintain consistency
 
-5. ADDRESS RECOGNITION: Recognize these as recipient addresses:
+7. ADDRESS RECOGNITION: Recognize these as recipient addresses:
    - Ethereum addresses: 0x followed by 40 hexadecimal characters
    - ENS names: ending with .eth
    - Shortened addresses: 0x...abc (when context suggests it's an address)
    - Extract addresses from text like "here's my address: 0x123..." or "send to 0x123..."
    - Clean up addresses by removing extra spaces, quotes, or surrounding text
 
-6. AMOUNT EXTRACTION: Extract amounts from phrases like:
+8. AMOUNT EXTRACTION: Extract amounts from phrases like:
    - "send 0.01 ETH"
    - "transfer 100 USDC"
    - "move 5 tokens"
+   - "payment link for 50 USDC"
+   - "invoice for $100"
 
-7. When user provides an address after being asked, ALWAYS include it in the send parameters.
+9. When user provides an address after being asked, ALWAYS include it in the send parameters.
 
 EXAMPLES:
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"
 Response: {"intent": "send", "params": {"amount": "0.01", "token": "ETH", "recipient": "0x1234567890123456789012345678901234567890"}}
+
+User: "create payment link for 100 USDC"
+Response: {"intent": "create_payment_link", "params": {"amount": "100", "token": "USDC"}}
+
+User: "payment link" or "I need a payment link"
+Response: {"intent": "create_payment_link", "params": {}}
 
 User: "wallet address" or "my address" or "show address"
 Response: {"intent": "get_wallet_address", "params": {}}

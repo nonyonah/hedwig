@@ -1,210 +1,47 @@
 // src/hooks/useSessionSigners.ts
-import { usePrivy } from '@privy-io/react-auth';
+// This hook is deprecated as we've moved away from Privy to CDP
+// Keeping for backward compatibility but functionality is disabled
+
 import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Hook to manage Privy session signers for KeyQuorum authorization
- * Session signers are managed server-side through the Privy API
- * This hook provides client-side utilities for checking session status
+ * Deprecated hook - previously managed Privy session signers
+ * Now returns mock data since we've moved to CDP
  */
 export function useSessionSigners() {
-  const { user, ready, authenticated, getAccessToken } = usePrivy();
-  const [sessionStatus, setSessionStatus] = useState<'unknown' | 'active' | 'expired' | 'none'>('unknown');
+  const [sessionStatus, setSessionStatus] = useState<'unknown' | 'active' | 'expired' | 'none'>('none');
   const [isCheckingSession, setIsCheckingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Check session signer status via API
+   * Deprecated - returns mock status
    */
   const checkSessionStatus = useCallback(async () => {
-    if (!authenticated || !user) {
-      setSessionStatus('none');
-      return 'none';
-    }
-
-    setIsCheckingSession(true);
-    setError(null);
-
-    try {
-      const accessToken = await getAccessToken();
-      
-      // Call our API to check session signer status
-      const response = await fetch('/api/session-signers/status', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to check session status: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const status = data.status || 'none';
-      setSessionStatus(status);
-      return status;
-    } catch (err) {
-      console.error('[useSessionSigners] Failed to check session status:', err);
-      setError(err instanceof Error ? err.message : 'Failed to check session status');
-      setSessionStatus('unknown');
-      return 'unknown';
-    } finally {
-      setIsCheckingSession(false);
-    }
-  }, [authenticated, user, getAccessToken]);
+    setSessionStatus('none');
+    return 'none';
+  }, []);
 
   /**
-   * Check if the user has an active session in the app
-   * This is recommended by Privy support to prevent session expiration errors
+   * Deprecated - returns mock status
    */
-  const checkActiveUserSession = useCallback(() => {
-    if (!user) {
-      console.log('[useSessionSigners] No user session - user not logged in');
-      return false;
-    }
-
-    if (!authenticated) {
-      console.log('[useSessionSigners] No active user session - user not authenticated');
-      return false;
-    }
-
-    // Check if user has embedded wallets
-    const hasEmbeddedWallet = user.linkedAccounts?.some(
-      (account: any) => account.type === 'wallet' && account.walletClient === 'privy'
-    );
-
-    if (!hasEmbeddedWallet) {
-      console.log('[useSessionSigners] No embedded wallet found for user');
-      return false;
-    }
-
-    console.log('[useSessionSigners] Active user session confirmed');
-    return true;
-  }, [user, authenticated]);
+  const createSessionSigner = useCallback(async () => {
+    return { success: false, error: 'Session signers deprecated - using CDP instead' };
+  }, []);
 
   /**
-   * Authenticate user signer via Privy API
-   * This implements the proper user signer authentication flow as per Privy documentation
+   * Deprecated - returns mock status
    */
-  const authenticateUserSigner = useCallback(async (walletAddress?: string) => {
-    if (!authenticated || !user) {
-      setError('User must be authenticated');
-      return false;
-    }
-
-    // If no wallet address provided, try to get it from user's linked accounts
-    let targetWalletAddress = walletAddress;
-    if (!targetWalletAddress) {
-      const embeddedWallet = user.linkedAccounts?.find(
-        (account: any) => account.type === 'wallet' && account.walletClient === 'privy'
-      ) as any;
-      if (embeddedWallet && embeddedWallet.address) {
-        targetWalletAddress = embeddedWallet.address;
-      }
-    }
-
-    if (!targetWalletAddress) {
-      setError('No wallet address available for authentication');
-      return false;
-    }
-
-    setIsCheckingSession(true);
-    setError(null);
-
-    try {
-      const accessToken = await getAccessToken();
-      
-      // Call our user signer authentication endpoint
-      const response = await fetch('/api/user-signers/authenticate', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wallet_address: targetWalletAddress
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to authenticate user signer: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setSessionStatus('active');
-      console.log('[useSessionSigners] User signer authenticated successfully');
-      return data;
-    } catch (err) {
-      console.error('[useSessionSigners] Failed to authenticate user signer:', err);
-      setError(err instanceof Error ? err.message : 'Failed to authenticate user signer');
-      return false;
-    } finally {
-      setIsCheckingSession(false);
-    }
-  }, [authenticated, user, getAccessToken]);
-
-  /**
-   * Request session signer creation via API
-   * This now uses the new user signer authentication flow
-   */
-  const requestSessionSigner = useCallback(async () => {
-    if (!authenticated || !user) {
-      setError('User must be authenticated');
-      return false;
-    }
-
-    setIsCheckingSession(true);
-    setError(null);
-
-    try {
-      const accessToken = await getAccessToken();
-      
-      // Call our API to create session signer (now with user signer re-authentication)
-      const response = await fetch('/api/session-signers/create', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to create session signer: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setSessionStatus('active');
-      return true;
-    } catch (err) {
-      console.error('[useSessionSigners] Failed to create session signer:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create session signer');
-      return false;
-    } finally {
-      setIsCheckingSession(false);
-    }
-  }, [authenticated, user, getAccessToken]);
-
-  // Check session status on mount and when user changes
-  useEffect(() => {
-    if (ready && authenticated) {
-      checkSessionStatus();
-    }
-  }, [ready, authenticated, checkSessionStatus]);
+  const revokeSessionSigner = useCallback(async () => {
+    return { success: false, error: 'Session signers deprecated - using CDP instead' };
+  }, []);
 
   return {
     sessionStatus,
-    hasActiveSession: sessionStatus === 'active',
     isCheckingSession,
     error,
     checkSessionStatus,
-    authenticateUserSigner,
-    requestSessionSigner,
-    checkActiveUserSession,
-    ready: ready && authenticated,
+    createSessionSigner,
+    revokeSessionSigner,
   };
 }
 
