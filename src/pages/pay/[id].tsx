@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { createClient } from '@supabase/supabase-js';
 import { CheckCircleIcon, ExclamationTriangleIcon, DocumentDuplicateIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { WalletIcon } from '@heroicons/react/24/solid';
-import { Wallet, ConnectWallet } from '@coinbase/onchainkit/wallet';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain, useSendTransaction } from 'wagmi';
 import { parseEther, parseUnits } from 'viem';
 import { base, mainnet } from 'wagmi/chains';
@@ -377,12 +376,19 @@ export default function PaymentPage() {
             {/* Payment Action */}
             <div className="pt-4">
               {!isConnected ? (
-                <Wallet>
-                  <ConnectWallet className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 rounded-lg flex items-center justify-center transition-colors">
-                    <WalletIcon className="w-4 h-4 mr-2" />
-                    Connect Wallet
-                  </ConnectWallet>
-                </Wallet>
+                <div className="w-full">
+                  <ConnectButton.Custom>
+                    {({ openConnectModal }) => (
+                      <Button
+                        onClick={openConnectModal}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 rounded-lg"
+                        size="lg"
+                      >
+                        Connect Wallet
+                      </Button>
+                    )}
+                  </ConnectButton.Custom>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">

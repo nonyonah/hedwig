@@ -158,7 +158,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'No recipient email provided' });
     }
 
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwig.xyz'}/pay/${paymentId}`;
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pay/${paymentId}`;
 
     await sendPaymentLinkEmail({
       recipientEmail: paymentData.recipient_email,
