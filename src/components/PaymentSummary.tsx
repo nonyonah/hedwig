@@ -195,8 +195,8 @@ export default function PaymentSummary({
                     }
                     handlePayment();
                   }}
-                  isDisabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
-                  variant={getButtonVariant() === 'default' ? 'primary' : getButtonVariant() === 'destructive' ? 'destructive' : 'secondary'}
+                  disabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
+                  variant={getButtonVariant()}
                   size="lg"
                   className="w-full"
                   isLoading={isProcessing || isPending || isConfirming}
