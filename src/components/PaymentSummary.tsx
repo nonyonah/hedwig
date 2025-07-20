@@ -5,6 +5,7 @@ import { useAccount, useBalance, useSwitchChain, useWriteContract, useSendTransa
 import { parseEther, parseUnits, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { useState, useEffect } from 'react'
+import { formatAddress } from '@/lib/utils'
 
 interface PaymentData {
   id: string
@@ -132,9 +133,11 @@ export default function PaymentSummary({
     }
   }
 
-  const formatAddress = (addr: string | undefined) => {
-    if (!addr) return 'Unknown'
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+  const formatWalletAddress = (addr: string | undefined) => {
+    if (!addr || addr.trim() === '') {
+      return 'Address not available'
+    }
+    return formatAddress(addr)
   }
 
   const getButtonText = () => {
@@ -159,7 +162,7 @@ export default function PaymentSummary({
         <CardContent className="grid gap-4">
           <div className="flex items-center justify-between">
             <span className="text-gray-600">Sold by</span>
-            <span className="text-gray-900 font-medium">{formatAddress(paymentData.recipient)}</span>
+            <span className="text-gray-900 font-medium">{formatWalletAddress(paymentData.recipient)}</span>
           </div>
           {paymentData.reason && (
             <div className="flex items-center justify-between">
@@ -192,9 +195,11 @@ export default function PaymentSummary({
                     }
                     handlePayment();
                   }}
-                  disabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
-                  variant={getButtonVariant()}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                  isDisabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
+                  variant={getButtonVariant() === 'default' ? 'primary' : getButtonVariant() === 'destructive' ? 'destructive' : 'secondary'}
+                  size="lg"
+                  className="w-full"
+                  isLoading={isProcessing || isPending || isConfirming}
                 >
                   {getButtonText()}
                 </Button>
