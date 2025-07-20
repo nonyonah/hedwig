@@ -1,5 +1,6 @@
 import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
+import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from "@/lib/earningsService";
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -135,6 +136,122 @@ export async function sendEvmTransaction({
     console.error(`[sendEvmTransaction] Error:`, error);
     throw error;
   }
+}
+
+// Helper function to format specific balance responses
+function formatSpecificBalance(
+  formattedBalances: any, 
+  requestedNetwork: string | undefined, 
+  requestedToken: string | undefined,
+  evmWallet: any,
+  solanaWallet: any
+) {
+  let response = "";
+  
+  // Handle network-specific requests
+  if (requestedNetwork && !requestedToken) {
+    switch (requestedNetwork) {
+      case 'base':
+        if (!evmWallet) {
+          return { text: "You don't have a Base wallet. Create a wallet first to check your Base balance." };
+        }
+        response = `💰 **Base Balance**\n\n🔹 ETH: ${formattedBalances.base_eth}\n🔹 USDC: ${formattedBalances.base_usdc}`;
+        break;
+      case 'ethereum':
+        if (!evmWallet) {
+          return { text: "You don't have an Ethereum wallet. Create a wallet first to check your Ethereum balance." };
+        }
+        response = `💰 **Ethereum Balance**\n\n🔹 ETH: ${formattedBalances.eth_eth}\n🔹 USDC: ${formattedBalances.eth_usdc}`;
+        break;
+      case 'solana':
+        if (!solanaWallet) {
+          return { text: "You don't have a Solana wallet. Create a wallet first to check your Solana balance." };
+        }
+        response = `💰 **Solana Balance**\n\n🔹 SOL: ${formattedBalances.sol_sol}\n🔹 USDC: ${formattedBalances.sol_usdc}`;
+        break;
+      default:
+        return { text: `Network "${requestedNetwork}" is not supported. Supported networks: Base, Ethereum, Solana.` };
+    }
+  }
+  
+  // Handle token-specific requests
+  else if (requestedToken && !requestedNetwork) {
+    switch (requestedToken) {
+      case 'ETH':
+        if (!evmWallet) {
+          return { text: "You don't have an EVM wallet. Create a wallet first to check your ETH balance." };
+        }
+        response = `💰 **ETH Balance**\n\n🔹 Base: ${formattedBalances.base_eth}\n🔹 Ethereum: ${formattedBalances.eth_eth}`;
+        break;
+      case 'SOL':
+        if (!solanaWallet) {
+          return { text: "You don't have a Solana wallet. Create a wallet first to check your SOL balance." };
+        }
+        response = `💰 **SOL Balance**\n\n🔹 Solana: ${formattedBalances.sol_sol}`;
+        break;
+      case 'USDC':
+        const usdcBalances = [];
+        if (evmWallet) {
+          usdcBalances.push(`🔹 Base: ${formattedBalances.base_usdc}`);
+          usdcBalances.push(`🔹 Ethereum: ${formattedBalances.eth_usdc}`);
+        }
+        if (solanaWallet) {
+          usdcBalances.push(`🔹 Solana: ${formattedBalances.sol_usdc}`);
+        }
+        if (usdcBalances.length === 0) {
+          return { text: "You don't have any wallets. Create a wallet first to check your USDC balance." };
+        }
+        response = `💰 **USDC Balance**\n\n${usdcBalances.join('\n')}`;
+        break;
+      default:
+        return { text: `Token "${requestedToken}" is not supported. Supported tokens: ETH, SOL, USDC.` };
+    }
+  }
+  
+  // Handle network + token specific requests
+  else if (requestedNetwork && requestedToken) {
+    if (requestedNetwork === 'base' && requestedToken === 'ETH') {
+      if (!evmWallet) {
+        return { text: "You don't have a Base wallet. Create a wallet first to check your Base ETH balance." };
+      }
+      response = `💰 **ETH on Base**\n\n🔹 ${formattedBalances.base_eth}`;
+    }
+    else if (requestedNetwork === 'base' && requestedToken === 'USDC') {
+      if (!evmWallet) {
+        return { text: "You don't have a Base wallet. Create a wallet first to check your Base USDC balance." };
+      }
+      response = `💰 **USDC on Base**\n\n🔹 ${formattedBalances.base_usdc}`;
+    }
+    else if (requestedNetwork === 'ethereum' && requestedToken === 'ETH') {
+      if (!evmWallet) {
+        return { text: "You don't have an Ethereum wallet. Create a wallet first to check your Ethereum ETH balance." };
+      }
+      response = `💰 **ETH on Ethereum**\n\n🔹 ${formattedBalances.eth_eth}`;
+    }
+    else if (requestedNetwork === 'ethereum' && requestedToken === 'USDC') {
+      if (!evmWallet) {
+        return { text: "You don't have an Ethereum wallet. Create a wallet first to check your Ethereum USDC balance." };
+      }
+      response = `💰 **USDC on Ethereum**\n\n🔹 ${formattedBalances.eth_usdc}`;
+    }
+    else if (requestedNetwork === 'solana' && requestedToken === 'SOL') {
+      if (!solanaWallet) {
+        return { text: "You don't have a Solana wallet. Create a wallet first to check your Solana SOL balance." };
+      }
+      response = `💰 **SOL on Solana**\n\n🔹 ${formattedBalances.sol_sol}`;
+    }
+    else if (requestedNetwork === 'solana' && requestedToken === 'USDC') {
+      if (!solanaWallet) {
+        return { text: "You don't have a Solana wallet. Create a wallet first to check your Solana USDC balance." };
+      }
+      response = `💰 **USDC on Solana**\n\n🔹 ${formattedBalances.sol_usdc}`;
+    }
+    else {
+      return { text: `The combination of ${requestedToken} on ${requestedNetwork} is not supported or available.` };
+    }
+  }
+  
+  return { text: response };
 }
 
 /**
@@ -845,6 +962,12 @@ export async function handleAction(
   case "create_payment_link":
     console.log(`[handleAction] Processing 'create_payment_link' intent with params:`, params);
     return await handleCreatePaymentLink(params, userId);
+  case "get_earnings":
+    console.log(`[handleAction] Processing 'get_earnings' intent with params:`, params);
+    return await handleGetEarnings(params, userId);
+  case "get_spending":
+    console.log(`[handleAction] Processing 'get_spending' intent with params:`, params);
+    return await handleGetSpending(params, userId);
 
   default:
     return {
@@ -1306,7 +1429,11 @@ async function getTokenBalances(address: string, network: 'eth' | 'base'): Promi
  */
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    console.log(`[handleGetWalletBalance] Starting balance check for user ${userId}`);
+    console.log(`[handleGetWalletBalance] Starting balance check for user ${userId} with params:`, params);
+    
+    // Extract chain and token filters from params
+    const requestedNetwork = params.network?.toLowerCase();
+    const requestedToken = params.token?.toUpperCase();
     
     // Clear any pending actions in the session context
     const { data: session } = await supabase
@@ -1331,88 +1458,78 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       }
     }
 
-    // Get EVM wallet - check for both testnet and mainnet chains
-    let { data: evmWallets } = await supabase
+    // Get all wallets for the user
+    const { data: allWallets } = await supabase
       .from("wallets")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("chain", "evm");
+      .select("address, chain")
+      .eq("user_id", userId);
 
-    // Use the first wallet if multiple exist
-    const evmWallet = evmWallets && evmWallets.length > 0 ? evmWallets[0] : null;
-    
-    // Log warning if multiple wallets found
-    if (evmWallets && evmWallets.length > 1) {
-      console.warn(`[handleGetWalletBalance] Multiple EVM wallets found for user ${userId}. Using the first one.`);
-    }
-
-    // Get Solana wallet if it exists - check both 'solana' and 'solana-devnet' chains
-    let { data: solanaWallets } = await supabase
-      .from("wallets")
-      .select("address")
-      .eq("user_id", userId)
-      .eq("chain", "solana");
-      
-    // Use the first wallet if multiple exist
-    const solanaWallet = solanaWallets && solanaWallets.length > 0 ? solanaWallets[0] : null;
-    
-    // Log warning if multiple wallets found
-    if (solanaWallets && solanaWallets.length > 1) {
-      console.warn(`[handleGetWalletBalance] Multiple Solana wallets found for user ${userId}. Using the first one.`);
-    }
-    
-    console.log(`[handleGetWalletBalance] EVM wallet found:`, evmWallet?.address || 'None');
-    console.log(`[handleGetWalletBalance] Solana wallet found:`, solanaWallet?.address || 'None');
-
-    // Check if user has any wallets at all
-    if (!evmWallet && !solanaWallet) {
+    if (!allWallets || allWallets.length === 0) {
       console.log(`[handleGetWalletBalance] No wallets found for user ${userId}`);
       return { text: "You need to create a wallet first." };
     }
+
+    // Find specific wallets
+    const evmWallet = allWallets.find(w => w.chain === "evm" || w.chain === "base-sepolia" || w.chain === "ethereum-sepolia");
+    const solanaWallet = allWallets.find(w => w.chain === "solana" || w.chain === "solana-devnet");
+    
+    console.log(`[handleGetWalletBalance] EVM wallet found:`, evmWallet?.address || 'None');
+    console.log(`[handleGetWalletBalance] Solana wallet found:`, solanaWallet?.address || 'None');
 
     // Initialize balance objects with default values
     let baseBalances = { eth: '0', usdc: '0' };
     let ethBalances = { eth: '0', usdc: '0' };
     let solanaBalances = { sol: '0', usdc: '0' };
 
-    // Fetch EVM balances if wallet exists
-    if (evmWallet?.address) {
+    // Determine which networks to fetch based on request
+    const shouldFetchBase = !requestedNetwork || requestedNetwork === 'base';
+    const shouldFetchEthereum = !requestedNetwork || requestedNetwork === 'ethereum';
+    const shouldFetchSolana = !requestedNetwork || requestedNetwork === 'solana';
+
+    // Fetch EVM balances if wallet exists and requested
+    if (evmWallet?.address && (shouldFetchBase || shouldFetchEthereum)) {
       try {
         console.log(`[handleGetWalletBalance] Fetching EVM testnet balances for ${evmWallet.address}`);
         
-        // Use Alchemy Token API for testnet networks
-        const [baseBalanceData, ethBalanceData] = await Promise.all([
-          getTestnetBalances(evmWallet.address, 'base-sepolia'),
-          getTestnetBalances(evmWallet.address, 'ethereum-sepolia')
-        ]);
+        const promises = [];
+        if (shouldFetchBase) {
+          promises.push(getTestnetBalances(evmWallet.address, 'base-sepolia'));
+        }
+        if (shouldFetchEthereum) {
+          promises.push(getTestnetBalances(evmWallet.address, 'ethereum-sepolia'));
+        }
         
-        // Update balance objects with testnet data
-        baseBalances = {
-          eth: baseBalanceData.native,
-          usdc: baseBalanceData.usdc
-        };
+        const results = await Promise.all(promises);
         
-        ethBalances = {
-          eth: ethBalanceData.native,
-          usdc: ethBalanceData.usdc
-        };
+        if (shouldFetchBase) {
+          baseBalances = {
+            eth: results[0].native,
+            usdc: results[0].usdc
+          };
+        }
         
-        console.log(`[handleGetWalletBalance] EVM testnet balances fetched - Base Sepolia: ${JSON.stringify(baseBalances)}, Ethereum Sepolia: ${JSON.stringify(ethBalances)}`);
+        if (shouldFetchEthereum) {
+          const ethIndex = shouldFetchBase ? 1 : 0;
+          ethBalances = {
+            eth: results[ethIndex].native,
+            usdc: results[ethIndex].usdc
+          };
+        }
+        
+        console.log(`[handleGetWalletBalance] EVM testnet balances fetched - Base: ${JSON.stringify(baseBalances)}, Ethereum: ${JSON.stringify(ethBalances)}`);
       } catch (error) {
         console.error(`[handleGetWalletBalance] Error fetching EVM testnet balances:`, error);
         // Keep default zero values
       }
     }
 
-    // Fetch Solana balances if wallet exists
-    if (solanaWallet?.address) {
+    // Fetch Solana balances if wallet exists and requested
+    if (solanaWallet?.address && shouldFetchSolana) {
       try {
         console.log(`[handleGetWalletBalance] Fetching Solana devnet balances for ${solanaWallet.address}`);
         
-        // Use getTestnetBalances for Solana devnet
         const solanaBalanceData = await getTestnetBalances(solanaWallet.address, 'solana-devnet');
         
-        // Update balance object with devnet data
         solanaBalances = {
           sol: solanaBalanceData.native,
           usdc: solanaBalanceData.usdc
@@ -1437,6 +1554,12 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
 
     console.log(`[handleGetWalletBalance] Formatted balances:`, JSON.stringify(formattedBalances));
 
+    // If specific network or token requested, return filtered response
+    if (requestedNetwork || requestedToken) {
+      return formatSpecificBalance(formattedBalances, requestedNetwork, requestedToken, evmWallet, solanaWallet);
+    }
+
+    // Return full balance template
     return walletBalance(formattedBalances);
   } catch (error) {
     console.error("Error getting wallet balance:", error);
@@ -2990,5 +3113,101 @@ async function handleCreatePaymentLink(params: any, userId: string) {
   } catch (error) {
     console.error("[handleCreatePaymentLink] Error:", error);
     return { text: "Error creating payment link. Please try again later." };
+  }
+}
+
+// Handler for getting earnings summary
+async function handleGetEarnings(params: any, userId: string) {
+  try {
+    console.log(`[handleGetEarnings] Getting earnings with params:`, params);
+
+    // Get user's wallet address
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("address, chain")
+      .eq("user_id", userId);
+
+    if (!wallets || wallets.length === 0) {
+      return { 
+        text: "You need a wallet to view earnings. Please create a wallet first by typing 'create wallet'." 
+      };
+    }
+
+    // Use the first available wallet address
+    const walletAddress = wallets[0].address;
+
+    // Extract parameters
+    const token = params.token;
+    const network = params.network;
+    const timeframe = params.timeframe;
+    const startDate = params.startDate;
+    const endDate = params.endDate;
+
+    // Get earnings summary
+    const earningsData = await getEarningsSummary({
+      walletAddress,
+      token,
+      network,
+      timeframe,
+      startDate,
+      endDate
+    });
+
+    // Format for agent response
+    const formattedResponse = formatEarningsForAgent(earningsData, 'earnings');
+
+    return { text: formattedResponse };
+
+  } catch (error) {
+    console.error("[handleGetEarnings] Error:", error);
+    return { text: "Error fetching earnings data. Please try again later." };
+  }
+}
+
+// Handler for getting spending summary
+async function handleGetSpending(params: any, userId: string) {
+  try {
+    console.log(`[handleGetSpending] Getting spending with params:`, params);
+
+    // Get user's wallet address
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("address, chain")
+      .eq("user_id", userId);
+
+    if (!wallets || wallets.length === 0) {
+      return { 
+        text: "You need a wallet to view spending. Please create a wallet first by typing 'create wallet'." 
+      };
+    }
+
+    // Use the first available wallet address
+    const walletAddress = wallets[0].address;
+
+    // Extract parameters
+    const token = params.token;
+    const network = params.network;
+    const timeframe = params.timeframe;
+    const startDate = params.startDate;
+    const endDate = params.endDate;
+
+    // Get spending summary
+    const spendingData = await getSpendingSummary({
+      walletAddress,
+      token,
+      network,
+      timeframe,
+      startDate,
+      endDate
+    });
+
+    // Format for agent response
+    const formattedResponse = formatEarningsForAgent(spendingData, 'spending');
+
+    return { text: formattedResponse };
+
+  } catch (error) {
+    console.error("[handleGetSpending] Error:", error);
+    return { text: "Error fetching spending data. Please try again later." };
   }
 }

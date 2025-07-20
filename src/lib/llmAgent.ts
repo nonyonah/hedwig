@@ -62,6 +62,8 @@ Valid intents:
 - get_price: For checking crypto prices
 - get_news: For crypto news
 - create_payment_link: For creating payment links or payment requests
+- get_earnings: For checking earnings, income, money received, or payment history
+- get_spending: For checking spending, money sent, or payment history
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 
@@ -82,9 +84,22 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "show me my wallet", "wallet info", "address info"
    - Any request about viewing or getting wallet addresses
 
-3. BALANCE REQUESTS: Always use "get_wallet_balance" intent for:
+3. BALANCE REQUESTS: Always use "balance" intent for:
    - "balance", "how much", "check wallet", "wallet balance"
    - "what do I have", "my funds", "my tokens", "my crypto"
+   - Chain-specific balance: "balance on Base", "USDC balance on Ethereum", "ETH on Base"
+   - Token-specific balance: "USDC balance", "ETH balance", "SOL balance"
+   - Network-specific balance: "Base balance", "Ethereum balance", "Solana balance"
+   - Combined queries: "USDC balance on Base", "ETH on Ethereum", "SOL balance"
+
+3a. PARAMETER EXTRACTION for "balance" intent:
+   - token: Extract token symbol if specified (e.g., "USDC", "ETH", "SOL")
+   - network: Extract network name if specified (e.g., "Base", "Ethereum", "Solana")
+   - Examples:
+     * "USDC balance on Base" → {"token": "USDC", "network": "Base"}
+     * "ETH balance" → {"token": "ETH"}
+     * "balance on Solana" → {"network": "Solana"}
+     * "my Base balance" → {"network": "Base"}
 
 4. PARAMETER EXTRACTION for "send" intent:
    - amount: Extract numerical value (e.g., "0.01", "5", "100")
@@ -108,26 +123,50 @@ IMPORTANT INTENT RECOGNITION RULES:
      * "Make payment request of 50 USDC to client@company.com for freelance work"
      * "Generate payment link: 0.05 ETH to john@example.com for website design"
 
-6. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
+6. EARNINGS REQUESTS: Always use "get_earnings" intent for:
+   - "earnings", "how much have I earned", "money received", "income"
+   - "payments received", "what did I receive", "how much did I get"
+   - "earnings summary", "earnings report", "payment history"
+   - "how much money came in", "received payments", "incoming payments"
+   - Time-based earnings: "earnings this week", "how much this month", "yearly earnings"
+   - Token-specific earnings: "USDC earnings", "ETH received", "how much USDT earned"
+   - Network-specific earnings: "earnings on Base", "Polygon earnings"
+
+7. SPENDING REQUESTS: Always use "get_spending" intent for:
+   - "spending", "how much have I spent", "money sent", "payments made"
+   - "what did I spend", "how much did I pay", "outgoing payments"
+   - "spending summary", "spending report", "payment history sent"
+   - "how much money went out", "sent payments", "transactions sent"
+   - Time-based spending: "spending this week", "spent this month", "yearly spending"
+   - Token-specific spending: "USDC spent", "ETH sent", "how much USDT paid"
+   - Network-specific spending: "spending on Base", "Polygon spending"
+
+8. PARAMETER EXTRACTION for earnings/spending intents:
+    - timeframe: Extract time periods (e.g., "this week", "last month", "this year", "last 7 days")
+    - token: Extract token symbol if specified (e.g., "USDC", "ETH", "USDT")
+    - network: Extract network name if specified (e.g., "Base", "Polygon", "Ethereum")
+    - startDate/endDate: Extract specific dates if mentioned
+
+9. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it
    - If amount was specified earlier, carry it forward
    - If token type was discussed, maintain consistency
 
-7. ADDRESS RECOGNITION: Recognize these as recipient addresses:
+10. ADDRESS RECOGNITION: Recognize these as recipient addresses:
    - Ethereum addresses: 0x followed by 40 hexadecimal characters
    - ENS names: ending with .eth
    - Shortened addresses: 0x...abc (when context suggests it's an address)
    - Extract addresses from text like "here's my address: 0x123..." or "send to 0x123..."
    - Clean up addresses by removing extra spaces, quotes, or surrounding text
 
-8. AMOUNT EXTRACTION: Extract amounts from phrases like:
+11. AMOUNT EXTRACTION: Extract amounts from phrases like:
    - "send 0.01 ETH"
    - "transfer 100 USDC"
    - "move 5 tokens"
    - "payment link for 50 USDC"
    - "invoice for $100"
 
-9. When user provides an address after being asked, ALWAYS include it in the send parameters.
+12. When user provides an address after being asked, ALWAYS include it in the send parameters.
 
 EXAMPLES:
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"
@@ -143,7 +182,31 @@ User: "wallet address" or "my address" or "show address"
 Response: {"intent": "get_wallet_address", "params": {}}
 
 User: "balance" or "how much do I have"
-Response: {"intent": "get_wallet_balance", "params": {}}
+Response: {"intent": "balance", "parameters": {}}
+
+User: "USDC balance on Base"
+Response: {"intent": "balance", "parameters": {"token": "USDC", "network": "Base"}}
+
+User: "ETH balance"
+Response: {"intent": "balance", "parameters": {"token": "ETH"}}
+
+User: "my Solana balance"
+Response: {"intent": "balance", "parameters": {"network": "Solana"}}
+
+User: "How much USDC do I have on Ethereum?"
+Response: {"intent": "balance", "parameters": {"token": "USDC", "network": "Ethereum"}}
+
+User: "How much have I earned this month?"
+Response: {"intent": "get_earnings", "parameters": {"timeframe": "this month"}}
+
+User: "Show me my USDC earnings on Base"
+Response: {"intent": "get_earnings", "parameters": {"token": "USDC", "network": "Base"}}
+
+User: "What did I spend last week?"
+Response: {"intent": "get_spending", "parameters": {"timeframe": "last week"}}
+
+User: "How much ETH did I send this year?"
+Response: {"intent": "get_spending", "parameters": {"token": "ETH", "timeframe": "this year"}}
 
 User: "0x1234567890123456789012345678901234567890" (after being asked for address)
 Response: {"intent": "send", "params": {"recipient": "0x1234567890123456789012345678901234567890"}}
