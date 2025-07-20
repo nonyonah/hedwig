@@ -11,6 +11,7 @@ interface PaymentData {
   description: string
   network: string
   token_address?: string
+  reason?: string
 }
 
 export default function PaymentPage() {
@@ -48,12 +49,13 @@ export default function PaymentPage() {
 
       setPaymentData({
         id: data.id,
-        recipient: data.recipient,
+        recipient: data.wallet_address,
         amount: data.amount,
-        currency: data.currency,
-        description: data.description || 'Payment',
+        currency: data.token,
+        description: data.payment_reason || 'Payment',
         network: data.network || 'Base',
-        token_address: data.token_address
+        token_address: data.token_address,
+        reason: data.payment_reason
       })
     } catch (err) {
       console.error('Error:', err)

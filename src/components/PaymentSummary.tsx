@@ -14,6 +14,7 @@ interface PaymentData {
   description: string
   network: string
   token_address?: string
+  reason?: string
 }
 
 interface PaymentSummaryProps {
@@ -160,13 +161,19 @@ export default function PaymentSummary({
             <span className="text-gray-600">Sold by</span>
             <span className="text-gray-900 font-medium">{formatAddress(paymentData.recipient)}</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">For</span>
-            <span className="text-gray-900 font-medium">{paymentData.description}</span>
-          </div>
+          {paymentData.reason && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">For</span>
+              <span className="text-gray-900 font-medium">{paymentData.reason}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-gray-600">Price</span>
             <span className="text-gray-900 font-medium">{paymentData.amount} {paymentData.currency}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600">Token</span>
+            <span className="text-gray-900 font-medium">{paymentData.currency}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-gray-600">Network</span>
