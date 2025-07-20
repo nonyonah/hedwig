@@ -1,6 +1,7 @@
 import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
-import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from "@/lib/earningsService";
+import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from '../lib/earningsService';
+import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -252,6 +253,25 @@ function formatSpecificBalance(
   }
   
   return { text: response };
+}
+
+// Helper function to format balance with USD equivalent
+async function formatBalanceWithUSD(amount: string, symbol: string, prices: TokenPrice[]): Promise<string> {
+  const tokenPrice = prices.find(p => p.symbol.toUpperCase() === symbol.toUpperCase());
+  
+  if (!tokenPrice) {
+    return `${amount}`;
+  }
+  
+  // Parse the amount (remove any formatting)
+  const numericAmount = parseFloat(amount.replace(/[^\d.-]/g, ''));
+  
+  if (isNaN(numericAmount) || numericAmount === 0) {
+    return `${amount} ($0.00)`;
+  }
+  
+  const usdValue = numericAmount * tokenPrice.price;
+  return `${amount} ($${usdValue.toFixed(2)})`;
 }
 
 /**
@@ -1554,13 +1574,36 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
 
     console.log(`[handleGetWalletBalance] Formatted balances:`, JSON.stringify(formattedBalances));
 
+    // Fetch token prices for USD equivalents
+    let tokenPrices: TokenPrice[] = [];
+    try {
+      console.log(`[handleGetWalletBalance] Fetching token prices for USD equivalents`);
+      tokenPrices = await getTokenPricesBySymbol(['ETH', 'SOL', 'USDC']);
+      console.log(`[handleGetWalletBalance] Token prices fetched:`, tokenPrices);
+    } catch (error) {
+      console.error(`[handleGetWalletBalance] Error fetching token prices:`, error);
+      // Continue without USD equivalents if price fetching fails
+    }
+
+    // Format balances with USD equivalents
+    const formattedBalancesWithUSD = {
+      base_eth: await formatBalanceWithUSD(formattedBalances.base_eth, 'ETH', tokenPrices),
+      base_usdc: await formatBalanceWithUSD(formattedBalances.base_usdc, 'USDC', tokenPrices),
+      eth_eth: await formatBalanceWithUSD(formattedBalances.eth_eth, 'ETH', tokenPrices),
+      eth_usdc: await formatBalanceWithUSD(formattedBalances.eth_usdc, 'USDC', tokenPrices),
+      sol_sol: await formatBalanceWithUSD(formattedBalances.sol_sol, 'SOL', tokenPrices),
+      sol_usdc: await formatBalanceWithUSD(formattedBalances.sol_usdc, 'USDC', tokenPrices)
+    };
+
+    console.log(`[handleGetWalletBalance] Formatted balances with USD:`, JSON.stringify(formattedBalancesWithUSD));
+
     // If specific network or token requested, return filtered response
     if (requestedNetwork || requestedToken) {
-      return formatSpecificBalance(formattedBalances, requestedNetwork, requestedToken, evmWallet, solanaWallet);
+      return formatSpecificBalance(formattedBalancesWithUSD, requestedNetwork, requestedToken, evmWallet, solanaWallet);
     }
 
     // Return full balance template
-    return walletBalance(formattedBalances);
+    return walletBalance(formattedBalancesWithUSD);
   } catch (error) {
     console.error("Error getting wallet balance:", error);
     return sendFailed({ reason: "Could not fetch wallet balance." });
@@ -1585,7 +1628,22 @@ async function getWalletBalanceString(userId: string): Promise<string> {
 
     // Get Base Sepolia testnet balances
     const baseBalances = await getTestnetBalances(evmWallet.address, 'base-sepolia');
-    return `ETH: ${formatBalance(baseBalances.native, 18)}, USDC: ${formatBalance(baseBalances.usdc, 6)}`;
+    
+    // Fetch token prices for USD equivalents
+    let tokenPrices: TokenPrice[] = [];
+    try {
+      tokenPrices = await getTokenPricesBySymbol(['ETH', 'USDC']);
+    } catch (error) {
+      console.error('Error fetching token prices in getWalletBalanceString:', error);
+    }
+    
+    const formattedEth = formatBalance(baseBalances.native, 18);
+    const formattedUsdc = formatBalance(baseBalances.usdc, 6);
+    
+    const ethWithUSD = await formatBalanceWithUSD(formattedEth, 'ETH', tokenPrices);
+    const usdcWithUSD = await formatBalanceWithUSD(formattedUsdc, 'USDC', tokenPrices);
+    
+    return `ETH: ${ethWithUSD}, USDC: ${usdcWithUSD}`;
   } catch (error) {
     console.error('Error in getWalletBalanceString:', error);
     return 'ETH: ?, USDC: ?';
