@@ -192,6 +192,26 @@ export default function PaymentSummary({
     return amount;
   };
 
+  // Convert crypto amount to Naira equivalent
+  const convertToNaira = (amount: string, currency: string): string => {
+    // Approximate exchange rates (in a real app, these would come from an API)
+    const exchangeRates: Record<string, number> = {
+      'ETH': 3800000, // 1 ETH ≈ ₦3,800,000 (approximate)
+      'USDC': 1650,   // 1 USDC ≈ ₦1,650 (approximate)
+      'BTC': 95000000, // 1 BTC ≈ ₦95,000,000 (approximate)
+    };
+
+    const rate = exchangeRates[currency] || 1650; // Default to USDC rate
+    const cryptoAmount = parseFloat(amount);
+    const nairaAmount = cryptoAmount * rate;
+    
+    // Format with commas for thousands
+    return nairaAmount.toLocaleString('en-NG', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    });
+  };
+
   const renderTabContent = () => {
     if (activeTab === 'crypto') {
       return (
@@ -240,7 +260,7 @@ export default function PaymentSummary({
         <div className="flex justify-between items-center">
           <span className="text-gray-500 text-sm font-bold">Price</span>
           <span className="text-gray-900 text-sm font-bold">
-            ₦{paymentData.amountNaira || '50,000'}
+            ₦{paymentData.amountNaira || convertToNaira(paymentData.amount, paymentData.currency)}
           </span>
         </div>
       </>
@@ -257,7 +277,7 @@ export default function PaymentSummary({
       {/* Payment Summary Card - Positioned at top middle */}
       <div className="flex justify-center">
         <Card className="w-full max-w-md bg-white shadow-sm border border-gray-200">
-          <CardHeader className="text-center pb-4">
+          <CardHeader className="text-center pb-4 border-b-0">
             <CardTitle className="text-xl font-bold text-gray-900">Payment Summary</CardTitle>
           </CardHeader>
 
