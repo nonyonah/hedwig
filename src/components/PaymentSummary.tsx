@@ -5,7 +5,7 @@ import { useAccount, useBalance, useSwitchChain, useWriteContract, useSendTransa
 import { parseEther, parseUnits, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { useState, useEffect } from 'react'
-import { formatAddress } from '@/lib/utils'
+import { formatAddress, formatBalance } from '@/lib/utils'
 
 interface PaymentData {
   id: string
@@ -153,61 +153,103 @@ export default function PaymentSummary({
     return 'default'
   }
 
+  const formatEthBalance = (balance: string) => {
+    // Format ETH balance to widely accepted format (max 6 decimal places)
+    const num = parseFloat(balance);
+    if (num === 0) return '0';
+    if (num < 0.000001) return '<0.000001';
+    
+    // Format with up to 6 decimal places, removing trailing zeros
+    return num.toFixed(6).replace(/\.?0+$/, '');
+  };
+
+  const formatDisplayAmount = (amount: string, currency: string) => {
+    if (currency === 'ETH') {
+      return formatEthBalance(amount);
+    }
+    return amount;
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white">
-      <Card className="w-[350px]">
-        <CardHeader>
-          <CardTitle>Payment Summary</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">Sold by</span>
-            <span className="text-gray-900 font-medium">{formatWalletAddress(paymentData.recipient)}</span>
-          </div>
-          {paymentData.reason && (
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">For</span>
-              <span className="text-gray-900 font-medium">{paymentData.reason}</span>
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-inter">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-lg font-bold text-black">hedwig.</h1>
+      </div>
+
+      {/* Payment Summary Card - Positioned at top middle */}
+      <div className="flex justify-center">
+        <Card className="w-full max-w-md bg-white shadow-sm border border-gray-200">
+          <CardHeader className="text-center pb-4">
+            <CardTitle className="text-xl font-bold text-gray-900">Payment Summary</CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {/* Payment Details */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 text-sm font-bold">Sold By</span>
+                <span className="text-gray-900 text-sm font-bold">{formatWalletAddress(paymentData.recipient)}</span>
+              </div>
+
+              {paymentData.reason && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 text-sm font-bold">For</span>
+                  <span className="text-gray-900 text-sm font-bold">{paymentData.reason}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 text-sm font-bold">Price</span>
+                <span className="text-gray-900 text-sm font-bold">
+                  {formatDisplayAmount(paymentData.amount, paymentData.currency)} {paymentData.currency}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 text-sm font-bold">Network</span>
+                <span className="text-gray-900 text-sm font-bold">{paymentData.network}</span>
+              </div>
             </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">Price</span>
-            <span className="text-gray-900 font-medium">{paymentData.amount} {paymentData.currency}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">Token</span>
-            <span className="text-gray-900 font-medium">{paymentData.currency}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">Network</span>
-            <span className="text-gray-900 font-medium">{paymentData.network}</span>
-          </div>
-          <ConnectButton.Custom>
-            {({ account, chain, openConnectModal, mounted }) => {
-              const ready = mounted;
-              const connected = ready && account && chain;
-              return (
-                <Button
-                  onClick={() => {
-                    if (!connected) {
-                      openConnectModal();
-                      return;
-                    }
-                    handlePayment();
-                  }}
-                  disabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
-                  variant={getButtonVariant()}
-                  size="lg"
-                  className="w-full"
-                  isLoading={isProcessing || isPending || isConfirming}
-                >
-                  {getButtonText()}
-                </Button>
-              );
-            }}
-          </ConnectButton.Custom>
-        </CardContent>
-      </Card>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="text-red-600 text-sm text-center font-bold">
+                {errorMessage}
+              </div>
+            )}
+
+            {/* Pay Button */}
+            <div className="pt-4">
+              <ConnectButton.Custom>
+                {({ account, chain, openConnectModal, mounted }) => {
+                  const ready = mounted;
+                  const connected = ready && account && chain;
+                  return (
+                    <Button
+                      onClick={() => {
+                        if (!connected) {
+                          openConnectModal();
+                          return;
+                        }
+                        handlePayment();
+                      }}
+                      disabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
+                      className="w-full text-white font-bold py-2.5 rounded-lg transition-colors"
+                      style={{ backgroundColor: '#669bbc' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a8aa8'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#669bbc'}
+                      size="lg"
+                    >
+                      {getButtonText()}
+                    </Button>
+                  );
+                }}
+              </ConnectButton.Custom>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
