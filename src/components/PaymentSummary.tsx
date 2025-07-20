@@ -16,6 +16,9 @@ interface PaymentData {
   network: string
   token_address?: string
   reason?: string
+  // Bank payment specific fields
+  recipientName?: string
+  amountNaira?: string
 }
 
 interface PaymentSummaryProps {
@@ -23,6 +26,8 @@ interface PaymentSummaryProps {
   onPaymentSuccess?: (txHash: string) => void
   onPaymentError?: (error: string) => void
 }
+
+type PaymentTab = 'crypto' | 'bank'
 
 export default function PaymentSummary({ 
   paymentData, 
@@ -36,6 +41,7 @@ export default function PaymentSummary({
   const [isProcessing, setIsProcessing] = useState(false)
   const [txStatus, setTxStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<PaymentTab>('crypto')
 
   // Use the appropriate hash and error based on transaction type
   const hash = contractHash || ethHash
@@ -133,6 +139,27 @@ export default function PaymentSummary({
     }
   }
 
+  const handleBankPayment = async () => {
+    // Placeholder for bank payment logic
+    setIsProcessing(true)
+    setTxStatus('pending')
+    setErrorMessage('')
+
+    try {
+      // Simulate bank payment processing
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      setTxStatus('success')
+      setIsProcessing(false)
+      onPaymentSuccess?.('bank-payment-success')
+    } catch (err: any) {
+      setTxStatus('error')
+      setIsProcessing(false)
+      const errorMsg = err.message || 'Bank payment failed'
+      setErrorMessage(errorMsg)
+      onPaymentError?.(errorMsg)
+    }
+  }
+
   const formatWalletAddress = (addr: string | undefined) => {
     if (!addr || addr.trim() === '') {
       return 'Address not available'
@@ -144,13 +171,8 @@ export default function PaymentSummary({
     if (isProcessing || isPending) return 'Processing...'
     if (isConfirming) return 'Confirming...'
     if (txStatus === 'success') return 'Payment Successful!'
-    return 'Pay with wallet'
-  }
-
-  const getButtonVariant = () => {
-    if (txStatus === 'success') return 'secondary'
-    if (txStatus === 'error') return 'destructive'
-    return 'default'
+    if (activeTab === 'bank') return 'Pay with Bank'
+    return 'Pay with Wallet'
   }
 
   const formatEthBalance = (balance: string) => {
@@ -170,6 +192,61 @@ export default function PaymentSummary({
     return amount;
   };
 
+  const renderTabContent = () => {
+    if (activeTab === 'crypto') {
+      return (
+        <>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500 text-sm font-bold">Sold By</span>
+            <span className="text-gray-900 text-sm font-bold">{formatWalletAddress(paymentData.recipient)}</span>
+          </div>
+
+          {paymentData.reason && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 text-sm font-bold">For</span>
+              <span className="text-gray-900 text-sm font-bold">{paymentData.reason}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500 text-sm font-bold">Price</span>
+            <span className="text-gray-900 text-sm font-bold">
+              {formatDisplayAmount(paymentData.amount, paymentData.currency)} {paymentData.currency}
+            </span>
+          </div>
+
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500 text-sm font-bold">Network</span>
+            <span className="text-gray-900 text-sm font-bold">{paymentData.network}</span>
+          </div>
+        </>
+      )
+    }
+
+    return (
+      <>
+        <div className="flex justify-between items-center">
+          <span className="text-gray-500 text-sm font-bold">Recipient</span>
+          <span className="text-gray-900 text-sm font-bold">{paymentData.recipientName || 'John Doe'}</span>
+        </div>
+
+        {paymentData.reason && (
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500 text-sm font-bold">For</span>
+            <span className="text-gray-900 text-sm font-bold">{paymentData.reason}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between items-center">
+          <span className="text-gray-500 text-sm font-bold">Price</span>
+          <span className="text-gray-900 text-sm font-bold">
+            ₦{paymentData.amountNaira || '50,000'}
+          </span>
+        </div>
+      </>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-inter">
       {/* Header */}
@@ -185,31 +262,33 @@ export default function PaymentSummary({
           </CardHeader>
 
           <CardContent className="space-y-3">
+            {/* Tabs */}
+            <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
+              <button
+                onClick={() => setActiveTab('crypto')}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-bold transition-colors ${
+                  activeTab === 'crypto'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Pay with Crypto
+              </button>
+              <button
+                onClick={() => setActiveTab('bank')}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-bold transition-colors ${
+                  activeTab === 'bank'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Pay with Bank
+              </button>
+            </div>
+
             {/* Payment Details */}
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500 text-sm font-bold">Sold By</span>
-                <span className="text-gray-900 text-sm font-bold">{formatWalletAddress(paymentData.recipient)}</span>
-              </div>
-
-              {paymentData.reason && (
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500 text-sm font-bold">For</span>
-                  <span className="text-gray-900 text-sm font-bold">{paymentData.reason}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500 text-sm font-bold">Price</span>
-                <span className="text-gray-900 text-sm font-bold">
-                  {formatDisplayAmount(paymentData.amount, paymentData.currency)} {paymentData.currency}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500 text-sm font-bold">Network</span>
-                <span className="text-gray-900 text-sm font-bold">{paymentData.network}</span>
-              </div>
+              {renderTabContent()}
             </div>
 
             {/* Error Message */}
@@ -221,31 +300,45 @@ export default function PaymentSummary({
 
             {/* Pay Button */}
             <div className="pt-4">
-              <ConnectButton.Custom>
-                {({ account, chain, openConnectModal, mounted }) => {
-                  const ready = mounted;
-                  const connected = ready && account && chain;
-                  return (
-                    <Button
-                      onClick={() => {
-                        if (!connected) {
-                          openConnectModal();
-                          return;
-                        }
-                        handlePayment();
-                      }}
-                      disabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
-                      className="w-full text-white font-bold py-2.5 rounded-lg transition-colors"
-                      style={{ backgroundColor: '#669bbc' }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a8aa8'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#669bbc'}
-                      size="lg"
-                    >
-                      {getButtonText()}
-                    </Button>
-                  );
-                }}
-              </ConnectButton.Custom>
+              {activeTab === 'crypto' ? (
+                <ConnectButton.Custom>
+                  {({ account, chain, openConnectModal, mounted }) => {
+                    const ready = mounted;
+                    const connected = ready && account && chain;
+                    return (
+                      <Button
+                        onClick={() => {
+                          if (!connected) {
+                            openConnectModal();
+                            return;
+                          }
+                          handlePayment();
+                        }}
+                        disabled={isProcessing || isPending || isConfirming || txStatus === 'success'}
+                        className="w-full text-white font-bold py-2.5 rounded-lg transition-colors"
+                        style={{ backgroundColor: '#669bbc' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a8aa8'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#669bbc'}
+                        size="lg"
+                      >
+                        {getButtonText()}
+                      </Button>
+                    );
+                  }}
+                </ConnectButton.Custom>
+              ) : (
+                <Button
+                  onClick={handleBankPayment}
+                  disabled={isProcessing || txStatus === 'success'}
+                  className="w-full text-white font-bold py-2.5 rounded-lg transition-colors"
+                  style={{ backgroundColor: '#669bbc' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a8aa8'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#669bbc'}
+                  size="lg"
+                >
+                  {getButtonText()}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
