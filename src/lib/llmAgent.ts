@@ -64,6 +64,9 @@ Valid intents:
 - create_payment_link: For creating payment links or payment requests
 - get_earnings: For checking earnings, income, money received, or payment history
 - get_spending: For checking spending, money sent, or payment history
+- create_proposal: For creating project proposals with payment links
+- send_proposal: For sending proposals to clients via WhatsApp and email
+- view_proposal: For viewing existing proposals
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 
@@ -147,26 +150,34 @@ IMPORTANT INTENT RECOGNITION RULES:
     - network: Extract network name if specified (e.g., "Base", "Polygon", "Ethereum")
     - startDate/endDate: Extract specific dates if mentioned
 
-9. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
+9. PROPOSAL REQUESTS: Always use "create_proposal" intent for:
+   - "proposal", "create proposal", "generate proposal", "project proposal"
+   - "client proposal", "business proposal", "work proposal"
+   - "quote", "estimate", "project quote", "project estimate"
+   - "contract", "project contract", "work contract"
+   - "invoice with details", "detailed invoice", "project invoice"
+   - Any request about creating detailed project proposals with timelines and deliverables
+
+10. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it
    - If amount was specified earlier, carry it forward
    - If token type was discussed, maintain consistency
 
-10. ADDRESS RECOGNITION: Recognize these as recipient addresses:
+11. ADDRESS RECOGNITION: Recognize these as recipient addresses:
    - Ethereum addresses: 0x followed by 40 hexadecimal characters
    - ENS names: ending with .eth
    - Shortened addresses: 0x...abc (when context suggests it's an address)
    - Extract addresses from text like "here's my address: 0x123..." or "send to 0x123..."
    - Clean up addresses by removing extra spaces, quotes, or surrounding text
 
-11. AMOUNT EXTRACTION: Extract amounts from phrases like:
+12. AMOUNT EXTRACTION: Extract amounts from phrases like:
    - "send 0.01 ETH"
    - "transfer 100 USDC"
    - "move 5 tokens"
    - "payment link for 50 USDC"
    - "invoice for $100"
 
-12. When user provides an address after being asked, ALWAYS include it in the send parameters.
+13. When user provides an address after being asked, ALWAYS include it in the send parameters.
 
 EXAMPLES:
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"
@@ -207,6 +218,27 @@ Response: {"intent": "get_spending", "parameters": {"timeframe": "last week"}}
 
 User: "How much ETH did I send this year?"
 Response: {"intent": "get_spending", "parameters": {"token": "ETH", "timeframe": "this year"}}
+
+User: "create proposal" or "I need a proposal" or "generate proposal"
+Response: {"intent": "create_proposal", "params": {}}
+
+User: "project proposal for client" or "business proposal"
+Response: {"intent": "create_proposal", "params": {}}
+
+User: "quote for project" or "estimate for work"
+Response: {"intent": "create_proposal", "params": {}}
+
+User: "send proposal" or "send proposal to client"
+Response: {"intent": "send_proposal", "params": {}}
+
+User: "send proposal 123" or "send proposal abc123"
+Response: {"intent": "send_proposal", "params": {"proposalId": "123"}}
+
+User: "view proposal" or "show proposal"
+Response: {"intent": "view_proposal", "params": {}}
+
+User: "view proposal 123" or "show proposal abc123"
+Response: {"intent": "view_proposal", "params": {"proposalId": "123"}}
 
 User: "0x1234567890123456789012345678901234567890" (after being asked for address)
 Response: {"intent": "send", "params": {"recipient": "0x1234567890123456789012345678901234567890"}}
