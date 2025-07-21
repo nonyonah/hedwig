@@ -6,6 +6,7 @@ import { parseEther, parseUnits, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { useState, useEffect } from 'react'
 import { formatAddress, formatBalance } from '@/lib/utils'
+import { flutterwaveService, BankPaymentDetails } from '@/lib/flutterwaveService'
 
 interface PaymentData {
   id: string
@@ -42,6 +43,12 @@ export default function PaymentSummary({
   const [txStatus, setTxStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [activeTab, setActiveTab] = useState<PaymentTab>('crypto')
+  const [bankPaymentDetails, setBankPaymentDetails] = useState<BankPaymentDetails | null>(null)
+  const [isCreatingBankPayment, setIsCreatingBankPayment] = useState(false)
+  
+  // Feature flags - disable bank payment and Flutterwave until KYC is ready
+  const BANK_PAYMENT_ENABLED = false
+  const FLUTTERWAVE_ENABLED = false
 
   // Use the appropriate hash and error based on transaction type
   const hash = contractHash || ethHash
@@ -140,23 +147,47 @@ export default function PaymentSummary({
   }
 
   const handleBankPayment = async () => {
-    // Placeholder for bank payment logic
-    setIsProcessing(true)
-    setTxStatus('pending')
+    if (!BANK_PAYMENT_ENABLED || !FLUTTERWAVE_ENABLED) {
+      setErrorMessage('Bank payment is currently disabled. KYC features are required.')
+      return
+    }
+
+    setIsCreatingBankPayment(true)
     setErrorMessage('')
 
     try {
-      // Simulate bank payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      setTxStatus('success')
-      setIsProcessing(false)
-      onPaymentSuccess?.('bank-payment-success')
+      // Mock customer details - in a real app, this would come from user profile/KYC
+      const customerDetails = {
+        email: 'customer@example.com',
+        firstname: 'John',
+        lastname: 'Doe',
+        phonenumber: '08100000000'
+      }
+
+      const bankDetails = await flutterwaveService.createBankPaymentForCrypto(
+        {
+          id: paymentData.id,
+          amount: paymentData.amount,
+          currency: paymentData.currency,
+          recipientName: paymentData.recipientName,
+          reason: paymentData.reason
+        },
+        customerDetails
+      )
+
+      setBankPaymentDetails(bankDetails)
+      setTxStatus('pending')
+      
+      // In a real implementation, you would listen for webhooks to confirm payment
+      // For now, we'll just show the bank details
+      
     } catch (err: any) {
       setTxStatus('error')
-      setIsProcessing(false)
-      const errorMsg = err.message || 'Bank payment failed'
+      const errorMsg = err.message || 'Failed to create bank payment'
       setErrorMessage(errorMsg)
       onPaymentError?.(errorMsg)
+    } finally {
+      setIsCreatingBankPayment(false)
     }
   }
 
@@ -170,8 +201,12 @@ export default function PaymentSummary({
   const getButtonText = () => {
     if (isProcessing || isPending) return 'Processing...'
     if (isConfirming) return 'Confirming...'
+    if (isCreatingBankPayment) return 'Creating Bank Payment...'
     if (txStatus === 'success') return 'Payment Successful!'
-    if (activeTab === 'bank') return 'Pay with Bank'
+    if (activeTab === 'bank') {
+      if (!BANK_PAYMENT_ENABLED) return 'Bank Payment (Disabled)'
+      return bankPaymentDetails ? 'Payment Details Created' : 'Create Bank Payment'
+    }
     return 'Pay with Wallet'
   }
 
@@ -243,26 +278,81 @@ export default function PaymentSummary({
       )
     }
 
+    // Bank payment tab
     return (
       <>
-        <div className="flex justify-between items-center">
-          <span className="text-gray-500 text-sm font-bold">Recipient</span>
-          <span className="text-gray-900 text-sm font-bold">{paymentData.recipientName || 'John Doe'}</span>
-        </div>
-
-        {paymentData.reason && (
-          <div className="flex justify-between items-center">
-            <span className="text-gray-500 text-sm font-bold">For</span>
-            <span className="text-gray-900 text-sm font-bold">{paymentData.reason}</span>
+        {!BANK_PAYMENT_ENABLED && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <p className="text-yellow-800 text-sm font-medium">
+              ⚠️ Bank payment is currently disabled until KYC features are implemented.
+            </p>
           </div>
         )}
 
-        <div className="flex justify-between items-center">
-          <span className="text-gray-500 text-sm font-bold">Price</span>
-          <span className="text-gray-900 text-sm font-bold">
-            ₦{paymentData.amountNaira || convertToNaira(paymentData.amount, paymentData.currency)}
-          </span>
-        </div>
+        {bankPaymentDetails ? (
+          // Show Flutterwave bank payment details
+          <>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <h4 className="text-blue-800 font-semibold mb-2">Bank Transfer Details</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-blue-600">Bank Name:</span>
+                  <span className="font-medium">{bankPaymentDetails.bankName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-600">Account Number:</span>
+                  <span className="font-medium">{bankPaymentDetails.accountNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-600">Account Name:</span>
+                  <span className="font-medium">{bankPaymentDetails.accountName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-600">Amount:</span>
+                  <span className="font-medium">₦{bankPaymentDetails.amount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-600">Reference:</span>
+                  <span className="font-medium text-xs">{bankPaymentDetails.reference}</span>
+                </div>
+              </div>
+              <p className="text-blue-600 text-xs mt-3">
+                Transfer the exact amount to the account above. Payment will be confirmed automatically.
+              </p>
+            </div>
+          </>
+        ) : (
+          // Show payment summary for bank payment
+          <>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 text-sm font-bold">Recipient</span>
+              <span className="text-gray-900 text-sm font-bold">
+                {paymentData.recipientName || formatWalletAddress(paymentData.recipient)}
+              </span>
+            </div>
+
+            {paymentData.reason && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 text-sm font-bold">For</span>
+                <span className="text-gray-900 text-sm font-bold">{paymentData.reason}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 text-sm font-bold">Price (Crypto)</span>
+              <span className="text-gray-900 text-sm font-bold">
+                {formatDisplayAmount(paymentData.amount, paymentData.currency)} {paymentData.currency}
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 text-sm font-bold">Price (Naira)</span>
+              <span className="text-gray-900 text-sm font-bold">
+                ₦{paymentData.amountNaira || convertToNaira(paymentData.amount, paymentData.currency)}
+              </span>
+            </div>
+          </>
+        )}
       </>
     )
   }
@@ -295,14 +385,17 @@ export default function PaymentSummary({
                 Pay with Crypto
               </button>
               <button
-                onClick={() => setActiveTab('bank')}
+                onClick={() => BANK_PAYMENT_ENABLED && setActiveTab('bank')}
+                disabled={!BANK_PAYMENT_ENABLED}
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-bold transition-colors ${
                   activeTab === 'bank'
                     ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
+                    : BANK_PAYMENT_ENABLED 
+                      ? 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-400 cursor-not-allowed'
                 }`}
               >
-                Pay with Bank
+                Pay with Bank {!BANK_PAYMENT_ENABLED && '(Disabled)'}
               </button>
             </div>
 
@@ -349,7 +442,7 @@ export default function PaymentSummary({
               ) : (
                 <Button
                   onClick={handleBankPayment}
-                  disabled={isProcessing || txStatus === 'success'}
+                  disabled={!BANK_PAYMENT_ENABLED || isCreatingBankPayment || (bankPaymentDetails && txStatus !== 'error')}
                   className="w-full text-white font-bold py-2.5 rounded-lg transition-colors"
                   style={{ backgroundColor: '#669bbc' }}
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a8aa8'}
