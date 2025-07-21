@@ -769,3 +769,86 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
     ]
   };
 }
+
+/**
+ * Template: proposal_creation_flow
+ * WhatsApp Flow for creating proposals
+ * Collects client details, project information, and payment details
+ */
+export function proposalCreationFlow() {
+  return {
+    name: 'proposal_creation_flow',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'BODY'
+      },
+      {
+        type: 'INTERACTIVE',
+        sub_type: 'flow',
+        parameters: [
+          {
+            type: 'action',
+            action: {
+              name: 'flow',
+              parameters: {
+                flow_message_version: '3',
+                flow_token: 'proposal_creation_token',
+                flow_id: 'proposal_creation_flow',
+                flow_cta: 'Create Proposal',
+                flow_action: 'navigate',
+                flow_action_payload: {
+                  screen: 'RECOMMEND'
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: proposal_sent_success
+ * Parameter Format: POSITIONAL
+ * Parameters: client_name, project_title, proposal_id
+ */
+export function proposalSentSuccess({ client_name, project_title, proposal_id }: { client_name: string, project_title: string, proposal_id: string }) {
+  return {
+    name: 'proposal_sent_success',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: sanitizeWhatsAppParam(client_name) },
+          { type: 'text', text: sanitizeWhatsAppParam(project_title) },
+          { type: 'text', text: sanitizeWhatsAppParam(proposal_id) }
+        ]
+      }
+    ]
+  };
+}
+
+/**
+ * Template: proposal_pdf_ready
+ * Parameter Format: POSITIONAL
+ * Parameters: client_name, project_title, pdf_url
+ */
+export function proposalPdfReady({ client_name, project_title, pdf_url }: { client_name: string, project_title: string, pdf_url: string }) {
+  return {
+    name: 'proposal_pdf_ready',
+    language: { code: 'en' },
+    components: [
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: sanitizeWhatsAppParam(client_name) },
+          { type: 'text', text: sanitizeWhatsAppParam(project_title) },
+          { type: 'text', text: sanitizeWhatsAppParam(pdf_url) }
+        ]
+      }
+    ]
+  };
+}

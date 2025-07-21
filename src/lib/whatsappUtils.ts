@@ -2,7 +2,7 @@ import { getRequiredEnvVar } from "@/lib/envUtils";
 import { loadServerEnvironment } from "./serverEnv";
 import { v4 as uuidv4 } from "uuid";
 import fetch from "node-fetch";
-import { textTemplate, txPending, sendTokenPrompt, sendFailed } from "./whatsappTemplates";
+import { textTemplate, txPending, sendTokenPrompt, sendFailed, proposalCreationFlow } from "./whatsappTemplates";
 import { runLLM } from "./llmAgent";
 import { createWallet } from "./cdp";
 import { createNewWallet, walletCreated } from "./whatsappTemplates";
@@ -33,6 +33,51 @@ function extractEthereumAddress(text: string): string | null {
   }
   
   return null;
+}
+
+// Session cleanup for proposal flows
+async function cleanupProposalFlowSession(userId: string) {
+  try {
+    console.log(`[Session Cleanup] Cleaning up proposal flow session for user: ${userId}`);
+    await supabase
+      .from("sessions")
+      .delete()
+      .eq("user_id", userId)
+      .like("context", '%proposal_flow%');
+    console.log(`[Session Cleanup] Successfully cleaned up proposal flow session for user: ${userId}`);
+  } catch (error) {
+    console.error(`[Session Cleanup] Error cleaning up proposal flow session for user ${userId}:`, error);
+  }
+}
+
+// Schedule session cleanup after timeout
+function scheduleProposalFlowCleanup(userId: string, timeoutMinutes: number = 30) {
+  setTimeout(async () => {
+    try {
+      // Check if user has responded in the meantime by checking for recent activity
+      const { data: recentActivity } = await supabase
+        .from("sessions")
+        .select("updated_at")
+        .eq("user_id", userId)
+        .single();
+      
+      if (recentActivity) {
+        const lastUpdate = new Date(recentActivity.updated_at);
+        const now = new Date();
+        const timeDiff = now.getTime() - lastUpdate.getTime();
+        const minutesDiff = timeDiff / (1000 * 60);
+        
+        // Only cleanup if no activity for the specified timeout period
+        if (minutesDiff >= timeoutMinutes) {
+          await cleanupProposalFlowSession(userId);
+        } else {
+          console.log(`[Session Cleanup] User ${userId} has recent activity, skipping cleanup`);
+        }
+      }
+    } catch (error) {
+      console.error(`[Session Cleanup] Error in scheduled cleanup for user ${userId}:`, error);
+    }
+  }, timeoutMinutes * 60 * 1000); // Convert minutes to milliseconds
 }
 import { createClient } from "@supabase/supabase-js";
 import { toE164 } from "@/lib/phoneFormat";
@@ -567,9 +612,10 @@ export async function handleIncomingWhatsAppMessage(body: any) {
   // Check if this is a message
   const message = value?.messages?.[0];
 
-  // Check if this is a button click
+  // Check if this is a button click or flow response
   const interactive = message?.interactive;
   const buttonReply = interactive?.button_reply;
+  const flowReply = interactive?.nfm_reply;
 
   // Get the sender - could be in different places depending on message type
   const from =
@@ -737,6 +783,70 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           });
         }
         return; // Stop further processing
+      }
+    }
+
+    // Handle WhatsApp Flow responses
+    if (flowReply) {
+      console.log("Flow response received:", JSON.stringify(flowReply, null, 2));
+      
+      // Check if this is a proposal creation flow response
+      if (flowReply.name === 'proposal_creation_flow' || flowReply.flow_token === 'proposal_creation_token') {
+        console.log("Processing proposal creation flow response");
+        
+        try {
+          // Import the flow parsing functions
+          const { parseProposalFlowResponse } = await import('./whatsappFlows');
+          const { generateProposalPDF, generateTextProposal } = await import('./pdfService');
+          const { proposalSentSuccess, proposalPdfReady } = await import('./whatsappTemplates');
+          
+          // Parse the flow response data
+          const proposalData = parseProposalFlowResponse(flowReply.response_json);
+          console.log("Parsed proposal data:", proposalData);
+          
+          // Send immediate confirmation
+          await sendWhatsAppMessage(from, {
+            text: `✅ **Proposal Created Successfully!**\n\nI've received all the details for your proposal:\n\n📋 **Project:** ${proposalData.projectTitle}\n👤 **Client:** ${proposalData.clientName}\n💰 **Amount:** $${proposalData.paymentAmount?.toLocaleString()}\n\nGenerating the proposal and sending it to your client now...`
+          });
+          
+          // Create the proposal using the handleCreateProposal action
+          const proposalResult = await handleAction("create_proposal", {
+            clientName: proposalData.clientName,
+            clientEmail: proposalData.clientEmail,
+            projectTitle: proposalData.projectTitle,
+            description: proposalData.projectDescription, // Map to description
+            deliverables: proposalData.deliverables,
+            timelineStart: proposalData.startDate, // Map to timelineStart
+            timelineEnd: proposalData.endDate, // Map to timelineEnd
+            paymentAmount: proposalData.paymentAmount,
+            paymentMethod: proposalData.paymentMethod,
+            serviceFee: 0 // Default service fee
+          }, userId);
+          
+          if (proposalResult && typeof proposalResult === 'object' && 'text' in proposalResult) {
+            // Send the proposal result
+            await sendWhatsAppMessage(from, { text: proposalResult.text });
+            
+            // Send a simple completion message instead of PDF
+            await sendWhatsAppMessage(from, {
+              text: `✅ **Proposal sent successfully!**\n\n📋 **Project:** ${proposalData.projectTitle}\n👤 **Client:** ${proposalData.clientName}\n💰 **Amount:** $${proposalData.paymentAmount?.toLocaleString()}\n\nYour client should receive the proposal shortly. You can also copy the proposal details from the message above to send manually if needed.`
+            });
+            
+          } else {
+            console.error("Unexpected proposal result format:", proposalResult);
+            await sendWhatsAppMessage(from, {
+              text: "There was an issue creating your proposal. Please try again or contact support."
+            });
+          }
+          
+        } catch (error) {
+          console.error("Error processing proposal flow response:", error);
+          await sendWhatsAppMessage(from, {
+            text: "Sorry, there was an error processing your proposal. Please try again or contact support."
+          });
+        }
+        
+        return; // End processing after handling flow response
       }
     }
 
@@ -1466,6 +1576,189 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           }
         }
         return; // Prevent duplicate handling by the general action handler
+      }
+
+      // Handle proposal flow trigger
+      if (intent === 'create_proposal_flow') {
+        console.log("Proposal flow request detected, sending WhatsApp flow");
+        
+        // Store proposal flow session context
+        try {
+          await supabase.from("sessions").upsert(
+            [
+              {
+                user_id: userId,
+                context: [
+                  {
+                    role: "system",
+                    content: JSON.stringify({ 
+                      proposal_flow: true, 
+                      started_at: new Date().toISOString() 
+                    }),
+                  },
+                ],
+                updated_at: new Date().toISOString(),
+              },
+            ],
+            { onConflict: "user_id" },
+          );
+          
+          // Schedule cleanup after 30 minutes of inactivity
+          scheduleProposalFlowCleanup(userId, 30);
+          
+        } catch (sessionError) {
+          console.error("Error storing proposal flow session:", sessionError);
+        }
+        
+        try {
+          await sendWhatsAppTemplate(from, proposalCreationFlow());
+          return;
+        } catch (error) {
+          console.error("Error sending proposal flow:", error);
+          
+          // Check if it's a Meta approval/verification error
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          if (errorMessage.includes('INTERACTIVE') || 
+              errorMessage.includes('approval') || 
+              errorMessage.includes('verification') ||
+              errorMessage.includes('template')) {
+            console.log("WhatsApp flow template not approved, using fallback text collection");
+            await sendWhatsAppMessage(from, {
+              text: "I'd be happy to help you create a proposal! Due to WhatsApp's approval process, I'll collect the details through messages.\n\nLet's start with the client name. What's your client's name?"
+            });
+            
+            // Store that we're in text collection mode
+            try {
+              await supabase.from("sessions").upsert(
+                [
+                  {
+                    user_id: userId,
+                    context: [
+                      {
+                        role: "system",
+                        content: JSON.stringify({ 
+                          proposal_text_collection: true,
+                          step: "client_name",
+                          started_at: new Date().toISOString() 
+                        }),
+                      },
+                    ],
+                    updated_at: new Date().toISOString(),
+                  },
+                ],
+                { onConflict: "user_id" },
+              );
+            } catch (sessionError) {
+              console.error("Error storing text collection session:", sessionError);
+            }
+          } else {
+            // Generic error fallback
+            await sendWhatsAppMessage(from, {
+              text: "I'd be happy to help you create a proposal! Please provide the following details:\n\n1. Client name\n2. Client email\n3. Project title\n4. Project description\n5. Deliverables\n6. Start date\n7. End date\n8. Payment amount\n9. Payment method (Crypto/Bank Transfer/Mixed)"
+            });
+          }
+          return;
+        }
+      }
+
+      // Handle text-based proposal collection (fallback when flows aren't available)
+      const { data: sessionData } = await supabase
+        .from("sessions")
+        .select("context")
+        .eq("user_id", userId)
+        .single();
+
+      if (sessionData?.context) {
+        const contextArray = Array.isArray(sessionData.context) ? sessionData.context : [sessionData.context];
+        const systemContext = contextArray.find((ctx: any) => ctx.role === "system");
+        
+        if (systemContext) {
+          try {
+            const contextData = JSON.parse(systemContext.content);
+            
+            if (contextData.proposal_text_collection) {
+              console.log(`Handling text collection for step: ${contextData.step}`);
+              
+              // Handle the current step
+              const steps = [
+                { key: "client_name", next: "client_email", prompt: "Great! Now, what's your client's email address?" },
+                { key: "client_email", next: "project_title", prompt: "Perfect! What's the project title?" },
+                { key: "project_title", next: "project_description", prompt: "Excellent! Please provide a brief project description:" },
+                { key: "project_description", next: "deliverables", prompt: "Thanks! What are the main deliverables for this project?" },
+                { key: "deliverables", next: "start_date", prompt: "Great! What's the project start date? (YYYY-MM-DD format)" },
+                { key: "start_date", next: "end_date", prompt: "Perfect! What's the expected end date? (YYYY-MM-DD format)" },
+                { key: "end_date", next: "payment_amount", prompt: "Excellent! What's the total payment amount? (numbers only)" },
+                { key: "payment_amount", next: "payment_method", prompt: "Almost done! What's the preferred payment method? (Crypto/Bank Transfer/Mixed)" },
+                { key: "payment_method", next: "complete", prompt: "Perfect! Creating your proposal now..." }
+              ];
+              
+              const currentStep = steps.find(step => step.key === contextData.step);
+              
+              if (currentStep) {
+                // Store the current response
+                const updatedData = { ...contextData.data || {}, [currentStep.key]: text };
+                
+                if (currentStep.next === "complete") {
+                  // All data collected, create the proposal
+                  const proposalData = {
+                    clientName: updatedData.client_name,
+                    clientEmail: updatedData.client_email,
+                    projectTitle: updatedData.project_title,
+                    description: updatedData.project_description,
+                    deliverables: updatedData.deliverables,
+                    timelineStart: updatedData.start_date,
+                    timelineEnd: updatedData.end_date,
+                    paymentAmount: parseFloat(updatedData.payment_amount),
+                    paymentMethod: updatedData.payment_method.toLowerCase(),
+                    serviceFee: 0
+                  };
+                  
+                  // Create the proposal
+                  const actionResult = await handleAction("create_proposal", proposalData, userId);
+                  
+                  // Clean up session
+                  await cleanupProposalFlowSession(userId);
+                  
+                  // Send confirmation
+                  await sendWhatsAppMessage(from, {
+                    text: `✅ Proposal created successfully!\n\n📋 **${proposalData.projectTitle}**\n👤 Client: ${proposalData.clientName}\n💰 Amount: $${proposalData.paymentAmount}\n📅 Timeline: ${proposalData.timelineStart} to ${proposalData.timelineEnd}\n\nYour proposal has been saved and is ready to send to your client.`
+                  });
+                  
+                  return;
+                } else {
+                  // Move to next step
+                  const nextStep = steps.find(step => step.key === currentStep.next);
+                  
+                  await supabase.from("sessions").upsert(
+                    [
+                      {
+                        user_id: userId,
+                        context: [
+                          {
+                            role: "system",
+                            content: JSON.stringify({ 
+                              proposal_text_collection: true,
+                              step: currentStep.next,
+                              data: updatedData,
+                              started_at: contextData.started_at 
+                            }),
+                          },
+                        ],
+                        updated_at: new Date().toISOString(),
+                      },
+                    ],
+                    { onConflict: "user_id" },
+                  );
+                  
+                  await sendWhatsAppMessage(from, { text: currentStep.prompt });
+                  return;
+                }
+              }
+            }
+          } catch (parseError) {
+            console.error("Error parsing session context:", parseError);
+          }
+        }
       }
 
       const actionResult = await handleAction(intent, { ...params, text }, userId);

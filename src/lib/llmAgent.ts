@@ -150,13 +150,15 @@ IMPORTANT INTENT RECOGNITION RULES:
     - network: Extract network name if specified (e.g., "Base", "Polygon", "Ethereum")
     - startDate/endDate: Extract specific dates if mentioned
 
-9. PROPOSAL REQUESTS: Always use "create_proposal" intent for:
+9. PROPOSAL REQUESTS: Always use "create_proposal_flow" intent for:
    - "proposal", "create proposal", "generate proposal", "project proposal"
    - "client proposal", "business proposal", "work proposal"
    - "quote", "estimate", "project quote", "project estimate"
    - "contract", "project contract", "work contract"
    - "invoice with details", "detailed invoice", "project invoice"
    - Any request about creating detailed project proposals with timelines and deliverables
+   
+   This will trigger a WhatsApp flow to collect all necessary proposal details in one go.
 
 10. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it
@@ -220,13 +222,13 @@ User: "How much ETH did I send this year?"
 Response: {"intent": "get_spending", "parameters": {"token": "ETH", "timeframe": "this year"}}
 
 User: "create proposal" or "I need a proposal" or "generate proposal"
-Response: {"intent": "create_proposal", "params": {}}
+Response: {"intent": "create_proposal_flow", "params": {}}
 
 User: "project proposal for client" or "business proposal"
-Response: {"intent": "create_proposal", "params": {}}
+Response: {"intent": "create_proposal_flow", "params": {}}
 
 User: "quote for project" or "estimate for work"
-Response: {"intent": "create_proposal", "params": {}}
+Response: {"intent": "create_proposal_flow", "params": {}}
 
 User: "send proposal" or "send proposal to client"
 Response: {"intent": "send_proposal", "params": {}}
