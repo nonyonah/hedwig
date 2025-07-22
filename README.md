@@ -19,6 +19,22 @@ Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets
 - Track token performance
 - Swap tokens using CDP's swap API
 
+### 📊 Enhanced Earnings Tracking
+- **Comprehensive Summaries**: Track earnings across all supported networks with detailed breakdowns
+- **Smart Categorization**: Automatically categorize earnings (freelance, airdrop, staking, trading, DeFi, NFT, gaming, investment)
+- **Fiat Conversion**: Real-time USD/EUR/GBP/JPY conversion with exchange rates
+- **Percentage Breakdown**: See contribution percentages by token and source
+- **Custom Timeframes**: Query earnings for any period ("last week", "January to March", etc.)
+- **Proactive Monthly Reports**: Opt-in automated monthly summaries with insights
+- **Growth Analytics**: Compare performance with previous periods
+- **Personalized Insights**: Largest transactions, most active networks, motivational messages
+
+### 🔗 Payment Links & Smart Nudges
+- Create payment links for easy crypto collection
+- Automated follow-up reminders for unpaid links
+- Smart nudge timing (24h, 72h, 1 week intervals)
+- Payment completion tracking
+
 ### 🖼️ NFT Support
 - View your NFT collection
 - Check NFT details and metadata
@@ -59,6 +75,19 @@ Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets
    # Update the values in .env with your configuration
    ```
 
+   **Required Environment Variables:**
+   - `WHATSAPP_ACCESS_TOKEN` - Your WhatsApp Business API token
+   - `WHATSAPP_PHONE_NUMBER_ID` - Your WhatsApp phone number ID
+   - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key
+   - `GOOGLE_API_KEY` - Google AI API key for LLM functionality
+   - `CDP_API_KEY_ID` & `CDP_API_KEY_SECRET` - Coinbase Developer Platform keys
+
+   **Optional Environment Variables:**
+   - `COINGECKO_API_KEY` - For enhanced token price data (free tier available)
+   - `CRON_SECRET` - Secure token for automated cron jobs
+   - `ALCHEMY_API_KEY` - For additional blockchain data
+
 4. Configure CDP API keys:
    - Sign up for a Coinbase Developer Platform account at https://www.coinbase.com/cloud
    - Create a new project and generate API keys
@@ -75,11 +104,29 @@ Hedwig is an AI-powered WhatsApp bot that brings the power of blockchain wallets
 
 Send a message to your Hedwig WhatsApp number to get started. Here are some example commands:
 
+### Basic Commands
 - `balance` - Check your wallet balance
 - `send 0.1 ETH to 0x...` - Send cryptocurrency
 - `price BTC` - Get current price of BTC
 - `nft list` - View your NFT collection
 - `help` - Show available commands
+
+### Earnings Tracking Commands
+- `earnings` - Get your overall earnings summary
+- `earnings this month` - Monthly earnings breakdown
+- `earnings last week` - Weekly earnings summary
+- `earnings from January to March` - Custom timeframe
+- `earnings USDC` - Filter by specific token
+- `earnings on ethereum` - Filter by network
+- `earnings freelance` - Filter by category
+- `earnings preview` - Preview your monthly report
+
+### Preferences & Settings
+- `enable monthly reports` - Turn on automated monthly summaries
+- `disable monthly reports` - Turn off automated summaries
+- `set currency USD` - Set preferred fiat currency (USD, EUR, GBP, JPY)
+- `set categories freelance,staking` - Set preferred earning categories
+- `preferences` - View current settings
 
 ## 🔒 Security
 

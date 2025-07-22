@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { SmartNudgeService } from '../../lib/smartNudgeService'
 import PaymentSummary from '../../components/PaymentSummary'
 
 interface PaymentData {
@@ -45,6 +46,15 @@ export default function PaymentPage() {
       if (!data) {
         setError('Payment not found')
         return
+      }
+
+      // Track that this payment link was viewed
+      try {
+        await SmartNudgeService.markAsViewed('payment_link', paymentId)
+        console.log('Payment link marked as viewed')
+      } catch (viewError) {
+        console.error('Error marking payment link as viewed:', viewError)
+        // Don't fail the page load if tracking fails
       }
 
       setPaymentData({
