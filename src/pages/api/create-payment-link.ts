@@ -121,7 +121,7 @@ export default async function handler(
       });
     }
 
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwig.xyz'}/pay/${data.id}`;
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/pay/${data.id}`;
 
     // TODO: Send email if recipientEmail is provided
     if (recipientEmail) {
@@ -187,7 +187,7 @@ async function sendPaymentLinkEmail({
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Hedwig <payments@hedwig.xyz>',
+        from: 'Hedwig <payments@hedwigbot.xyz>',
         to: [recipientEmail],
         subject: `Payment Request: ${amount} ${token}`,
         html: `

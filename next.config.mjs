@@ -69,6 +69,8 @@ const nextConfig = {
     PRIVY_AUTHORIZATION_KEY: process.env.PRIVY_AUTHORIZATION_KEY,
     PRIVY_KEY_QUORUM_ID: process.env.PRIVY_KEY_QUORUM_ID,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
     // MORALIS_API_KEY: process.env.MORALIS_API_KEY,
     API_KEY_0X: process.env.API_KEY_0X,  
   },

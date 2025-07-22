@@ -30,7 +30,7 @@ async function sendPaymentLinkEmail(emailData: EmailData) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Hedwig <payments@hedwig.xyz>',
+        from: 'Hedwig <payments@hedwigbot.xyz>',
         to: [emailData.recipientEmail],
         subject: `Payment Request: ${emailData.amount} ${emailData.token}`,
         html: `
@@ -158,7 +158,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'No recipient email provided' });
     }
 
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/pay/${paymentId}`;
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/pay/${paymentId}`;
 
     await sendPaymentLinkEmail({
       recipientEmail: paymentData.recipient_email,

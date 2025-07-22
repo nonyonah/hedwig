@@ -3139,7 +3139,7 @@ async function handleCreatePaymentLink(params: any, userId: string) {
     }
 
     // Generate payment URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
     const paymentUrl = `${baseUrl}/pay/${paymentLink.id}`;
 
     // Always attempt to send email notification
