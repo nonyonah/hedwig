@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { getTransactionHistory, Transaction } from './transactionHistoryService';
 import { loadServerEnvironment } from './serverEnv';
 import { getTokenPricesBySymbol } from './tokenPriceService';
 
@@ -38,7 +37,7 @@ export interface EarningsSummaryItem {
 }
 
 export interface EarningsInsights {
-  largestTransaction: {
+  largestPayment: {
     amount: number;
     token: string;
     network: string;
@@ -296,89 +295,6 @@ async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | nul
 }
 
 /**
- * Fetch transaction history from blockchain
- */
-async function fetchTransactionHistory(filter: EarningsFilter, startDate: string | null, endDate: string | null): Promise<Transaction[]> {
-  try {
-    // Include both mainnet and testnet networks to fetch from blockchain explorers
-    const networks = filter.network ? [filter.network] : [
-      // Mainnet networks
-      'ethereum-mainnet',
-      'base-mainnet',
-      'solana-mainnet',
-      // Testnet networks
-      'base-sepolia',
-      'ethereum-sepolia', 
-      'solana-devnet'
-    ];
-
-    const allTransactions: Transaction[] = [];
-
-    for (const network of networks) {
-      try {
-        const transactions = await getTransactionHistory({
-          address: filter.walletAddress,
-          network: network,
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-          direction: 'incoming', // Only incoming transactions for earnings
-          tokenAddress: filter.token ? undefined : undefined // We'll filter by token later if needed
-        });
-
-        // Filter by token if specified
-        const filteredTransactions = filter.token 
-          ? transactions.filter(tx => 
-              (tx.symbol || tx.token || 'ETH').toUpperCase() === filter.token!.toUpperCase()
-            )
-          : transactions;
-
-        allTransactions.push(...filteredTransactions);
-      } catch (networkError) {
-        console.warn(`[fetchTransactionHistory] Error fetching from ${network}:`, networkError);
-        // Continue with other networks
-      }
-    }
-
-    // Remove duplicates based on transaction hash
-    const uniqueTransactions = allTransactions.filter((tx, index, self) => 
-      index === self.findIndex(t => t.hash === tx.hash)
-    );
-
-    console.log(`[fetchTransactionHistory] Found ${uniqueTransactions.length} unique transactions`);
-    return uniqueTransactions;
-
-  } catch (error) {
-    console.error('[fetchTransactionHistory] Error:', error);
-    return [];
-  }
-}
-/**
- * Categorize a transaction based on patterns and amount
- */
-function categorizeTransaction(transaction: Transaction): string {
-  const amount = parseFloat(transaction.value) / Math.pow(10, transaction.decimals || 18);
-  const token = transaction.symbol || transaction.token || 'ETH';
-  
-  // Large amounts might be investments or major sales
-  if (amount > 1000) {
-    return 'investment';
-  }
-  
-  // Small amounts might be airdrops or rewards
-  if (amount < 0.01) {
-    return 'airdrop';
-  }
-  
-  // Medium amounts are likely payments or trading
-  if (amount > 10) {
-    return 'freelance';
-  }
-  
-  // Default category for transactions
-  return 'other';
-}
-
-/**
  * Categorize a payment based on metadata and patterns
  */
 function categorizePayment(payment: any): string {
@@ -516,7 +432,7 @@ async function generateEarningsInsights(
   }
 
   return {
-    largestTransaction: {
+    largestPayment: {
       amount: largestAmount,
       token: largestToken,
       network: largestItem.network,
@@ -810,8 +726,8 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   if (insights) {
     response += `🔍 **Insights:**\n`;
     
-    if (insights.largestTransaction) {
-      const { amount, token, network, fiatValue } = insights.largestTransaction;
+    if (insights.largestPayment) {
+      const { amount, token, network, fiatValue } = insights.largestPayment;
       const fiatText = fiatValue ? ` ($${fiatValue.toFixed(2)})` : '';
       response += `• Largest payment: ${amount} ${token} on ${network}${fiatText}\n`;
     }

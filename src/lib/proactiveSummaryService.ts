@@ -53,9 +53,9 @@ export async function sendMonthlyEarningsSummary(
       // Add monthly-specific insights
       message += `\n\n🎯 **Monthly Highlights:**\n`;
       
-      if (earningsSummary.insights?.largestTransaction) {
-        message += `• Your biggest win: ${earningsSummary.insights.largestTransaction.amount} ${earningsSummary.insights.largestTransaction.token}\n`;
-      }
+      if (earningsSummary.insights?.largestPayment) {
+    message += `• Your biggest win: ${earningsSummary.insights.largestPayment.amount} ${earningsSummary.insights.largestPayment.token}\n`;
+  }
       
       if (earningsSummary.totalFiatValue && earningsSummary.totalFiatValue > 1000) {
         message += `• Milestone achieved: Over $1,000 earned! 🎉\n`;

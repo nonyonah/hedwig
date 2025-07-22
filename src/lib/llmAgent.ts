@@ -64,9 +64,6 @@ Valid intents:
 - create_payment_link: For creating payment links or payment requests
 - get_earnings: For checking earnings, income, money received, or payment history
 - get_spending: For checking spending, money sent, or payment history
-- create_proposal: For creating project proposals with payment links
-- send_proposal: For sending proposals to clients via WhatsApp and email
-- view_proposal: For viewing existing proposals
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 

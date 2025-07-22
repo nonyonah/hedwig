@@ -2,7 +2,6 @@ import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transf
 import { createClient } from "@supabase/supabase-js";
 import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from '../lib/earningsService';
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
-import { generateProposal } from '@/lib/proposalService';
 import { getFreelancerByWhatsappNumber } from '@/lib/supabaseCrud';
 
 import fetch from "node-fetch";
@@ -913,33 +912,7 @@ export async function handleAction(
     }
   }
 
-  // Handle price requests with new Alchemy-based token price functionality
-  if (intent === "generate_proposal") {
-    try {
-      const { jobDetails } = params;
-      const { data: user } = await supabase
-        .from("users")
-        .select("phone")
-        .eq("id", userId)
-        .single();
-
-      if (!user || !user.phone) {
-        return { text: 'Could not find your phone number to identify you as a freelancer.' };
-      }
-
-      const freelancer = await getFreelancerByWhatsappNumber(user.phone);
-      if (!freelancer) {
-        return { text: 'Your freelancer profile is not set up. Please contact support.' };
-      }
-      const proposal = await generateProposal(jobDetails, freelancer);
-      return { text: proposal };
-    } catch (error) {
-      console.error(`[handleAction] Error generating proposal:`, error);
-      return {
-        text: `Sorry, I couldn't generate the proposal right now. Please try again later.`,
-      };
-    }
-  }
+  // Proposal generation feature has been removed
 
   if (intent === "get_price") {
     try {
