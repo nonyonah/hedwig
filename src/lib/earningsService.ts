@@ -18,6 +18,7 @@ export interface EarningsFilter {
   startDate?: string; // ISO date string
   endDate?: string; // ISO date string
   category?: string; // earnings category filter
+  includeInsights?: boolean; // whether to include insights in the response
 }
 
 export interface EarningsSummaryItem {
@@ -616,7 +617,7 @@ function getDateRange(timeframe?: string, startDate?: string, endDate?: string):
       break;
     case 'custom':
       // For custom timeframes, startDate and endDate should be provided
-      return { startDate, endDate };
+      return { startDate: startDate || null, endDate: endDate || null };
     case 'allTime':
     default:
       startDateTime = null;
