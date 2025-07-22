@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from './serverEnv';
 import { getTokenPricesBySymbol } from './tokenPriceService';
-import { getTransactionHistory, Transaction } from './transactionHistoryService';
 
 // Load environment variables
 loadServerEnvironment();
@@ -34,7 +33,7 @@ export interface EarningsSummaryItem {
   exchangeRate?: number; // rate used for conversion
   percentage?: number; // percentage of total earnings
   category?: string; // freelance, airdrop, staking, etc.
-  source?: 'payment_link' | 'transaction' | 'mixed'; // source of earnings
+  source?: 'payment_link'; // source of earnings
 }
 
 export interface EarningsInsights {
@@ -97,25 +96,21 @@ export interface UserPreferences {
 /**
  * Get earnings summary for a wallet address with optional filtering
  */
-export async function getEarningsSummary(filter: EarningsFilter, includeInsights: boolean = true): Promise<EarningsSummaryResponse> {
+export async function getEarningsSummary(filter: EarningsFilter, includeInsights = false): Promise<EarningsSummaryResponse> {
   try {
     console.log('[getEarningsSummary] Fetching earnings for:', filter);
 
     // Calculate date range based on timeframe
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
-    // Fetch payment links and transaction history in parallel
-    const [paymentLinksData, transactionHistory] = await Promise.all([
-      fetchPaymentLinks(filter, startDate, endDate),
-      fetchTransactionHistory(filter, startDate, endDate)
-    ]);
+    // Fetch payment links only
+    const paymentLinksData = await fetchPaymentLinks(filter, startDate, endDate);
 
     const payments = paymentLinksData || [];
-    const transactions = transactionHistory || [];
 
-    console.log(`[getEarningsSummary] Found ${payments.length} payment links and ${transactions.length} transactions`);
+    console.log(`[getEarningsSummary] Found ${payments.length} payment links`);
 
-    if (payments.length === 0 && transactions.length === 0) {
+    if (payments.length === 0) {
       return {
         walletAddress: filter.walletAddress,
         timeframe: filter.timeframe || 'allTime',
@@ -130,10 +125,9 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       };
     }
 
-    // Get unique tokens for price fetching from both sources
+    // Get unique tokens for price fetching
     const paymentTokens = payments.map(p => p.token);
-    const transactionTokens = transactions.map(t => t.symbol || t.token || 'ETH');
-    const uniqueTokens = [...new Set([...paymentTokens, ...transactionTokens])];
+    const uniqueTokens = [...new Set(paymentTokens)];
     
     let tokenPrices: { [key: string]: number } = {};
     
@@ -147,17 +141,11 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       console.warn('[getEarningsSummary] Could not fetch token prices:', priceError);
     }
 
-    // Categorize payments and transactions
+    // Categorize payments
     const categorizedPayments = payments.map(payment => ({
       ...payment,
       category: categorizePayment(payment),
       source: 'payment_link' as const
-    }));
-
-    const categorizedTransactions = transactions.map(transaction => ({
-      ...transaction,
-      category: categorizeTransaction(transaction),
-      source: 'transaction' as const
     }));
 
     // Group and aggregate earnings by token and network
@@ -167,10 +155,9 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       total: number;
       count: number;
       payments: any[];
-      transactions: any[];
       fiatValue: number;
       category?: string;
-      source: 'payment_link' | 'transaction' | 'mixed';
+      source: 'payment_link';
     }>();
 
     let totalEarnings = 0;
@@ -191,7 +178,6 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         existing.count += 1;
         existing.payments.push(payment);
         existing.fiatValue += fiatValue;
-        existing.source = 'mixed';
       } else {
         earningsMap.set(key, {
           token: payment.token,
@@ -199,7 +185,6 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
           total: amount,
           count: 1,
           payments: [payment],
-          transactions: [],
           fiatValue: fiatValue,
           category: payment.category,
           source: 'payment_link'
@@ -207,48 +192,12 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       }
     }
 
-    // Process transactions
-    for (const transaction of categorizedTransactions) {
-      const token = transaction.symbol || transaction.token || 'ETH';
-      const key = `${token}-${transaction.network}`;
-      
-      // Convert value based on decimals
-      const decimals = transaction.decimals || 18;
-      const amount = parseFloat(transaction.value) / Math.pow(10, decimals);
-      const fiatValue = (tokenPrices[token] || 0) * amount;
-      
-      totalEarnings += amount;
-      totalFiatValue += fiatValue;
-
-      if (earningsMap.has(key)) {
-        const existing = earningsMap.get(key)!;
-        existing.total += amount;
-        existing.count += 1;
-        existing.transactions.push(transaction);
-        existing.fiatValue += fiatValue;
-        existing.source = existing.source === 'payment_link' ? 'mixed' : 'transaction';
-      } else {
-        earningsMap.set(key, {
-          token: token,
-          network: transaction.network,
-          total: amount,
-          count: 1,
-          payments: [],
-          transactions: [transaction],
-          fiatValue: fiatValue,
-          category: transaction.category,
-          source: 'transaction'
-        });
-      }
-    }
+    // No transaction processing - removed blockchain earnings tracking
 
     // Convert to final format with percentages
     const earnings: EarningsSummaryItem[] = Array.from(earningsMap.values()).map(item => {
-      const allItems = [...item.payments, ...item.transactions];
-      const lastItem = allItems.sort((a, b) => {
-        const dateA = a.paid_at || new Date(a.timestamp * 1000).toISOString();
-        const dateB = b.paid_at || new Date(b.timestamp * 1000).toISOString();
-        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      const lastItem = item.payments.sort((a, b) => {
+        return new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime();
       })[0];
 
       return {
@@ -257,7 +206,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         total: Math.round(item.total * 100000000) / 100000000,
         count: item.count,
         averageAmount: Math.round((item.total / item.count) * 100000000) / 100000000,
-        lastPayment: lastItem?.paid_at || (lastItem?.timestamp ? new Date(lastItem.timestamp * 1000).toISOString() : undefined),
+        lastPayment: lastItem?.paid_at,
         fiatValue: Math.round(item.fiatValue * 100) / 100,
         fiatCurrency: 'USD',
         exchangeRate: tokenPrices[item.token] || 0,
@@ -271,22 +220,22 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     earnings.sort((a, b) => b.total - a.total);
 
     const result: EarningsSummaryResponse = {
-      walletAddress: filter.walletAddress,
-      timeframe: filter.timeframe || 'allTime',
-      totalEarnings: Math.round(totalEarnings * 100000000) / 100000000,
-      totalFiatValue: Math.round(totalFiatValue * 100) / 100,
-      totalPayments: payments.length + transactions.length,
-      earnings,
-      period: {
-        startDate: startDate || '',
-        endDate: endDate || new Date().toISOString()
-      }
-    };
+    walletAddress: filter.walletAddress,
+    timeframe: filter.timeframe || 'allTime',
+    totalEarnings: Math.round(totalEarnings * 100000000) / 100000000,
+    totalFiatValue: Math.round(totalFiatValue * 100) / 100,
+    totalPayments: payments.length,
+    earnings,
+    period: {
+      startDate: startDate || '',
+      endDate: endDate || new Date().toISOString()
+    }
+  };
 
     // Add insights if requested
-    if (includeInsights && (payments.length > 0 || transactions.length > 0)) {
-      result.insights = await generateEarningsInsights([...categorizedPayments, ...categorizedTransactions], earnings, filter);
-    }
+  if (includeInsights && payments.length > 0) {
+    result.insights = await generateEarningsInsights(categorizedPayments, earnings, filter);
+  }
 
     return result;
 
@@ -350,8 +299,13 @@ async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | nul
  */
 async function fetchTransactionHistory(filter: EarningsFilter, startDate: string | null, endDate: string | null): Promise<Transaction[]> {
   try {
-    // For now, we'll focus on testnet networks since the user mentioned using testnet funds
+    // Include both mainnet and testnet networks to fetch from blockchain explorers
     const networks = filter.network ? [filter.network] : [
+      // Mainnet networks
+      'ethereum-mainnet',
+      'base-mainnet',
+      'solana-mainnet',
+      // Testnet networks
       'base-sepolia',
       'ethereum-sepolia', 
       'solana-devnet'
@@ -495,30 +449,14 @@ function categorizePayment(payment: any): string {
  * Generate insights for earnings data
  */
 async function generateEarningsInsights(
-  items: any[], // Combined payments and transactions
+  items: any[], // Payment links only
   earnings: EarningsSummaryItem[], 
   filter: EarningsFilter
 ): Promise<EarningsInsights> {
-  // Find largest transaction (handle both payment links and transactions)
+  // Find largest payment
   const largestItem = items.reduce((max, item) => {
-    let amount = 0;
-    
-    if (item.paid_amount) {
-      // Payment link
-      amount = parseFloat(item.paid_amount) || 0;
-    } else if (item.value) {
-      // Transaction
-      const decimals = item.decimals || 18;
-      amount = parseFloat(item.value) / Math.pow(10, decimals);
-    }
-    
-    let maxAmount = 0;
-    if (max.paid_amount) {
-      maxAmount = parseFloat(max.paid_amount) || 0;
-    } else if (max.value) {
-      const maxDecimals = max.decimals || 18;
-      maxAmount = parseFloat(max.value) / Math.pow(10, maxDecimals);
-    }
+    const amount = parseFloat(item.paid_amount) || 0;
+    const maxAmount = parseFloat(max.paid_amount) || 0;
     
     return amount > maxAmount ? item : max;
   }, items[0]);
@@ -555,33 +493,25 @@ async function generateEarningsInsights(
   // Generate motivational message
   const motivationalMessage = generateMotivationalMessage(earnings, growthComparison);
 
-  // Calculate largest transaction details
+  // Calculate largest payment details
   let largestAmount = 0;
-  let largestToken = 'ETH';
+  let largestToken = '';
   let largestDate = '';
   let largestFiatValue = 0;
 
-  if (largestItem.paid_amount) {
-    // Payment link
-    largestAmount = parseFloat(largestItem.paid_amount) || 0;
-    largestToken = largestItem.token;
-    largestDate = largestItem.paid_at;
-    largestFiatValue = largestItem.fiatValue || 0;
-  } else if (largestItem.value) {
-    // Transaction
-    const decimals = largestItem.decimals || 18;
-    largestAmount = parseFloat(largestItem.value) / Math.pow(10, decimals);
-    largestToken = largestItem.symbol || largestItem.token || 'ETH';
-    largestDate = new Date(largestItem.timestamp * 1000).toISOString();
-    // Calculate fiat value if we have token prices
-    try {
-      const priceData = await getTokenPricesBySymbol([largestToken]);
-      if (priceData.length > 0) {
-        largestFiatValue = largestAmount * priceData[0].price;
-      }
-    } catch (error) {
-      console.warn('[generateEarningsInsights] Could not get price for largest transaction');
+  // Payment link
+  largestAmount = parseFloat(largestItem.paid_amount) || 0;
+  largestToken = largestItem.token;
+  largestDate = largestItem.paid_at;
+  
+  // Calculate fiat value if we have token prices
+  try {
+    const priceData = await getTokenPricesBySymbol([largestToken]);
+    if (priceData.length > 0) {
+      largestFiatValue = largestAmount * priceData[0].price;
     }
+  } catch (error) {
+    console.warn('[generateEarningsInsights] Could not get price for largest payment');
   }
 
   return {
@@ -882,7 +812,7 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
     if (insights.largestTransaction) {
       const { amount, token, network, fiatValue } = insights.largestTransaction;
       const fiatText = fiatValue ? ` ($${fiatValue.toFixed(2)})` : '';
-      response += `• Largest: ${amount} ${token} on ${network}${fiatText}\n`;
+      response += `• Largest payment: ${amount} ${token} on ${network}${fiatText}\n`;
     }
     
     if (insights.mostActiveNetwork) {
