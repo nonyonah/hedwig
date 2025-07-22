@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from './serverEnv';
 import { getTokenPricesBySymbol } from './tokenPriceService';
+import { getTransactionHistory, Transaction } from './transactionHistoryService';
 
 // Load environment variables
 loadServerEnvironment();
@@ -33,6 +34,7 @@ export interface EarningsSummaryItem {
   exchangeRate?: number; // rate used for conversion
   percentage?: number; // percentage of total earnings
   category?: string; // freelance, airdrop, staking, etc.
+  source?: 'payment_link' | 'transaction' | 'mixed'; // source of earnings
 }
 
 export interface EarningsInsights {
@@ -102,6 +104,203 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     // Calculate date range based on timeframe
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
+    // Fetch payment links and transaction history in parallel
+    const [paymentLinksData, transactionHistory] = await Promise.all([
+      fetchPaymentLinks(filter, startDate, endDate),
+      fetchTransactionHistory(filter, startDate, endDate)
+    ]);
+
+    const payments = paymentLinksData || [];
+    const transactions = transactionHistory || [];
+
+    console.log(`[getEarningsSummary] Found ${payments.length} payment links and ${transactions.length} transactions`);
+
+    if (payments.length === 0 && transactions.length === 0) {
+      return {
+        walletAddress: filter.walletAddress,
+        timeframe: filter.timeframe || 'allTime',
+        totalEarnings: 0,
+        totalFiatValue: 0,
+        totalPayments: 0,
+        earnings: [],
+        period: {
+          startDate: startDate || '',
+          endDate: endDate || new Date().toISOString()
+        }
+      };
+    }
+
+    // Get unique tokens for price fetching from both sources
+    const paymentTokens = payments.map(p => p.token);
+    const transactionTokens = transactions.map(t => t.symbol || t.token || 'ETH');
+    const uniqueTokens = [...new Set([...paymentTokens, ...transactionTokens])];
+    
+    let tokenPrices: { [key: string]: number } = {};
+    
+    try {
+      const priceData = await getTokenPricesBySymbol(uniqueTokens);
+      tokenPrices = priceData.reduce((acc, price) => {
+        acc[price.symbol] = price.price;
+        return acc;
+      }, {} as { [key: string]: number });
+    } catch (priceError) {
+      console.warn('[getEarningsSummary] Could not fetch token prices:', priceError);
+    }
+
+    // Categorize payments and transactions
+    const categorizedPayments = payments.map(payment => ({
+      ...payment,
+      category: categorizePayment(payment),
+      source: 'payment_link' as const
+    }));
+
+    const categorizedTransactions = transactions.map(transaction => ({
+      ...transaction,
+      category: categorizeTransaction(transaction),
+      source: 'transaction' as const
+    }));
+
+    // Group and aggregate earnings by token and network
+    const earningsMap = new Map<string, {
+      token: string;
+      network: string;
+      total: number;
+      count: number;
+      payments: any[];
+      transactions: any[];
+      fiatValue: number;
+      category?: string;
+      source: 'payment_link' | 'transaction' | 'mixed';
+    }>();
+
+    let totalEarnings = 0;
+    let totalFiatValue = 0;
+
+    // Process payment links
+    for (const payment of categorizedPayments) {
+      const key = `${payment.token}-${payment.network}`;
+      const amount = parseFloat(payment.paid_amount) || 0;
+      const fiatValue = (tokenPrices[payment.token] || 0) * amount;
+      
+      totalEarnings += amount;
+      totalFiatValue += fiatValue;
+
+      if (earningsMap.has(key)) {
+        const existing = earningsMap.get(key)!;
+        existing.total += amount;
+        existing.count += 1;
+        existing.payments.push(payment);
+        existing.fiatValue += fiatValue;
+        existing.source = 'mixed';
+      } else {
+        earningsMap.set(key, {
+          token: payment.token,
+          network: payment.network,
+          total: amount,
+          count: 1,
+          payments: [payment],
+          transactions: [],
+          fiatValue: fiatValue,
+          category: payment.category,
+          source: 'payment_link'
+        });
+      }
+    }
+
+    // Process transactions
+    for (const transaction of categorizedTransactions) {
+      const token = transaction.symbol || transaction.token || 'ETH';
+      const key = `${token}-${transaction.network}`;
+      
+      // Convert value based on decimals
+      const decimals = transaction.decimals || 18;
+      const amount = parseFloat(transaction.value) / Math.pow(10, decimals);
+      const fiatValue = (tokenPrices[token] || 0) * amount;
+      
+      totalEarnings += amount;
+      totalFiatValue += fiatValue;
+
+      if (earningsMap.has(key)) {
+        const existing = earningsMap.get(key)!;
+        existing.total += amount;
+        existing.count += 1;
+        existing.transactions.push(transaction);
+        existing.fiatValue += fiatValue;
+        existing.source = existing.source === 'payment_link' ? 'mixed' : 'transaction';
+      } else {
+        earningsMap.set(key, {
+          token: token,
+          network: transaction.network,
+          total: amount,
+          count: 1,
+          payments: [],
+          transactions: [transaction],
+          fiatValue: fiatValue,
+          category: transaction.category,
+          source: 'transaction'
+        });
+      }
+    }
+
+    // Convert to final format with percentages
+    const earnings: EarningsSummaryItem[] = Array.from(earningsMap.values()).map(item => {
+      const allItems = [...item.payments, ...item.transactions];
+      const lastItem = allItems.sort((a, b) => {
+        const dateA = a.paid_at || new Date(a.timestamp * 1000).toISOString();
+        const dateB = b.paid_at || new Date(b.timestamp * 1000).toISOString();
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      })[0];
+
+      return {
+        token: item.token,
+        network: item.network,
+        total: Math.round(item.total * 100000000) / 100000000,
+        count: item.count,
+        averageAmount: Math.round((item.total / item.count) * 100000000) / 100000000,
+        lastPayment: lastItem?.paid_at || (lastItem?.timestamp ? new Date(lastItem.timestamp * 1000).toISOString() : undefined),
+        fiatValue: Math.round(item.fiatValue * 100) / 100,
+        fiatCurrency: 'USD',
+        exchangeRate: tokenPrices[item.token] || 0,
+        percentage: totalEarnings > 0 ? Math.round((item.total / totalEarnings) * 10000) / 100 : 0,
+        category: item.category,
+        source: item.source
+      };
+    });
+
+    // Sort by total earnings descending
+    earnings.sort((a, b) => b.total - a.total);
+
+    const result: EarningsSummaryResponse = {
+      walletAddress: filter.walletAddress,
+      timeframe: filter.timeframe || 'allTime',
+      totalEarnings: Math.round(totalEarnings * 100000000) / 100000000,
+      totalFiatValue: Math.round(totalFiatValue * 100) / 100,
+      totalPayments: payments.length + transactions.length,
+      earnings,
+      period: {
+        startDate: startDate || '',
+        endDate: endDate || new Date().toISOString()
+      }
+    };
+
+    // Add insights if requested
+    if (includeInsights && (payments.length > 0 || transactions.length > 0)) {
+      result.insights = await generateEarningsInsights([...categorizedPayments, ...categorizedTransactions], earnings, filter);
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error('[getEarningsSummary] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch payment links from database
+ */
+async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
+  try {
     // Build the query
     let query = supabase
       .from('payment_links')
@@ -135,128 +334,93 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     const { data: payments, error } = await query;
 
     if (error) {
-      console.error('[getEarningsSummary] Database error:', error);
-      throw new Error(`Failed to fetch earnings: ${error.message}`);
+      console.error('[fetchPaymentLinks] Database error:', error);
+      throw new Error(`Failed to fetch payment links: ${error.message}`);
     }
 
-    if (!payments || payments.length === 0) {
-      return {
-        walletAddress: filter.walletAddress,
-        timeframe: filter.timeframe || 'allTime',
-        totalEarnings: 0,
-        totalFiatValue: 0,
-        totalPayments: 0,
-        earnings: [],
-        period: {
-          startDate: startDate || '',
-          endDate: endDate || new Date().toISOString()
-        }
-      };
-    }
+    return payments || [];
+  } catch (error) {
+    console.error('[fetchPaymentLinks] Error:', error);
+    return [];
+  }
+}
 
-    // Get unique tokens for price fetching
-    const uniqueTokens = [...new Set(payments.map(p => p.token))];
-    let tokenPrices: { [key: string]: number } = {};
-    
-    try {
-      const priceData = await getTokenPricesBySymbol(uniqueTokens);
-      tokenPrices = priceData.reduce((acc, price) => {
-        acc[price.symbol] = price.price;
-        return acc;
-      }, {} as { [key: string]: number });
-    } catch (priceError) {
-      console.warn('[getEarningsSummary] Could not fetch token prices:', priceError);
-    }
+/**
+ * Fetch transaction history from blockchain
+ */
+async function fetchTransactionHistory(filter: EarningsFilter, startDate: string | null, endDate: string | null): Promise<Transaction[]> {
+  try {
+    // For now, we'll focus on testnet networks since the user mentioned using testnet funds
+    const networks = filter.network ? [filter.network] : [
+      'base-sepolia',
+      'ethereum-sepolia', 
+      'solana-devnet'
+    ];
 
-    // Categorize payments
-    const categorizedPayments = payments.map(payment => ({
-      ...payment,
-      category: categorizePayment(payment)
-    }));
+    const allTransactions: Transaction[] = [];
 
-    // Group and aggregate earnings by token and network
-    const earningsMap = new Map<string, {
-      token: string;
-      network: string;
-      total: number;
-      count: number;
-      payments: any[];
-      fiatValue: number;
-      category?: string;
-    }>();
-
-    let totalEarnings = 0;
-    let totalFiatValue = 0;
-
-    for (const payment of categorizedPayments) {
-      const key = `${payment.token}-${payment.network}`;
-      const amount = parseFloat(payment.paid_amount) || 0;
-      const fiatValue = (tokenPrices[payment.token] || 0) * amount;
-      
-      totalEarnings += amount;
-      totalFiatValue += fiatValue;
-
-      if (earningsMap.has(key)) {
-        const existing = earningsMap.get(key)!;
-        existing.total += amount;
-        existing.count += 1;
-        existing.payments.push(payment);
-        existing.fiatValue += fiatValue;
-      } else {
-        earningsMap.set(key, {
-          token: payment.token,
-          network: payment.network,
-          total: amount,
-          count: 1,
-          payments: [payment],
-          fiatValue: fiatValue,
-          category: payment.category
+    for (const network of networks) {
+      try {
+        const transactions = await getTransactionHistory({
+          address: filter.walletAddress,
+          network: network,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+          direction: 'incoming', // Only incoming transactions for earnings
+          tokenAddress: filter.token ? undefined : undefined // We'll filter by token later if needed
         });
+
+        // Filter by token if specified
+        const filteredTransactions = filter.token 
+          ? transactions.filter(tx => 
+              (tx.symbol || tx.token || 'ETH').toUpperCase() === filter.token!.toUpperCase()
+            )
+          : transactions;
+
+        allTransactions.push(...filteredTransactions);
+      } catch (networkError) {
+        console.warn(`[fetchTransactionHistory] Error fetching from ${network}:`, networkError);
+        // Continue with other networks
       }
     }
 
-    // Convert to final format with percentages
-    const earnings: EarningsSummaryItem[] = Array.from(earningsMap.values()).map(item => ({
-      token: item.token,
-      network: item.network,
-      total: Math.round(item.total * 100000000) / 100000000,
-      count: item.count,
-      averageAmount: Math.round((item.total / item.count) * 100000000) / 100000000,
-      lastPayment: item.payments[0]?.paid_at,
-      fiatValue: Math.round(item.fiatValue * 100) / 100,
-      fiatCurrency: 'USD',
-      exchangeRate: tokenPrices[item.token] || 0,
-      percentage: totalEarnings > 0 ? Math.round((item.total / totalEarnings) * 10000) / 100 : 0,
-      category: item.category
-    }));
+    // Remove duplicates based on transaction hash
+    const uniqueTransactions = allTransactions.filter((tx, index, self) => 
+      index === self.findIndex(t => t.hash === tx.hash)
+    );
 
-    // Sort by total earnings descending
-    earnings.sort((a, b) => b.total - a.total);
-
-    const result: EarningsSummaryResponse = {
-      walletAddress: filter.walletAddress,
-      timeframe: filter.timeframe || 'allTime',
-      totalEarnings: Math.round(totalEarnings * 100000000) / 100000000,
-      totalFiatValue: Math.round(totalFiatValue * 100) / 100,
-      totalPayments: payments.length,
-      earnings,
-      period: {
-        startDate: startDate || '',
-        endDate: endDate || new Date().toISOString()
-      }
-    };
-
-    // Add insights if requested
-    if (includeInsights && payments.length > 0) {
-      result.insights = await generateEarningsInsights(categorizedPayments, earnings, filter);
-    }
-
-    return result;
+    console.log(`[fetchTransactionHistory] Found ${uniqueTransactions.length} unique transactions`);
+    return uniqueTransactions;
 
   } catch (error) {
-    console.error('[getEarningsSummary] Error:', error);
-    throw error;
+    console.error('[fetchTransactionHistory] Error:', error);
+    return [];
   }
+}
+/**
+ * Categorize a transaction based on patterns and amount
+ */
+function categorizeTransaction(transaction: Transaction): string {
+  const amount = parseFloat(transaction.value) / Math.pow(10, transaction.decimals || 18);
+  const token = transaction.symbol || transaction.token || 'ETH';
+  
+  // Large amounts might be investments or major sales
+  if (amount > 1000) {
+    return 'investment';
+  }
+  
+  // Small amounts might be airdrops or rewards
+  if (amount < 0.01) {
+    return 'airdrop';
+  }
+  
+  // Medium amounts are likely payments or trading
+  if (amount > 10) {
+    return 'freelance';
+  }
+  
+  // Default category for transactions
+  return 'other';
 }
 
 /**
@@ -331,20 +495,37 @@ function categorizePayment(payment: any): string {
  * Generate insights for earnings data
  */
 async function generateEarningsInsights(
-  payments: any[], 
+  items: any[], // Combined payments and transactions
   earnings: EarningsSummaryItem[], 
   filter: EarningsFilter
 ): Promise<EarningsInsights> {
-  // Find largest transaction
-  const largestPayment = payments.reduce((max, payment) => {
-    const amount = parseFloat(payment.paid_amount) || 0;
-    const maxAmount = parseFloat(max.paid_amount) || 0;
-    return amount > maxAmount ? payment : max;
-  }, payments[0]);
+  // Find largest transaction (handle both payment links and transactions)
+  const largestItem = items.reduce((max, item) => {
+    let amount = 0;
+    
+    if (item.paid_amount) {
+      // Payment link
+      amount = parseFloat(item.paid_amount) || 0;
+    } else if (item.value) {
+      // Transaction
+      const decimals = item.decimals || 18;
+      amount = parseFloat(item.value) / Math.pow(10, decimals);
+    }
+    
+    let maxAmount = 0;
+    if (max.paid_amount) {
+      maxAmount = parseFloat(max.paid_amount) || 0;
+    } else if (max.value) {
+      const maxDecimals = max.decimals || 18;
+      maxAmount = parseFloat(max.value) / Math.pow(10, maxDecimals);
+    }
+    
+    return amount > maxAmount ? item : max;
+  }, items[0]);
 
   // Find most active network
-  const networkCounts = payments.reduce((acc, payment) => {
-    acc[payment.network] = (acc[payment.network] || 0) + 1;
+  const networkCounts = items.reduce((acc, item) => {
+    acc[item.network] = (acc[item.network] || 0) + 1;
     return acc;
   }, {} as { [key: string]: number });
   
@@ -374,13 +555,42 @@ async function generateEarningsInsights(
   // Generate motivational message
   const motivationalMessage = generateMotivationalMessage(earnings, growthComparison);
 
+  // Calculate largest transaction details
+  let largestAmount = 0;
+  let largestToken = 'ETH';
+  let largestDate = '';
+  let largestFiatValue = 0;
+
+  if (largestItem.paid_amount) {
+    // Payment link
+    largestAmount = parseFloat(largestItem.paid_amount) || 0;
+    largestToken = largestItem.token;
+    largestDate = largestItem.paid_at;
+    largestFiatValue = largestItem.fiatValue || 0;
+  } else if (largestItem.value) {
+    // Transaction
+    const decimals = largestItem.decimals || 18;
+    largestAmount = parseFloat(largestItem.value) / Math.pow(10, decimals);
+    largestToken = largestItem.symbol || largestItem.token || 'ETH';
+    largestDate = new Date(largestItem.timestamp * 1000).toISOString();
+    // Calculate fiat value if we have token prices
+    try {
+      const priceData = await getTokenPricesBySymbol([largestToken]);
+      if (priceData.length > 0) {
+        largestFiatValue = largestAmount * priceData[0].price;
+      }
+    } catch (error) {
+      console.warn('[generateEarningsInsights] Could not get price for largest transaction');
+    }
+  }
+
   return {
     largestTransaction: {
-      amount: parseFloat(largestPayment.paid_amount) || 0,
-      token: largestPayment.token,
-      network: largestPayment.network,
-      date: largestPayment.paid_at,
-      fiatValue: largestPayment.fiatValue
+      amount: largestAmount,
+      token: largestToken,
+      network: largestItem.network,
+      date: largestDate,
+      fiatValue: largestFiatValue
     },
     mostActiveNetwork: mostActiveNetworkData,
     topToken: {
