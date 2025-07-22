@@ -57,4 +57,20 @@ export async function updateInvoice(id: string, updates: Partial<Omit<Invoice, '
   export async function markInvoiceAsPaid(invoiceId: string) {
     return await updateInvoice(invoiceId, { status: 'paid' });
   }
+
+  // Fetch a freelancer by WhatsApp number
+export async function getFreelancerByWhatsappNumber(whatsappNumber: string) {
+  const { data, error } = await supabase
+    .from('freelancers')
+    .select('*')
+    .eq('whatsapp_number', whatsappNumber)
+    .single();
+  if (error) {
+    if (error.code === 'PGRST116') { // PostgREST error for no rows found
+      return null;
+    }
+    throw error;
+  }
+  return data;
+}
   

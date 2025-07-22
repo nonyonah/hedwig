@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getTransactionHistory, Transaction } from './transactionHistoryService';
 import { loadServerEnvironment } from './serverEnv';
 import { getTokenPricesBySymbol } from './tokenPriceService';
 

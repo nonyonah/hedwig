@@ -1,5 +1,19 @@
 import { v4 as uuidv4 } from 'uuid';
 
+// Mock function to send a simple text message
+export async function sendMessage(phoneNumber: string, message: string): Promise<any> {
+  console.log(`Sending message to ${phoneNumber}: ${message}`);
+  // In a real implementation, this would call the WhatsApp API to send a message
+  return Promise.resolve({ status: 'sent' });
+}
+
+// Mock function to send a PDF file
+export async function sendPdf(phoneNumber: string, pdfBuffer: Buffer, caption: string): Promise<any> {
+  console.log(`Sending PDF to ${phoneNumber} with caption: ${caption}`);
+  // In a real implementation, this would call the WhatsApp API to send a media message
+  return Promise.resolve({ status: 'sent' });
+}
+
 /**
  * Sends a WhatsApp template message to a user
  * @param phoneNumber User's phone number
