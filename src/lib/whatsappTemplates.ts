@@ -782,10 +782,6 @@ export function proposalTemplate({ client_name }: { client_name: string }) {
     language: { code: 'en' },
     components: [
       {
-        type: 'HEADER',
-        format: 'DOCUMENT'
-      },
-      {
         type: 'BODY',
         parameters: [
           { type: 'text', text: sanitizeWhatsAppParam(client_name) }

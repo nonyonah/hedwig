@@ -1,8 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
-import { generateProposalHTML } from '@/lib/proposalPDFService';
+import { generatePDF } from '@/lib/proposalPDFService';
 import { loadServerEnvironment } from '@/lib/serverEnv';
-import puppeteer from 'puppeteer';
 
 // Load environment variables
 loadServerEnvironment();
@@ -17,8 +16,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  let browser;
-  
   try {
     const { id } = req.query;
 
@@ -46,8 +43,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const userName = user?.name || 'Professional Services';
 
-    // Generate HTML with user branding
-    const html = generateProposalHTML(proposal, {
+    // Generate PDF using React-PDF (same as proposal service)
+    const pdfBuffer = await generatePDF(proposal, {
       template: 'detailed',
       branding: {
         companyName: userName,
@@ -56,27 +53,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         contactInfo: `${userName} | Professional Services`
       },
       includeSignature: true
-    });
-
-    // Launch puppeteer to generate PDF
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    
-    // Generate PDF
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '20px',
-        right: '20px',
-        bottom: '20px',
-        left: '20px'
-      }
     });
 
     // Set headers for PDF download
@@ -89,9 +65,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error) {
     console.error('Error generating proposal PDF:', error);
     return res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
