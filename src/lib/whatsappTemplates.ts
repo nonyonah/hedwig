@@ -780,7 +780,6 @@ export function proposalTemplate({ client_name }: { client_name: string }) {
   return {
     name: 'proposal_template',
     language: { code: 'en' },
-    type: 'DOCUMENT',
     components: [
       {
         type: 'HEADER',
