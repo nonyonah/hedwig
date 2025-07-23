@@ -897,22 +897,84 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         // Update the user's name in the database
         await supabase.from("users").update({ name: text }).eq("id", userId);
 
-        // Clear the waiting_for context
-        await supabase.from("sessions").upsert(
-          [
-            {
-              user_id: userId,
-              context: [],
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          { onConflict: "user_id" },
-        );
+        // Check if there's a pending proposal or payment link to process
+        const waitingForNameContent = JSON.parse(waitingForName.content);
+        const pendingProposalMessage = waitingForNameContent.pending_proposal_message;
+        const pendingPaymentLink = waitingForNameContent.pending_payment_link;
 
-        // Thank the user and continue with welcome flow
-        await sendWhatsAppMessage(from, {
-          text: `Thanks, ${text}! I'll remember your name. Now, how can I help you today?`,
-        });
+        if (pendingProposalMessage) {
+          console.log("Processing pending proposal after name collection");
+          
+          // Import processProposalInput function
+          const { processProposalInput } = await import('./proposalservice');
+          
+          // Process the pending proposal
+          const proposalResult = await processProposalInput(pendingProposalMessage, userId);
+          
+          // Clear the waiting_for context
+          await supabase.from("sessions").upsert(
+            [
+              {
+                user_id: userId,
+                context: [],
+                updated_at: new Date().toISOString(),
+              },
+            ],
+            { onConflict: "user_id" },
+          );
+
+          // Send the proposal result
+          await sendWhatsAppMessage(from, {
+            text: `Thanks, ${text}! I'll remember your name.\n\n${proposalResult.message}`,
+          });
+        } else if (pendingPaymentLink) {
+          console.log("Processing pending payment link after name collection");
+          
+          // Import the handleCreatePaymentLink function
+          const { handleCreatePaymentLink } = await import('../api/actions');
+          
+          // Process the pending payment link with the collected name
+          const paymentLinkResult = await handleCreatePaymentLink(
+            pendingPaymentLink.amount,
+            pendingPaymentLink.recipientEmail,
+            pendingPaymentLink.reason,
+            userId
+          );
+          
+          // Clear the waiting_for context
+          await supabase.from("sessions").upsert(
+            [
+              {
+                user_id: userId,
+                context: [],
+                updated_at: new Date().toISOString(),
+              },
+            ],
+            { onConflict: "user_id" },
+          );
+
+          // Send the payment link result
+          await sendWhatsAppMessage(from, {
+            text: `Thanks, ${text}! I'll remember your name.\n\n${paymentLinkResult.message}`,
+          });
+        } else {
+          // Clear the waiting_for context
+          await supabase.from("sessions").upsert(
+            [
+              {
+                user_id: userId,
+                context: [],
+                updated_at: new Date().toISOString(),
+              },
+            ],
+            { onConflict: "user_id" },
+          );
+
+          // Thank the user and continue with welcome flow
+          await sendWhatsAppMessage(from, {
+            text: `Thanks, ${text}! I'll remember your name. Now, how can I help you today?`,
+          });
+        }
 
         return;
       }

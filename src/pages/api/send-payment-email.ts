@@ -14,6 +14,7 @@ interface EmailData {
   network: string;
   userName: string;
   paymentReason: string;
+  walletAddress?: string;
 }
 
 async function sendPaymentLinkEmail(emailData: EmailData) {
@@ -23,6 +24,18 @@ async function sendPaymentLinkEmail(emailData: EmailData) {
   }
 
   try {
+    // Get the user's name from the database using wallet address
+    const { data: userData } = await supabase
+      .from('users')
+      .select('name')
+      .eq('wallet_address', emailData.walletAddress?.toLowerCase())
+      .single();
+
+    // Create personalized email address
+    const userEmail = userData?.name 
+      ? `${userData.name.toLowerCase().replace(/\s+/g, '')}@hedwigbot.xyz`
+      : 'payments@hedwigbot.xyz';
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -30,7 +43,7 @@ async function sendPaymentLinkEmail(emailData: EmailData) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Hedwig <payments@hedwigbot.xyz>',
+        from: userData?.name ? `${userData.name} <${userEmail}>` : 'Hedwig <payments@hedwigbot.xyz>',
         to: [emailData.recipientEmail],
         subject: `Payment Request: ${emailData.amount} ${emailData.token}`,
         html: `
@@ -168,6 +181,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       network: paymentData.network,
       userName: paymentData.user_name,
       paymentReason: paymentData.payment_reason,
+      walletAddress: paymentData.wallet_address,
     });
 
     return res.status(200).json({ success: true, message: 'Email sent successfully' });

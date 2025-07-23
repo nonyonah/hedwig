@@ -324,33 +324,103 @@ export async function sendProposalEmail(
       return { success: false, error: 'Client email is required to send proposal' };
     }
 
-    const html = generateProposalHTML(proposal, options);
+    // Get user name for personalized email
+    const { data: user } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', proposal.user_identifier)
+      .single();
+
+    const userName = user?.name || 'Professional Services';
+    
+    // Create user-specific email address
+    const userEmailName = userName.toLowerCase()
+      .replace(/[^a-z0-9]/g, '') // Remove non-alphanumeric characters
+      .substring(0, 20); // Limit length
+    
+    const fromEmail = `${userEmailName}@hedwigbot.xyz`;
+    
+    // Generate proposal URL for viewing
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+    const proposalUrl = `${baseUrl}/api/proposal-pdf/${proposal.id}`;
     
     await resend.emails.send({
-      from: 'proposals@hedwigbot.xyz',
+      from: fromEmail,
       to: clientEmail,
       subject: `Project Proposal - ${proposal.project_title || 'Your Project'}`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>Project Proposal</h2>
-          <p>Dear ${proposal.client_name},</p>
-          <p>Please find attached your project proposal. We're excited about the opportunity to work with you!</p>
-          <p>You can view the full proposal by clicking the link below:</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2563eb; margin-bottom: 10px;">Project Proposal</h1>
+            <p style="color: #64748b; font-size: 16px;">From ${userName}</p>
+          </div>
+          
+          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+            <h2 style="color: #1e293b; margin-bottom: 15px;">Dear ${proposal.client_name},</h2>
+            <p style="line-height: 1.6; color: #334155;">
+              Thank you for considering our services for your ${proposal.service_type.replace('_', ' ')} project. 
+              I'm excited about the opportunity to work with you and bring your vision to life.
+            </p>
+            <p style="line-height: 1.6; color: #334155;">
+              Please find your detailed project proposal attached. This proposal outlines our approach, 
+              deliverables, timeline, and investment for your project.
+            </p>
+          </div>
+
+          <div style="background: #2563eb; color: white; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+            <h3 style="margin-bottom: 15px;">Project Overview</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <strong>Service:</strong><br>
+                ${proposal.service_type.replace('_', ' ')}
+              </div>
+              <div>
+                <strong>Timeline:</strong><br>
+                ${proposal.timeline}
+              </div>
+              <div>
+                <strong>Investment:</strong><br>
+                ${proposal.currency} ${proposal.budget?.toLocaleString()}
+              </div>
+              <div>
+                <strong>Proposal ID:</strong><br>
+                ${proposal.id}
+              </div>
+            </div>
+          </div>
+          
           <div style="text-align: center; margin: 30px 0;">
-            <a href="#" style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-              View Proposal
+            <a href="${proposalUrl}" 
+               style="background: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+              📄 View Full Proposal
             </a>
           </div>
-          <p>If you have any questions or would like to discuss the proposal, please don't hesitate to reach out.</p>
-          <p>Best regards,<br>Your Development Team</p>
+          
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 30px;">
+            <p style="line-height: 1.6; color: #334155;">
+              I'm here to answer any questions you might have about this proposal. 
+              Please don't hesitate to reach out if you'd like to discuss any details or modifications.
+            </p>
+            <p style="line-height: 1.6; color: #334155;">
+              I look forward to the opportunity to work together on this exciting project!
+            </p>
+          </div>
+          
+          <div style="margin-top: 30px; padding: 20px; background: #f1f5f9; border-radius: 8px;">
+            <p style="margin: 0; color: #64748b; font-size: 14px;">
+              <strong>Best regards,</strong><br>
+              ${userName}<br>
+              <a href="mailto:${fromEmail}" style="color: #2563eb;">${fromEmail}</a>
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px;">
+              This proposal is valid for 30 days from the date sent.
+            </p>
+          </div>
         </div>
-      `,
-      // attachments: [
-      //   {
-      //     filename: `${proposal.client_name}_${proposal.service_type}_Proposal.pdf`,
-      //     content: await generatePDF(proposal, options)
-      //   }
-      // ]
+      `
     });
 
     return { success: true };

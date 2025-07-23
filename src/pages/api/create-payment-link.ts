@@ -133,7 +133,8 @@ export default async function handler(
           token,
           userName,
           paymentReason,
-          network
+          network,
+          walletAddress
         });
       } catch (emailError) {
         console.error('Email sending failed:', emailError);
@@ -164,7 +165,8 @@ async function sendPaymentLinkEmail({
   token,
   userName,
   paymentReason,
-  network
+  network,
+  walletAddress
 }: {
   recipientEmail: string;
   paymentLink: string;
@@ -173,6 +175,7 @@ async function sendPaymentLinkEmail({
   userName: string;
   paymentReason: string;
   network: string;
+  walletAddress: string;
 }) {
   if (!process.env.RESEND_API_KEY) {
     console.warn('Resend API key not configured, skipping email');
@@ -180,6 +183,18 @@ async function sendPaymentLinkEmail({
   }
 
   try {
+    // Get the user's name from the database using wallet address
+    const { data: userData } = await supabase
+      .from('users')
+      .select('name')
+      .eq('wallet_address', walletAddress.toLowerCase())
+      .single();
+
+    // Create personalized email address
+    const userEmail = userData?.name 
+      ? `${userData.name.toLowerCase().replace(/\s+/g, '')}@hedwigbot.xyz`
+      : 'payments@hedwigbot.xyz';
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -187,7 +202,7 @@ async function sendPaymentLinkEmail({
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Hedwig <payments@hedwigbot.xyz>',
+        from: userData?.name ? `${userData.name} <${userEmail}>` : 'Hedwig <payments@hedwigbot.xyz>',
         to: [recipientEmail],
         subject: `Payment Request: ${amount} ${token}`,
         html: `

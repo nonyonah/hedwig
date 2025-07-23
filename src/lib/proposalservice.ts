@@ -22,6 +22,10 @@ export interface ProposalData {
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
   created_at?: string;
   updated_at?: string;
+  // User contact information
+  user_name?: string;
+  user_phone?: string;
+  user_email?: string;
 }
 
 export interface ParsedProposalInput {
@@ -190,12 +194,21 @@ export function generateProposal(data: ProposalData): string {
   const deliverables = data.deliverables || template.default_deliverables;
   const features = data.features || [];
 
+  // Format contact information
+  const contactInfo = [];
+  if (data.user_name) contactInfo.push(`**Name:** ${data.user_name}`);
+  if (data.user_phone) contactInfo.push(`**Phone:** ${data.user_phone}`);
+  if (data.user_email) contactInfo.push(`**Email:** ${data.user_email}`);
+  
+  const contactSection = contactInfo.length > 0 ? 
+    `\n## Contact Information\n\n${contactInfo.join('\n')}\n` : '';
+
   return `
 # ${data.project_title || template.title}
 
 **Proposal for:** ${data.client_name || 'Valued Client'}
 **Date:** ${new Date().toLocaleDateString()}
-
+${contactSection}
 ## Executive Summary
 
 Thank you for considering our services for your ${data.service_type.replace('_', ' ')} project. This proposal outlines our approach, deliverables, timeline, and investment for bringing your vision to life.
@@ -343,13 +356,40 @@ export function suggestMissingInfo(parsedData: ParsedProposalInput): string {
   return `I need a bit more information to create your proposal:\n\n${suggestions.join('\n')}\n\nPlease provide these details and I'll generate a professional proposal for you!`;
 }
 
-export async function processProposalInput(message: string, userId: string): Promise<string> {
+export async function processProposalInput(message: string, userId: string): Promise<{ message: string; proposalId?: string }> {
   try {
-    // Validate userId format (should be a valid UUID)
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(userId)) {
-      console.error(`Invalid userId format: ${userId}`);
-      return 'Authentication error: Invalid user ID format. Please try logging in again.';
+    console.log(`[processProposalInput] Processing message: ${message} for user: ${userId}`);
+    
+    // Check if user has a name first and get contact info
+    const { data: user } = await supabase
+      .from("users")
+      .select("name, phone_number, email")
+      .eq("id", userId)
+      .single();
+
+    // If user doesn't have a proper name, prompt for it
+    if (!user?.name || user.name.startsWith("User_")) {
+      // Store the proposal request in session for later processing
+      await supabase.from("sessions").upsert(
+        [
+          {
+            user_id: userId,
+            context: [
+              {
+                role: "system",
+                content: JSON.stringify({
+                  waiting_for: "name",
+                  pending_proposal_message: message,
+                }),
+              },
+            ],
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: "user_id" },
+      );
+
+      return { message: "Before I create your proposal, I need your name to personalize the emails and documents. What's your name?" };
     }
 
     // Parse the input message
@@ -357,10 +397,10 @@ export async function processProposalInput(message: string, userId: string): Pro
     
     // Check if we have enough information
     if (parsedData.missing_fields.length > 0) {
-      return suggestMissingInfo(parsedData);
+      return { message: suggestMissingInfo(parsedData) };
     }
 
-    // Create proposal data
+    // Create proposal data with user contact info
     const proposalData: ProposalData = {
       user_id: userId,
       client_name: parsedData.client_name!,
@@ -372,25 +412,25 @@ export async function processProposalInput(message: string, userId: string): Pro
       budget: parsedData.budget!,
       currency: parsedData.currency || 'USD',
       features: parsedData.features,
-      status: 'draft'
+      status: 'draft',
+      user_name: user.name,
+      user_phone: user.phone_number,
+      user_email: user.email
     };
-
-    // Generate the proposal text
-    const proposalText = generateProposal(proposalData);
     
     // Save to database
     const proposalId = await saveProposal(proposalData);
     
-    return `✅ **Proposal Generated Successfully!**\n\nProposal ID: ${proposalId}\n\n${proposalText}\n\n💡 **Next Steps:**\n• Review the proposal above\n• Type "edit proposal ${proposalId}" to make changes\n• Type "send proposal ${proposalId}" to email it to your client\n• Type "pdf proposal ${proposalId}" to generate a PDF version`;
+    // Generate PDF download link
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+    const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
+    
+    const responseMessage = `✅ **Proposal Created Successfully!**\n\n**Proposal ID:** ${proposalId}\n**Client:** ${proposalData.client_name}\n**Service:** ${proposalData.service_type.replace('_', ' ')}\n**Budget:** ${proposalData.currency} ${proposalData.budget}\n**Timeline:** ${proposalData.timeline}\n\n📄 **Download PDF:** ${pdfDownloadUrl}\n\n💡 **What would you like to do next?**\n• Type "send proposal" to email it to your client\n• Type "send myself" to send it to yourself first\n• Share the PDF link directly with your client\n\n📋 **Other options:**\n• Edit details: "edit proposal ${proposalId}"\n• View all proposals: "show my proposals"`;
+    
+    return { message: responseMessage, proposalId };
     
   } catch (error) {
-    console.error('Error processing proposal input:', error);
-    
-    // Simplified error handling since we no longer check user existence
-    if (error instanceof Error && error.message.includes('database')) {
-      return 'Database error: Unable to save your proposal. Please try again in a moment.';
-    }
-    
-    return 'Sorry, I encountered an error while generating your proposal. Please try again or contact support if the issue persists.';
+    console.error('[processProposalInput] Error:', error);
+    return { message: "An error occurred while processing your proposal. Please try again." };
   }
 }

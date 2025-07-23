@@ -3057,7 +3057,34 @@ async function handleCreatePaymentLink(params: any, userId: string) {
       return { text: "Error fetching user details. Please try again." };
     }
 
-    const userName = user.name || `User_${userId.substring(0, 8)}`;
+    // Check if user has a name (not a generated one)
+    if (!user.name || user.name.startsWith('User_')) {
+      // Store the pending payment link parameters in session context
+      await supabase.from("sessions").upsert(
+        [
+          {
+            user_id: userId,
+            context: [
+              {
+                role: "system",
+                content: JSON.stringify({
+                  waiting_for: "name",
+                  pending_payment_link_params: params
+                })
+              }
+            ],
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: "user_id" }
+      );
+
+      return {
+        text: "Before I can create a payment link with your personalized email, I need to know your name. This will be used to create a professional email address for sending payment requests to clients.\n\nWhat's your name?"
+      };
+    }
+
+    const userName = user.name;
 
     // Validate required parameters
     const amount = params.amount;
@@ -3300,7 +3327,18 @@ async function handleCreateProposal(params: any, userId: string) {
     // Process the proposal input using the proposal service
     const result = await processProposalInput(message, userId);
 
-    return { text: result };
+    // Handle the new response format
+    if (typeof result === 'object' && result.proposalId) {
+      // Proposal was successfully created
+      const downloadUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/proposal-pdf/${result.proposalId}`;
+      
+      return { 
+        text: `${result.message}\n\n📄 **Download your proposal:** ${downloadUrl}\n\n💡 **What would you like to do next?**\n• Type "send proposal to client" if you want me to email it to your client\n• Or download and send it yourself using the link above\n\nJust let me know how you'd like to proceed!`
+      };
+    } else {
+      // Return the message as is (could be asking for more info or an error)
+      return { text: typeof result === 'string' ? result : result.message };
+    }
 
   } catch (error) {
     console.error("[handleCreateProposal] Error:", error);
@@ -3313,13 +3351,28 @@ async function handleSendProposal(params: any, userId: string) {
   try {
     console.log(`[handleSendProposal] Sending proposal with params:`, params);
 
-    const proposalId = params.proposal_id;
+    let proposalId = params.proposal_id;
     const clientEmail = params.client_email;
 
+    // If no proposal ID provided, get the user's most recent proposal
     if (!proposalId) {
-      return { 
-        text: "Please specify which proposal to send.\n\nExample: 'send proposal 123 to client@email.com'\n\nOr view your proposals first: 'show my proposals'"
-      };
+      const proposals = await getUserProposals(userId);
+      if (!proposals || proposals.length === 0) {
+        return { 
+          text: "You don't have any proposals yet. Create a proposal first:\n\nExample: 'create proposal for web development, client ABC Corp, $5000 budget'"
+        };
+      }
+      
+      // Get the most recent proposal
+      const mostRecentProposal = proposals[0];
+      proposalId = mostRecentProposal.id;
+      
+      // If still no client email provided, check if the most recent proposal has one
+      if (!clientEmail && !mostRecentProposal.client_email) {
+        return { 
+          text: `I found your most recent proposal (ID: ${proposalId}) for ${mostRecentProposal.client_name || 'your client'}, but I need the client's email address to send it.\n\nPlease provide the email:\n\nExample: 'send proposal ${proposalId} to client@email.com'`
+        };
+      }
     }
 
     // Get the proposal
@@ -3337,7 +3390,7 @@ async function handleSendProposal(params: any, userId: string) {
     const emailToUse = clientEmail || proposal.client_email;
     if (!emailToUse) {
       return { 
-        text: "Please provide the client's email address.\n\nExample: 'send proposal 123 to client@email.com'"
+        text: `Please provide the client's email address.\n\nExample: 'send proposal ${proposalId} to client@email.com'`
       };
     }
 
