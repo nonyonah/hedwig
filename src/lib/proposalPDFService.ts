@@ -1,5 +1,11 @@
 import { ProposalData } from './proposalservice';
 import { Resend } from 'resend';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 interface EmailResponse {
   id: string;

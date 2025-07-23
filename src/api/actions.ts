@@ -3520,3 +3520,6 @@ async function handleEditProposal(params: any, userId: string) {
     return { text: "Error editing proposal. Please try again later." };
   }
 }
+
+// Export functions for external use
+export { handleCreatePaymentLink };
