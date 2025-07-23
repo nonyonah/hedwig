@@ -268,6 +268,7 @@ export async function saveProposal(proposalData: ProposalData): Promise<string> 
     .from('proposals')
     .insert([{
       user_id: proposalData.user_id, // Use user_id instead of user_identifier
+      user_identifier: null, // Explicitly set to null to avoid NOT NULL constraint
       client_name: proposalData.client_name,
       client_email: proposalData.client_email,
       service_type: proposalData.service_type,
