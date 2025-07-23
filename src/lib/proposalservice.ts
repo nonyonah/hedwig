@@ -421,9 +421,9 @@ export async function processProposalInput(message: string, userId: string): Pro
     // Save to database
     const proposalId = await saveProposal(proposalData);
     
-    // Generate PDF using react-pdf
-    const { generatePDF } = await import('./proposalPDFService');
-    const pdfBuffer = await generatePDF(proposalData);
+    // Generate PDF using HTML/CSS + Puppeteer
+    const { generateProposalPDF } = await import('./htmlPDFService');
+    const pdfBuffer = await generateProposalPDF(proposalData);
     
     // Send PDF as WhatsApp document with template
     const { sendWhatsAppDocument, sendWhatsAppTemplate } = await import('./whatsappUtils');

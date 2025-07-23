@@ -843,36 +843,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         // If no wallet and not a creation request, prompt the user to create one.
         console.log(`[Wallet Check] User ${userId} has no wallet. Sending creation prompt with name: ${profileName || 'not provided'}`);
         await sendWhatsAppTemplate(from, createNewWallet(profileName));
-        
-        // Automatically create wallet for the user after sending the template
-        console.log(`[Wallet Creation] Automatically creating wallet for user ${userId}`);
-        const actionResult = await handleAction("create_wallets", {}, userId);
-        
-        if (!actionResult) {
-          console.error("No action result returned from create_wallets");
-          await sendWhatsAppMessage(from, {
-            text: "I couldn't create your wallets. Please try again.",
-          });
-          return;
-        }
-
-        if ("name" in actionResult) {
-          await sendWhatsAppTemplate(from, actionResult);
-        } else if (
-          "text" in actionResult &&
-          typeof actionResult.text === "string"
-        ) {
-          await sendWhatsAppMessage(from, { text: actionResult.text });
-        } else {
-          console.error(
-            "Unknown action result format from create_wallets:",
-            actionResult,
-          );
-          await sendWhatsAppMessage(from, {
-            text: "I couldn't process your wallet creation properly.",
-          });
-        }
-        return; // Stop further processing
+        return; // Stop further processing - wait for user to click the button
       }
     }
 
