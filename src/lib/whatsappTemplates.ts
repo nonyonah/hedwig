@@ -769,3 +769,29 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
     ]
   };
 }
+
+/**
+ * Template: proposal_template
+ * Parameter Format: POSITIONAL
+ * Parameters: client_name
+ * Type: DOCUMENT (includes document attachment)
+ */
+export function proposalTemplate({ client_name }: { client_name: string }) {
+  return {
+    name: 'proposal_template',
+    language: { code: 'en' },
+    type: 'DOCUMENT',
+    components: [
+      {
+        type: 'HEADER',
+        format: 'DOCUMENT'
+      },
+      {
+        type: 'BODY',
+        parameters: [
+          { type: 'text', text: sanitizeWhatsAppParam(client_name) }
+        ]
+      }
+    ]
+  };
+}

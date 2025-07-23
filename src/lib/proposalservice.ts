@@ -425,13 +425,19 @@ export async function processProposalInput(message: string, userId: string): Pro
     const { generatePDF } = await import('./proposalPDFService');
     const pdfBuffer = await generatePDF(proposalData);
     
-    // Send PDF as WhatsApp document
-    const { sendWhatsAppDocument } = await import('./whatsappUtils');
+    // Send PDF as WhatsApp document with template
+    const { sendWhatsAppDocument, sendWhatsAppTemplate } = await import('./whatsappUtils');
+    const { proposalTemplate } = await import('./whatsappTemplates');
     const filename = `proposal-${proposalData.client_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'client'}-${proposalId}.pdf`;
-    const caption = `📄 **Proposal for ${proposalData.client_name}**\n\n💰 Budget: ${proposalData.currency} ${proposalData.budget}\n⏰ Timeline: ${proposalData.timeline}\n\n✅ Your professional proposal is ready!`;
     
     try {
-      await sendWhatsAppDocument(user.phone_number!, pdfBuffer, filename, caption);
+      // First send the document using the new template
+      await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
+        client_name: proposalData.client_name || 'your client' 
+      }));
+      
+      // Then send the actual PDF document
+      await sendWhatsAppDocument(user.phone_number!, pdfBuffer, filename);
       
       const responseMessage = `✅ **Proposal Created & Sent!**\n\n**Proposal ID:** ${proposalId}\n**Client:** ${proposalData.client_name}\n**Service:** ${proposalData.service_type.replace('_', ' ')}\n**Budget:** ${proposalData.currency} ${proposalData.budget}\n**Timeline:** ${proposalData.timeline}\n\n📄 **PDF sent above** ⬆️\n\n💡 **What would you like to do next?**\n• Type "send proposal to client" to email it to your client\n• Type "edit proposal ${proposalId}" to make changes\n• View all proposals: "show my proposals"`;
       
