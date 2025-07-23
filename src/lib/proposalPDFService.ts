@@ -6,8 +6,7 @@ import { ProposalDocument } from '../components/ProposalDocument';
 
 export interface ProposalData {
   id?: string;
-  user_id?: string; // Keep for backward compatibility
-  user_identifier?: string; // Make optional to match proposalservice.ts
+  user_id?: string;
   client_name?: string;
   client_email?: string;
   service_type: string;
@@ -367,7 +366,7 @@ export async function sendProposalEmail(
     const { data: user } = await supabase
       .from('users')
       .select('name')
-      .eq('id', proposal.user_identifier)
+      .eq('id', proposal.user_id)
       .single();
 
     const userName = user?.name || 'Professional Services';
