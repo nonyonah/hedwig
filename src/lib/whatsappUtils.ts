@@ -478,7 +478,7 @@ export async function sendWhatsAppDocument(
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-        body: formData,
+        body: formData as any, // Type assertion to fix FormData compatibility
       },
     );
 
