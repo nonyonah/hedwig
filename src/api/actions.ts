@@ -3,6 +3,14 @@ import { createClient } from "@supabase/supabase-js";
 import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from '../lib/earningsService';
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 import { getFreelancerByWhatsappNumber } from '@/lib/supabaseCrud';
+import { 
+  processProposalInput, 
+  getProposal, 
+  getUserProposals, 
+  saveProposal,
+  type ProposalData 
+} from '../lib/proposalservice';
+import { sendProposalEmail, generatePDF } from '../lib/proposalPDFService';
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -986,6 +994,18 @@ export async function handleAction(
   case "get_spending":
     console.log(`[handleAction] Processing 'get_spending' intent with params:`, params);
     return await handleGetSpending(params, userId);
+  case "create_proposal":
+    console.log(`[handleAction] Processing 'create_proposal' intent with params:`, params);
+    return await handleCreateProposal(params, userId);
+  case "send_proposal":
+    console.log(`[handleAction] Processing 'send_proposal' intent with params:`, params);
+    return await handleSendProposal(params, userId);
+  case "view_proposals":
+    console.log(`[handleAction] Processing 'view_proposals' intent with params:`, params);
+    return await handleViewProposals(params, userId);
+  case "edit_proposal":
+    console.log(`[handleAction] Processing 'edit_proposal' intent with params:`, params);
+    return await handleEditProposal(params, userId);
 
   default:
     return {
@@ -3265,5 +3285,185 @@ async function handleGetSpending(params: any, userId: string) {
   } catch (error) {
     console.error("[handleGetSpending] Error:", error);
     return { text: "Error fetching spending data. Please try again later." };
+  }
+}
+
+// Handler for creating proposals
+async function handleCreateProposal(params: any, userId: string) {
+  try {
+    console.log(`[handleCreateProposal] Creating proposal with params:`, params);
+
+    // Convert params to a message string for processing
+    const message = typeof params === 'string' ? params : 
+      `Create proposal for ${params.service_type || 'service'} client: ${params.client_name || ''} email: ${params.client_email || ''} budget: ${params.budget || ''} timeline: ${params.timeline || ''}`;
+
+    // Process the proposal input using the proposal service
+    const result = await processProposalInput(message, userId);
+
+    return { text: result };
+
+  } catch (error) {
+    console.error("[handleCreateProposal] Error:", error);
+    return { text: "Error creating proposal. Please try again later." };
+  }
+}
+
+// Handler for sending proposals
+async function handleSendProposal(params: any, userId: string) {
+  try {
+    console.log(`[handleSendProposal] Sending proposal with params:`, params);
+
+    const proposalId = params.proposal_id;
+    const clientEmail = params.client_email;
+
+    if (!proposalId) {
+      return { 
+        text: "Please specify which proposal to send.\n\nExample: 'send proposal 123 to client@email.com'\n\nOr view your proposals first: 'show my proposals'"
+      };
+    }
+
+    // Get the proposal
+    const proposal = await getProposal(proposalId);
+    if (!proposal) {
+      return { text: "Proposal not found. Please check the proposal ID and try again." };
+    }
+
+    // Check if proposal belongs to user
+    if (proposal.user_id !== userId) {
+      return { text: "You don't have permission to access this proposal." };
+    }
+
+    // Use provided email or fall back to stored client email
+    const emailToUse = clientEmail || proposal.client_email;
+    if (!emailToUse) {
+      return { 
+        text: "Please provide the client's email address.\n\nExample: 'send proposal 123 to client@email.com'"
+      };
+    }
+
+    // Send the proposal email
+    const emailResult = await sendProposalEmail(proposal, emailToUse);
+    
+    if (emailResult.success) {
+      return {
+        text: `✅ **Proposal Sent Successfully!**\n\n📧 **Sent to:** ${emailToUse}\n📋 **Proposal:** ${proposal.project_title || 'Untitled Project'}\n💰 **Budget:** ${proposal.currency} ${proposal.budget}\n\n📄 The proposal has been delivered as a professional PDF attachment.\n\n💡 **Next steps:**\n• Follow up with your client\n• Track proposal status\n• Edit if needed: "edit proposal ${proposalId}"`
+      };
+    } else {
+      return {
+        text: `❌ **Failed to send proposal**\n\nError: ${emailResult.error}\n\nPlease check the email address and try again.`
+      };
+    }
+
+  } catch (error) {
+    console.error("[handleSendProposal] Error:", error);
+    return { text: "Error sending proposal. Please try again later." };
+  }
+}
+
+// Handler for viewing proposals
+async function handleViewProposals(params: any, userId: string) {
+  try {
+    console.log(`[handleViewProposals] Getting proposals for user:`, userId);
+
+    const proposals = await getUserProposals(userId);
+
+    if (!proposals || proposals.length === 0) {
+      return {
+        text: "📋 **No proposals found**\n\nYou haven't created any proposals yet.\n\n💡 Create your first proposal:\n'create proposal for web development, client ABC Corp, $5000 budget'"
+      };
+    }
+
+    let response = `📋 **Your Proposals (${proposals.length})**\n\n`;
+    
+    proposals.slice(0, 10).forEach((proposal, index) => {
+      const status = proposal.status === 'draft' ? '📝' : proposal.status === 'sent' ? '📧' : '✅';
+      response += `${status} **${proposal.id}** - ${proposal.project_title || 'Untitled'}\n`;
+      response += `   👤 ${proposal.client_name}\n`;
+      response += `   💰 ${proposal.currency} ${proposal.budget}\n`;
+      response += `   📅 ${proposal.created_at ? new Date(proposal.created_at).toLocaleDateString() : 'Unknown date'}\n\n`;
+    });
+
+    if (proposals.length > 10) {
+      response += `... and ${proposals.length - 10} more\n\n`;
+    }
+
+    response += `💡 **Actions:**\n• Send: "send proposal [ID] to email@client.com"\n• Edit: "edit proposal [ID]"\n• Create new: "create proposal for [service]"`;
+
+    return { text: response };
+
+  } catch (error) {
+    console.error("[handleViewProposals] Error:", error);
+    return { text: "Error fetching proposals. Please try again later." };
+  }
+}
+
+// Handler for editing proposals
+async function handleEditProposal(params: any, userId: string) {
+  try {
+    console.log(`[handleEditProposal] Editing proposal with params:`, params);
+
+    const proposalId = params.proposal_id;
+    const field = params.field;
+    const value = params.value;
+
+    if (!proposalId) {
+      return { 
+        text: "Please specify which proposal to edit.\n\nExample: 'edit proposal 123 budget to $3000'\n\nOr view your proposals first: 'show my proposals'"
+      };
+    }
+
+    // Get the proposal
+    const proposal = await getProposal(proposalId);
+    if (!proposal) {
+      return { text: "Proposal not found. Please check the proposal ID and try again." };
+    }
+
+    // Check if proposal belongs to user
+    if (proposal.user_id !== userId) {
+      return { text: "You don't have permission to access this proposal." };
+    }
+
+    if (!field || !value) {
+      return {
+        text: `📋 **Editing Proposal ${proposalId}**\n\n**Current Details:**\n👤 Client: ${proposal.client_name}\n💼 Service: ${proposal.service_type}\n💰 Budget: ${proposal.currency} ${proposal.budget}\n⏰ Timeline: ${proposal.timeline}\n📧 Email: ${proposal.client_email || 'Not set'}\n\n💡 **Edit examples:**\n• "edit proposal ${proposalId} budget to $4000"\n• "edit proposal ${proposalId} timeline to 6 weeks"\n• "edit proposal ${proposalId} client_name to New Company"`
+      };
+    }
+
+    // Update the proposal
+    const updates: Partial<ProposalData> = {};
+    
+    switch (field.toLowerCase()) {
+      case 'budget':
+        updates.budget = parseFloat(value.replace(/[^0-9.]/g, ''));
+        break;
+      case 'timeline':
+        updates.timeline = value;
+        break;
+      case 'client_name':
+        updates.client_name = value;
+        break;
+      case 'client_email':
+        updates.client_email = value;
+        break;
+      case 'project_title':
+        updates.project_title = value;
+        break;
+      case 'description':
+        updates.description = value;
+        break;
+      default:
+        return { text: `Field "${field}" is not editable. Available fields: budget, timeline, client_name, client_email, project_title, description` };
+    }
+
+    const updatedProposalData = { ...proposal, ...updates };
+    await saveProposal(updatedProposalData);
+
+    return {
+      text: `✅ **Proposal Updated Successfully!**\n\n📋 **Proposal ID:** ${proposalId}\n🔄 **Updated:** ${field} → ${value}\n\n💡 **Next steps:**\n• Send it: "send proposal ${proposalId} to client@email.com"\n• View all: "show my proposals"\n• Edit more: "edit proposal ${proposalId}"`
+    };
+
+  } catch (error) {
+    console.error("[handleEditProposal] Error:", error);
+    return { text: "Error editing proposal. Please try again later." };
   }
 }

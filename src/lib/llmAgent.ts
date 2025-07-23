@@ -64,6 +64,10 @@ Valid intents:
 - create_payment_link: For creating payment links or payment requests
 - get_earnings: For checking earnings, income, money received, or payment history
 - get_spending: For checking spending, money sent, or payment history
+- create_proposal: For generating project proposals
+- send_proposal: For sending proposals via email
+- view_proposals: For viewing existing proposals
+- edit_proposal: For editing existing proposals
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 
@@ -141,7 +145,58 @@ IMPORTANT INTENT RECOGNITION RULES:
    - Token-specific spending: "USDC spent", "ETH sent", "how much USDT paid"
    - Network-specific spending: "spending on Base", "Polygon spending"
 
-8. PARAMETER EXTRACTION for earnings/spending intents:
+8. SPENDING REQUESTS: Always use "get_spending" intent for:
+   - "spending", "how much have I spent", "money sent", "payments made"
+   - "what did I spend", "how much did I pay", "outgoing payments"
+   - "spending summary", "spending report", "payment history sent"
+   - "how much money went out", "sent payments", "transactions sent"
+   - Time-based spending: "spending this week", "spent this month", "yearly spending"
+   - Token-specific spending: "USDC spent", "ETH sent", "how much USDT paid"
+   - Network-specific spending: "spending on Base", "Polygon spending"
+
+9. PROPOSAL REQUESTS: Always use "create_proposal" intent for:
+   - "proposal", "create proposal", "generate proposal", "draft proposal"
+   - "project proposal", "proposal for", "need a proposal"
+   - "quote", "estimate", "project quote", "service quote"
+   - "proposal for web development", "mobile app proposal", "design proposal"
+   - Any request to create or generate a project proposal
+
+10. SEND PROPOSAL REQUESTS: Always use "send_proposal" intent for:
+    - "send proposal", "email proposal", "send proposal to client"
+    - "deliver proposal", "share proposal", "forward proposal"
+    - Must include proposal ID if specified (e.g., "send proposal 123")
+
+11. VIEW PROPOSALS REQUESTS: Always use "view_proposals" intent for:
+    - "view proposals", "show proposals", "list proposals", "my proposals"
+    - "proposal history", "past proposals", "previous proposals"
+    - "proposal status", "check proposals"
+
+12. EDIT PROPOSAL REQUESTS: Always use "edit_proposal" intent for:
+    - "edit proposal", "modify proposal", "update proposal", "change proposal"
+    - "revise proposal", "proposal changes", "update proposal details"
+    - Must include proposal ID if specified (e.g., "edit proposal 123")
+
+13. PARAMETER EXTRACTION for "create_proposal" intent:
+    - service_type: Extract service type (web development, mobile app, design, consulting)
+    - client_name: Extract client or company name
+    - client_email: Extract email address
+    - budget: Extract numerical budget value
+    - currency: Extract currency (USD, EUR, GBP, etc.)
+    - timeline: Extract timeline (days, weeks, months)
+    - features: Extract specific features or requirements
+    - project_title: Extract project title if mentioned
+    - description: Extract project description
+
+14. PARAMETER EXTRACTION for "send_proposal" intent:
+    - proposal_id: Extract proposal ID if specified
+    - client_email: Extract email address if different from stored
+
+15. PARAMETER EXTRACTION for "edit_proposal" intent:
+    - proposal_id: Extract proposal ID (required)
+    - field: Extract which field to edit (budget, timeline, client_name, etc.)
+    - value: Extract new value for the field
+
+8a. PARAMETER EXTRACTION for earnings/spending intents:
     - timeframe: Extract time periods (e.g., "this week", "last month", "this year", "last 7 days")
     - token: Extract token symbol if specified (e.g., "USDC", "ETH", "USDT")
     - network: Extract network name if specified (e.g., "Base", "Polygon", "Ethereum")
@@ -210,6 +265,24 @@ Response: {"intent": "get_spending", "parameters": {"token": "ETH", "timeframe":
 
 User: "0x1234567890123456789012345678901234567890" (after being asked for address)
 Response: {"intent": "send", "params": {"recipient": "0x1234567890123456789012345678901234567890"}}
+
+User: "create proposal for web development project for ABC Corp, $5000 budget"
+Response: {"intent": "create_proposal", "params": {"service_type": "web development", "client_name": "ABC Corp", "budget": "5000", "currency": "USD"}}
+
+User: "draft proposal for mobile app, client XYZ Inc, 3 month timeline"
+Response: {"intent": "create_proposal", "params": {"service_type": "mobile app", "client_name": "XYZ Inc", "timeline": "3 months"}}
+
+User: "need proposal for logo design, budget around $500, 2 week timeline"
+Response: {"intent": "create_proposal", "params": {"service_type": "design", "budget": "500", "currency": "USD", "timeline": "2 weeks"}}
+
+User: "send proposal 123 to client@company.com"
+Response: {"intent": "send_proposal", "params": {"proposal_id": "123", "client_email": "client@company.com"}}
+
+User: "show my proposals"
+Response: {"intent": "view_proposals", "params": {}}
+
+User: "edit proposal 456 budget to $3000"
+Response: {"intent": "edit_proposal", "params": {"proposal_id": "456", "field": "budget", "value": "3000"}}
 
 AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.
