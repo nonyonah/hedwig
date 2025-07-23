@@ -431,13 +431,15 @@ export async function processProposalInput(message: string, userId: string): Pro
     const filename = `proposal-${proposalData.client_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'client'}-${proposalId}.pdf`;
     
     try {
-      // First send the document using the new template
-      await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
-        client_name: proposalData.client_name || 'your client' 
-      }));
+      // Create a publicly accessible URL for the PDF
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+      const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
       
-      // Then send the actual PDF document
-      await sendWhatsAppDocument(user.phone_number!, pdfBuffer, filename);
+      // Send the template with the PDF included in the header
+      await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
+        client_name: proposalData.client_name || 'your client',
+        document_link: pdfDownloadUrl
+      }));
       
       // Return minimal response - just the proposal ID for tracking
       return { message: "", proposalId };

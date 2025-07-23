@@ -773,39 +773,41 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
 /**
  * Template: proposal_template
  * Parameter Format: POSITIONAL
- * Parameters: client_name
+ * Parameters: document_link, client_name
  * Type: DOCUMENT (includes document attachment)
  */
-export function proposalTemplate({ client_name }: { client_name: string }) {
+export function proposalTemplate({ client_name, document_link }: { client_name: string, document_link?: string }) {
+  const components: any[] = [];
+  
+  // Add HEADER component with document if document_link is provided
+  if (document_link) {
+    components.push({
+      type: 'HEADER',
+      parameters: [
+        {
+          type: 'document',
+          document: {
+            link: document_link
+          }
+        }
+      ]
+    });
+  }
+  
+  // Add BODY component
+  components.push({
+    type: 'BODY',
+    parameters: [
+      {
+        type: 'text',
+        text: sanitizeWhatsAppParam(client_name)
+      }
+    ]
+  });
+
   return {
     name: 'proposal_template',
     language: { code: 'en' },
-    components: [
-      {
-        type: 'HEADER',
-        example: {
-          header_handle: [
-            'https://scontent.whatsapp.net/v/t61.29466-34/520813183_1826922081502054_2090106640619713035_n.pdf?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=A8FOu5GMqN8Q7kNvwHaJy81&_nc_oc=AdnBsQHc_O1peEDCOXn9rrnDkbmPglfEfgtfNPk4UTaaWmCaidBEaavH1syjJDDg7Mq0h0_vTt4RLzlDdVMVj6C9&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=yKB6gYm7egBKjyxzDedWyQ&oh=01_Q5Aa2AELoUH0Rc9m1cfxj3PfQjKc11ItpNMrp1YnCRsScv3NFg&oe=68A8B383'
-          ]
-        }
-      },
-      {
-        type: 'BODY',
-        text: "Hi {{1}}, your proposal is ready! I've just created the document and it's been attached above.\n\nYou can download, review, or share it with your client right away.🤗",
-        parameters: [
-          {
-            type: 'text',
-            text: sanitizeWhatsAppParam(client_name)
-          }
-        ],
-        example: {
-          body_text: [
-            [
-              'Nonso'
-            ]
-          ]
-        }
-      }
-    ]
+    components
   };
 }
