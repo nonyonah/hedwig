@@ -254,21 +254,47 @@ We're excited about the opportunity to work with you on this project. Please don
 `.trim();
 }
 
-// Helper function to ensure user exists in the database
+// Helper function to ensure user exists in the database, creating them if necessary
 async function ensureUserExists(userId: string): Promise<boolean> {
   try {
-    const { data, error } = await supabase
+    // First check if user exists
+    const { data: existingUser, error: checkError } = await supabase
       .from('users')
       .select('id')
       .eq('id', userId)
       .single();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
-      console.error('Error checking user existence:', error);
-      return false;
+    if (existingUser) {
+      return true; // User exists
     }
 
-    return !!data;
+    // If user doesn't exist (and it's not just a query error), create them
+    if (checkError && checkError.code === 'PGRST116') { // PGRST116 is "not found" error
+      console.log(`User ${userId} not found, creating new user record`);
+      
+      // Create the user with minimal required fields
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert([{
+          id: userId,
+          phone_number: `unknown_${userId.substring(0, 8)}`, // Temporary phone number
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }]);
+
+      if (insertError) {
+        console.error('Error creating user:', insertError);
+        return false;
+      }
+
+      console.log(`Successfully created user ${userId}`);
+      return true;
+    }
+
+    // If there was a different error, log it and return false
+    console.error('Error checking user existence:', checkError);
+    return false;
+
   } catch (error) {
     console.error('Error in ensureUserExists:', error);
     return false;
@@ -276,11 +302,11 @@ async function ensureUserExists(userId: string): Promise<boolean> {
 }
 
 export async function saveProposal(proposalData: ProposalData): Promise<string> {
-  // First, ensure the user exists
+  // First, ensure the user exists (create if necessary)
   const userExists = await ensureUserExists(proposalData.user_id);
   if (!userExists) {
-    console.error(`User ${proposalData.user_id} does not exist in users table`);
-    throw new Error(`User ${proposalData.user_id} not found. Please ensure you are authenticated properly.`);
+    console.error(`Failed to ensure user ${proposalData.user_id} exists in users table`);
+    throw new Error(`Unable to create or verify user account. Please try again or contact support.`);
   }
 
   const { data, error } = await supabase
