@@ -935,9 +935,13 @@ export async function handleIncomingWhatsAppMessage(body: any) {
           
           // Process the pending payment link with the collected name
           const paymentLinkResult = await handleCreatePaymentLink(
-            pendingPaymentLink.amount,
-            pendingPaymentLink.recipientEmail,
-            pendingPaymentLink.reason,
+            {
+              amount: pendingPaymentLink.amount,
+              recipient_email: pendingPaymentLink.recipientEmail,
+              description: pendingPaymentLink.reason,
+              token: pendingPaymentLink.token || 'ETH',
+              network: pendingPaymentLink.network || 'base'
+            },
             userId
           );
           
@@ -955,7 +959,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
 
           // Send the payment link result
           await sendWhatsAppMessage(from, {
-            text: `Thanks, ${text}! I'll remember your name.\n\n${paymentLinkResult.message}`,
+            text: `Thanks, ${text}! I'll remember your name.\n\n${paymentLinkResult.text}`,
           });
         } else {
           // Clear the waiting_for context
