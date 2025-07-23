@@ -376,7 +376,7 @@ function generateDeliverablesHTML(deliverables: string[]): string {
 }
 
 // Generate proposal HTML
-export function generateProposalHTML(proposal: ProposalData): string {
+export function generateProposalHTML(proposal: ProposalData & { user_name?: string; user_email?: string; user_phone?: string }): string {
     const currentDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
@@ -446,7 +446,29 @@ export async function generatePDFFromHTML(html: string, options: {
 
 // Main function to generate proposal PDF
 export async function generateProposalPDF(proposal: ProposalData): Promise<Buffer> {
-    const html = generateProposalHTML(proposal);
+    // Import Supabase client
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    
+    // Fetch user information from the users table
+    const { data: user } = await supabase
+        .from('users')
+        .select('name, phone_number, email')
+        .eq('id', proposal.user_id)
+        .single();
+    
+    // Create extended proposal data with user info
+    const extendedProposal = {
+        ...proposal,
+        user_name: user?.name || 'Professional Services',
+        user_email: user?.email || '',
+        user_phone: user?.phone_number || ''
+    };
+    
+    const html = generateProposalHTML(extendedProposal);
     return generatePDFFromHTML(html);
 }
 

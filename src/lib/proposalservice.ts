@@ -7,8 +7,7 @@ const supabase = createClient(
 
 export interface ProposalData {
   id?: string;
-  user_id: string; // Keep for backward compatibility in the interface
-  user_identifier?: string; // New field for database storage
+  user_id: string;
   client_name?: string;
   client_email?: string;
   service_type: string;
@@ -22,10 +21,6 @@ export interface ProposalData {
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
   created_at?: string;
   updated_at?: string;
-  // User contact information
-  user_name?: string;
-  user_phone?: string;
-  user_email?: string;
 }
 
 export interface ParsedProposalInput {
@@ -185,7 +180,7 @@ export function parseProposalInput(message: string): ParsedProposalInput {
   return result;
 }
 
-export function generateProposal(data: ProposalData): string {
+export function generateProposal(data: ProposalData, userInfo?: { name?: string; phone?: string; email?: string }): string {
   const template = SERVICE_TEMPLATES[data.service_type as keyof typeof SERVICE_TEMPLATES];
   if (!template) {
     throw new Error(`Unknown service type: ${data.service_type}`);
@@ -196,9 +191,9 @@ export function generateProposal(data: ProposalData): string {
 
   // Format contact information
   const contactInfo = [];
-  if (data.user_name) contactInfo.push(`**Name:** ${data.user_name}`);
-  if (data.user_phone) contactInfo.push(`**Phone:** ${data.user_phone}`);
-  if (data.user_email) contactInfo.push(`**Email:** ${data.user_email}`);
+  if (userInfo?.name) contactInfo.push(`**Name:** ${userInfo.name}`);
+  if (userInfo?.phone) contactInfo.push(`**Phone:** ${userInfo.phone}`);
+  if (userInfo?.email) contactInfo.push(`**Email:** ${userInfo.email}`);
   
   const contactSection = contactInfo.length > 0 ? 
     `\n## Contact Information\n\n${contactInfo.join('\n')}\n` : '';
@@ -272,7 +267,7 @@ export async function saveProposal(proposalData: ProposalData): Promise<string> 
   const { data, error } = await supabase
     .from('proposals')
     .insert([{
-      user_identifier: proposalData.user_id, // Use user_identifier instead of user_id
+      user_id: proposalData.user_id, // Use user_id instead of user_identifier
       client_name: proposalData.client_name,
       client_email: proposalData.client_email,
       service_type: proposalData.service_type,
@@ -315,7 +310,7 @@ export async function getUserProposals(userId: string): Promise<ProposalData[]> 
   const { data, error } = await supabase
     .from('proposals')
     .select('*')
-    .eq('user_identifier', userId) // Use user_identifier instead of user_id
+    .eq('user_id', userId) // Use user_id instead of user_identifier
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -400,7 +395,7 @@ export async function processProposalInput(message: string, userId: string): Pro
       return { message: suggestMissingInfo(parsedData) };
     }
 
-    // Create proposal data with user contact info
+    // Create proposal data
     const proposalData: ProposalData = {
       user_id: userId,
       client_name: parsedData.client_name!,
@@ -412,10 +407,7 @@ export async function processProposalInput(message: string, userId: string): Pro
       budget: parsedData.budget!,
       currency: parsedData.currency || 'USD',
       features: parsedData.features,
-      status: 'draft',
-      user_name: user.name,
-      user_phone: user.phone_number,
-      user_email: user.email
+      status: 'draft'
     };
     
     // Save to database

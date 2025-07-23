@@ -3372,7 +3372,7 @@ async function handleSendProposal(params: any, userId: string) {
     }
 
     // Check if proposal belongs to user
-    if (proposal.user_identifier !== userId) {
+    if (proposal.user_id !== userId) {
       return { text: "You don't have permission to access this proposal." };
     }
 
@@ -3462,7 +3462,7 @@ async function handleEditProposal(params: any, userId: string) {
     }
 
     // Check if proposal belongs to user
-    if (proposal.user_identifier !== userId) {
+    if (proposal.user_id !== userId) {
       return { text: "You don't have permission to access this proposal." };
     }
 
