@@ -254,7 +254,35 @@ We're excited about the opportunity to work with you on this project. Please don
 `.trim();
 }
 
+// Helper function to ensure user exists in the database
+async function ensureUserExists(userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
+      console.error('Error checking user existence:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (error) {
+    console.error('Error in ensureUserExists:', error);
+    return false;
+  }
+}
+
 export async function saveProposal(proposalData: ProposalData): Promise<string> {
+  // First, ensure the user exists
+  const userExists = await ensureUserExists(proposalData.user_id);
+  if (!userExists) {
+    console.error(`User ${proposalData.user_id} does not exist in users table`);
+    throw new Error(`User ${proposalData.user_id} not found. Please ensure you are authenticated properly.`);
+  }
+
   const { data, error } = await supabase
     .from('proposals')
     .insert([{
@@ -344,6 +372,13 @@ export function suggestMissingInfo(parsedData: ParsedProposalInput): string {
 
 export async function processProposalInput(message: string, userId: string): Promise<string> {
   try {
+    // Validate userId format (should be a valid UUID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      console.error(`Invalid userId format: ${userId}`);
+      return 'Authentication error: Invalid user ID format. Please try logging in again.';
+    }
+
     // Parse the input message
     const parsedData = parseProposalInput(message);
     
@@ -377,6 +412,17 @@ export async function processProposalInput(message: string, userId: string): Pro
     
   } catch (error) {
     console.error('Error processing proposal input:', error);
+    
+    // Check if it's a user authentication error
+    if (error instanceof Error && error.message.includes('not found')) {
+      return 'Authentication error: Your user account was not found. Please try restarting the conversation or contact support if the issue persists.';
+    }
+    
+    // Check if it's a database connection error
+    if (error instanceof Error && error.message.includes('database')) {
+      return 'Database error: Unable to save your proposal. Please try again in a moment.';
+    }
+    
     return 'Sorry, I encountered an error while generating your proposal. Please try again or contact support if the issue persists.';
   }
 }
