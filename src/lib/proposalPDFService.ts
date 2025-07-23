@@ -331,17 +331,18 @@ export function generateProposalHTML(
   `;
 }
 
-export async function generatePDF(proposal: ProposalData, options: PDFGenerationOptions = {}): Promise<Buffer> {
+export async function generatePDF(proposal: ProposalData, options: PDFGenerationOptions = { template: 'detailed' }): Promise<Buffer> {
   try {
     console.log('[generatePDF] Generating PDF for proposal:', proposal.id);
     
     // Create the PDF document using react-pdf
-    const stream = await pdf(
-      React.createElement(ProposalDocument, { proposal, options })
-    ).toBlob();
+    const pdfDoc = pdf(
+      React.createElement(ProposalDocument, { proposal, options }) as any
+    );
     
-    // Convert Blob to ArrayBuffer then to Buffer
-    const arrayBuffer = await stream.arrayBuffer();
+    // Convert to blob first, then to buffer
+    const blob = await pdfDoc.toBlob();
+    const arrayBuffer = await blob.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     
     console.log('[generatePDF] PDF generated successfully, size:', buffer.length);
