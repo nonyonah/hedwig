@@ -779,13 +779,34 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
 export function proposalTemplate({ client_name }: { client_name: string }) {
   return {
     name: 'proposal_template',
+    category: 'UTILITY',
     language: { code: 'en' },
     components: [
       {
+        type: 'HEADER',
+        format: 'DOCUMENT',
+        example: {
+          header_handle: [
+            'https://example.com/proposal-document.pdf'
+          ]
+        }
+      },
+      {
         type: 'BODY',
+        text: "Hi {{1}}, your proposal is ready! I've just created the document and it's been attached above. You can download, review, or share it with your client right away. 🤗",
         parameters: [
-          { type: 'text', text: sanitizeWhatsAppParam(client_name) }
-        ]
+          {
+            type: 'text',
+            text: sanitizeWhatsAppParam(client_name)
+          }
+        ],
+        example: {
+          body_text: [
+            [
+              'Nonso'
+            ]
+          ]
+        }
       }
     ]
   };
