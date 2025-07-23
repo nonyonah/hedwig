@@ -421,13 +421,32 @@ export async function processProposalInput(message: string, userId: string): Pro
     // Save to database
     const proposalId = await saveProposal(proposalData);
     
-    // Generate PDF download link
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
+    // Generate PDF using react-pdf
+    const { generatePDF } = await import('./proposalPDFService');
+    const pdfBuffer = await generatePDF(proposalData);
     
-    const responseMessage = `✅ **Proposal Created Successfully!**\n\n**Proposal ID:** ${proposalId}\n**Client:** ${proposalData.client_name}\n**Service:** ${proposalData.service_type.replace('_', ' ')}\n**Budget:** ${proposalData.currency} ${proposalData.budget}\n**Timeline:** ${proposalData.timeline}\n\n📄 **Download PDF:** ${pdfDownloadUrl}\n\n💡 **What would you like to do next?**\n• Type "send proposal" to email it to your client\n• Type "send myself" to send it to yourself first\n• Share the PDF link directly with your client\n\n📋 **Other options:**\n• Edit details: "edit proposal ${proposalId}"\n• View all proposals: "show my proposals"`;
+    // Send PDF as WhatsApp document
+    const { sendWhatsAppDocument } = await import('./whatsappUtils');
+    const filename = `proposal-${proposalData.client_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'client'}-${proposalId}.pdf`;
+    const caption = `📄 **Proposal for ${proposalData.client_name}**\n\n💰 Budget: ${proposalData.currency} ${proposalData.budget}\n⏰ Timeline: ${proposalData.timeline}\n\n✅ Your professional proposal is ready!`;
     
-    return { message: responseMessage, proposalId };
+    try {
+      await sendWhatsAppDocument(user.phone_number!, pdfBuffer, filename, caption);
+      
+      const responseMessage = `✅ **Proposal Created & Sent!**\n\n**Proposal ID:** ${proposalId}\n**Client:** ${proposalData.client_name}\n**Service:** ${proposalData.service_type.replace('_', ' ')}\n**Budget:** ${proposalData.currency} ${proposalData.budget}\n**Timeline:** ${proposalData.timeline}\n\n📄 **PDF sent above** ⬆️\n\n💡 **What would you like to do next?**\n• Type "send proposal to client" to email it to your client\n• Type "edit proposal ${proposalId}" to make changes\n• View all proposals: "show my proposals"`;
+      
+      return { message: responseMessage, proposalId };
+    } catch (pdfError) {
+      console.error('Error sending PDF via WhatsApp:', pdfError);
+      
+      // Fallback to download link if PDF sending fails
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+      const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
+      
+      const responseMessage = `✅ **Proposal Created Successfully!**\n\n**Proposal ID:** ${proposalId}\n**Client:** ${proposalData.client_name}\n**Service:** ${proposalData.service_type.replace('_', ' ')}\n**Budget:** ${proposalData.currency} ${proposalData.budget}\n**Timeline:** ${proposalData.timeline}\n\n📄 **Download PDF:** ${pdfDownloadUrl}\n\n💡 **What would you like to do next?**\n• Type "send proposal to client" to email it to your client\n• Type "edit proposal ${proposalId}" to make changes\n• View all proposals: "show my proposals"`;
+      
+      return { message: responseMessage, proposalId };
+    }
     
   } catch (error) {
     console.error('[processProposalInput] Error:', error);

@@ -3327,18 +3327,8 @@ async function handleCreateProposal(params: any, userId: string) {
     // Process the proposal input using the proposal service
     const result = await processProposalInput(message, userId);
 
-    // Handle the new response format
-    if (typeof result === 'object' && result.proposalId) {
-      // Proposal was successfully created
-      const downloadUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/proposal-pdf/${result.proposalId}`;
-      
-      return { 
-        text: `${result.message}\n\n📄 **Download your proposal:** ${downloadUrl}\n\n💡 **What would you like to do next?**\n• Type "send proposal to client" if you want me to email it to your client\n• Or download and send it yourself using the link above\n\nJust let me know how you'd like to proceed!`
-      };
-    } else {
-      // Return the message as is (could be asking for more info or an error)
-      return { text: typeof result === 'string' ? result : result.message };
-    }
+    // Return the message from the proposal service (which now handles PDF generation and sending)
+    return { text: typeof result === 'string' ? result : result.message };
 
   } catch (error) {
     console.error("[handleCreateProposal] Error:", error);

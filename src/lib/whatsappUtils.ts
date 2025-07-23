@@ -414,6 +414,139 @@ export async function sendWhatsAppReplyButtons(
 }
 
 /**
+ * Sends a document (PDF) via WhatsApp
+ */
+export async function sendWhatsAppDocument(
+  to: string,
+  documentBuffer: Buffer,
+  filename: string,
+  caption: string = "",
+): Promise<WhatsAppMessageResponse> {
+  try {
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+
+    // Check if we have valid credentials before attempting to send
+    if (
+      !accessToken ||
+      accessToken.includes("dev-") ||
+      accessToken === "EAABBC"
+    ) {
+      console.warn(
+        `[WhatsApp] Missing valid WhatsApp access token. Document to ${to} will not be sent.`,
+      );
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          `[DEV MODE] Would have sent WhatsApp document to ${to}: ${filename}`,
+        );
+        return {
+          messaging_product: "whatsapp",
+          contacts: [{ input: to, wa_id: to }],
+          messages: [{ id: `mock-doc-${Date.now()}` }],
+        };
+      }
+      throw new Error("Missing valid WhatsApp access token");
+    }
+
+    if (!phoneNumberId || phoneNumberId.includes("dev-")) {
+      console.warn(
+        `[WhatsApp] Missing valid WhatsApp phone number ID. Document to ${to} will not be sent.`,
+      );
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          `[DEV MODE] Would have sent WhatsApp document to ${to} using phone ID: ${phoneNumberId}`,
+        );
+        return {
+          messaging_product: "whatsapp",
+          contacts: [{ input: to, wa_id: to }],
+          messages: [{ id: `mock-doc-${Date.now()}` }],
+        };
+      }
+      throw new Error("Missing valid WhatsApp phone number ID");
+    }
+
+    // First, upload the media to WhatsApp
+    const formData = new FormData();
+    formData.append('file', new Blob([documentBuffer], { type: 'application/pdf' }), filename);
+    formData.append('type', 'document');
+    formData.append('messaging_product', 'whatsapp');
+
+    const uploadResponse = await fetch(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/media`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: formData,
+      },
+    );
+
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.text();
+      console.error(
+        "Error uploading document to WhatsApp:",
+        uploadResponse.status,
+        errorData,
+      );
+      throw new Error(`Failed to upload document to WhatsApp: ${errorData}`);
+    }
+
+    const uploadResult = await uploadResponse.json();
+    const mediaId = uploadResult.id;
+
+    console.log(`Document uploaded to WhatsApp with media ID: ${mediaId}`);
+
+    // Now send the document message
+    const messageResponse = await fetch(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to,
+          type: "document",
+          document: {
+            id: mediaId,
+            caption: caption || "",
+            filename: filename,
+          },
+        }),
+      },
+    );
+
+    if (!messageResponse.ok) {
+      const errorData = await messageResponse.text();
+      console.error(
+        "Error sending WhatsApp document:",
+        messageResponse.status,
+        errorData,
+      );
+      throw new Error(`Failed to send WhatsApp document: ${errorData}`);
+    }
+
+    const result = await messageResponse.json();
+    console.log("WhatsApp document sent successfully to:", to);
+    return result;
+  } catch (err) {
+    console.error("Exception in sendWhatsAppDocument:", err);
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[DEV MODE] Providing mock WhatsApp response due to error");
+      return {
+        messaging_product: "whatsapp",
+        contacts: [{ input: to, wa_id: to }],
+        messages: [{ id: `error-doc-mock-${Date.now()}` }],
+      };
+    }
+    throw err;
+  }
+}
+
+/**
  * Validates a WhatsApp phone number format
  */
 export function validatePhoneNumber(phoneNumber: string): boolean {
