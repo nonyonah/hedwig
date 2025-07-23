@@ -779,7 +779,6 @@ export function usersWalletAddresses({ evm_wallet, solana_wallet }: { evm_wallet
 export function proposalTemplate({ client_name }: { client_name: string }) {
   return {
     name: 'proposal_template',
-    category: 'UTILITY',
     language: { code: 'en' },
     components: [
       {
