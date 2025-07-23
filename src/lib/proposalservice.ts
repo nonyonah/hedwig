@@ -7,7 +7,8 @@ const supabase = createClient(
 
 export interface ProposalData {
   id?: string;
-  user_id: string;
+  user_id: string; // Keep for backward compatibility in the interface
+  user_identifier?: string; // New field for database storage
   client_name?: string;
   client_email?: string;
   service_type: string;
@@ -254,65 +255,11 @@ We're excited about the opportunity to work with you on this project. Please don
 `.trim();
 }
 
-// Helper function to ensure user exists in the database, creating them if necessary
-async function ensureUserExists(userId: string): Promise<boolean> {
-  try {
-    // First check if user exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single();
-
-    if (existingUser) {
-      return true; // User exists
-    }
-
-    // If user doesn't exist (and it's not just a query error), create them
-    if (checkError && checkError.code === 'PGRST116') { // PGRST116 is "not found" error
-      console.log(`User ${userId} not found, creating new user record`);
-      
-      // Create the user with minimal required fields
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert([{
-          id: userId,
-          phone_number: `unknown_${userId.substring(0, 8)}`, // Temporary phone number
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }]);
-
-      if (insertError) {
-        console.error('Error creating user:', insertError);
-        return false;
-      }
-
-      console.log(`Successfully created user ${userId}`);
-      return true;
-    }
-
-    // If there was a different error, log it and return false
-    console.error('Error checking user existence:', checkError);
-    return false;
-
-  } catch (error) {
-    console.error('Error in ensureUserExists:', error);
-    return false;
-  }
-}
-
 export async function saveProposal(proposalData: ProposalData): Promise<string> {
-  // First, ensure the user exists (create if necessary)
-  const userExists = await ensureUserExists(proposalData.user_id);
-  if (!userExists) {
-    console.error(`Failed to ensure user ${proposalData.user_id} exists in users table`);
-    throw new Error(`Unable to create or verify user account. Please try again or contact support.`);
-  }
-
   const { data, error } = await supabase
     .from('proposals')
     .insert([{
-      user_id: proposalData.user_id,
+      user_identifier: proposalData.user_id, // Use user_identifier instead of user_id
       client_name: proposalData.client_name,
       client_email: proposalData.client_email,
       service_type: proposalData.service_type,
@@ -355,7 +302,7 @@ export async function getUserProposals(userId: string): Promise<ProposalData[]> 
   const { data, error } = await supabase
     .from('proposals')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_identifier', userId) // Use user_identifier instead of user_id
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -439,12 +386,7 @@ export async function processProposalInput(message: string, userId: string): Pro
   } catch (error) {
     console.error('Error processing proposal input:', error);
     
-    // Check if it's a user authentication error
-    if (error instanceof Error && error.message.includes('not found')) {
-      return 'Authentication error: Your user account was not found. Please try restarting the conversation or contact support if the issue persists.';
-    }
-    
-    // Check if it's a database connection error
+    // Simplified error handling since we no longer check user existence
     if (error instanceof Error && error.message.includes('database')) {
       return 'Database error: Unable to save your proposal. Please try again in a moment.';
     }
