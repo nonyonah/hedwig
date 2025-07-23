@@ -783,16 +783,15 @@ export function proposalTemplate({ client_name }: { client_name: string }) {
     components: [
       {
         type: 'HEADER',
-        format: 'DOCUMENT',
         example: {
           header_handle: [
-            'https://example.com/proposal-document.pdf'
+            'https://scontent.whatsapp.net/v/t61.29466-34/520813183_1826922081502054_2090106640619713035_n.pdf?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=A8FOu5GMqN8Q7kNvwHaJy81&_nc_oc=AdnBsQHc_O1peEDCOXn9rrnDkbmPglfEfgtfNPk4UTaaWmCaidBEaavH1syjJDDg7Mq0h0_vTt4RLzlDdVMVj6C9&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=yKB6gYm7egBKjyxzDedWyQ&oh=01_Q5Aa2AELoUH0Rc9m1cfxj3PfQjKc11ItpNMrp1YnCRsScv3NFg&oe=68A8B383'
           ]
         }
       },
       {
         type: 'BODY',
-        text: "Hi {{1}}, your proposal is ready! I've just created the document and it's been attached above. You can download, review, or share it with your client right away. 🤗",
+        text: "Hi {{1}}, your proposal is ready! I've just created the document and it's been attached above.\n\nYou can download, review, or share it with your client right away.🤗",
         parameters: [
           {
             type: 'text',
