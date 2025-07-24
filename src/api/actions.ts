@@ -988,6 +988,9 @@ export async function handleAction(
   case "create_payment_link":
     console.log(`[handleAction] Processing 'create_payment_link' intent with params:`, params);
     return await handleCreatePaymentLink(params, userId);
+  case "create_invoice":
+    console.log(`[handleAction] Processing 'create_invoice' intent with params:`, params);
+    return await handleCreateInvoice(params, userId);
   case "get_earnings":
     console.log(`[handleAction] Processing 'get_earnings' intent with params:`, params);
     return await handleGetEarnings(params, userId);
@@ -3216,6 +3219,168 @@ async function handleCreatePaymentLink(params: any, userId: string) {
   } catch (error) {
     console.error("[handleCreatePaymentLink] Error:", error);
     return { text: "Error creating payment link. Please try again later." };
+  }
+}
+
+// Handler for creating invoices
+async function handleCreateInvoice(params: any, userId: string) {
+  try {
+    console.log(`[handleCreateInvoice] Creating invoice with params:`, params);
+
+    // Get user info
+    const { data: user } = await supabase
+      .from("users")
+      .select("name, phone_number, email")
+      .eq("id", userId)
+      .single();
+
+    if (!user) {
+      return { text: "Error fetching user details. Please try again." };
+    }
+
+    // Check if user has a name (not a generated one)
+    if (!user.name || user.name.startsWith('User_')) {
+      // Store the pending invoice parameters in session context
+      await supabase.from("sessions").upsert(
+        [
+          {
+            user_id: userId,
+            context: [
+              {
+                role: "system",
+                content: JSON.stringify({
+                  waiting_for: "name",
+                  pending_invoice_params: params
+                })
+              }
+            ],
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: "user_id" }
+      );
+
+      return {
+        text: "Before I can create a professional invoice, I need to know your name. This will be used as the freelancer/service provider name on the invoice.\n\nWhat's your name?"
+      };
+    }
+
+    const userName = user.name;
+    const userEmail = user.email || `${userName.toLowerCase().replace(/\s+/g, '.')}@hedwigbot.xyz`;
+
+    // Extract and validate parameters
+    const clientName = params.client_name;
+    const clientEmail = params.client_email;
+    const amount = params.amount;
+    const currency = params.currency || 'USD';
+    const description = params.description || 'Professional Services';
+    const dueDate = params.due_date;
+    const invoiceNumber = params.invoice_number;
+
+    // Check for missing required parameters
+    if (!clientName && !clientEmail && !amount) {
+      return { 
+        text: "To create an invoice, I need at least a client name, client email, and amount.\n\nExample: 'Create invoice for ABC Corp, client@company.com, $2500 for web development'\n\nPlease provide:\n• Client name\n• Client email\n• Amount\n• Description (optional)\n• Due date (optional)" 
+      };
+    }
+
+    if (!clientName) {
+      return { 
+        text: "Please specify the client name for the invoice.\n\nExample: 'Create invoice for ABC Corp, client@company.com, $2500'" 
+      };
+    }
+
+    if (!clientEmail) {
+      return { 
+        text: "Please specify the client's email address.\n\nExample: 'Create invoice for ABC Corp, client@company.com, $2500'" 
+      };
+    }
+
+    if (!amount) {
+      return { 
+        text: "Please specify the invoice amount.\n\nExample: 'Create invoice for ABC Corp, client@company.com, $2500'" 
+      };
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(clientEmail)) {
+      return { 
+        text: "Please provide a valid client email address.\n\nExample: 'Create invoice for ABC Corp, client@company.com, $2500'" 
+      };
+    }
+
+    // Get user's wallet address for payment
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("address, chain")
+      .eq("user_id", userId);
+
+    if (!wallets || wallets.length === 0) {
+      return { 
+        text: "You need a wallet to create invoices for crypto payments. Please create a wallet first by typing 'create wallet'." 
+      };
+    }
+
+    const wallet = wallets[0]; // Use first available wallet
+
+    // Import invoice service functions
+    const { createInvoice, generateInvoiceNumber, sendInvoiceEmail } = await import('../lib/invoiceService');
+
+    // Prepare invoice data
+    const invoiceData = {
+      freelancer_name: userName,
+      freelancer_email: userEmail,
+      client_name: clientName,
+      client_email: clientEmail,
+      project_description: description,
+      deliverables: description,
+      price: parseFloat(amount),
+      amount: parseFloat(amount),
+      wallet_address: wallet.address,
+      blockchain: 'base' as const,
+      status: 'draft' as const,
+      invoice_number: invoiceNumber || generateInvoiceNumber(),
+      due_date: dueDate,
+      payment_instructions: `Payment can be made via cryptocurrency to the wallet address provided. Please use the secure payment link included in this invoice.`,
+      additional_notes: `Thank you for your business! If you have any questions about this invoice, please don't hesitate to contact me.`
+    };
+
+    // Create invoice in database
+    const invoice = await createInvoice(invoiceData);
+
+    // Check if invoice was created successfully with an ID
+    if (!invoice.id) {
+      throw new Error('Invoice creation failed - no ID returned');
+    }
+
+    // Generate payment URL
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+    const paymentUrl = `${baseUrl}/pay/${invoice.id}`;
+
+    // Try to send invoice email
+    try {
+      const emailSent = await sendInvoiceEmail(invoice.id);
+      
+      if (emailSent) {
+        return {
+          text: `✅ **Invoice Created and Sent Successfully!**\n\n📄 **Invoice #${invoice.invoice_number}**\n👤 **Client:** ${clientName}\n📧 **Email:** ${clientEmail}\n💰 **Amount:** ${currency} ${amount}\n📝 **Description:** ${description}\n💳 **Payment Method:** Cryptocurrency\n👤 **Your wallet:** ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 **Payment URL:**\n${paymentUrl}\n\n📧 **Professional invoice with PDF has been sent to ${clientEmail}**\n\n💡 **Next steps:**\n• Follow up with your client\n• Track payment status\n• Send reminders if needed`
+        };
+      } else {
+        return {
+          text: `✅ **Invoice Created Successfully!**\n\n📄 **Invoice #${invoice.invoice_number}**\n👤 **Client:** ${clientName}\n📧 **Email:** ${clientEmail}\n💰 **Amount:** ${currency} ${amount}\n📝 **Description:** ${description}\n💳 **Payment Method:** Cryptocurrency\n👤 **Your wallet:** ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 **Payment URL:**\n${paymentUrl}\n\n⚠️ **Note:** There was an issue sending the email. You can share the payment link with your client directly.\n\n💡 **Next steps:**\n• Share the payment link with your client\n• Follow up on payment status`
+        };
+      }
+    } catch (emailError) {
+      console.error(`[handleCreateInvoice] Error sending invoice email:`, emailError);
+      return {
+        text: `✅ **Invoice Created Successfully!**\n\n📄 **Invoice #${invoice.invoice_number}**\n👤 **Client:** ${clientName}\n📧 **Email:** ${clientEmail}\n💰 **Amount:** ${currency} ${amount}\n📝 **Description:** ${description}\n💳 **Payment Method:** Cryptocurrency\n👤 **Your wallet:** ${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}\n\n🔗 **Payment URL:**\n${paymentUrl}\n\n⚠️ **Note:** Invoice created but email sending failed. You can share the payment link with your client directly.`
+      };
+    }
+
+  } catch (error) {
+    console.error("[handleCreateInvoice] Error:", error);
+    return { text: "Error creating invoice. Please try again later." };
   }
 }
 
