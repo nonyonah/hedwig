@@ -1,7 +1,8 @@
 /**
  * Currency Conversion Service
- * Replaces the price alert logic with real-time currency conversion and exchange rate lookup
- * Supports both crypto (via CoinGecko) and fiat (via ExchangeRate.host) currencies
+ * Uses CNGN (Celo Naira) and USDC tokens instead of fiat currencies
+ * CNGN maintains 1:1 parity with NGN, USDC maintains 1:1 parity with USD
+ * All conversions use on-chain token prices via CoinGecko
  */
 
 export interface ConversionResult {
@@ -43,44 +44,29 @@ const CURRENCY_MAPPINGS: Record<string, string> = {
   'avax': 'AVAX',
   'chainlink': 'LINK',
   'link': 'LINK',
+  'celo': 'CELO',
+  'celo-dollar': 'CUSD',
+  'cusd': 'CUSD',
+  'celo-naira': 'CNGN',
+  'cngn': 'CNGN',
   
-  // Fiat currencies
-  'dollar': 'USD',
-  'dollars': 'USD',
-  'usd': 'USD',
-  'naira': 'NGN',
-  'ngn': 'NGN',
-  'euro': 'EUR',
+  // Map traditional currency names to their token equivalents
+  'dollar': 'USDC',        // USD -> USDC (1:1 parity)
+  'dollars': 'USDC',
+  'usd': 'USDC',
+  'naira': 'CNGN',         // NGN -> CNGN (1:1 parity)
+  'ngn': 'CNGN',
+  
+  // Other crypto currencies
+  'euro': 'EUR',           // Keep for future token implementation
   'euros': 'EUR',
   'eur': 'EUR',
   'pound': 'GBP',
   'pounds': 'GBP',
-  'gbp': 'GBP',
-  'yen': 'JPY',
-  'jpy': 'JPY',
-  'cad': 'CAD',
-  'canadian-dollar': 'CAD',
-  'aud': 'AUD',
-  'australian-dollar': 'AUD',
-  'chf': 'CHF',
-  'swiss-franc': 'CHF',
-  'cny': 'CNY',
-  'yuan': 'CNY',
-  'inr': 'INR',
-  'rupee': 'INR',
-  'rupees': 'INR',
-  'krw': 'KRW',
-  'won': 'KRW',
-  'brl': 'BRL',
-  'real': 'BRL',
-  'zar': 'ZAR',
-  'rand': 'ZAR',
-  'mxn': 'MXN',
-  'peso': 'MXN',
-  'pesos': 'MXN'
+  'gbp': 'GBP'
 };
 
-// CoinGecko ID mappings for crypto currencies
+// CoinGecko ID mappings for crypto currencies and tokens
 const COINGECKO_IDS: Record<string, string> = {
   'BTC': 'bitcoin',
   'ETH': 'ethereum',
@@ -91,15 +77,14 @@ const COINGECKO_IDS: Record<string, string> = {
   'ADA': 'cardano',
   'MATIC': 'matic-network',
   'AVAX': 'avalanche-2',
-  'LINK': 'chainlink'
+  'LINK': 'chainlink',
+  'CELO': 'celo',
+  'CUSD': 'celo-dollar',
+  'CNGN': 'celo-naira'
 };
 
-// Supported crypto and fiat currencies
-const CRYPTO_CURRENCIES = new Set(Object.keys(COINGECKO_IDS));
-const FIAT_CURRENCIES = new Set([
-  'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'KRW', 
-  'BRL', 'ZAR', 'MXN', 'NGN', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF'
-]);
+// All supported currencies are now crypto/tokens
+const SUPPORTED_CURRENCIES = new Set(Object.keys(COINGECKO_IDS));
 
 /**
  * Normalize currency symbol or name to standard format
@@ -110,17 +95,25 @@ export function normalizeCurrency(currency: string): string {
 }
 
 /**
- * Check if a currency is a cryptocurrency
+ * Check if a currency is supported
  */
-export function isCryptoCurrency(currency: string): boolean {
-  return CRYPTO_CURRENCIES.has(currency);
+export function isSupportedCurrency(currency: string): boolean {
+  return SUPPORTED_CURRENCIES.has(currency);
 }
 
 /**
- * Check if a currency is a fiat currency
+ * Check if a currency is a cryptocurrency/token (all currencies are now crypto/tokens)
+ */
+export function isCryptoCurrency(currency: string): boolean {
+  return SUPPORTED_CURRENCIES.has(currency);
+}
+
+/**
+ * Check if a currency is a fiat currency (deprecated - keeping for backward compatibility)
  */
 export function isFiatCurrency(currency: string): boolean {
-  return FIAT_CURRENCIES.has(currency);
+  // All currencies are now tokens, but we map traditional fiat to their token equivalents
+  return currency === 'USDC' || currency === 'CNGN';
 }
 
 /**
@@ -173,19 +166,27 @@ export function parseConversionRequest(input: string): ConversionRequest | null 
 }
 
 /**
- * Fetch crypto exchange rate from CoinGecko
+ * Fetch token exchange rate from CoinGecko
  */
-async function fetchCryptoRate(fromCrypto: string, toCurrency: string): Promise<number> {
-  const coinId = COINGECKO_IDS[fromCrypto];
-  if (!coinId) {
-    throw new Error(`Unsupported cryptocurrency: ${fromCrypto}`);
+async function fetchTokenRate(fromToken: string, toToken: string): Promise<number> {
+  const fromCoinId = COINGECKO_IDS[fromToken];
+  const toCoinId = COINGECKO_IDS[toToken];
+  
+  if (!fromCoinId) {
+    throw new Error(`Unsupported token: ${fromToken}`);
   }
   
-  const vsCurrency = isCryptoCurrency(toCurrency) ? 
-    COINGECKO_IDS[toCurrency] : 
-    toCurrency.toLowerCase();
+  if (!toCoinId) {
+    throw new Error(`Unsupported token: ${toToken}`);
+  }
   
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=${vsCurrency}`;
+  // If same token, return 1
+  if (fromToken === toToken) {
+    return 1;
+  }
+  
+  // Get both token prices in USD
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${fromCoinId},${toCoinId}&vs_currencies=usd`;
   
   const response = await fetch(url);
   if (!response.ok) {
@@ -193,65 +194,15 @@ async function fetchCryptoRate(fromCrypto: string, toCurrency: string): Promise<
   }
   
   const data = await response.json();
-  const rate = data[coinId]?.[vsCurrency];
+  const fromPrice = data[fromCoinId]?.usd;
+  const toPrice = data[toCoinId]?.usd;
   
-  if (rate === undefined) {
-    throw new Error(`Exchange rate not found for ${fromCrypto} to ${toCurrency}`);
+  if (fromPrice === undefined || toPrice === undefined) {
+    throw new Error(`Exchange rate not found for ${fromToken} to ${toToken}`);
   }
   
-  return rate;
-}
-
-/**
- * Fetch fiat exchange rate from OpenExchangeRates
- */
-async function fetchFiatRate(fromFiat: string, toFiat: string): Promise<number> {
-  if (fromFiat === toFiat) {
-    return 1;
-  }
-  
-  const accessKey = process.env.access_key;
-  
-  try {
-    // Primary: Use OpenExchangeRates API with access key
-    if (accessKey) {
-      const url = `https://openexchangerates.org/api/latest.json?app_id=${accessKey}&base=USD&symbols=${fromFiat},${toFiat}`;
-      
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.rates) {
-          // Calculate conversion rate
-          const fromRate = data.rates[fromFiat] || (fromFiat === 'USD' ? 1 : null);
-          const toRate = data.rates[toFiat] || (toFiat === 'USD' ? 1 : null);
-          
-          if (fromRate && toRate) {
-            return toRate / fromRate;
-          }
-        }
-      }
-    }
-    
-    // Fallback: Use exchangerate.host (no API key required)
-    const fallbackUrl = `https://api.exchangerate.host/convert?from=${fromFiat}&to=${toFiat}&amount=1`;
-    
-    const response = await fetch(fallbackUrl);
-    if (!response.ok) {
-      throw new Error(`Exchange rate API error: ${response.status} ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    
-    if (!data.success) {
-      throw new Error(`Exchange rate API error: ${data.error?.info || 'Unknown error'}`);
-    }
-    
-    return data.result;
-  } catch (error) {
-    console.error('Fiat rate fetch error:', error);
-    throw error;
-  }
+  // Calculate cross rate
+  return fromPrice / toPrice;
 }
 
 /**
@@ -261,44 +212,20 @@ export async function convertCurrency(request: ConversionRequest): Promise<Conve
   const { fromCurrency, toCurrency, amount } = request;
   
   // Validate currencies
-  const fromIsCrypto = isCryptoCurrency(fromCurrency);
-  const fromIsFiat = isFiatCurrency(fromCurrency);
-  const toIsCrypto = isCryptoCurrency(toCurrency);
-  const toIsFiat = isFiatCurrency(toCurrency);
-  
-  if (!fromIsCrypto && !fromIsFiat) {
+  if (!isSupportedCurrency(fromCurrency)) {
     throw new Error(`Unsupported source currency: ${fromCurrency}`);
   }
   
-  if (!toIsCrypto && !toIsFiat) {
+  if (!isSupportedCurrency(toCurrency)) {
     throw new Error(`Unsupported target currency: ${toCurrency}`);
   }
   
   let exchangeRate: number;
-  let source: string;
+  const source = 'CoinGecko';
   
   try {
-    if (fromIsCrypto) {
-      // From crypto to any currency
-      exchangeRate = await fetchCryptoRate(fromCurrency, toCurrency);
-      source = 'CoinGecko';
-    } else if (fromIsFiat && toIsFiat) {
-      // Fiat to fiat
-      exchangeRate = await fetchFiatRate(fromCurrency, toCurrency);
-      source = 'OpenExchangeRates.org';
-    } else if (fromIsFiat && toIsCrypto) {
-      // Fiat to crypto: convert fiat to USD first, then USD to crypto
-      if (fromCurrency === 'USD') {
-        exchangeRate = 1 / await fetchCryptoRate(toCurrency, 'USD');
-      } else {
-        const fiatToUsd = await fetchFiatRate(fromCurrency, 'USD');
-        const usdToCrypto = 1 / await fetchCryptoRate(toCurrency, 'USD');
-        exchangeRate = fiatToUsd * usdToCrypto;
-      }
-      source = 'CoinGecko + OpenExchangeRates.org';
-    } else {
-      throw new Error(`Unsupported conversion: ${fromCurrency} to ${toCurrency}`);
-    }
+    // All conversions now use CoinGecko token prices
+    exchangeRate = await fetchTokenRate(fromCurrency, toCurrency);
     
     const convertedAmount = amount * exchangeRate;
     
@@ -326,15 +253,17 @@ export function formatConversionResult(result: ConversionResult): string {
   
   // Format currency names for display
   const formatCurrency = (code: string) => {
-    if (code === 'NGN') return 'Naira (NGN)';
-    if (code === 'USD') return 'US Dollars (USD)';
+    if (code === 'CNGN') return 'Celo Naira (CNGN)';
+    if (code === 'USDC') return 'USD Coin (USDC)';
+    if (code === 'CUSD') return 'Celo Dollar (CUSD)';
+    if (code === 'CELO') return 'Celo (CELO)';
     return code;
   };
   
   const fromCurrency = formatCurrency(base_currency);
   const toCurrency = formatCurrency(quote_currency);
   
-  return `💱 Currency Conversion\n\n` +
+  return `💱 Token Conversion\n\n` +
     `${amount_requested} ${fromCurrency} = ${converted_amount.toLocaleString()} ${toCurrency}\n\n` +
     `Exchange Rate: 1 ${base_currency} = ${exchange_rate.toLocaleString()} ${quote_currency}\n` +
     `Source: ${source}\n` +
@@ -351,10 +280,11 @@ export async function handleCurrencyConversion(input: string): Promise<{ text: s
     if (!request) {
       return {
         text: "❌ Invalid Request\n\nI couldn't understand your conversion request. Please try formats like:\n\n" +
-          "• \"Convert 300 USD to NGN\"\n" +
-          "• \"How much is 0.1 ETH in USD?\"\n" +
-          "• \"What is the exchange rate from USD to NGN?\"\n" +
-          "• \"What's the value of 1 BTC in Naira?\""
+          "• \"Convert 300 USDC to CNGN\"\n" +
+          "• \"How much is 0.1 CELO in USDC?\"\n" +
+          "• \"What is the exchange rate from USDC to CNGN?\"\n" +
+          "• \"What's the value of 1 BTC in CNGN?\"\n\n" +
+          "Supported tokens: CELO, CUSD, CNGN, USDC, BTC, ETH"
       };
     }
     
