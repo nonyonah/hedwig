@@ -73,6 +73,7 @@ const nextConfig = {
     NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
     // MORALIS_API_KEY: process.env.MORALIS_API_KEY,
     API_KEY_0X: process.env.API_KEY_0X,  
+    access_key: process.env.access_key,
   },
 
   reactStrictMode: true,

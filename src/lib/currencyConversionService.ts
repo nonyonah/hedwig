@@ -210,11 +210,30 @@ async function fetchFiatRate(fromFiat: string, toFiat: string): Promise<number> 
     return 1;
   }
   
-  // Use OpenExchangeRates API (free tier)
-  const url = `https://api.openexchangerates.org/api/latest.json?app_id=YOUR_APP_ID&base=USD&symbols=${fromFiat},${toFiat}`;
+  const accessKey = process.env.access_key;
   
   try {
-    // For now, fallback to exchangerate.host as it doesn't require API key
+    // Primary: Use OpenExchangeRates API with access key
+    if (accessKey) {
+      const url = `https://openexchangerates.org/api/latest.json?app_id=${accessKey}&base=USD&symbols=${fromFiat},${toFiat}`;
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.rates) {
+          // Calculate conversion rate
+          const fromRate = data.rates[fromFiat] || (fromFiat === 'USD' ? 1 : null);
+          const toRate = data.rates[toFiat] || (toFiat === 'USD' ? 1 : null);
+          
+          if (fromRate && toRate) {
+            return toRate / fromRate;
+          }
+        }
+      }
+    }
+    
+    // Fallback: Use exchangerate.host (no API key required)
     const fallbackUrl = `https://api.exchangerate.host/convert?from=${fromFiat}&to=${toFiat}&amount=1`;
     
     const response = await fetch(fallbackUrl);
@@ -266,7 +285,7 @@ export async function convertCurrency(request: ConversionRequest): Promise<Conve
     } else if (fromIsFiat && toIsFiat) {
       // Fiat to fiat
       exchangeRate = await fetchFiatRate(fromCurrency, toCurrency);
-      source = 'ExchangeRate.host';
+      source = 'OpenExchangeRates.org';
     } else if (fromIsFiat && toIsCrypto) {
       // Fiat to crypto: convert fiat to USD first, then USD to crypto
       if (fromCurrency === 'USD') {
@@ -276,7 +295,7 @@ export async function convertCurrency(request: ConversionRequest): Promise<Conve
         const usdToCrypto = 1 / await fetchCryptoRate(toCurrency, 'USD');
         exchangeRate = fiatToUsd * usdToCrypto;
       }
-      source = 'CoinGecko + ExchangeRate.host';
+      source = 'CoinGecko + OpenExchangeRates.org';
     } else {
       throw new Error(`Unsupported conversion: ${fromCurrency} to ${toCurrency}`);
     }
