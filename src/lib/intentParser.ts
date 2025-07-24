@@ -170,11 +170,25 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
     
-    // Price check keywords
+    // Currency conversion and exchange rate keywords
+    if (text.includes('exchange rate') || 
+        text.includes('convert') && (text.includes('usd') || text.includes('ngn') || text.includes('eur') || 
+                                    text.includes('btc') || text.includes('eth') || text.includes('dollar') || 
+                                    text.includes('naira') || text.includes('euro')) ||
+        text.includes('how much is') && (text.includes('in') || text.includes('to')) ||
+        text.includes('value of') && text.includes('in') ||
+        (text.includes('price') && text.includes('in')) ||
+        text.includes('worth') && text.includes('in')) {
+      const result = { intent: 'get_price', params: { original_message: llmResponse } };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+    
+    // Legacy price check keywords (for backward compatibility)
     if (text.includes('price') || 
         text.includes('how much is') || 
         text.includes('worth')) {
-      const result = { intent: 'get_price', params: {} };
+      const result = { intent: 'get_price', params: { original_message: llmResponse } };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }

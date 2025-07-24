@@ -47,7 +47,7 @@ import {
   bridgeQuoteConfirm,
   bridgeQuotePending,
 } from "@/lib/whatsappTemplates";
-import { analyzeTokenPrice, formatPriceResponse } from "@/lib/tokenPriceService";
+import { handleCurrencyConversion } from "@/lib/currencyConversionService";
 // import { PrivyClient } from '@privy-io/server-auth'; // Privy EVM support is now disabled
 import crypto from "crypto";
 
@@ -922,21 +922,22 @@ export async function handleAction(
 
   // Proposal generation feature has been removed
 
-  if (intent === "get_price") {
+  if (intent === "get_price" || intent === "currency_conversion" || intent === "exchange_rate") {
     try {
-      const token = params.token || 'ETH';
-      console.log(`[handleAction] Getting price for token: ${token}`);
+      console.log(`[handleAction] Processing currency conversion request: ${JSON.stringify(params)}`);
       
-      const priceData = await analyzeTokenPrice(token);
-      const response = formatPriceResponse(token, priceData);
+      // Use the original message for better parsing
+      const userMessage = params.original_message || params.message || '';
+      const result = await handleCurrencyConversion(userMessage);
       
       return {
-        text: response,
+        text: result.text,
+        data: result.data, // Include structured data for potential future use
       };
     } catch (error) {
-      console.error(`[handleAction] Error getting price for token:`, error);
+      console.error(`[handleAction] Error processing currency conversion:`, error);
       return {
-        text: `Sorry, I couldn't fetch the price for ${params.token || 'that token'} right now. Please try again later.`,
+        text: `❌ **Conversion Failed**\n\nSorry, I couldn't process your currency conversion request right now. Please try again later.`,
       };
     }
   }

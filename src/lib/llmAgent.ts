@@ -59,7 +59,7 @@ Valid intents:
 - swap: For swapping between tokens
 - bridge: For bridging tokens between chains
 - export_keys: For exporting private keys
-- get_price: For checking crypto prices
+- get_price: For currency conversion, exchange rates, and crypto prices
 - get_news: For crypto news
 - create_payment_link: For creating payment links or payment requests
 - create_invoice: For creating professional invoices with PDF generation
@@ -244,6 +244,22 @@ IMPORTANT INTENT RECOGNITION RULES:
 
 21. When user provides an address after being asked, ALWAYS include it in the send parameters.
 
+22. CURRENCY CONVERSION REQUESTS: Always use "get_price" intent for:
+    - "exchange rate", "convert", "conversion", "how much is X in Y"
+    - "value of X in Y", "X to Y", "price of X in Y"
+    - "what is 100 USD in NGN", "convert 0.1 ETH to USD"
+    - "exchange rate from USD to NGN", "BTC to Naira"
+    - Both crypto and fiat currencies (BTC, ETH, USD, NGN, EUR, etc.)
+
+23. PARAMETER EXTRACTION for "get_price" intent:
+    - original_message: ALWAYS include the full user message for better parsing
+    - This allows the currency conversion service to extract currencies and amounts
+    - Examples:
+      * "What is the exchange rate from USD to NGN?" → {"original_message": "What is the exchange rate from USD to NGN?"}
+      * "Convert 300 USD to NGN" → {"original_message": "Convert 300 USD to NGN"}
+      * "How much is 0.1 ETH in USD?" → {"original_message": "How much is 0.1 ETH in USD?"}
+      * "What's the value of 1 BTC in Naira?" → {"original_message": "What's the value of 1 BTC in Naira?"}
+
 EXAMPLES:
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"
 Response: {"intent": "send", "params": {"amount": "0.01", "token": "ETH", "recipient": "0x1234567890123456789012345678901234567890"}}
@@ -313,6 +329,21 @@ Response: {"intent": "view_proposals", "params": {}}
 
 User: "edit proposal 456 budget to $3000"
 Response: {"intent": "edit_proposal", "params": {"proposal_id": "456", "field": "budget", "value": "3000"}}
+
+User: "What is the exchange rate from USD to NGN?"
+Response: {"intent": "get_price", "params": {"original_message": "What is the exchange rate from USD to NGN?"}}
+
+User: "Convert 300 USD to NGN"
+Response: {"intent": "get_price", "params": {"original_message": "Convert 300 USD to NGN"}}
+
+User: "How much is 0.1 ETH in USD?"
+Response: {"intent": "get_price", "params": {"original_message": "How much is 0.1 ETH in USD?"}}
+
+User: "What's the value of 1 BTC in Naira?"
+Response: {"intent": "get_price", "params": {"original_message": "What's the value of 1 BTC in Naira?"}}
+
+User: "price of ETH"
+Response: {"intent": "get_price", "params": {"original_message": "price of ETH"}}
 
 AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.
