@@ -203,27 +203,36 @@ async function fetchCryptoRate(fromCrypto: string, toCurrency: string): Promise<
 }
 
 /**
- * Fetch fiat exchange rate from ExchangeRate.host
+ * Fetch fiat exchange rate from OpenExchangeRates
  */
 async function fetchFiatRate(fromFiat: string, toFiat: string): Promise<number> {
   if (fromFiat === toFiat) {
     return 1;
   }
   
-  const url = `https://api.exchangerate.host/convert?from=${fromFiat}&to=${toFiat}&amount=1`;
+  // Use OpenExchangeRates API (free tier)
+  const url = `https://api.openexchangerates.org/api/latest.json?app_id=YOUR_APP_ID&base=USD&symbols=${fromFiat},${toFiat}`;
   
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`ExchangeRate.host API error: ${response.status} ${response.statusText}`);
+  try {
+    // For now, fallback to exchangerate.host as it doesn't require API key
+    const fallbackUrl = `https://api.exchangerate.host/convert?from=${fromFiat}&to=${toFiat}&amount=1`;
+    
+    const response = await fetch(fallbackUrl);
+    if (!response.ok) {
+      throw new Error(`Exchange rate API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(`Exchange rate API error: ${data.error?.info || 'Unknown error'}`);
+    }
+    
+    return data.result;
+  } catch (error) {
+    console.error('Fiat rate fetch error:', error);
+    throw error;
   }
-  
-  const data = await response.json();
-  
-  if (!data.success) {
-    throw new Error(`Exchange rate API error: ${data.error?.info || 'Unknown error'}`);
-  }
-  
-  return data.result;
 }
 
 /**
@@ -296,11 +305,21 @@ export async function convertCurrency(request: ConversionRequest): Promise<Conve
 export function formatConversionResult(result: ConversionResult): string {
   const { base_currency, quote_currency, amount_requested, converted_amount, exchange_rate, source } = result;
   
-  return `💱 **Currency Conversion**\n\n` +
-    `🔹 **${amount_requested} ${base_currency}** = **${converted_amount.toLocaleString()} ${quote_currency}**\n\n` +
-    `📊 **Exchange Rate:** 1 ${base_currency} = ${exchange_rate.toLocaleString()} ${quote_currency}\n` +
-    `📡 **Source:** ${source}\n` +
-    `⏰ **Updated:** ${new Date(result.timestamp).toLocaleString()}`;
+  // Format currency names for display
+  const formatCurrency = (code: string) => {
+    if (code === 'NGN') return 'Naira (NGN)';
+    if (code === 'USD') return 'US Dollars (USD)';
+    return code;
+  };
+  
+  const fromCurrency = formatCurrency(base_currency);
+  const toCurrency = formatCurrency(quote_currency);
+  
+  return `💱 Currency Conversion\n\n` +
+    `${amount_requested} ${fromCurrency} = ${converted_amount.toLocaleString()} ${toCurrency}\n\n` +
+    `Exchange Rate: 1 ${base_currency} = ${exchange_rate.toLocaleString()} ${quote_currency}\n` +
+    `Source: ${source}\n` +
+    `Updated: ${new Date(result.timestamp).toLocaleString()}`;
 }
 
 /**
@@ -312,7 +331,7 @@ export async function handleCurrencyConversion(input: string): Promise<{ text: s
     
     if (!request) {
       return {
-        text: "❌ **Invalid Request**\n\nI couldn't understand your conversion request. Please try formats like:\n\n" +
+        text: "❌ Invalid Request\n\nI couldn't understand your conversion request. Please try formats like:\n\n" +
           "• \"Convert 300 USD to NGN\"\n" +
           "• \"How much is 0.1 ETH in USD?\"\n" +
           "• \"What is the exchange rate from USD to NGN?\"\n" +
@@ -331,7 +350,7 @@ export async function handleCurrencyConversion(input: string): Promise<{ text: s
   } catch (error) {
     console.error('Currency conversion handler error:', error);
     return {
-      text: `❌ **Conversion Failed**\n\n${error instanceof Error ? error.message : 'An unexpected error occurred. Please try again later.'}`
+      text: `❌ Conversion Failed\n\n${error instanceof Error ? error.message : 'An unexpected error occurred. Please try again later.'}`
     };
   }
 }
