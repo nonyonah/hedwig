@@ -418,60 +418,20 @@ export async function processProposalInput(message: string, userId: string): Pro
     const { generateProposalPDF } = await import('./htmlPDFService');
     const pdfBuffer = await generateProposalPDF(proposalData);
     
-    // Send PDF as WhatsApp document with template
-    const { sendWhatsAppDocument, sendWhatsAppTemplate } = await import('./whatsappUtils');
-    const { proposalTemplate } = await import('./whatsappTemplates');
-    const filename = `proposal-${proposalData.client_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'client'}-${proposalId}.pdf`;
-    
     try {
       // Create a publicly accessible URL for the PDF
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
       const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
       
       console.log(`[processProposalInput] Generated PDF URL: ${pdfDownloadUrl}`);
-      console.log(`[processProposalInput] Base URL from env: ${process.env.NEXT_PUBLIC_BASE_URL}`);
       console.log(`[processProposalInput] Proposal ID: ${proposalId}`);
       
-      // Test if the PDF URL is accessible
-      try {
-        const testResponse = await fetch(pdfDownloadUrl, { method: 'HEAD' });
-        console.log(`[processProposalInput] PDF URL test response: ${testResponse.status}`);
-        if (!testResponse.ok) {
-          console.warn(`[processProposalInput] PDF URL may not be accessible: ${testResponse.status}`);
-        }
-      } catch (testError) {
-        console.warn(`[processProposalInput] Could not test PDF URL accessibility:`, testError);
-      }
+      // Return natural language response with email/download options
+      const responseMessage = `Hi, your proposal is ready, should I send an email to the client? If yes let me know but if not you can download the proposal from the link below and send to your client.\n\nDownload link: ${pdfDownloadUrl}`;
       
-      console.log(`[processProposalInput] Attempting to send WhatsApp template to ${user.phone_number}`);
-      console.log(`[processProposalInput] Template parameters:`, {
-        client_name: proposalData.client_name || 'your client',
-        document_link: pdfDownloadUrl
-      });
+      console.log(`[processProposalInput] Proposal created successfully, returning natural language response`);
       
-      // Try to send the template first, but fall back to simple message if it fails
-      try {
-        const templateResult = await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
-          client_name: proposalData.client_name || 'your client',
-          document_link: pdfDownloadUrl
-        }));
-        
-        console.log(`[processProposalInput] Template sent successfully:`, templateResult);
-        
-        // Return minimal response - just the proposal ID for tracking
-        return { message: "", proposalId };
-      } catch (templateError) {
-        console.error(`[processProposalInput] Template sending failed, using simple message fallback:`, templateError);
-        
-        // Send a simple text message instead
-        const { sendWhatsAppMessage } = await import('./whatsappUtils');
-        const fallbackMessage = `📄 Your proposal has been generated successfully!\n\nClient: ${proposalData.client_name || 'your client'}\nDownload your proposal: ${pdfDownloadUrl}\n\nThis document contains all the details discussed. Please review and let me know if you need any changes.`;
-        
-        await sendWhatsAppMessage(user.phone_number!, fallbackMessage);
-        console.log(`[processProposalInput] Fallback message sent successfully`);
-        
-        return { message: "", proposalId };
-      }
+      return { message: responseMessage, proposalId };
     } catch (error) {
       console.error('[processProposalInput] Error:', error);
       return { message: "An error occurred while processing your proposal. Please try again." };
