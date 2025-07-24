@@ -793,7 +793,7 @@ export async function generatePDFFromHTML(html: string, options: {
         // Wait a bit for any CSS to apply (using Promise-based delay instead of deprecated waitForTimeout)
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Generate PDF with timeout
+        // Generate PDF with proper timeout handling
         const pdfBuffer = await Promise.race([
             page.pdf({
                 format: options.format || 'A4',
@@ -804,11 +804,11 @@ export async function generatePDFFromHTML(html: string, options: {
                     left: '20mm'
                 },
                 printBackground: true,
-                preferCSSPageSize: true,
-                timeout: 30000 // 30 second timeout for PDF generation
+                preferCSSPageSize: true
+                // Note: page.pdf() doesn't accept timeout option
             }),
             new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error('PDF generation timed out after 30 seconds')), 30000)
+                setTimeout(() => reject(new Error('PDF generation timed out after 45 seconds')), 45000)
             )
         ]);
         
@@ -817,21 +817,21 @@ export async function generatePDFFromHTML(html: string, options: {
         console.error('Error generating PDF:', error);
         throw new Error(`PDF generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-        // Ensure proper cleanup
-        try {
-            if (page) {
+        // Ensure proper cleanup with error handling
+        if (page && !page.isClosed()) {
+            try {
                 await page.close();
+            } catch (e) {
+                console.warn('Error closing page:', e);
             }
-        } catch (e) {
-            console.warn('Error closing page:', e);
         }
         
-        try {
-            if (browser) {
+        if (browser && browser.isConnected()) {
+            try {
                 await browser.close();
+            } catch (e) {
+                console.warn('Error closing browser:', e);
             }
-        } catch (e) {
-            console.warn('Error closing browser:', e);
         }
         
         // Force garbage collection if available
