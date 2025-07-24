@@ -428,22 +428,56 @@ export async function processProposalInput(message: string, userId: string): Pro
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
       const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
       
+      console.log(`[processProposalInput] Generated PDF URL: ${pdfDownloadUrl}`);
+      console.log(`[processProposalInput] Base URL from env: ${process.env.NEXT_PUBLIC_BASE_URL}`);
+      console.log(`[processProposalInput] Proposal ID: ${proposalId}`);
+      
+      // Test if the PDF URL is accessible
+      try {
+        const testResponse = await fetch(pdfDownloadUrl, { method: 'HEAD' });
+        console.log(`[processProposalInput] PDF URL test response: ${testResponse.status}`);
+        if (!testResponse.ok) {
+          console.warn(`[processProposalInput] PDF URL may not be accessible: ${testResponse.status}`);
+        }
+      } catch (testError) {
+        console.warn(`[processProposalInput] Could not test PDF URL accessibility:`, testError);
+      }
+      
+      console.log(`[processProposalInput] Attempting to send WhatsApp template to ${user.phone_number}`);
+      console.log(`[processProposalInput] Template parameters:`, {
+        client_name: proposalData.client_name || 'your client',
+        document_link: pdfDownloadUrl
+      });
+      
       // Send the template with the PDF included in the header
-      await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
+      const templateResult = await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
         client_name: proposalData.client_name || 'your client',
         document_link: pdfDownloadUrl
       }));
       
+      console.log(`[processProposalInput] Template sent successfully:`, templateResult);
+      
       // Return minimal response - just the proposal ID for tracking
       return { message: "", proposalId };
-    } catch (pdfError) {
-      console.error('Error sending PDF via WhatsApp:', pdfError);
+    } catch (templateError) {
+      console.error(`[processProposalInput] Template sending failed:`, templateError);
       
-      // Fallback to download link if PDF sending fails
+      // Fallback: Send a simple text message with download link
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
       const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
       
-      return { message: `📄 Download: ${pdfDownloadUrl}`, proposalId };
+      const fallbackMessage = `✅ **Proposal Created Successfully!**
+
+📋 **Client:** ${proposalData.client_name}
+💰 **Budget:** ${proposalData.currency} ${proposalData.budget}
+⏰ **Timeline:** ${proposalData.timeline}
+
+📄 **Download your proposal:** ${pdfDownloadUrl}
+
+Your professional proposal has been generated and is ready to send to your client!`;
+      
+      console.log(`[processProposalInput] Sending fallback message due to template failure`);
+      return { message: fallbackMessage, proposalId };
     }
     
   } catch (error) {

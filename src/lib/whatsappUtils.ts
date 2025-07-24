@@ -153,7 +153,7 @@ export async function sendWhatsAppMessage(
           to,
           type: "text",
           text: {
-            body: text || "No wallet found. Please create one.",
+            body: text || "I couldn't process that request properly.",
             preview_url: false,
           },
         }),
@@ -244,6 +244,19 @@ export async function sendWhatsAppTemplateMessage(
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
+    console.log(`[sendWhatsAppTemplateMessage] Sending template to ${message.to}`);
+    console.log(`[sendWhatsAppTemplateMessage] Template name: ${message.template?.name}`);
+    console.log(`[sendWhatsAppTemplateMessage] Full template:`, JSON.stringify(message.template, null, 2));
+
+    const requestBody = {
+      messaging_product: "whatsapp",
+      to: message.to,
+      type: "template",
+      template: message.template,
+    };
+
+    console.log(`[sendWhatsAppTemplateMessage] Request body:`, JSON.stringify(requestBody, null, 2));
+
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
@@ -252,28 +265,29 @@ export async function sendWhatsAppTemplateMessage(
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: message.to,
-          type: "template",
-          template: message.template,
-        }),
+        body: JSON.stringify(requestBody),
       },
     );
 
     if (!response.ok) {
       const errorData = await response.text();
       console.error(
-        "Error sending WhatsApp template message:",
+        `[sendWhatsAppTemplateMessage] Error sending template '${message.template?.name}':`,
         response.status,
         errorData,
+      );
+      console.error(
+        `[sendWhatsAppTemplateMessage] Failed request body:`,
+        JSON.stringify(requestBody, null, 2),
       );
       throw new Error(`Failed to send WhatsApp template message: ${errorData}`);
     }
     
-    return await response.json();
+    const result = await response.json();
+    console.log(`[sendWhatsAppTemplateMessage] Successfully sent template '${message.template?.name}'`);
+    return result;
   } catch (err) {
-    console.error("Exception in sendWhatsAppTemplateMessage:", err);
+    console.error(`[sendWhatsAppTemplateMessage] Exception sending template '${message.template?.name}':`, err);
     throw err;
   }
 }
@@ -776,7 +790,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     // Check if the user has a wallet
     const { data: wallets, error: walletError } = await supabase
       .from('wallets')
-      .select('id, address')
+      .select('id, address, chain, cdp_wallet_id')
       .eq('user_id', userId);
 
     if (walletError) {
@@ -784,6 +798,8 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       await sendWhatsAppMessage(from, { text: "I'm having trouble accessing your wallet information right now. Please try again in a moment." });
       return; // Stop processing
     }
+    
+    console.log(`[Wallet Check] Found ${wallets?.length || 0} wallets for user ${userId}:`, wallets?.map(w => ({ chain: w.chain, address: w.address })));
     
     // Use the first wallet if multiple exist
     const wallet = wallets && wallets.length > 0 ? wallets[0] : null;
@@ -1775,8 +1791,11 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         "text" in actionResult &&
         typeof actionResult.text === "string"
       ) {
-        // Plain text response
-        await sendWhatsAppMessage(from, { text: actionResult.text });
+        // Plain text response - only send if text is not empty
+        if (actionResult.text.trim()) {
+          await sendWhatsAppMessage(from, { text: actionResult.text });
+        }
+        // If text is empty, the action has already handled sending its own message/template
       } else if (
         "success" in actionResult &&
         "message" in actionResult
