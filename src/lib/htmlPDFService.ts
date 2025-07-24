@@ -749,15 +749,18 @@ export function generateProposalHTML(proposal: ProposalData & { user_name?: stri
         .replace(/{{USER_PHONE_ROW}}/g, userPhoneRow);
 }
 
-// Generate PDF from HTML using Puppeteer
-export async function generatePDFFromHTML(html: string, options: {
+// Generate PDF from HTML using Puppeteer with retry mechanism
+async function generatePDFFromHTMLInternal(html: string, options: {
     format?: 'A4' | 'Letter';
     margin?: { top: string; right: string; bottom: string; left: string; };
 } = {}): Promise<Buffer> {
     let browser = null;
     let page = null;
+    let timeoutId: NodeJS.Timeout | null = null;
     
     try {
+        console.log('Starting PDF generation...');
+        
         // Launch browser with improved configuration for Windows
         browser = await puppeteer.launch({
             headless: true,
@@ -772,63 +775,105 @@ export async function generatePDFFromHTML(html: string, options: {
                 '--disable-gpu',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding'
+                '--disable-renderer-backgrounding',
+                '--disable-features=VizDisplayCompositor'
             ],
-            timeout: 60000, // 60 second timeout for browser launch
+            timeout: 60000,
             protocolTimeout: 60000
         });
         
+        console.log('Browser launched successfully');
+        
         page = await browser.newPage();
+        console.log('New page created');
         
-        // Set page timeout
-        page.setDefaultTimeout(45000); // 45 second timeout for page operations
-        page.setDefaultNavigationTimeout(45000);
+        // Set page timeout to a reasonable value
+        page.setDefaultTimeout(30000);
+        page.setDefaultNavigationTimeout(30000);
         
-        // Set content with shorter timeout and simpler wait condition
+        // Set content with basic wait condition
+        console.log('Setting page content...');
         await page.setContent(html, { 
-            waitUntil: 'domcontentloaded', // Changed from 'networkidle0' to be faster
-            timeout: 30000 // 30 second timeout for content loading
+            waitUntil: 'domcontentloaded',
+            timeout: 20000
         });
         
-        // Wait a bit for any CSS to apply (using Promise-based delay instead of deprecated waitForTimeout)
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log('Content set, waiting for CSS...');
+        // Wait for CSS to apply
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Generate PDF with proper timeout handling
-        const pdfBuffer = await Promise.race([
-            page.pdf({
-                format: options.format || 'A4',
-                margin: options.margin || {
-                    top: '20mm',
-                    right: '20mm',
-                    bottom: '20mm',
-                    left: '20mm'
-                },
-                printBackground: true,
-                preferCSSPageSize: true
-                // Note: page.pdf() doesn't accept timeout option
-            }),
-            new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error('PDF generation timed out after 45 seconds')), 45000)
-            )
-        ]);
+        console.log('Generating PDF...');
         
+        // Create a timeout promise that we can cancel
+        let isTimedOut = false;
+        timeoutId = setTimeout(() => {
+            isTimedOut = true;
+            console.error('PDF generation timed out after 30 seconds');
+        }, 30000);
+        
+        // Generate PDF without Promise.race to avoid race conditions
+        const pdfBuffer = await page.pdf({
+            format: options.format || 'A4',
+            margin: options.margin || {
+                top: '20mm',
+                right: '20mm',
+                bottom: '20mm',
+                left: '20mm'
+            },
+            printBackground: true,
+            preferCSSPageSize: true
+        });
+        
+        // Clear the timeout since we succeeded
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        
+        // Check if we timed out
+        if (isTimedOut) {
+            throw new Error('PDF generation timed out');
+        }
+        
+        console.log('PDF generated successfully');
         return Buffer.from(pdfBuffer);
+        
     } catch (error) {
         console.error('Error generating PDF:', error);
-        throw new Error(`PDF generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        
+        // Clear timeout if it exists
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+        
+        // Re-throw the error to be handled by the retry mechanism
+        throw error;
     } finally {
-        // Ensure proper cleanup with error handling
-        if (page && !page.isClosed()) {
+        // Clear timeout if it still exists
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+        
+        // Cleanup resources with proper error handling
+        console.log('Cleaning up resources...');
+        
+        if (page) {
             try {
-                await page.close();
+                if (!page.isClosed()) {
+                    await page.close();
+                    console.log('Page closed successfully');
+                }
             } catch (e) {
                 console.warn('Error closing page:', e);
             }
         }
         
-        if (browser && browser.isConnected()) {
+        if (browser) {
             try {
-                await browser.close();
+                if (browser.isConnected()) {
+                    await browser.close();
+                    console.log('Browser closed successfully');
+                }
             } catch (e) {
                 console.warn('Error closing browser:', e);
             }
@@ -838,6 +883,50 @@ export async function generatePDFFromHTML(html: string, options: {
         if (global.gc) {
             global.gc();
         }
+        
+        console.log('Resource cleanup completed');
+    }
+}
+
+// Main PDF generation function with retry mechanism
+export async function generatePDFFromHTML(html: string, options: {
+    format?: 'A4' | 'Letter';
+    margin?: { top: string; right: string; bottom: string; left: string; };
+} = {}): Promise<Buffer> {
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`PDF generation attempt ${attempt}/${maxRetries}`);
+            const result = await generatePDFFromHTMLInternal(html, options);
+            console.log(`PDF generation succeeded on attempt ${attempt}`);
+            return result;
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error('Unknown error');
+            console.error(`PDF generation attempt ${attempt} failed:`, lastError.message);
+            
+            // If this is the last attempt, don't wait
+            if (attempt < maxRetries) {
+                const waitTime = attempt * 1000; // Progressive backoff: 1s, 2s
+                console.log(`Waiting ${waitTime}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+        }
+    }
+    
+    // All attempts failed, provide user-friendly error message
+    console.error('All PDF generation attempts failed');
+    if (lastError) {
+        if (lastError.message.includes('Target closed')) {
+            throw new Error('PDF generation failed: Browser connection lost. Please try again.');
+        } else if (lastError.message.includes('timeout')) {
+            throw new Error('PDF generation failed: Operation timed out. Please try again.');
+        } else {
+            throw new Error(`PDF generation failed after ${maxRetries} attempts: ${lastError.message}`);
+        }
+    } else {
+        throw new Error('PDF generation failed: Unknown error occurred');
     }
 }
 
