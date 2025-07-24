@@ -9,6 +9,7 @@ const proposalHTMLTemplate = `
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Proposal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -17,7 +18,7 @@ const proposalHTMLTemplate = `
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             line-height: 1.6;
             color: #333;
             background: #fff;
@@ -27,25 +28,26 @@ const proposalHTMLTemplate = `
         .header {
             text-align: center;
             margin-bottom: 40px;
-            border-bottom: 3px solid #2563eb;
+            border-bottom: 3px solid #a2d2ff;
             padding-bottom: 20px;
         }
         
         .logo {
             font-size: 28px;
-            font-weight: bold;
-            color: #2563eb;
+            font-weight: 700;
+            color: #a2d2ff;
             margin-bottom: 10px;
         }
         
         .tagline {
             color: #6b7280;
             font-size: 14px;
+            font-weight: 500;
         }
         
         .proposal-title {
             font-size: 32px;
-            font-weight: bold;
+            font-weight: 700;
             color: #1f2937;
             margin: 30px 0 20px 0;
             text-align: center;
@@ -54,9 +56,9 @@ const proposalHTMLTemplate = `
         .client-info {
             background: #f8fafc;
             padding: 20px;
-            border-radius: 8px;
+            border-radius: 12px;
             margin-bottom: 30px;
-            border-left: 4px solid #2563eb;
+            border-left: 4px solid #a2d2ff;
         }
         
         .section {
@@ -65,10 +67,10 @@ const proposalHTMLTemplate = `
         
         .section-title {
             font-size: 20px;
-            font-weight: bold;
+            font-weight: 600;
             color: #1f2937;
             margin-bottom: 15px;
-            border-bottom: 2px solid #e5e7eb;
+            border-bottom: 2px solid #a2d2ff;
             padding-bottom: 5px;
         }
         
@@ -87,42 +89,42 @@ const proposalHTMLTemplate = `
         .feature-item {
             background: #f0f9ff;
             padding: 15px;
-            border-radius: 6px;
-            border-left: 3px solid #0ea5e9;
+            border-radius: 8px;
+            border-left: 3px solid #a2d2ff;
         }
         
         .feature-title {
-            font-weight: bold;
-            color: #0c4a6e;
+            font-weight: 600;
+            color: #1e40af;
             margin-bottom: 5px;
         }
         
         .budget-section {
-            background: #fef3c7;
+            background: linear-gradient(135deg, #a2d2ff 0%, #8bb8ff 100%);
             padding: 25px;
-            border-radius: 8px;
-            border: 2px solid #f59e0b;
+            border-radius: 12px;
             text-align: center;
             margin: 30px 0;
+            color: white;
         }
         
         .budget-amount {
             font-size: 36px;
-            font-weight: bold;
-            color: #92400e;
+            font-weight: 700;
             margin-bottom: 10px;
         }
         
         .budget-label {
-            color: #78350f;
             font-size: 14px;
+            font-weight: 500;
+            opacity: 0.9;
         }
         
         .timeline-section {
-            background: #ecfdf5;
+            background: #f0f9ff;
             padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #10b981;
+            border-radius: 12px;
+            border-left: 4px solid #a2d2ff;
         }
         
         .deliverables-list {
@@ -134,8 +136,8 @@ const proposalHTMLTemplate = `
             background: #f9fafb;
             margin: 8px 0;
             padding: 12px;
-            border-radius: 6px;
-            border-left: 3px solid #6366f1;
+            border-radius: 8px;
+            border-left: 3px solid #a2d2ff;
             position: relative;
             padding-left: 30px;
         }
@@ -144,14 +146,14 @@ const proposalHTMLTemplate = `
             content: "✓";
             position: absolute;
             left: 10px;
-            color: #10b981;
+            color: #a2d2ff;
             font-weight: bold;
         }
         
         .footer {
             margin-top: 50px;
             padding-top: 30px;
-            border-top: 2px solid #e5e7eb;
+            border-top: 2px solid #a2d2ff;
             text-align: center;
             color: #6b7280;
             font-size: 14px;
@@ -161,7 +163,7 @@ const proposalHTMLTemplate = `
             margin-top: 20px;
             padding: 20px;
             background: #f8fafc;
-            border-radius: 8px;
+            border-radius: 12px;
         }
         
         .contact-row {
@@ -171,21 +173,21 @@ const proposalHTMLTemplate = `
         }
         
         .contact-label {
-            font-weight: bold;
+            font-weight: 600;
             color: #374151;
         }
         
         .next-steps {
-            background: #eff6ff;
+            background: #f0f9ff;
             padding: 25px;
-            border-radius: 8px;
-            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            border: 2px solid #a2d2ff;
             margin: 30px 0;
         }
         
         .next-steps-title {
             color: #1e40af;
-            font-weight: bold;
+            font-weight: 600;
             font-size: 18px;
             margin-bottom: 15px;
         }
@@ -266,8 +268,8 @@ const proposalHTMLTemplate = `
     </div>
     
     <div class="timeline-section">
-        <h2 class="section-title" style="color: #065f46; border-bottom-color: #10b981;">Project Timeline</h2>
-        <div class="section-content" style="color: #065f46;">
+        <h2 class="section-title" style="color: #1e40af; border-bottom-color: #a2d2ff;">Project Timeline</h2>
+        <div class="section-content" style="color: #1e40af;">
             <strong>Expected Duration:</strong> {{TIMELINE}}
         </div>
     </div>
@@ -327,7 +329,7 @@ const receiptHTMLTemplate = `
 </html>
 `;
 
-// HTML template for invoices (disabled for now)
+// HTML template for invoices
 const invoiceHTMLTemplate = `
 <!DOCTYPE html>
 <html lang="en">
@@ -335,20 +337,358 @@ const invoiceHTMLTemplate = `
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invoice</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Invoice styles - disabled until WhatsApp template is created */
-        body { font-family: Arial, sans-serif; padding: 40px; }
-        .invoice-header { text-align: center; margin-bottom: 30px; }
-        .invoice-title { font-size: 24px; font-weight: bold; color: #2563eb; }
-        /* More styles will be added when enabled */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #ffffff;
+            padding: 40px;
+        }
+        
+        .invoice-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .invoice-header {
+            background: linear-gradient(135deg, #a2d2ff 0%, #8bb8ff 100%);
+            color: white;
+            padding: 40px;
+            position: relative;
+        }
+        
+        .invoice-title {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .invoice-number {
+            position: absolute;
+            top: 40px;
+            right: 40px;
+            text-align: right;
+        }
+        
+        .invoice-number h3 {
+            font-size: 14px;
+            font-weight: 500;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .invoice-number .number {
+            font-size: 24px;
+            font-weight: 700;
+        }
+        
+        .invoice-content {
+            padding: 40px;
+        }
+        
+        .billing-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 40px;
+        }
+        
+        .billing-info {
+            flex: 1;
+        }
+        
+        .billing-info h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .billing-info .name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .billing-info .details {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .invoice-dates {
+            text-align: right;
+        }
+        
+        .date-item {
+            margin-bottom: 15px;
+        }
+        
+        .date-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            display: block;
+        }
+        
+        .date-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .services-section {
+            margin-bottom: 40px;
+        }
+        
+        .services-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .services-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        
+        .services-table th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .services-table th:last-child,
+        .services-table td:last-child {
+            text-align: right;
+        }
+        
+        .services-table td {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .total-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: right;
+            margin-bottom: 40px;
+        }
+        
+        .total-label {
+            font-size: 18px;
+            font-weight: 600;
+            color: #666;
+            margin-right: 20px;
+        }
+        
+        .total-amount {
+            font-size: 32px;
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .company-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            margin-top: 40px;
+        }
+        
+        .company-info {
+            flex: 1;
+        }
+        
+        .company-logo {
+            width: 60px;
+            height: 60px;
+            background: #a2d2ff;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+            color: white;
+        }
+        
+        .company-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .company-details {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .payment-info {
+            flex: 1;
+            margin-left: 40px;
+        }
+        
+        .payment-info h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .payment-details {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .pay-button {
+            background: #a2d2ff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.3s ease;
+        }
+        
+        .pay-button:hover {
+            background: #8bb8ff;
+        }
+        
+        .additional-notes {
+            flex: 1;
+            margin-left: 40px;
+        }
+        
+        .additional-notes h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .notes-content {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        @media print {
+            body { padding: 0; }
+            .pay-button { background: #a2d2ff !important; }
+        }
     </style>
 </head>
 <body>
-    <div class="invoice-header">
-        <div class="invoice-title">Invoice</div>
-        <p>Invoice #{{INVOICE_NUMBER}}</p>
+    <div class="invoice-container">
+        <div class="invoice-header">
+            <div class="invoice-title">Invoice</div>
+            <div class="invoice-number">
+                <h3>Invoice No.</h3>
+                <div class="number">{{INVOICE_NUMBER}}</div>
+            </div>
+        </div>
+        
+        <div class="invoice-content">
+            <div class="billing-section">
+                <div class="billing-info">
+                    <h3>Billed To:</h3>
+                    <div class="name">{{CLIENT_NAME}}</div>
+                    <div class="details">{{CLIENT_EMAIL}}</div>
+                </div>
+                
+                <div class="invoice-dates">
+                    <div class="date-item">
+                        <span class="date-label">Issued on</span>
+                        <span class="date-value">{{ISSUE_DATE}}</span>
+                    </div>
+                    <div class="date-item">
+                        <span class="date-label">Payment Due</span>
+                        <span class="date-value">{{DUE_DATE}}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="services-section">
+                <h2 class="services-title">Services</h2>
+                <table class="services-table">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th>Qty.</th>
+                            <th>Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{SERVICE_ITEMS}}
+                    </tbody>
+                </table>
+                
+                <div class="total-section">
+                    <span class="total-label">Total ({{CURRENCY}})</span>
+                    <span class="total-amount">{{TOTAL_AMOUNT}}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="company-section">
+            <div class="company-info">
+                <div class="company-logo">{{COMPANY_INITIAL}}</div>
+                <div class="company-name">{{COMPANY_NAME}}</div>
+                <div class="company-details">
+                    {{COMPANY_ADDRESS}}<br>
+                    {{FREELANCER_EMAIL}}<br>
+                    {{COMPANY_ID1}}<br>
+                    {{COMPANY_ID2}}
+                </div>
+            </div>
+            
+            <div class="payment-info">
+                <h3>Payment Instructions</h3>
+                <div class="payment-details">
+                    {{PAYMENT_INSTRUCTIONS}}
+                </div>
+                <a href="{{PAYMENT_URL}}" class="pay-button">Pay Online</a>
+            </div>
+            
+            <div class="additional-notes">
+                <h3>Additional Notes</h3>
+                <div class="notes-content">
+                    {{ADDITIONAL_NOTES}}
+                </div>
+            </div>
+        </div>
     </div>
-    <!-- Invoice content will be implemented when WhatsApp template is ready -->
 </body>
 </html>
 `;
@@ -472,11 +812,69 @@ export async function generateProposalPDF(proposal: ProposalData): Promise<Buffe
     return generatePDFFromHTML(html);
 }
 
+// Generate invoice HTML
+export function generateInvoiceHTML(invoice: any): string {
+    const issueDate = new Date(invoice.date_created || Date.now()).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    
+    const dueDate = invoice.due_date ? 
+        new Date(invoice.due_date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        }) : 
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+    // Generate service items HTML
+    const serviceItems = `
+        <tr>
+            <td>${invoice.project_description || 'Professional Services'}</td>
+            <td>1</td>
+            <td>${(invoice.price || invoice.amount || 0).toFixed(2)}</td>
+            <td>${(invoice.amount || 0).toFixed(2)}</td>
+        </tr>
+    `;
+
+    // Create payment URL
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+    const paymentUrl = `${baseUrl}/pay/${invoice.id}`;
+
+    // Get company initial
+    const companyInitial = (invoice.freelancer_name || 'C').charAt(0).toUpperCase();
+
+    return invoiceHTMLTemplate
+        .replace(/{{INVOICE_NUMBER}}/g, invoice.invoice_number || '#000123')
+        .replace(/{{CLIENT_NAME}}/g, invoice.client_name || 'Client Name')
+        .replace(/{{CLIENT_EMAIL}}/g, invoice.client_email || 'client@example.com')
+        .replace(/{{ISSUE_DATE}}/g, issueDate)
+        .replace(/{{DUE_DATE}}/g, dueDate)
+        .replace(/{{SERVICE_ITEMS}}/g, serviceItems)
+        .replace(/{{CURRENCY}}/g, 'USD')
+        .replace(/{{TOTAL_AMOUNT}}/g, (invoice.amount || 0).toFixed(2))
+        .replace(/{{COMPANY_INITIAL}}/g, companyInitial)
+        .replace(/{{COMPANY_NAME}}/g, `${invoice.freelancer_name || 'Company Name'} LLC`)
+        .replace(/{{COMPANY_ADDRESS}}/g, 'Address / Contact Info')
+        .replace(/{{FREELANCER_EMAIL}}/g, invoice.freelancer_email || 'email@company.com')
+        .replace(/{{COMPANY_ID1}}/g, 'ID#1 Label\n1234567890-123')
+        .replace(/{{COMPANY_ID2}}/g, 'ID#2 Label\nABC-0987654321')
+        .replace(/{{PAYMENT_INSTRUCTIONS}}/g, invoice.payment_instructions || 'Voluptas nisl aut. Eet vitae dolore molestias porro praesentium. Tempore recusandae voluptatem necessitatibus corporis inventore neque magnam ut.')
+        .replace(/{{PAYMENT_URL}}/g, paymentUrl)
+        .replace(/{{ADDITIONAL_NOTES}}/g, invoice.additional_notes || 'Have a great day');
+}
+
 // Disabled functions for receipts and invoices (until WhatsApp templates are ready)
 export async function generateReceiptPDF(receiptData: any): Promise<Buffer> {
     throw new Error('Receipt PDF generation is disabled until WhatsApp template is created');
 }
 
 export async function generateInvoicePDF(invoiceData: any): Promise<Buffer> {
-    throw new Error('Invoice PDF generation is disabled until WhatsApp template is created');
+    const html = generateInvoiceHTML(invoiceData);
+    return generatePDFFromHTML(html);
 }
