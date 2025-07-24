@@ -472,6 +472,9 @@ export async function processProposalInput(message: string, userId: string): Pro
         
         return { message: "", proposalId };
       }
+    } catch (error) {
+      console.error('[processProposalInput] Error:', error);
+      return { message: "An error occurred while processing your proposal. Please try again." };
     }
     
   } catch (error) {
