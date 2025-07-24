@@ -382,7 +382,8 @@ export async function sendProposalEmail(
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
     const proposalUrl = `${baseUrl}/api/proposal-pdf/${proposal.id}`;
     
-    await resend.emails.send({
+    // Add timeout to email sending
+    const emailPromise = resend.emails.send({
       from: fromEmail,
       to: clientEmail,
       subject: `Project Proposal - ${proposal.project_title || 'Your Project'}`,
@@ -460,6 +461,14 @@ export async function sendProposalEmail(
         </div>
       `
     });
+
+    // Race between email sending and timeout
+    await Promise.race([
+      emailPromise,
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Email sending timed out after 30 seconds')), 30000)
+      )
+    ]);
 
     return { success: true };
   } catch (error) {

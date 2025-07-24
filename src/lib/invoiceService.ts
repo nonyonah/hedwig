@@ -218,7 +218,7 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
   `;
 }
 
-// Email sending function (placeholder - you'll need to implement with Resend)
+// Email sending function with timeout handling
 async function sendEmailWithAttachment(emailData: {
   to: string;
   subject: string;
@@ -230,13 +230,22 @@ async function sendEmailWithAttachment(emailData: {
     const { Resend } = await import('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    const { data, error } = await resend.emails.send({
+    // Add timeout to email sending
+    const emailPromise = resend.emails.send({
       from: process.env.FROM_EMAIL || 'invoices@hedwigbot.xyz',
       to: emailData.to,
       subject: emailData.subject,
       html: emailData.html,
       attachments: emailData.attachments
     });
+
+    // Race between email sending and timeout
+    const { data, error } = await Promise.race([
+      emailPromise,
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Email sending timed out after 30 seconds')), 30000)
+      )
+    ]);
 
     if (error) {
       console.error('Error sending email:', error);

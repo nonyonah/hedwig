@@ -754,33 +754,90 @@ export async function generatePDFFromHTML(html: string, options: {
     format?: 'A4' | 'Letter';
     margin?: { top: string; right: string; bottom: string; left: string; };
 } = {}): Promise<Buffer> {
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    let browser = null;
+    let page = null;
     
     try {
-        const page = await browser.newPage();
-        
-        // Set content and wait for any dynamic content to load
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-        
-        // Generate PDF
-        const pdfBuffer = await page.pdf({
-            format: options.format || 'A4',
-            margin: options.margin || {
-                top: '20mm',
-                right: '20mm',
-                bottom: '20mm',
-                left: '20mm'
-            },
-            printBackground: true,
-            preferCSSPageSize: true
+        // Launch browser with improved configuration for Windows
+        browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding'
+            ],
+            timeout: 60000, // 60 second timeout for browser launch
+            protocolTimeout: 60000
         });
         
+        page = await browser.newPage();
+        
+        // Set page timeout
+        page.setDefaultTimeout(45000); // 45 second timeout for page operations
+        page.setDefaultNavigationTimeout(45000);
+        
+        // Set content with shorter timeout and simpler wait condition
+        await page.setContent(html, { 
+            waitUntil: 'domcontentloaded', // Changed from 'networkidle0' to be faster
+            timeout: 30000 // 30 second timeout for content loading
+        });
+        
+        // Wait a bit for any CSS to apply
+        await page.waitForTimeout(1000);
+        
+        // Generate PDF with timeout
+        const pdfBuffer = await Promise.race([
+            page.pdf({
+                format: options.format || 'A4',
+                margin: options.margin || {
+                    top: '20mm',
+                    right: '20mm',
+                    bottom: '20mm',
+                    left: '20mm'
+                },
+                printBackground: true,
+                preferCSSPageSize: true,
+                timeout: 30000 // 30 second timeout for PDF generation
+            }),
+            new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('PDF generation timed out after 30 seconds')), 30000)
+            )
+        ]);
+        
         return Buffer.from(pdfBuffer);
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        throw new Error(`PDF generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-        await browser.close();
+        // Ensure proper cleanup
+        try {
+            if (page) {
+                await page.close();
+            }
+        } catch (e) {
+            console.warn('Error closing page:', e);
+        }
+        
+        try {
+            if (browser) {
+                await browser.close();
+            }
+        } catch (e) {
+            console.warn('Error closing browser:', e);
+        }
+        
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc();
+        }
     }
 }
 
