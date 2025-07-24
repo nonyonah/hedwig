@@ -62,6 +62,7 @@ Valid intents:
 - get_price: For checking crypto prices
 - get_news: For crypto news
 - create_payment_link: For creating payment links or payment requests
+- create_invoice: For creating professional invoices with PDF generation
 - get_earnings: For checking earnings, income, money received, or payment history
 - get_spending: For checking spending, money sent, or payment history
 - create_proposal: For generating project proposals
@@ -75,20 +76,27 @@ IMPORTANT INTENT RECOGNITION RULES:
 
 1. PAYMENT LINK REQUESTS: Always use "create_payment_link" intent for:
    - "payment link", "create payment link", "generate payment link"
-   - "payment request", "request payment", "invoice"
+   - "payment request", "request payment"
    - "send me a payment link", "I need a payment link"
-   - "create invoice", "bill someone", "charge someone"
    - "request money", "ask for payment"
-   - Any request about creating payment links or invoices
+   - Simple payment requests without detailed billing information
 
-2. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
+2. INVOICE REQUESTS: Always use "create_invoice" intent for:
+   - "invoice", "create invoice", "generate invoice", "send invoice"
+   - "bill someone", "billing", "create bill"
+   - "professional invoice", "invoice with PDF"
+   - "invoice for services", "invoice for project"
+   - "detailed invoice", "itemized invoice"
+   - Any request for formal invoicing with professional formatting
+
+3. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
    - "wallet address", "my address", "show address", "view address"
    - "what is my address", "what are my addresses", "wallet addresses"
    - "deposit", "receive", "how to deposit", "where to send"
    - "show me my wallet", "wallet info", "address info"
    - Any request about viewing or getting wallet addresses
 
-3. BALANCE REQUESTS: Always use "balance" intent for:
+4. BALANCE REQUESTS: Always use "balance" intent for:
    - "balance", "how much", "check wallet", "wallet balance"
    - "what do I have", "my funds", "my tokens", "my crypto"
    - Chain-specific balance: "balance on Base", "USDC balance on Ethereum", "ETH on Base"
@@ -187,41 +195,51 @@ IMPORTANT INTENT RECOGNITION RULES:
     - project_title: Extract project title if mentioned
     - description: Extract project description
 
-14. PARAMETER EXTRACTION for "send_proposal" intent:
+14. PARAMETER EXTRACTION for "create_invoice" intent:
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - amount: Extract total invoice amount
+    - currency: Extract currency (USD, EUR, GBP, etc.)
+    - description: Extract service description or invoice details
+    - due_date: Extract due date if mentioned
+    - invoice_number: Extract invoice number if specified
+    - items: Extract itemized list if provided
+
+15. PARAMETER EXTRACTION for "send_proposal" intent:
     - proposal_id: Extract proposal ID if specified
     - client_email: Extract email address if different from stored
 
-15. PARAMETER EXTRACTION for "edit_proposal" intent:
+16. PARAMETER EXTRACTION for "edit_proposal" intent:
     - proposal_id: Extract proposal ID (required)
     - field: Extract which field to edit (budget, timeline, client_name, etc.)
     - value: Extract new value for the field
 
-8a. PARAMETER EXTRACTION for earnings/spending intents:
+17. PARAMETER EXTRACTION for earnings/spending intents:
     - timeframe: Extract time periods (e.g., "this week", "last month", "this year", "last 7 days")
     - token: Extract token symbol if specified (e.g., "USDC", "ETH", "USDT")
     - network: Extract network name if specified (e.g., "Base", "Polygon", "Ethereum")
     - startDate/endDate: Extract specific dates if mentioned
 
-9. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
+18. CONTEXT AWARENESS: Look at conversation history to find missing parameters:
    - If recipient address was mentioned in previous messages, include it
    - If amount was specified earlier, carry it forward
    - If token type was discussed, maintain consistency
 
-10. ADDRESS RECOGNITION: Recognize these as recipient addresses:
+19. ADDRESS RECOGNITION: Recognize these as recipient addresses:
    - Ethereum addresses: 0x followed by 40 hexadecimal characters
    - ENS names: ending with .eth
    - Shortened addresses: 0x...abc (when context suggests it's an address)
    - Extract addresses from text like "here's my address: 0x123..." or "send to 0x123..."
    - Clean up addresses by removing extra spaces, quotes, or surrounding text
 
-11. AMOUNT EXTRACTION: Extract amounts from phrases like:
+20. AMOUNT EXTRACTION: Extract amounts from phrases like:
    - "send 0.01 ETH"
    - "transfer 100 USDC"
    - "move 5 tokens"
    - "payment link for 50 USDC"
    - "invoice for $100"
 
-12. When user provides an address after being asked, ALWAYS include it in the send parameters.
+21. When user provides an address after being asked, ALWAYS include it in the send parameters.
 
 EXAMPLES:
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"
@@ -274,6 +292,15 @@ Response: {"intent": "create_proposal", "params": {"service_type": "mobile app",
 
 User: "need proposal for logo design, budget around $500, 2 week timeline"
 Response: {"intent": "create_proposal", "params": {"service_type": "design", "budget": "500", "currency": "USD", "timeline": "2 weeks"}}
+
+User: "create invoice for ABC Corp, $2500 for web development"
+Response: {"intent": "create_invoice", "params": {"client_name": "ABC Corp", "amount": "2500", "currency": "USD", "description": "web development"}}
+
+User: "invoice for consulting services, $150/hour, 10 hours"
+Response: {"intent": "create_invoice", "params": {"description": "consulting services", "amount": "1500", "currency": "USD"}}
+
+User: "bill client XYZ for logo design, $800, due in 30 days"
+Response: {"intent": "create_invoice", "params": {"client_name": "XYZ", "amount": "800", "currency": "USD", "description": "logo design", "due_date": "30 days"}}
 
 User: "send proposal 123 to client@company.com"
 Response: {"intent": "send_proposal", "params": {"proposal_id": "123", "client_email": "client@company.com"}}

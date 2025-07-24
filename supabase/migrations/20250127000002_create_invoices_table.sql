@@ -1,9 +1,8 @@
--- Drop existing tables if they exist
-DROP TABLE IF EXISTS payments CASCADE;
-DROP TABLE IF EXISTS invoices CASCADE;
+-- Migration: Create invoices table
+-- This migration creates the invoices table with all necessary fields
 
--- Invoices Table
-create table invoices (
+-- Create invoices table
+CREATE TABLE IF NOT EXISTS invoices (
   id uuid primary key default gen_random_uuid(),
   freelancer_name text not null,
   freelancer_email text not null,
@@ -26,8 +25,13 @@ create table invoices (
   additional_notes text
 );
 
--- Payments Table
-create table payments (
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_invoice_client ON invoices(client_email);
+CREATE INDEX IF NOT EXISTS idx_invoice_freelancer ON invoices(freelancer_email);
+CREATE INDEX IF NOT EXISTS idx_invoice_status ON invoices(status);
+
+-- Create payments table if it doesn't exist (for invoice payments tracking)
+CREATE TABLE IF NOT EXISTS payments (
   id uuid primary key default gen_random_uuid(),
   invoice_id uuid references invoices(id) on delete cascade,
   amount_paid numeric not null,
@@ -37,20 +41,5 @@ create table payments (
   status text default 'pending' check (status in ('pending','completed','failed'))
 );
 
--- Create indexes after tables are created
-create index idx_invoice_client on invoices(client_email);
-create index idx_payment_invoice on payments(invoice_id);
-
--- Sessions table for user context and pending actions
-create table if not exists public.sessions (
-  user_id text primary key,
-  context jsonb,
-  updated_at timestamptz default now()
-);
-
-alter table public.sessions enable row level security;
-
-create policy "Allow service role" on public.sessions
-  for all
-  using (auth.role() = 'service_role')
-  with check (auth.role() = 'service_role');
+-- Create index for payments
+CREATE INDEX IF NOT EXISTS idx_payment_invoice ON payments(invoice_id);

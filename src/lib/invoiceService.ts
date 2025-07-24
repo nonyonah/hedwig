@@ -52,13 +52,17 @@ export async function createInvoice(invoiceData: Omit<InvoiceData, 'id' | 'date_
 
     if (error) {
       console.error('Error creating invoice:', error);
-      throw new Error(`Failed to create invoice: ${error.message}`);
+      const errorMessage = error.message || error.details || JSON.stringify(error);
+      throw new Error(`Failed to create invoice: ${errorMessage}`);
     }
 
     return data;
   } catch (error) {
     console.error('Error in createInvoice:', error);
-    throw error;
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Failed to create invoice: ${String(error)}`);
   }
 }
 
