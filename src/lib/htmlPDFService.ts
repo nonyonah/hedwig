@@ -750,6 +750,15 @@ export function generateProposalHTML(proposal: ProposalData & { user_name?: stri
 }
 
 // Generate PDF from HTML using Puppeteer with retry mechanism
+// ============================================================================
+// DEPRECATED: Puppeteer-based PDF Generation Functions
+// ============================================================================
+// The functions below use Puppeteer and are prone to TargetCloseError issues
+// on Windows environments. Use the react-pdf based functions instead:
+// - generateProposalPDF() now uses proposalPDFService.generatePDF()
+// - generateInvoicePDF() now uses proposalPDFService.generatePDF() with conversion
+// ============================================================================
+
 async function generatePDFFromHTMLInternal(html: string, options: {
     format?: 'A4' | 'Letter';
     margin?: { top: string; right: string; bottom: string; left: string; };
@@ -888,7 +897,9 @@ async function generatePDFFromHTMLInternal(html: string, options: {
     }
 }
 
-// Main PDF generation function with retry mechanism
+// DEPRECATED: Main PDF generation function with retry mechanism
+// This function uses Puppeteer and is prone to TargetCloseError on Windows.
+// Consider using react-pdf based alternatives instead.
 export async function generatePDFFromHTML(html: string, options: {
     format?: 'A4' | 'Letter';
     margin?: { top: string; right: string; bottom: string; left: string; };
@@ -930,32 +941,23 @@ export async function generatePDFFromHTML(html: string, options: {
     }
 }
 
-// Main function to generate proposal PDF
+// Main function to generate proposal PDF - Using react-pdf instead of Puppeteer
 export async function generateProposalPDF(proposal: ProposalData): Promise<Buffer> {
-    // Import Supabase client
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    
-    // Fetch user information from the users table
-    const { data: user } = await supabase
-        .from('users')
-        .select('name, phone_number, email')
-        .eq('id', proposal.user_id)
-        .single();
-    
-    // Create extended proposal data with user info
-    const extendedProposal = {
-        ...proposal,
-        user_name: user?.name || 'Professional Services',
-        user_email: user?.email || '',
-        user_phone: user?.phone_number || ''
-    };
-    
-    const html = generateProposalHTML(extendedProposal);
-    return generatePDFFromHTML(html);
+    try {
+        console.log('[generateProposalPDF] Switching to react-pdf implementation for proposal:', proposal.id);
+        
+        // Import the working react-pdf service
+        const { generatePDF } = await import('./proposalPDFService');
+        
+        // Use the working react-pdf implementation with detailed template
+        const pdfBuffer = await generatePDF(proposal, { template: 'detailed' });
+        
+        console.log('[generateProposalPDF] PDF generated successfully using react-pdf, size:', pdfBuffer.length);
+        return pdfBuffer;
+    } catch (error) {
+        console.error('[generateProposalPDF] Error generating PDF with react-pdf:', error);
+        throw new Error(`Failed to generate proposal PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
 
 // Generate invoice HTML
@@ -1021,6 +1023,38 @@ export async function generateReceiptPDF(receiptData: any): Promise<Buffer> {
 }
 
 export async function generateInvoicePDF(invoiceData: any): Promise<Buffer> {
-    const html = generateInvoiceHTML(invoiceData);
-    return generatePDFFromHTML(html);
+    try {
+        console.log('[generateInvoicePDF] Attempting to generate invoice PDF for:', invoiceData.id);
+        
+        // Try to use a simpler approach first - convert to proposal format and use react-pdf
+        const proposalFormat = {
+            id: invoiceData.id,
+            user_id: invoiceData.user_id,
+            client_name: invoiceData.client_name,
+            client_email: invoiceData.client_email,
+            service_type: 'invoice',
+            project_title: `Invoice ${invoiceData.invoice_number || '#000123'}`,
+            description: invoiceData.project_description || 'Professional Services',
+            deliverables: ['Service delivery', 'Quality assurance', 'Support'],
+            timeline: 'Completed',
+            budget: invoiceData.amount || 0,
+            currency: 'USD',
+            features: [],
+            status: 'sent' as const,
+            created_at: invoiceData.date_created,
+            updated_at: invoiceData.date_created
+        };
+        
+        // Import the working react-pdf service
+        const { generatePDF } = await import('./proposalPDFService');
+        
+        // Use the working react-pdf implementation
+        const pdfBuffer = await generatePDF(proposalFormat, { template: 'minimal' });
+        
+        console.log('[generateInvoicePDF] Invoice PDF generated successfully using react-pdf, size:', pdfBuffer.length);
+        return pdfBuffer;
+    } catch (error) {
+        console.error('[generateInvoicePDF] Error generating invoice PDF:', error);
+        throw new Error(`Failed to generate invoice PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
