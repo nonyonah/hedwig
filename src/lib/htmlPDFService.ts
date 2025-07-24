@@ -790,8 +790,8 @@ export async function generatePDFFromHTML(html: string, options: {
             timeout: 30000 // 30 second timeout for content loading
         });
         
-        // Wait a bit for any CSS to apply
-        await page.waitForTimeout(1000);
+        // Wait a bit for any CSS to apply (using Promise-based delay instead of deprecated waitForTimeout)
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Generate PDF with timeout
         const pdfBuffer = await Promise.race([
