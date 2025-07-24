@@ -990,7 +990,11 @@ export async function handleAction(
     return await handleCreatePaymentLink(params, userId);
   case "create_invoice":
     console.log(`[handleAction] Processing 'create_invoice' intent with params:`, params);
-    return await handleCreateInvoice(params, userId);
+    // INVOICE FEATURE TEMPORARILY DISABLED
+    return {
+      text: "🚧 **Invoice feature is temporarily disabled for maintenance.**\n\nPlease use the payment link feature instead:\n\n💡 **Alternative:** Create a payment link by saying:\n'Create payment link for [client email] amount [amount] for [description]'\n\nExample: 'Create payment link for client@company.com amount $2500 for web development'\n\nThis will generate a secure payment link you can share with your client."
+    };
+    // return await handleCreateInvoice(params, userId);
   case "get_earnings":
     console.log(`[handleAction] Processing 'get_earnings' intent with params:`, params);
     return await handleGetEarnings(params, userId);

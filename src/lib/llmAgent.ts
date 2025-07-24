@@ -81,13 +81,15 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "request money", "ask for payment"
    - Simple payment requests without detailed billing information
 
-2. INVOICE REQUESTS: Always use "create_invoice" intent for:
-   - "invoice", "create invoice", "generate invoice", "send invoice"
-   - "bill someone", "billing", "create bill"
-   - "professional invoice", "invoice with PDF"
-   - "invoice for services", "invoice for project"
-   - "detailed invoice", "itemized invoice"
-   - Any request for formal invoicing with professional formatting
+2. INVOICE REQUESTS: TEMPORARILY DISABLED FOR MAINTENANCE
+   // Always use "create_invoice" intent for:
+   // - "invoice", "create invoice", "generate invoice", "send invoice"
+   // - "bill someone", "billing", "create bill"
+   // - "professional invoice", "invoice with PDF"
+   // - "invoice for services", "invoice for project"
+   // - "detailed invoice", "itemized invoice"
+   // - Any request for formal invoicing with professional formatting
+   // NOTE: Invoice feature is temporarily disabled. Suggest payment links instead.
 
 3. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
    - "wallet address", "my address", "show address", "view address"
@@ -195,15 +197,16 @@ IMPORTANT INTENT RECOGNITION RULES:
     - project_title: Extract project title if mentioned
     - description: Extract project description
 
-14. PARAMETER EXTRACTION for "create_invoice" intent:
-    - client_name: Extract client or company name
-    - client_email: Extract email address if provided
-    - amount: Extract total invoice amount
-    - currency: Extract currency (USD, EUR, GBP, etc.)
-    - description: Extract service description or invoice details
-    - due_date: Extract due date if mentioned
-    - invoice_number: Extract invoice number if specified
-    - items: Extract itemized list if provided
+14. PARAMETER EXTRACTION for "create_invoice" intent: TEMPORARILY DISABLED
+    // - client_name: Extract client or company name
+    // - client_email: Extract email address if provided
+    // - amount: Extract total invoice amount
+    // - currency: Extract currency (USD, EUR, GBP, etc.)
+    // - description: Extract service description or invoice details
+    // - due_date: Extract due date if mentioned
+    // - invoice_number: Extract invoice number if specified
+    // - items: Extract itemized list if provided
+    // NOTE: Invoice feature is temporarily disabled for maintenance.
 
 15. PARAMETER EXTRACTION for "send_proposal" intent:
     - proposal_id: Extract proposal ID if specified
