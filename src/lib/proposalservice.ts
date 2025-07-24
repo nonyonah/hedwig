@@ -449,35 +449,29 @@ export async function processProposalInput(message: string, userId: string): Pro
         document_link: pdfDownloadUrl
       });
       
-      // Send the template with the PDF included in the header
-      const templateResult = await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
-        client_name: proposalData.client_name || 'your client',
-        document_link: pdfDownloadUrl
-      }));
-      
-      console.log(`[processProposalInput] Template sent successfully:`, templateResult);
-      
-      // Return minimal response - just the proposal ID for tracking
-      return { message: "", proposalId };
-    } catch (templateError) {
-      console.error(`[processProposalInput] Template sending failed:`, templateError);
-      
-      // Fallback: Send a simple text message with download link
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-      const pdfDownloadUrl = `${baseUrl}/api/proposal-pdf/${proposalId}`;
-      
-      const fallbackMessage = `✅ **Proposal Created Successfully!**
-
-📋 **Client:** ${proposalData.client_name}
-💰 **Budget:** ${proposalData.currency} ${proposalData.budget}
-⏰ **Timeline:** ${proposalData.timeline}
-
-📄 **Download your proposal:** ${pdfDownloadUrl}
-
-Your professional proposal has been generated and is ready to send to your client!`;
-      
-      console.log(`[processProposalInput] Sending fallback message due to template failure`);
-      return { message: fallbackMessage, proposalId };
+      // Try to send the template first, but fall back to simple message if it fails
+      try {
+        const templateResult = await sendWhatsAppTemplate(user.phone_number!, proposalTemplate({ 
+          client_name: proposalData.client_name || 'your client',
+          document_link: pdfDownloadUrl
+        }));
+        
+        console.log(`[processProposalInput] Template sent successfully:`, templateResult);
+        
+        // Return minimal response - just the proposal ID for tracking
+        return { message: "", proposalId };
+      } catch (templateError) {
+        console.error(`[processProposalInput] Template sending failed, using simple message fallback:`, templateError);
+        
+        // Send a simple text message instead
+        const { sendWhatsAppMessage } = await import('./whatsappUtils');
+        const fallbackMessage = `📄 Your proposal has been generated successfully!\n\nClient: ${proposalData.client_name || 'your client'}\nDownload your proposal: ${pdfDownloadUrl}\n\nThis document contains all the details discussed. Please review and let me know if you need any changes.`;
+        
+        await sendWhatsAppMessage(user.phone_number!, fallbackMessage);
+        console.log(`[processProposalInput] Fallback message sent successfully`);
+        
+        return { message: "", proposalId };
+      }
     }
     
   } catch (error) {
