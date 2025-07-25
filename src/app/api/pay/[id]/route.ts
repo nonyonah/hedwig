@@ -19,16 +19,9 @@ export async function GET(
       return NextResponse.redirect('/404');
     }
 
-    // Redirect to payment page with invoice data
-    const searchParams = new URLSearchParams({
-      invoiceId: invoiceId, // Use the invoiceId from params instead of invoice.id
-      amount: invoice.amount.toString(),
-      description: invoice.project_description || 'Invoice Payment',
-      clientName: invoice.client_name || '',
-      clientEmail: invoice.client_email || ''
-    });
-
-    return NextResponse.redirect(`/payment?${searchParams.toString()}`);
+    // Redirect to the new invoice page
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+    return NextResponse.redirect(`${baseUrl}/invoice/${invoiceId}`);
   } catch (error) {
     console.error('Error processing payment request:', error);
     return NextResponse.redirect('/404');

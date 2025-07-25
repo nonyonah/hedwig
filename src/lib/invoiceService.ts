@@ -274,7 +274,7 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
                                 <tr>
                                   <td style="background-color: #7f56d9; border-radius: 6px;">
-                                    <a href="${paymentUrl}" style="display: inline-block; padding: 8px 144px; color: #ffffff; text-decoration: none; font-weight: 500; font-size: 14px;">Pay this invoice</a>
+                                    <a href="${paymentUrl}" style="display: inline-block; padding: 12px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; line-height: 1.2; white-space: nowrap;">Pay this invoice</a>
                                   </td>
                                 </tr>
                               </table>
