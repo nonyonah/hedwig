@@ -158,7 +158,7 @@ export async function sendInvoiceEmail(invoiceId: string): Promise<boolean> {
   }
 }
 
-// Generate email HTML template (matches the exact design provided)
+// Generate email HTML template (Gmail compatible)
 function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): string {
   const invoiceNumber = invoice.invoice_number || generateInvoiceNumber();
   const dueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-US', { 
@@ -169,148 +169,127 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
 
   return `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-      <meta charset="utf-8">
+      <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
-        * { 
-          margin: 0; 
-          padding: 0; 
-          box-sizing: border-box; 
-        }
-        body { 
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
-          background-color: #e9eaeb; 
-          color: #262624; 
-          line-height: 1.6;
-          min-height: 100vh;
-          padding: 32px;
-        }
-        .header { 
-          margin-bottom: 64px; 
-        }
-        .header h1 { 
-          color: #262624; 
-          font-size: 18px; 
-          font-weight: 500; 
-        }
-        .invoice-container { 
-          display: flex; 
-          justify-content: center; 
-        }
-        .invoice-card { 
-          width: 100%; 
-          max-width: 448px; 
-          background: #ffffff; 
-          border-radius: 8px; 
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); 
-          border: none; 
-        }
-        .card-header { 
-          text-align: center; 
-          padding-bottom: 32px; 
-          padding-top: 24px;
-          padding-left: 24px;
-          padding-right: 24px;
-        }
-        .card-header h2 { 
-          color: #262624; 
-          font-size: 20px; 
-          font-weight: 600; 
-        }
-        .card-content { 
-          padding: 0 24px 24px 24px; 
-        }
-        .invoice-details { 
-          margin-bottom: 24px; 
-        }
-        .detail-row { 
-          display: flex; 
-          justify-content: space-between; 
-          align-items: center; 
-          margin-bottom: 16px; 
-        }
-        .detail-label { 
-          color: #262624; 
-          opacity: 0.6; 
-          font-size: 14px; 
-        }
-        .detail-value { 
-          color: #262624; 
-          font-weight: 500; 
-        }
-        .pay-button-container { 
-          padding-top: 16px; 
-          display: flex; 
-          justify-content: center; 
-        }
-        .pay-button { 
-          background-color: #7f56d9; 
-          color: #ffffff; 
-          padding: 8px 144px; 
-          border-radius: 6px; 
-          font-weight: 500; 
-          text-decoration: none; 
-          display: inline-block; 
-          transition: background-color 0.2s; 
-        }
-        .pay-button:hover { 
-          background-color: rgba(127, 86, 217, 0.9); 
-        }
-        @media (max-width: 600px) {
-          body { padding: 16px; }
-          .header { margin-bottom: 32px; }
-          .pay-button { padding: 8px 64px; }
-        }
-      </style>
+      <title>Invoice ${invoiceNumber}</title>
+      <!--[if mso]>
+      <noscript>
+        <xml>
+          <o:OfficeDocumentSettings>
+            <o:PixelsPerInch>96</o:PixelsPerInch>
+          </o:OfficeDocumentSettings>
+        </xml>
+      </noscript>
+      <![endif]-->
     </head>
-    <body>
-      <!-- Header -->
-      <div class="header">
-        <h1>albus.</h1>
-      </div>
-
-      <!-- Invoice Card -->
-      <div class="invoice-container">
-        <div class="invoice-card">
-          <div class="card-header">
-            <h2>Invoice ${invoiceNumber}</h2>
-          </div>
-
-          <div class="card-content">
-            <!-- Invoice Details -->
-            <div class="invoice-details">
-              <div class="detail-row">
-                <span class="detail-label">From</span>
-                <span class="detail-value">${invoice.freelancer_name}</span>
-              </div>
-
-              <div class="detail-row">
-                <span class="detail-label">To</span>
-                <span class="detail-value">${invoice.client_name}</span>
-              </div>
-
-              <div class="detail-row">
-                <span class="detail-label">Due Date</span>
-                <span class="detail-value">${dueDate}</span>
-              </div>
-
-              <div class="detail-row">
-                <span class="detail-label">Total Due</span>
-                <span class="detail-value">$${invoice.amount.toFixed(0)}</span>
-              </div>
-            </div>
-
-            <!-- Pay Button -->
-            <div class="pay-button-container">
-              <a href="${paymentUrl}" class="pay-button">
-                Pay this invoice
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
+    <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+       <!-- Main Container -->
+       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f9fafb;">
+        <tr>
+          <td style="padding: 32px 20px;">
+            <!-- Content Container -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 448px; margin: 0 auto;">
+              <!-- Header -->
+              <tr>
+                <td style="padding-bottom: 64px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <tr>
+                      <td style="text-align: left;">
+                        <h1 style="margin: 0; font-size: 18px; font-weight: 500; color: #262624;">albus.</h1>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              
+              <!-- Invoice Card -->
+              <tr>
+                <td>
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+                    <!-- Card Header -->
+                    <tr>
+                      <td style="padding: 24px 24px 32px 24px; text-align: center;">
+                        <h2 style="margin: 0; font-size: 20px; font-weight: 600; color: #262624;">Invoice ${invoiceNumber}</h2>
+                      </td>
+                    </tr>
+                    
+                    <!-- Card Content -->
+                    <tr>
+                      <td style="padding: 0 24px 24px 24px;">
+                        <!-- Invoice Details -->
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <!-- From Row -->
+                          <tr>
+                            <td style="padding-bottom: 16px;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                  <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">From</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${invoice.freelancer_name}</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          
+                          <!-- To Row -->
+                          <tr>
+                            <td style="padding-bottom: 16px;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                  <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">To</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${invoice.client_name}</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          
+                          <!-- Due Date Row -->
+                          <tr>
+                            <td style="padding-bottom: 16px;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                  <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">Due Date</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${dueDate}</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          
+                          <!-- Total Due Row -->
+                          <tr>
+                            <td style="padding-bottom: 24px;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                  <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">Total Due</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">$${invoice.amount.toFixed(0)}</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          
+                          <!-- Pay Button -->
+                          <tr>
+                            <td style="text-align: center; padding-top: 16px;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+                                <tr>
+                                  <td style="background-color: #7f56d9; border-radius: 6px;">
+                                    <a href="${paymentUrl}" style="display: inline-block; padding: 8px 144px; color: #ffffff; text-decoration: none; font-weight: 500; font-size: 14px;">Pay this invoice</a>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
