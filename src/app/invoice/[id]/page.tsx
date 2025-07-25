@@ -6,17 +6,28 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Download } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 interface InvoicePageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default function InvoicePage({ params }: InvoicePageProps) {
+  const [id, setId] = useState<string>("")
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("crypto")
   const [selectedNetwork, setSelectedNetwork] = useState("Base")
+
+  useEffect(() => {
+    params.then((resolvedParams) => {
+      setId(resolvedParams.id)
+    })
+  }, [params])
+
+  if (!id) {
+    return <div>Loading...</div>
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -32,7 +43,7 @@ export default function InvoicePage({ params }: InvoicePageProps) {
 
         <Card className="shadow-sm">
           <CardHeader className="text-center pb-4">
-            <CardTitle className="text-lg font-semibold">Invoice #{params.id.padStart(5, "0")}</CardTitle>
+            <CardTitle className="text-lg font-semibold">Invoice #{id.padStart(5, "0")}</CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-4">
@@ -156,7 +167,7 @@ export default function InvoicePage({ params }: InvoicePageProps) {
                   Connect Wallet
                 </Button>
               ) : (
-                <Link href={`/invoice/${params.id}/paid`}>
+                <Link href={`/invoice/${id}/paid`}>
                   <Button className="bg-purple-600 hover:bg-purple-700" size="custom">
                     Pay with Bank Account
                   </Button>
