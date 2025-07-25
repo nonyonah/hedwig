@@ -822,7 +822,7 @@ export function parseEarningsQuery(query: string): EarningsFilter | null {
 
   // Extract network with more patterns
   let network: string | undefined;
-  const networkPatterns = ['base', 'polygon', 'ethereum', 'arbitrum', 'optimism', 'avalanche', 'bsc', 'solana'];
+  const networkPatterns = ['base', 'polygon', 'ethereum', 'optimism-sepolia', 'avalanche', 'bsc', 'solana', 'celo-alfajores'];
   for (const networkPattern of networkPatterns) {
     if (lowerQuery.includes(networkPattern)) {
       network = networkPattern.charAt(0).toUpperCase() + networkPattern.slice(1);

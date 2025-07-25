@@ -11,7 +11,7 @@ const supabase = createClient(
 
 export interface NudgeTarget {
   id: string;
-  type: 'payment_link';
+  type: 'payment_link' | 'invoice';
   userId: string;
   clientEmail?: string;
   amount: number;
@@ -25,7 +25,7 @@ export interface NudgeTarget {
 }
 
 export interface NudgeLog {
-  targetType: 'payment_link';
+  targetType: 'payment_link' | 'invoice';
   targetId: string;
   userId: string;
   nudgeType: string;
@@ -41,7 +41,7 @@ export class SmartNudgeService {
   private static readonly NUDGE_INTERVAL_HOURS = 48; // Wait 48 hours between nudges
 
   /**
-   * Get all payment links that need nudging
+   * Get all payment links and invoices that need nudging
    */
   static async getTargetsForNudging(): Promise<NudgeTarget[]> {
     const now = new Date();
@@ -100,11 +100,60 @@ export class SmartNudgeService {
       }
     }
 
+    // Get invoices that need nudging
+    const { data: invoices, error: invoiceError } = await supabase
+      .from('invoices')
+      .select(`
+        id,
+        total_amount,
+        invoice_number,
+        client_email,
+        viewed_at,
+        status,
+        nudge_count,
+        last_nudge_at,
+        nudge_disabled,
+        date_created,
+        user_id
+      `)
+      .neq('status', 'paid')
+      .eq('nudge_disabled', false)
+      .lt('nudge_count', this.MAX_NUDGES)
+      .not('viewed_at', 'is', null)
+      .or(`viewed_at.lt.${nudgeThreshold.toISOString()},and(viewed_at.not.is.null,last_nudge_at.lt.${intervalThreshold.toISOString()})`);
+
+    if (!invoiceError && invoices) {
+      for (const invoice of invoices) {
+        if (invoice.viewed_at && invoice.client_email) {
+          // Check if enough time has passed since last nudge or if it's the first nudge
+          const shouldNudge = !invoice.last_nudge_at || 
+            new Date(invoice.last_nudge_at) < intervalThreshold;
+
+          if (shouldNudge) {
+            targets.push({
+              id: invoice.id,
+              type: 'invoice',
+              userId: invoice.user_id,
+              clientEmail: invoice.client_email,
+              amount: parseFloat(invoice.total_amount),
+              title: `Invoice ${invoice.invoice_number || invoice.id}`,
+              viewedAt: invoice.viewed_at,
+              paidAt: invoice.status === 'paid' ? invoice.date_created : undefined,
+              nudgeCount: invoice.nudge_count || 0,
+              lastNudgeAt: invoice.last_nudge_at,
+              nudgeDisabled: invoice.nudge_disabled,
+              createdAt: invoice.date_created
+            });
+          }
+        }
+      }
+    }
+
     return targets;
   }
 
   /**
-   * Send a nudge email for a specific payment link
+   * Send a nudge email for a specific payment link or invoice
    */
   static async sendNudge(target: NudgeTarget): Promise<boolean> {
     try {
@@ -131,13 +180,14 @@ export class SmartNudgeService {
           success = true;
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : 'Email send failed';
-          console.error(`Failed to send email nudge for payment link ${target.id}:`, error);
+          console.error(`Failed to send email nudge for ${target.type} ${target.id}:`, error);
         }
       }
 
-      // Update nudge count and timestamp
+      // Update nudge count and timestamp based on target type
+      const tableName = target.type === 'payment_link' ? 'payment_links' : 'invoices';
       await supabase
-        .from('payment_links')
+        .from(tableName)
         .update({
           nudge_count: target.nudgeCount + 1,
           last_nudge_at: new Date().toISOString()
@@ -158,7 +208,7 @@ export class SmartNudgeService {
 
       return success;
     } catch (error) {
-      console.error(`Error sending nudge for payment link ${target.id}:`, error);
+      console.error(`Error sending nudge for ${target.type} ${target.id}:`, error);
       return false;
     }
   }
@@ -190,35 +240,39 @@ export class SmartNudgeService {
   }
 
   /**
-   * Mark a payment link as viewed
+   * Mark a payment link or invoice as viewed
    */
-  static async markAsViewed(targetType: 'payment_link', targetId: string): Promise<void> {
+  static async markAsViewed(targetType: 'payment_link' | 'invoice', targetId: string): Promise<void> {
+    const tableName = targetType === 'payment_link' ? 'payment_links' : 'invoices';
     await supabase
-      .from('payment_links')
+      .from(tableName)
       .update({ viewed_at: new Date().toISOString() })
       .eq('id', targetId)
       .is('viewed_at', null); // Only update if not already viewed
   }
 
   /**
-   * Mark a payment link as paid
+   * Mark a payment link or invoice as paid
    */
-  static async markAsPaid(targetType: 'payment_link', targetId: string): Promise<void> {
+  static async markAsPaid(targetType: 'payment_link' | 'invoice', targetId: string): Promise<void> {
+    const tableName = targetType === 'payment_link' ? 'payment_links' : 'invoices';
+    const updateData = targetType === 'payment_link' 
+      ? { paid_at: new Date().toISOString(), status: 'paid' }
+      : { status: 'paid' }; // For invoices, we only update status
+    
     await supabase
-      .from('payment_links')
-      .update({ 
-        paid_at: new Date().toISOString(),
-        status: 'paid'
-      })
+      .from(tableName)
+      .update(updateData)
       .eq('id', targetId);
   }
 
   /**
-   * Disable nudges for a payment link
+   * Disable nudges for a payment link or invoice
    */
-  static async disableNudges(targetType: 'payment_link', targetId: string): Promise<void> {
+  static async disableNudges(targetType: 'payment_link' | 'invoice', targetId: string): Promise<void> {
+    const tableName = targetType === 'payment_link' ? 'payment_links' : 'invoices';
     await supabase
-      .from('payment_links')
+      .from(tableName)
       .update({ nudge_disabled: true })
       .eq('id', targetId);
   }

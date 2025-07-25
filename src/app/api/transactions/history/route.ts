@@ -82,7 +82,8 @@ export async function GET() {
       'solana-mainnet',
       'solana-devnet',
       'polygon',
-      'arbitrum',
+      'optimism-sepolia',
+      'celo-alfajores',
       'optimism'
     ],
     examples: [

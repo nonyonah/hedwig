@@ -183,7 +183,7 @@ function formatSpecificBalance(
         response = `💰 **Solana Balance**\n\n🔹 SOL: ${formattedBalances.sol_sol}\n🔹 USDC: ${formattedBalances.sol_usdc}`;
         break;
       default:
-        return { text: `Network "${requestedNetwork}" is not supported. Supported networks: Base, Ethereum, Solana.` };
+        return { text: `Network "${requestedNetwork}" is not supported. Supported networks: Base, Ethereum, Optimism, Celo, Solana.` };
     }
   }
   

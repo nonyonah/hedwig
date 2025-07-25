@@ -65,13 +65,13 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'base',
     chainId: 8453,
   },
-  'optimism': {
-    name: 'optimism',
-    chainId: 10,
+  'optimism-sepolia': {
+    name: 'optimism-sepolia',
+    chainId: 11155420,
   },
-  'arbitrum': {
-    name: 'arbitrum',
-    chainId: 42161,
+  'celo-alfajores': {
+    name: 'celo-alfajores',
+    chainId: 44787,
   },
   'solana-devnet': {
     name: 'solana-devnet',

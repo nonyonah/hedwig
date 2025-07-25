@@ -226,8 +226,10 @@ function mapNetworkToAlchemy(network: string): string {
       return 'eth-sepolia';
     case 'polygon':
       return 'polygon-mainnet';
-    case 'arbitrum':
-      return 'arb-mainnet';
+    case 'optimism-sepolia':
+      return 'opt-sepolia';
+    case 'celo-alfajores':
+      return 'celo-alfajores';
     case 'optimism':
       return 'opt-mainnet';
     default:

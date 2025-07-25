@@ -80,7 +80,7 @@ export default async function handler(
     }
 
     // Validate network
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'arbitrum', 'optimism'];
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-alfajores'];
     if (!supportedNetworks.includes(network.toLowerCase())) {
       return res.status(400).json({
         success: false,

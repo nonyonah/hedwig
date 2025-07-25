@@ -92,12 +92,20 @@ export default function InvoicePage({ params }: InvoicePageProps) {
                           Base
                         </div>
                       </SelectItem>
+                      <SelectItem value="Optimism">
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">O</span>
+                          </div>
+                          Optimism Sepolia
+                        </div>
+                      </SelectItem>
                       <SelectItem value="Celo">
                         <div className="flex items-center gap-2">
                           <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
                             <span className="text-white text-xs font-bold">C</span>
                           </div>
-                          Celo
+                          Celo Alfajores
                         </div>
                       </SelectItem>
                       <SelectItem value="Ethereum">
@@ -106,22 +114,6 @@ export default function InvoicePage({ params }: InvoicePageProps) {
                             <span className="text-white text-xs font-bold">E</span>
                           </div>
                           Ethereum
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="Solana">
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center">
-                            <span className="text-white text-xs font-bold">S</span>
-                          </div>
-                          Solana
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="Lisk">
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
-                            <span className="text-white text-xs font-bold">L</span>
-                          </div>
-                          Lisk
                         </div>
                       </SelectItem>
                     </SelectContent>

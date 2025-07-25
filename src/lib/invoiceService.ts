@@ -14,7 +14,7 @@ export interface InvoiceData {
   split_details?: any;
   milestones?: any;
   wallet_address: string;
-  blockchain: 'base' | 'optimism' | 'bnb' | 'celo';
+  blockchain: 'base' | 'optimism-sepolia' | 'bnb' | 'celo-alfajores';
   status?: 'draft' | 'sent' | 'paid' | 'partial' | 'overdue';
   date_created?: string;
   invoice_number?: string;

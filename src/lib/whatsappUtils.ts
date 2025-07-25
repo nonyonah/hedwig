@@ -660,45 +660,193 @@ function patchSendFailedTemplate(template: any): any {
   return template;
 }
 
-// Update the sendWhatsAppTemplate function to use the cleanWhatsAppTemplate function
+// Convert template to natural language text
+function convertTemplateToText(template: any): string {
+  if (!template || !template.name) {
+    return "I couldn't process that request properly.";
+  }
+
+  // Extract parameters from template components
+  const params: Record<string, string> = {};
+  if (template.components) {
+    template.components.forEach((component: any) => {
+      if (component.parameters) {
+        component.parameters.forEach((param: any, index: number) => {
+          if (param.text) {
+            params[`param${index}`] = param.text;
+          }
+        });
+      }
+    });
+  }
+
+  // Convert specific templates to natural language
+  switch (template.name) {
+    case 'send_token_prompt':
+      return `💸 **Send Confirmation**\n\nYou're about to send ${params.param0 || '?'} ${params.param1 || 'tokens'} to ${params.param2 || 'recipient'}.\n\nTotal cost: ${params.param3 || '?'}\n\nWould you like to proceed? Reply "yes" to confirm or "no" to cancel.`;
+    
+    case 'tx_pending':
+      return `⏳ **Transaction Processing**\n\nYour transaction is being processed. This may take a few moments...`;
+    
+    case 'tx_sent_success':
+      return `✅ **Transaction Successful**\n\nYour transaction has been completed successfully!\n\nTransaction Hash: ${params.param0 || 'N/A'}\nAmount: ${params.param1 || '?'}\nRecipient: ${params.param2 || '?'}`;
+    
+    case 'send_failed':
+      return `❌ **Transaction Failed**\n\nSorry, your transaction couldn't be completed.\n\nReason: ${params.param0 || 'Unknown error'}\n\nPlease try again or contact support if the issue persists.`;
+    
+    case 'wallet_created':
+      return `🎉 **Wallets Created Successfully!**\n\nYour secure wallets have been created:\n\n🔹 **EVM Wallet**: ${params.param0 || 'N/A'}\n🔹 **Solana Wallet**: ${params.param1 || 'N/A'}\n\nYou can now send and receive crypto across multiple networks!`;
+    
+    case 'create_new_wallet':
+      const name = params.param0 || 'there';
+      return `👋 **Welcome ${name}!**\n\nI don't see any wallets associated with your account yet. Would you like me to create secure wallets for you?\n\nI'll create both EVM (Ethereum, Base, etc.) and Solana wallets so you can use all supported networks.\n\nReply "create wallets" to get started!`;
+    
+    case 'wallet_balance':
+      return `💰 **Your Wallet Balance**\n\n**Base Network:**\n🔹 ETH: ${params.param0 || '0'}\n🔹 USDC: ${params.param1 || '0'}\n\n**Ethereum Network:**\n🔹 ETH: ${params.param2 || '0'}\n🔹 USDC: ${params.param3 || '0'}\n\n**Solana Network:**\n🔹 SOL: ${params.param4 || '0'}\n🔹 USDC: ${params.param5 || '0'}`;
+    
+    case 'users_wallet_address':
+      return `📍 **Your Wallet Addresses**\n\n🔹 **EVM Address**: ${params.param0 || 'N/A'}\n(Works on Ethereum, Base, Optimism, etc.)\n\n🔹 **Solana Address**: ${params.param1 || 'N/A'}\n(Works on Solana network)`;
+    
+    case 'quote_pending':
+      return `⏳ **Getting Quote**\n\nI'm fetching the best rates for your transaction. Please wait a moment...`;
+    
+    case 'swap_processing':
+      return `🔄 **Swap Processing**\n\nYour token swap is being processed. This may take a few moments...`;
+    
+    case 'swap_successful':
+      return `✅ **Swap Successful**\n\nYour token swap has been completed!\n\nSwapped: ${params.param0 || '?'} → ${params.param1 || '?'}\nTransaction: ${params.param2 || 'N/A'}`;
+    
+    case 'swap_failed':
+      return `❌ **Swap Failed**\n\nSorry, your token swap couldn't be completed.\n\nReason: ${params.param0 || 'Unknown error'}\n\nPlease try again.`;
+    
+    case 'bridge_processing':
+      return `🌉 **Bridge Processing**\n\nYour cross-chain transfer is being processed. This may take several minutes...`;
+    
+    case 'bridge_successful':
+      return `✅ **Bridge Successful**\n\nYour cross-chain transfer has been completed!\n\nFrom: ${params.param0 || '?'}\nTo: ${params.param1 || '?'}\nAmount: ${params.param2 || '?'}`;
+    
+    case 'bridge_failed':
+      return `❌ **Bridge Failed**\n\nSorry, your cross-chain transfer couldn't be completed.\n\nReason: ${params.param0 || 'Unknown error'}\n\nPlease try again.`;
+    
+    default:
+      // For unknown templates, try to extract meaningful text
+      if (template.components && template.components[0] && template.components[0].parameters) {
+        const texts = template.components[0].parameters
+          .filter((p: any) => p.text)
+          .map((p: any) => p.text)
+          .join(' ');
+        return texts || "I processed your request.";
+      }
+      return "I processed your request.";
+  }
+}
+
+// Update the sendWhatsAppTemplate function to use natural language instead of templates
 export async function sendWhatsAppTemplate(
   phoneNumber: string,
   template: any,
 ): Promise<any> {
   // Extra logging for debugging template sending
   if (template && template.name) {
-    if (["send_token_prompt", "tx_pending", "tx_sent_success", "send_failed"].includes(template.name)) {
-      console.log(`[sendWhatsAppTemplate] Sending template: ${template.name}`);
-      console.log(`[sendWhatsAppTemplate] Template params:`, JSON.stringify(template, null, 2));
-    }
+    console.log(`[sendWhatsAppTemplate] Converting template to natural language: ${template.name}`);
+    console.log(`[sendWhatsAppTemplate] Template params:`, JSON.stringify(template, null, 2));
   }
+  
   try {
     if (!phoneNumber) {
       console.error("[sendWhatsAppTemplate] Error: phoneNumber is required");
-      throw new Error("Phone number is required for sending WhatsApp template");
+      throw new Error("Phone number is required for sending WhatsApp message");
     }
     
-    // Format phone number
-    const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-    console.log(`[sendWhatsAppTemplate] Formatted phone number: ${formattedPhoneNumber}`);
+    // Convert template to natural language text
+    const naturalLanguageText = convertTemplateToText(template);
+    console.log(`[sendWhatsAppTemplate] Converted to text: ${naturalLanguageText}`);
     
-    // Clean the template before sending and ensure it has the 'to' field
-    const cleanedTemplate = cleanWhatsAppTemplate(template);
-    
-    // Create the final message with the formatted phone number
-    const message: WhatsAppTemplateMessage = {
-      to: formattedPhoneNumber,
-      template: cleanedTemplate
-    };
-    
-    console.log(`[sendWhatsAppTemplate] Final message:`, JSON.stringify(message, null, 2));
-    
-    // Send the template message
-    return await sendWhatsAppTemplateMessage(message);
+    // Send as a regular text message instead of template
+    return await sendWhatsAppMessage(phoneNumber, naturalLanguageText);
   } catch (error) {
     console.error("Exception in sendWhatsAppTemplate:", error);
     throw error;
   }
+}
+
+// Helper function to handle transaction confirmation
+async function handleTransactionConfirmation(from: string, userId: string) {
+  // Show pending message
+  await sendWhatsAppMessage(from, { text: "Processing your transaction..." });
+  
+  // Get transaction details from the session
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("context")
+    .eq("user_id", userId)
+    .single();
+    
+  const pendingTx = session?.context?.find(
+    (item: { role: string; content: string }) =>
+      item.role === "system" &&
+      JSON.parse(item.content)?.pending?.action === "send",
+  );
+  
+  let txParams: any = {};
+  if (pendingTx) {
+    txParams = JSON.parse(pendingTx.content)?.pending || {};
+  }
+
+  // Critical fix: The txParams from the session might contain an old or incorrect userId.
+  // We must always use the userId (Supabase UUID) fetched at the start of this function.
+  if ('userId' in txParams) {
+    delete txParams.userId;
+  }
+  
+  // Execute the send transaction
+  const actionResult = await handleAction(
+    "send",
+    { ...txParams, isExecute: true },
+    userId,
+  );
+  
+  // Clear the session context after execution
+  await supabase.from("sessions").upsert(
+    [
+      {
+        user_id: userId,
+        context: [],
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    { onConflict: "user_id" },
+  );
+  
+  if (actionResult) {
+    if (typeof actionResult === 'object' && actionResult !== null && 'pending' in actionResult && 'result' in actionResult) {
+      await sendWhatsAppTemplate(from, actionResult.pending);
+      await sendWhatsAppTemplate(from, actionResult.result);
+    } else if ("name" in actionResult) {
+      await sendWhatsAppTemplate(from, actionResult);
+    } else if ("text" in actionResult) {
+      await sendWhatsAppMessage(from, { text: actionResult.text });
+    }
+  }
+}
+
+// Helper function to handle transaction cancellation
+async function handleTransactionCancellation(from: string, userId: string) {
+  // Clear the session context
+  await supabase.from("sessions").upsert(
+    [
+      {
+        user_id: userId,
+        context: [],
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    { onConflict: "user_id" },
+  );
+  
+  await sendWhatsAppMessage(from, {
+    text: "Transaction canceled. Your funds have not been sent.",
+  });
 }
 
 // Handle incoming WhatsApp messages
@@ -822,8 +970,18 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       const message = value.messages[0];
       console.log(`[DEBUG] Message type: ${message.type}, Interactive type: ${message.interactive?.type}, Button ID: ${message.interactive?.button_reply?.id}`);
       console.log(`[DEBUG] Full message:`, JSON.stringify(message, null, 2));
-      // Check if the user clicked the 'Create Wallet' button
-      if (message.type === 'interactive' && message.interactive.type === 'button_reply' && message.interactive.button_reply.id === 'create_wallets') {
+      
+      // Check if the user wants to create wallets (natural language or button)
+      const messageText = message?.text?.body?.toLowerCase() || '';
+      const isCreateWalletRequest = 
+        (message.type === 'interactive' && message.interactive.type === 'button_reply' && message.interactive.button_reply.id === 'create_wallets') ||
+        messageText.includes('create wallet') || 
+        messageText.includes('create wallets') ||
+        messageText.includes('yes') ||
+        messageText.includes('sure') ||
+        messageText.includes('ok');
+      
+      if (isCreateWalletRequest) {
         console.log(`[Wallet Creation] User ${userId} initiated wallet creation.`);
         await sendWhatsAppMessage(from, { text: "Got it! Creating your secure wallets now, this may take a moment..." });
         
@@ -859,7 +1017,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         // If no wallet and not a creation request, prompt the user to create one.
         console.log(`[Wallet Check] User ${userId} has no wallet. Sending creation prompt with name: ${profileName || 'not provided'}`);
         await sendWhatsAppTemplate(from, createNewWallet(profileName));
-        return; // Stop further processing - wait for user to click the button
+        return; // Stop further processing - wait for user response
       }
     }
 
@@ -869,7 +1027,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       // No flow responses currently supported
     }
 
-    // Handle button clicks
+    // Handle button clicks and natural language confirmations
     if (buttonReply) {
       console.log("Button clicked:", buttonReply);
       const buttonId = buttonReply.id;
@@ -913,75 +1071,13 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         buttonReply.title.toLowerCase() === "yes"
       ) {
         console.log("Send confirmation button clicked by:", from);
-        // Show pending message
-        await sendWhatsAppTemplate(from, txPending());
-        // Get transaction details from the session
-        const { data: session } = await supabase
-          .from("sessions")
-          .select("context")
-          .eq("user_id", userId) // Use the correct Supabase ID for the session lookup
-          .single();
-        const pendingTx = session?.context?.find(
-          (item: { role: string; content: string }) =>
-            item.role === "system" &&
-            JSON.parse(item.content)?.pending?.action === "send",
-        );
-        let txParams: any = {};
-        if (pendingTx) {
-          txParams = JSON.parse(pendingTx.content)?.pending || {};
-        }
-
-        // Critical fix: The txParams from the session might contain an old or incorrect userId.
-        // We must always use the userId (Supabase UUID) fetched at the start of this function.
-        if ('userId' in txParams) {
-          delete txParams.userId;
-        }
-        // Execute the send transaction
-        const actionResult = await handleAction(
-          "send",
-          { ...txParams, isExecute: true },
-          userId, // Always use the correct Supabase UUID
-        );
-        // Clear the session context after execution
-        await supabase.from("sessions").upsert(
-          [
-            {
-              user_id: userId,
-              context: [],
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          { onConflict: "user_id" },
-        );
-        if (actionResult) {
-          if (typeof actionResult === 'object' && actionResult !== null && 'pending' in actionResult && 'result' in actionResult) {
-            await sendWhatsAppTemplate(from, actionResult.pending);
-            await sendWhatsAppTemplate(from, actionResult.result);
-          } else if ("name" in actionResult) {
-            await sendWhatsAppTemplate(from, actionResult);
-          } else if ("text" in actionResult) {
-            await sendWhatsAppMessage(from, { text: actionResult.text });
-          }
-        }
+        await handleTransactionConfirmation(from, userId);
         return;
       }
 
       if (buttonId === "cancel_send") {
         console.log("Send canceled by:", from);
-        // Clear the session context
-        await supabase.from("sessions").upsert(
-          [
-            {
-              user_id: userId,
-              context: [],
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          { onConflict: "user_id" },
-        );
-        await sendWhatsAppMessage(from, {
-          text: "Transaction canceled. Your funds have not been sent.",
-        });
+        await handleTransactionCancellation(from, userId);
         return;
       }
 
@@ -992,19 +1088,43 @@ export async function handleIncomingWhatsAppMessage(body: any) {
     // Handle text messages
     const text = message?.text?.body;
     if (text) {
-      // Check if we're waiting for a name response
-      const { data: nameSession } = await supabase
+      const lowerText = text.toLowerCase();
+      
+      // Check if we have a pending transaction and this is a confirmation/cancellation
+      const { data: session } = await supabase
         .from("sessions")
         .select("context")
         .eq("user_id", userId)
         .single();
-
-      // Defensive: ensure context is always an array for .find
-      let contextArr = Array.isArray(nameSession?.context)
-        ? nameSession.context
-        : nameSession?.context
-          ? [nameSession.context]
-          : [];
+      
+      const contextArr = Array.isArray(session?.context) ? session.context : [];
+      const pendingTx = contextArr.find(
+        (item: { role: string; content: string }) =>
+          item.role === "system" &&
+          JSON.parse(item.content)?.pending?.action === "send",
+      );
+      
+      if (pendingTx) {
+        // Check for confirmation words
+        if (lowerText.includes('yes') || lowerText.includes('confirm') || 
+            lowerText.includes('send') || lowerText.includes('proceed') ||
+            lowerText.includes('ok') || lowerText.includes('sure')) {
+          console.log("Transaction confirmed via natural language by:", from);
+          await handleTransactionConfirmation(from, userId);
+          return;
+        }
+        
+        // Check for cancellation words
+        if (lowerText.includes('no') || lowerText.includes('cancel') || 
+            lowerText.includes('stop') || lowerText.includes('abort') ||
+            lowerText.includes('nevermind') || lowerText.includes('never mind')) {
+          console.log("Transaction canceled via natural language by:", from);
+          await handleTransactionCancellation(from, userId);
+          return;
+        }
+      }
+      
+      // Check if we're waiting for a name response
       const waitingForName = contextArr.find(
         (item: any) =>
           item.role === "system" &&
@@ -1122,7 +1242,6 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       }
 
       // Check if the user is asking about the bot's identity
-      const lowerText = text.toLowerCase();
       if (
         lowerText.includes("who are you") ||
         lowerText.includes("what are you") ||
@@ -1132,7 +1251,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
         (lowerText.includes("what") && lowerText.includes("hedwig"))
       ) {
         await sendWhatsAppMessage(from, {
-          text: "I'm Hedwig, your crypto assistant bot! I can help you manage your crypto wallets, send and receive tokens, swap between different cryptocurrencies, and bridge tokens between chains. Just let me know what you'd like to do!",
+          text: "I'm Hedwig, your freelancing companion with web3 superpowers! 🦉✨\n\nI help freelancers like you:\n💼 Create professional invoices & payment links\n💰 Accept crypto payments from clients worldwide\n🔗 Manage multi-chain wallets (Base, Ethereum, Optimism, Celo)\n📊 Track earnings and generate financial reports\n🤖 Generate project proposals with AI\n\nWhether you're getting paid in USDC, ETH, or traditional crypto - I make freelancing in the web3 era simple! What would you like to do?",
         });
         return;
       }
@@ -1184,14 +1303,14 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       }
       
       // Check for pending action in session
-      const { data: session } = await supabase
+      const { data: pendingSession } = await supabase
         .from("sessions")
         .select("context")
         .eq("user_id", userId)
         .single();
       let pending = null;
-      if (session?.context) {
-        const contextArr = Array.isArray(session.context) ? session.context : [session.context];
+      if (pendingSession?.context) {
+        const contextArr = Array.isArray(pendingSession.context) ? pendingSession.context : [pendingSession.context];
         pending = contextArr.find(
           (item: any) =>
             item.role === "system" && JSON.parse(item.content)?.pending,
@@ -1199,7 +1318,7 @@ export async function handleIncomingWhatsAppMessage(body: any) {
       }
       
       // Add debug logging
-      console.log("Session context:", session?.context);
+      console.log("Session context:", pendingSession?.context);
       console.log("User text:", text);
       
       // Intercept 'yes' for send confirmation if pending send flow is ready
