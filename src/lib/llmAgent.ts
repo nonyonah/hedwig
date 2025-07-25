@@ -81,15 +81,13 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "request money", "ask for payment"
    - Simple payment requests without detailed billing information
 
-2. INVOICE REQUESTS: TEMPORARILY DISABLED FOR MAINTENANCE
-   // Always use "create_invoice" intent for:
-   // - "invoice", "create invoice", "generate invoice", "send invoice"
-   // - "bill someone", "billing", "create bill"
-   // - "professional invoice", "invoice with PDF"
-   // - "invoice for services", "invoice for project"
-   // - "detailed invoice", "itemized invoice"
-   // - Any request for formal invoicing with professional formatting
-   // NOTE: Invoice feature is temporarily disabled. Suggest payment links instead.
+2. INVOICE REQUESTS: Always use "create_invoice" intent for:
+   - "invoice", "create invoice", "generate invoice", "send invoice"
+   - "bill someone", "billing", "create bill"
+   - "professional invoice", "invoice with PDF"
+   - "invoice for services", "invoice for project"
+   - "detailed invoice", "itemized invoice"
+   - Any request for formal invoicing with professional formatting
 
 3. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
    - "wallet address", "my address", "show address", "view address"
@@ -197,16 +195,15 @@ IMPORTANT INTENT RECOGNITION RULES:
     - project_title: Extract project title if mentioned
     - description: Extract project description
 
-14. PARAMETER EXTRACTION for "create_invoice" intent: TEMPORARILY DISABLED
-    // - client_name: Extract client or company name
-    // - client_email: Extract email address if provided
-    // - amount: Extract total invoice amount
-    // - currency: Extract currency (USD, EUR, GBP, etc.)
-    // - description: Extract service description or invoice details
-    // - due_date: Extract due date if mentioned
-    // - invoice_number: Extract invoice number if specified
-    // - items: Extract itemized list if provided
-    // NOTE: Invoice feature is temporarily disabled for maintenance.
+14. PARAMETER EXTRACTION for "create_invoice" intent:
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - amount: Extract total invoice amount
+    - currency: Extract currency (USD, EUR, GBP, etc.)
+    - description: Extract service description or invoice details
+    - due_date: Extract due date if mentioned
+    - invoice_number: Extract invoice number if specified
+    - items: Extract itemized list if provided
 
 15. PARAMETER EXTRACTION for "send_proposal" intent:
     - proposal_id: Extract proposal ID if specified
@@ -244,21 +241,21 @@ IMPORTANT INTENT RECOGNITION RULES:
 
 21. When user provides an address after being asked, ALWAYS include it in the send parameters.
 
-22. CURRENCY CONVERSION REQUESTS: Always use "get_price" intent for:
-    - "exchange rate", "convert", "conversion", "how much is X in Y"
-    - "value of X in Y", "X to Y", "price of X in Y"
-    - "what is 100 USD in NGN", "convert 0.1 ETH to USD"
-    - "exchange rate from USD to NGN", "BTC to Naira"
-    - Both crypto and fiat currencies (BTC, ETH, USD, NGN, EUR, etc.)
+22. CURRENCY CONVERSION: FEATURE DISABLED
+    // Always use "get_price" intent for:
+    // - "exchange rate", "convert", "conversion", "how much is X in Y"
+    // - "value of X in Y", "X to Y", "price of X in Y"
+    // - "what is 100 USD in NGN", "convert 0.1 ETH to USD"
+    // - "exchange rate from USD to NGN", "BTC to Naira"
+    // - Both crypto and fiat currencies (BTC, ETH, USD, NGN, EUR, etc.)
+    // NOTE: Currency conversion feature has been disabled.
 
-23. PARAMETER EXTRACTION for "get_price" intent:
-    - original_message: ALWAYS include the full user message for better parsing
-    - This allows the currency conversion service to extract currencies and amounts
-    - Examples:
-      * "What is the exchange rate from USD to NGN?" → {"original_message": "What is the exchange rate from USD to NGN?"}
-      * "Convert 300 USD to NGN" → {"original_message": "Convert 300 USD to NGN"}
-      * "How much is 0.1 ETH in USD?" → {"original_message": "How much is 0.1 ETH in USD?"}
-      * "What's the value of 1 BTC in Naira?" → {"original_message": "What's the value of 1 BTC in Naira?"}
+23. PARAMETER EXTRACTION for "get_price" intent: FEATURE DISABLED
+    // - from_currency: Source currency (e.g., "USD", "BTC", "ETH")
+    // - to_currency: Target currency (e.g., "NGN", "EUR", "USD")
+    // - amount: Amount to convert (default to 1 if not specified)
+    // - original_message: Always include the full original message for parsing
+    // NOTE: Currency conversion feature has been disabled.
 
 EXAMPLES:
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"

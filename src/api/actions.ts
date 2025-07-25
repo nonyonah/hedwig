@@ -920,26 +920,12 @@ export async function handleAction(
     }
   }
 
-  // Proposal generation feature has been removed
+  // Currency conversion feature has been disabled
 
   if (intent === "get_price" || intent === "currency_conversion" || intent === "exchange_rate") {
-    try {
-      console.log(`[handleAction] Processing currency conversion request: ${JSON.stringify(params)}`);
-      
-      // Use the original message for better parsing
-      const userMessage = params.original_message || params.message || '';
-      const result = await handleCurrencyConversion(userMessage);
-      
-      return {
-        text: result.text,
-        data: result.data, // Include structured data for potential future use
-      };
-    } catch (error) {
-      console.error(`[handleAction] Error processing currency conversion:`, error);
-      return {
-        text: `❌ **Conversion Failed**\n\nSorry, I couldn't process your currency conversion request right now. Please try again later.`,
-      };
-    }
+    return {
+      text: "🚧 **Currency conversion feature is currently disabled.**\n\nThis feature has been temporarily removed. Please use external tools for currency conversion needs.",
+    };
   }
 
   if (intent === "get_news") {
@@ -991,11 +977,7 @@ export async function handleAction(
     return await handleCreatePaymentLink(params, userId);
   case "create_invoice":
     console.log(`[handleAction] Processing 'create_invoice' intent with params:`, params);
-    // INVOICE FEATURE TEMPORARILY DISABLED
-    return {
-      text: "🚧 **Invoice feature is temporarily disabled for maintenance.**\n\nPlease use the payment link feature instead:\n\n💡 **Alternative:** Create a payment link by saying:\n'Create payment link for [client email] amount [amount] for [description]'\n\nExample: 'Create payment link for client@company.com amount $2500 for web development'\n\nThis will generate a secure payment link you can share with your client."
-    };
-    // return await handleCreateInvoice(params, userId);
+    return await handleCreateInvoice(params, userId);
   case "get_earnings":
     console.log(`[handleAction] Processing 'get_earnings' intent with params:`, params);
     return await handleGetEarnings(params, userId);

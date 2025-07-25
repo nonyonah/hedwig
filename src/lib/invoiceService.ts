@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { generateInvoicePDF } from './htmlPDFService';
 
 export interface InvoiceData {
   id?: string;
@@ -128,7 +127,7 @@ export async function getInvoicesByFreelancer(freelancerEmail: string): Promise<
   }
 }
 
-// Send invoice via email
+// Send invoice via email (PDF generation disabled)
 export async function sendInvoiceEmail(invoiceId: string): Promise<boolean> {
   try {
     const invoice = await getInvoice(invoiceId);
@@ -136,22 +135,15 @@ export async function sendInvoiceEmail(invoiceId: string): Promise<boolean> {
       throw new Error('Invoice not found');
     }
 
-    // Generate PDF
-    const pdfBuffer = await generateInvoicePDF(invoice);
-    
     // Create payment link
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
     const paymentUrl = `${baseUrl}/pay/${invoiceId}`;
 
-    // Send email using Resend (you'll need to implement this)
-    const emailSent = await sendEmailWithAttachment({
+    // Send email without PDF attachment
+    const emailSent = await sendEmailWithoutAttachment({
       to: invoice.client_email,
       subject: `Invoice ${invoice.invoice_number || generateInvoiceNumber()} from ${invoice.freelancer_name}`,
-      html: generateInvoiceEmailHTML(invoice, paymentUrl),
-      attachments: [{
-        filename: `invoice-${invoice.invoice_number || 'document'}.pdf`,
-        content: pdfBuffer
-      }]
+      html: generateInvoiceEmailHTML(invoice, paymentUrl)
     });
 
     if (emailSent) {
@@ -166,51 +158,157 @@ export async function sendInvoiceEmail(invoiceId: string): Promise<boolean> {
   }
 }
 
-// Generate email HTML template
+// Generate email HTML template (matches the exact design provided)
 function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): string {
+  const invoiceNumber = invoice.invoice_number || generateInvoiceNumber();
+  const dueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-US', { 
+    day: 'numeric',
+    month: 'short', 
+    year: 'numeric' 
+  }).replace(',', '') : '21st Aug, 2025';
+
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <style>
-        body { font-family: 'Inter', Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #a2d2ff 0%, #8bb8ff 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: white; padding: 30px; border: 1px solid #e0e0e0; }
-        .button { display: inline-block; background: #a2d2ff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
-        .footer { background: #f8f9fa; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 14px; color: #666; }
+        * { 
+          margin: 0; 
+          padding: 0; 
+          box-sizing: border-box; 
+        }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+          background-color: #e9eaeb; 
+          color: #262624; 
+          line-height: 1.6;
+          min-height: 100vh;
+          padding: 32px;
+        }
+        .header { 
+          margin-bottom: 64px; 
+        }
+        .header h1 { 
+          color: #262624; 
+          font-size: 18px; 
+          font-weight: 500; 
+        }
+        .invoice-container { 
+          display: flex; 
+          justify-content: center; 
+        }
+        .invoice-card { 
+          width: 100%; 
+          max-width: 448px; 
+          background: #ffffff; 
+          border-radius: 8px; 
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); 
+          border: none; 
+        }
+        .card-header { 
+          text-align: center; 
+          padding-bottom: 32px; 
+          padding-top: 24px;
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+        .card-header h2 { 
+          color: #262624; 
+          font-size: 20px; 
+          font-weight: 600; 
+        }
+        .card-content { 
+          padding: 0 24px 24px 24px; 
+        }
+        .invoice-details { 
+          margin-bottom: 24px; 
+        }
+        .detail-row { 
+          display: flex; 
+          justify-content: space-between; 
+          align-items: center; 
+          margin-bottom: 16px; 
+        }
+        .detail-label { 
+          color: #262624; 
+          opacity: 0.6; 
+          font-size: 14px; 
+        }
+        .detail-value { 
+          color: #262624; 
+          font-weight: 500; 
+        }
+        .pay-button-container { 
+          padding-top: 16px; 
+          display: flex; 
+          justify-content: center; 
+        }
+        .pay-button { 
+          background-color: #7f56d9; 
+          color: #ffffff; 
+          padding: 8px 144px; 
+          border-radius: 6px; 
+          font-weight: 500; 
+          text-decoration: none; 
+          display: inline-block; 
+          transition: background-color 0.2s; 
+        }
+        .pay-button:hover { 
+          background-color: rgba(127, 86, 217, 0.9); 
+        }
+        @media (max-width: 600px) {
+          body { padding: 16px; }
+          .header { margin-bottom: 32px; }
+          .pay-button { padding: 8px 64px; }
+        }
       </style>
     </head>
     <body>
-      <div class="container">
-        <div class="header">
-          <h1>Invoice from ${invoice.freelancer_name}</h1>
-          <p>Invoice ${invoice.invoice_number || generateInvoiceNumber()}</p>
-        </div>
-        <div class="content">
-          <p>Dear ${invoice.client_name},</p>
-          <p>Please find attached your invoice for the completed work on: <strong>${invoice.project_description}</strong></p>
-          
-          <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Invoice Details:</h3>
-            <p><strong>Amount:</strong> $${invoice.amount.toFixed(2)}</p>
-            <p><strong>Due Date:</strong> ${invoice.due_date || 'Upon receipt'}</p>
-            <p><strong>Payment Method:</strong> Online payment via secure link</p>
+      <!-- Header -->
+      <div class="header">
+        <h1>albus.</h1>
+      </div>
+
+      <!-- Invoice Card -->
+      <div class="invoice-container">
+        <div class="invoice-card">
+          <div class="card-header">
+            <h2>Invoice ${invoiceNumber}</h2>
           </div>
 
-          <p>You can pay this invoice securely online by clicking the button below:</p>
-          <div style="text-align: center;">
-            <a href="${paymentUrl}" class="button">Pay Invoice Online</a>
+          <div class="card-content">
+            <!-- Invoice Details -->
+            <div class="invoice-details">
+              <div class="detail-row">
+                <span class="detail-label">From</span>
+                <span class="detail-value">${invoice.freelancer_name}</span>
+              </div>
+
+              <div class="detail-row">
+                <span class="detail-label">To</span>
+                <span class="detail-value">${invoice.client_name}</span>
+              </div>
+
+              <div class="detail-row">
+                <span class="detail-label">Due Date</span>
+                <span class="detail-value">${dueDate}</span>
+              </div>
+
+              <div class="detail-row">
+                <span class="detail-label">Total Due</span>
+                <span class="detail-value">$${invoice.amount.toFixed(0)}</span>
+              </div>
+            </div>
+
+            <!-- Pay Button -->
+            <div class="pay-button-container">
+              <a href="${paymentUrl}" class="pay-button">
+                Pay this invoice
+              </a>
+            </div>
           </div>
-          
-          <p>If you have any questions about this invoice, please don't hesitate to contact me.</p>
-          <p>Thank you for your business!</p>
-          
-          <p>Best regards,<br>${invoice.freelancer_name}</p>
-        </div>
-        <div class="footer">
-          <p>This is an automated email. Please do not reply to this email address.</p>
         </div>
       </div>
     </body>
@@ -218,12 +316,11 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
   `;
 }
 
-// Email sending function with timeout handling
-async function sendEmailWithAttachment(emailData: {
+// Email sending function without attachments
+async function sendEmailWithoutAttachment(emailData: {
   to: string;
   subject: string;
   html: string;
-  attachments: Array<{ filename: string; content: Buffer }>;
 }): Promise<boolean> {
   try {
     // Import Resend dynamically
@@ -235,8 +332,7 @@ async function sendEmailWithAttachment(emailData: {
       from: process.env.FROM_EMAIL || 'invoices@hedwigbot.xyz',
       to: emailData.to,
       subject: emailData.subject,
-      html: emailData.html,
-      attachments: emailData.attachments
+      html: emailData.html
     });
 
     // Race between email sending and timeout
@@ -255,7 +351,7 @@ async function sendEmailWithAttachment(emailData: {
     console.log('Email sent successfully:', data);
     return true;
   } catch (error) {
-    console.error('Error in sendEmailWithAttachment:', error);
+    console.error('Error in sendEmailWithoutAttachment:', error);
     return false;
   }
 }
