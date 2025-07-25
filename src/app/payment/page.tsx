@@ -28,7 +28,7 @@ export default function PaymentPage() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Record payment
-      const response = await fetch(`/api/pay/${invoiceId}`, {
+      const response = await fetch(`/api/invoice/${invoiceId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

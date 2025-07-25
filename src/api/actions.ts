@@ -3343,7 +3343,7 @@ async function handleCreateInvoice(params: any, userId: string) {
 
     // Generate payment URL
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const paymentUrl = `${baseUrl}/pay/${invoice.id}`;
+    const paymentUrl = `${baseUrl}/invoice/${invoice.id}`;
 
     // Try to send invoice email
     try {

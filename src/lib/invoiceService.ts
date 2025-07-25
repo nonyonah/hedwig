@@ -373,7 +373,7 @@ export async function processInvoiceInput(
     
     // Create payment link
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const paymentUrl = `${baseUrl}/pay/${invoice.id}`;
+    const paymentUrl = `${baseUrl}/invoice/${invoice.id}`;
     
     const responseMessage = `Invoice created successfully! 📄
 

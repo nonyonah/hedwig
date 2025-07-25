@@ -992,7 +992,7 @@ export function generateInvoiceHTML(invoice: any): string {
 
     // Create payment URL
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const paymentUrl = `${baseUrl}/pay/${invoice.id}`;
+    const paymentUrl = `${baseUrl}/invoice/${invoice.id}`;
 
     // Get company initial
     const companyInitial = (invoice.freelancer_name || 'C').charAt(0).toUpperCase();
