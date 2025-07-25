@@ -48,82 +48,151 @@ async function sendPaymentLinkEmail(emailData: EmailData) {
         subject: `Payment Request: ${emailData.amount} ${emailData.token}`,
         html: `
           <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Payment Request</title>
-              <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; }
-                .container { max-width: 600px; margin: 0 auto; background-color: white; }
-                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; }
-                .header h1 { color: white; margin: 0; font-size: 28px; font-weight: 600; }
-                .header p { color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 16px; }
-                .content { padding: 40px 20px; }
-                .amount { text-align: center; margin-bottom: 32px; }
-                .amount-value { font-size: 36px; font-weight: 700; color: #111827; margin-bottom: 4px; }
-                .amount-network { color: #6b7280; font-size: 14px; }
-                .details { background-color: #f9fafb; border-radius: 8px; padding: 24px; margin-bottom: 32px; }
-                .detail-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
-                .detail-row:last-child { margin-bottom: 0; }
-                .detail-label { color: #6b7280; font-size: 14px; }
-                .detail-value { color: #111827; font-size: 14px; font-weight: 500; }
-                .cta { text-align: center; margin-bottom: 32px; }
-                .cta-button { display: inline-block; background-color: #4f46e5; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; }
-                .cta-button:hover { background-color: #4338ca; }
-                .footer { text-align: center; color: #6b7280; font-size: 12px; padding: 20px; border-top: 1px solid #e5e7eb; }
-                .security-note { background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
-                .security-note p { margin: 0; color: #92400e; font-size: 14px; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1>Payment Request</h1>
-                  <p>You have received a crypto payment request</p>
-                </div>
-                
-                <div class="content">
-                  <div class="amount">
-                    <div class="amount-value">${emailData.amount} ${emailData.token}</div>
-                    <div class="amount-network">on ${emailData.network.charAt(0).toUpperCase() + emailData.network.slice(1)}</div>
-                  </div>
-                  
-                  <div class="details">
-                    <div class="detail-row">
-                      <span class="detail-label">From</span>
-                      <span class="detail-value">${emailData.userName}</span>
-                    </div>
-                    <div class="detail-row">
-                      <span class="detail-label">For</span>
-                      <span class="detail-value">${emailData.paymentReason}</span>
-                    </div>
-                    <div class="detail-row">
-                      <span class="detail-label">Network</span>
-                      <span class="detail-value">${emailData.network.charAt(0).toUpperCase() + emailData.network.slice(1)}</span>
-                    </div>
-                  </div>
-                  
-                  <div class="security-note">
-                    <p><strong>Security Notice:</strong> Always verify the payment details and recipient address before completing any transaction. This link will expire in 24 hours.</p>
-                  </div>
-                  
-                  <div class="cta">
-                    <a href="${emailData.paymentLink}" class="cta-button">Complete Payment</a>
-                  </div>
-                  
-                  <p style="color: #6b7280; font-size: 14px; text-align: center; margin-bottom: 0;">
-                    If you're unable to click the button above, copy and paste this link into your browser:<br>
-                    <span style="word-break: break-all; color: #4f46e5;">${emailData.paymentLink}</span>
-                  </p>
-                </div>
-                
-                <div class="footer">
-                  <p>Powered by Hedwig • Secure crypto payments</p>
-                  <p>This email was sent because a payment request was created with your email address.</p>
-                </div>
-              </div>
-            </body>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Payment Request</title>
+            <!--[if mso]>
+            <noscript>
+              <xml>
+                <o:OfficeDocumentSettings>
+                  <o:PixelsPerInch>96</o:PixelsPerInch>
+                </o:OfficeDocumentSettings>
+              </xml>
+            </noscript>
+            <![endif]-->
+          </head>
+          <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+             <!-- Main Container -->
+             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f9fafb;">
+              <tr>
+                <td style="padding: 32px 20px;">
+                  <!-- Content Container -->
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 448px; margin: 0 auto;">
+                    <!-- Header -->
+                    <tr>
+                      <td style="padding-bottom: 64px;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="text-align: left;">
+                              <h1 style="margin: 0; font-size: 18px; font-weight: 500; color: #262624;">hedwig.</h1>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    
+                    <!-- Payment Card -->
+                    <tr>
+                      <td>
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+                          <!-- Card Header -->
+                          <tr>
+                            <td style="padding: 24px 24px 32px 24px; text-align: center;">
+                              <h2 style="margin: 0; font-size: 20px; font-weight: 600; color: #262624;">Payment Request</h2>
+                            </td>
+                          </tr>
+                          
+                          <!-- Card Content -->
+                          <tr>
+                            <td style="padding: 0 24px 24px 24px;">
+                              <!-- Payment Details -->
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <!-- From Row -->
+                                <tr>
+                                  <td style="padding-bottom: 16px;">
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                      <tr>
+                                        <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">From</td>
+                                        <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${emailData.userName}</td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                
+                                <!-- For Row -->
+                                <tr>
+                                  <td style="padding-bottom: 16px;">
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                      <tr>
+                                        <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">For</td>
+                                        <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${emailData.paymentReason}</td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                
+                                <!-- Network Row -->
+                                <tr>
+                                  <td style="padding-bottom: 16px;">
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                      <tr>
+                                        <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">Network</td>
+                                        <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${emailData.network.charAt(0).toUpperCase() + emailData.network.slice(1)}</td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                
+                                <!-- Amount Row -->
+                                <tr>
+                                  <td style="padding-bottom: 24px;">
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                      <tr>
+                                        <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">Amount</td>
+                                        <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${emailData.amount} ${emailData.token}</td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                
+                                <!-- Security Notice -->
+                                <tr>
+                                  <td style="padding-bottom: 24px;">
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #fef3c7; border-radius: 6px; padding: 12px;">
+                                      <tr>
+                                        <td style="color: #92400e; font-size: 12px; text-align: center;">
+                                          <strong>Security Notice:</strong> Always verify payment details before completing any transaction. This link expires in 24 hours.
+                                        </td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                
+                                <!-- Pay Button -->
+                                <tr>
+                                  <td style="text-align: center; padding-top: 16px;">
+                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+                                      <tr>
+                                        <td style="background-color: #7f56d9; border-radius: 6px;">
+                                          <a href="${emailData.paymentLink}" style="display: inline-block; padding: 12px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; line-height: 1.2; white-space: nowrap;">Complete Payment</a>
+                                        </td>
+                                      </tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                                
+                                <!-- Fallback Link -->
+                                <tr>
+                                  <td style="padding-top: 16px; text-align: center;">
+                                    <p style="margin: 0; color: #6b7280; font-size: 12px;">
+                                      If you're unable to click the button, copy this link:<br>
+                                      <span style="word-break: break-all; color: #7f56d9; font-size: 11px;">${emailData.paymentLink}</span>
+                                    </p>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
           </html>
         `,
       }),

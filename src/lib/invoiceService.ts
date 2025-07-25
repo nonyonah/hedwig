@@ -137,7 +137,7 @@ export async function sendInvoiceEmail(invoiceId: string): Promise<boolean> {
 
     // Create payment link
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const paymentUrl = `${baseUrl}/pay/${invoiceId}`;
+    const paymentUrl = `${baseUrl}/invoice/${invoiceId}`;
 
     // Send email without PDF attachment
     const emailSent = await sendEmailWithoutAttachment({
@@ -165,7 +165,10 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
     day: 'numeric',
     month: 'short', 
     year: 'numeric' 
-  }).replace(',', '') : '21st Aug, 2025';
+  }).replace(',', '') : '30 days from now';
+
+  // Format amount properly
+  const formattedAmount = invoice.amount ? `$${invoice.amount.toFixed(2)}` : '$0.00';
 
   return `
     <!DOCTYPE html>
@@ -197,7 +200,7 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                     <tr>
                       <td style="text-align: left;">
-                        <h1 style="margin: 0; font-size: 18px; font-weight: 500; color: #262624;">albus.</h1>
+                        <h1 style="margin: 0; font-size: 18px; font-weight: 500; color: #262624;">hedwig.</h1>
                       </td>
                     </tr>
                   </table>
@@ -226,7 +229,7 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                 <tr>
                                   <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">From</td>
-                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${invoice.freelancer_name}</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${invoice.freelancer_name || 'Freelancer'}</td>
                                 </tr>
                               </table>
                             </td>
@@ -238,11 +241,25 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                 <tr>
                                   <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">To</td>
-                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${invoice.client_name}</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${invoice.client_name || 'Client'}</td>
                                 </tr>
                               </table>
                             </td>
                           </tr>
+                          
+                          <!-- Project Description Row (if available) -->
+                          ${invoice.project_description ? `
+                          <tr>
+                            <td style="padding-bottom: 16px;">
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                  <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">For</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${invoice.project_description}</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          ` : ''}
                           
                           <!-- Due Date Row -->
                           <tr>
@@ -262,7 +279,7 @@ function generateInvoiceEmailHTML(invoice: InvoiceData, paymentUrl: string): str
                               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                 <tr>
                                   <td style="color: #262624; opacity: 0.6; font-size: 14px; text-align: left;">Total Due</td>
-                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">$${invoice.amount.toFixed(0)}</td>
+                                  <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${formattedAmount}</td>
                                 </tr>
                               </table>
                             </td>
