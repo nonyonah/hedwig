@@ -3,12 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CheckCircle } from "lucide-react"
 
 interface PaidPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
-export default function PaidPage({ params }: PaidPageProps) {
+export default async function PaidPage({ params }: PaidPageProps) {
+  const { id } = await params
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -29,7 +31,7 @@ export default function PaidPage({ params }: PaidPageProps) {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-600">Invoice No.</span>
-                <span className="font-medium">#{params.id.padStart(5, "0")}</span>
+                <span className="font-medium">#{id.padStart(5, "0")}</span>
               </div>
 
               <div className="flex justify-between">
