@@ -143,7 +143,7 @@ async function handleCommand(msg: TelegramBot.Message) {
 // Process message with AI
 async function processWithAI(message: string, chatId: number): Promise<string> {
   try {
-    const { runLLM } = await import('../../../lib/llmAgent');
+    const { runLLM } = await import('../../lib/llmAgent');
     const userId = `telegram_${chatId}`;
     
     const llmResponse = await runLLM({
@@ -161,7 +161,7 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
 // Ensure user exists in database
 async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise<void> {
   try {
-    const { supabase } = await import('../../../lib/supabase');
+    const { supabase } = await import('../../lib/supabase');
     
     const { error } = await supabase.rpc('get_or_create_telegram_user', {
       p_telegram_chat_id: chatId,
