@@ -49,8 +49,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Return the response
+    let responseMessage = 'Request processed successfully';
+    
+    if (actionResult) {
+      if (typeof actionResult === 'string') {
+        responseMessage = actionResult;
+      } else if (actionResult && typeof actionResult === 'object' && 'text' in actionResult) {
+        responseMessage = actionResult.text;
+      } else if (actionResult && typeof actionResult === 'object' && 'name' in actionResult) {
+        // This is a WhatsApp template object, extract meaningful info
+        responseMessage = `Template sent: ${actionResult.name}`;
+      }
+    }
+
     return NextResponse.json({
-      message: actionResult?.text || (typeof actionResult === 'string' ? actionResult : 'Request processed successfully'),
+      message: responseMessage,
       intent,
       params,
       success: true,
