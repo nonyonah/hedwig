@@ -6,7 +6,7 @@ import AlbusChat from '@/components/AlbusChat';
 
 function ChatContent() {
   const searchParams = useSearchParams();
-  const initialMessage = searchParams.get('message');
+  const initialMessage = searchParams?.get('message') || null;
 
   return <AlbusChat initialMessage={initialMessage || undefined} />;
 }

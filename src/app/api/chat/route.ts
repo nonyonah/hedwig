@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runLLM } from '@/lib/llmAgent';
 import { parseIntentAndParams } from '@/lib/intentParser';
-import { executeAction } from '../../../api/actions';
+import { handleAction } from '../../../api/actions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,13 +36,11 @@ export async function POST(request: NextRequest) {
     // Execute the action based on the intent
     let actionResult;
     try {
-      actionResult = await executeAction({
+      actionResult = await handleAction(
         intent,
         params,
-        userId,
-        phoneNumber: null, // No phone number for web interface
-        messageId: `web_${Date.now()}`,
-      });
+        userId
+      );
     } catch (actionError) {
       console.error('[Chat API] Action execution error:', actionError);
       actionResult = {
