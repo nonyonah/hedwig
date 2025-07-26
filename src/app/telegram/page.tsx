@@ -31,7 +31,7 @@ export default function TelegramSetupPage() {
     // Set default webhook URL based on current domain
     if (typeof window !== 'undefined') {
       const baseUrl = window.location.origin;
-      setWebhookUrl(`${baseUrl}/api/telegram/webhook`);
+      setWebhookUrl(`${baseUrl}/api/webhook`);
     }
   }, []);
 
@@ -216,12 +216,12 @@ export default function TelegramSetupPage() {
               <Input
                 id="webhookUrl"
                 type="url"
-                placeholder="https://yourdomain.com/api/telegram/webhook"
+                placeholder="https://yourdomain.com/api/webhook"
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
               />
               <p className="text-xs text-gray-500">
-                This should be your domain + /api/telegram/webhook
+                This should be your domain + /api/webhook
               </p>
             </div>
 

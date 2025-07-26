@@ -22,7 +22,7 @@ if (!BASE_URL) {
   process.exit(1);
 }
 
-const WEBHOOK_URL = `${BASE_URL}/api/telegram/webhook`;
+const WEBHOOK_URL = `${BASE_URL}/api/webhook`;
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 console.log('🚀 Testing Telegram Webhook Setup');

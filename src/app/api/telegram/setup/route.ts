@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     // Create bot instance for setup operations
     const bot = new TelegramBot(botToken, { polling: false });
-    const webhookUrl = `${baseUrl}/api/telegram/webhook`;
+    const webhookUrl = `${baseUrl}/api/webhook`;
 
     switch (action) {
       case 'set':
@@ -141,7 +141,7 @@ export async function GET() {
 
     // Create bot instance to check status
     const bot = new TelegramBot(botToken, { polling: false });
-    const expectedWebhookUrl = `${baseUrl}/api/telegram/webhook`;
+    const expectedWebhookUrl = `${baseUrl}/api/webhook`;
 
     try {
       const [botInfo, webhookInfo] = await Promise.all([

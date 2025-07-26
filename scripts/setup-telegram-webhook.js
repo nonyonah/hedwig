@@ -82,7 +82,7 @@ async function setupWebhook() {
     process.exit(1);
   }
   
-  const webhookUrl = `${appUrl}/api/telegram/webhook`;
+  const webhookUrl = `${appUrl}/api/webhook`;
   
   console.log('🚀 Setting up Telegram webhook...');
   console.log(`📍 Webhook URL: ${webhookUrl}`);
