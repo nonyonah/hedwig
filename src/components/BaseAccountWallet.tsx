@@ -90,7 +90,7 @@ export function BaseAccountWallet() {
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Base Account Wallet</h1>
         <p className="text-gray-600">
-          Universal sign-on and one-tap payments powered by Base Account <mcreference link="https://docs.base.org/base-account/overview/what-is-base-account" index="0">0</mcreference>
+          Universal sign-on and one-tap payments powered by Base Account
         </p>
       </div>
 
@@ -183,7 +183,7 @@ export function BaseAccountWallet() {
               USDC Payment
             </CardTitle>
             <CardDescription>
-              Send USDC payments with one-tap using Base Account <mcreference link="https://docs.base.org/base-account/overview/what-is-base-account" index="0">0</mcreference>
+              Send USDC payments with one-tap using Base Account
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -303,28 +303,28 @@ export function BaseAccountWallet() {
             <div className="space-y-2">
               <h4 className="font-medium">Universal Sign-On</h4>
               <p className="text-sm text-gray-600">
-                One passkey works across every Base-enabled app <mcreference link="https://docs.base.org/base-account/overview/what-is-base-account" index="0">0</mcreference>
+                One passkey works across every Base-enabled app
               </p>
             </div>
             
             <div className="space-y-2">
               <h4 className="font-medium">One-Tap Payments</h4>
               <p className="text-sm text-gray-600">
-                Low-friction USDC payments built into the account layer <mcreference link="https://docs.base.org/base-account/overview/what-is-base-account" index="0">0</mcreference>
+                Low-friction USDC payments built into the account layer
               </p>
             </div>
             
             <div className="space-y-2">
               <h4 className="font-medium">Multi-Chain Support</h4>
               <p className="text-sm text-gray-600">
-                One address that works across nine EVM networks <mcreference link="https://docs.base.org/base-account/overview/what-is-base-account" index="0">0</mcreference>
+                One address that works across nine EVM networks
               </p>
             </div>
             
             <div className="space-y-2">
               <h4 className="font-medium">Self-Custodial</h4>
               <p className="text-sm text-gray-600">
-                Users hold the keys; you never touch private data or funds <mcreference link="https://docs.base.org/base-account/overview/what-is-base-account" index="0">0</mcreference>
+                Users hold the keys; you never touch private data or funds
               </p>
             </div>
           </div>
@@ -333,3 +333,5 @@ export function BaseAccountWallet() {
     </div>
   );
 }
+
+export default BaseAccountWallet;

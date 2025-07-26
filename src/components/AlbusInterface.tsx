@@ -3,21 +3,43 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowUp, Clock, Loader2 } from "lucide-react";
+import { ArrowUp, Clock, Loader2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useWallet } from "@/providers/WalletProvider";
 
 export default function AlbusInterface() {
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const { isConnected, connectBaseAccount, disconnectWallet, address } = useWallet();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
+      if (!isConnected) {
+        alert("Please connect your wallet first to use the AI assistant.");
+        return;
+      }
       setIsLoading(true);
       // Navigate to chat screen with the message
       router.push(`/chat?message=${encodeURIComponent(query.trim())}`);
     }
+  };
+
+  const handleWalletAction = async () => {
+    if (isConnected) {
+      await disconnectWallet();
+    } else {
+      try {
+        await connectBaseAccount();
+      } catch (error) {
+        console.error('Connection failed:', error);
+      }
+    }
+  };
+
+  const formatAddress = (addr: string) => {
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
   const getCurrentGreeting = () => {
@@ -36,10 +58,15 @@ export default function AlbusInterface() {
           <Clock className="w-5 h-5 text-[#535862]" />
           <Button
             variant="outline"
-            className="w-[106px] h-10 text-[#535862] hover:bg-[#e9eaeb] border-[#d5d7da] bg-transparent rounded-lg"
-            onClick={() => router.push('/wallet')}
+            className="flex items-center gap-2 h-10 px-4 text-[#535862] hover:bg-[#e9eaeb] border-[#d5d7da] bg-transparent rounded-lg"
+            onClick={handleWalletAction}
           >
-            Wallet
+            <Wallet className="w-4 h-4" />
+            {isConnected ? (
+              address ? formatAddress(address) : 'Connected'
+            ) : (
+              'Connect Wallet'
+            )}
           </Button>
           <Button
             variant="outline"
@@ -59,6 +86,13 @@ export default function AlbusInterface() {
             {getCurrentGreeting()}, User
           </h1>
           <p className="text-[#535862] text-lg">How can I help you today?</p>
+          {!isConnected && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-yellow-800 text-sm">
+                💡 Connect your Base Account wallet to start using the AI assistant
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Search Input */}
@@ -92,6 +126,10 @@ export default function AlbusInterface() {
               variant="outline"
               className="w-[117px] h-8 px-6 py-2 rounded-full border-[#d5d7da] text-[#262624] hover:bg-[#e9eaeb] hover:border-[#d5d7da] bg-transparent text-sm"
               onClick={() => {
+                if (!isConnected) {
+                  alert("Please connect your wallet first to use the AI assistant.");
+                  return;
+                }
                 const actionQueries = {
                   'Create Invoice': 'Create an invoice',
                   'View Summary': 'Show me my earnings summary',
