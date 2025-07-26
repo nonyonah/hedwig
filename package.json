@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.18",
+    "@base-org/account": "^1.1.1",
     "@coinbase/cdp-sdk": "^1.15.0",
     "@coinbase/onchainkit": "^0.38.17",
     "@coinbase/wallet-sdk": "^4.3.4",

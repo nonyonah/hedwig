@@ -6,6 +6,7 @@ import { WagmiProvider } from 'wagmi';
 import { RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { config } from '../lib/wagmi';
 import { useState } from 'react';
+import { WalletProviderWrapper } from './WalletProvider';
 
 export function Providers({
   children,
@@ -18,7 +19,9 @@ export function Providers({
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
-          {children}
+          <WalletProviderWrapper>
+            {children}
+          </WalletProviderWrapper>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

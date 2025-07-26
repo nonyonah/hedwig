@@ -41,6 +41,13 @@ export default function AlbusInterface() {
           >
             Wallet
           </Button>
+          <Button
+            variant="outline"
+            className="w-[120px] h-10 text-[#535862] hover:bg-[#e9eaeb] border-[#d5d7da] bg-transparent rounded-lg"
+            onClick={() => router.push('/base-account')}
+          >
+            Base Account
+          </Button>
         </div>
       </header>
 
