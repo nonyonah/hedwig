@@ -1,6 +1,5 @@
-import { redirect } from 'next/navigation';
+import AlbusInterface from '@/components/AlbusInterface';
 
 export default function HomePage() {
-  // Redirect to the main application or dashboard
-  redirect('/create-payment');
+  return <AlbusInterface />;
 }
