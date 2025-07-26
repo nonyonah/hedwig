@@ -11,57 +11,12 @@ export default function AlbusInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || isLoading) return;
-
-    setIsLoading(true);
-    try {
-      // Here we'll integrate with the agent API
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: query,
-          type: 'web_interface'
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Handle the response - for now, we'll show an alert
-        // In the future, this could navigate to a chat interface or show results
-        alert(`Agent response: ${data.message || 'Request processed successfully'}`);
-      } else {
-        throw new Error('Failed to process request');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Sorry, there was an error processing your request. Please try again.');
-    } finally {
-      setIsLoading(false);
-      setQuery("");
-    }
-  };
-
-  const handleQuickAction = (action: string) => {
-    switch (action) {
-      case 'Create Invoice':
-        setQuery("Create an invoice");
-        break;
-      case 'View Summary':
-        setQuery("Show me my earnings summary");
-        break;
-      case 'Send Reminder':
-        setQuery("Send payment reminder");
-        break;
-      case 'Swap':
-        setQuery("I want to swap tokens");
-        break;
-      default:
-        break;
+    if (query.trim()) {
+      setIsLoading(true);
+      // Navigate to chat screen with the message
+      router.push(`/chat?message=${encodeURIComponent(query.trim())}`);
     }
   };
 
@@ -129,7 +84,15 @@ export default function AlbusInterface() {
               key={action}
               variant="outline"
               className="w-[117px] h-8 px-6 py-2 rounded-full border-[#d5d7da] text-[#262624] hover:bg-[#e9eaeb] hover:border-[#d5d7da] bg-transparent text-sm"
-              onClick={() => handleQuickAction(action)}
+              onClick={() => {
+                const actionQueries = {
+                  'Create Invoice': 'Create an invoice',
+                  'View Summary': 'Show me my earnings summary',
+                  'Send Reminder': 'Send payment reminder',
+                  'Swap': 'I want to swap tokens'
+                };
+                router.push(`/chat?message=${encodeURIComponent(actionQueries[action as keyof typeof actionQueries])}`);
+              }}
               disabled={isLoading}
             >
               {action}
