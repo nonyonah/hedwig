@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     // Return the response
     return NextResponse.json({
-      message: actionResult.text || 'Request processed successfully',
+      message: actionResult?.text || (typeof actionResult === 'string' ? actionResult : 'Request processed successfully'),
       intent,
       params,
       success: true,
