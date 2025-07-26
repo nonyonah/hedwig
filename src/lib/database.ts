@@ -12,7 +12,7 @@ export type MessageType = 'text' | 'image' | 'button' | 'list' | 'template' | 'i
 export interface Database {
   public: {
     Tables: {
-      // Message logs for all WhatsApp interactions
+      // Message logs for all Telegram interactions
       message_logs: {
         Row: {
           id: string;

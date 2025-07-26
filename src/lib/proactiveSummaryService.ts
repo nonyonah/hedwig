@@ -1,6 +1,6 @@
 import { getEarningsSummary, formatEarningsForAgent } from './earningsService';
 import { getUsersDueForMonthlyReport, markMonthlyReportSent, UserPreferences } from './userPreferencesService';
-import { sendWhatsAppMessage } from './whatsappUtils';
+import { TelegramBotService } from './telegramBot';
 
 export interface ProactiveSummaryJob {
   id: string;
@@ -12,11 +12,11 @@ export interface ProactiveSummaryJob {
 }
 
 /**
- * Generate and send monthly earnings summary to a user
+ * Generate and send monthly earnings summary to a user via Telegram
  */
 export async function sendMonthlyEarningsSummary(
   walletAddress: string, 
-  phoneNumber: string,
+  telegramChatId: string,
   preferences?: UserPreferences
 ): Promise<boolean> {
   try {
@@ -40,8 +40,8 @@ export async function sendMonthlyEarningsSummary(
       return false;
     }
     
-    // Format the summary with enhanced formatting
-    let message = `🗓️ **Monthly Earnings Report - ${lastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}**\n\n`;
+    // Format the summary with enhanced formatting for Telegram
+    let message = `📊 *Monthly Earnings Report - ${lastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}*\n\n`;
     
     if (earningsSummary.totalPayments === 0) {
       message += `No earnings recorded for last month. Keep building! 💪\n\n`;
@@ -51,11 +51,11 @@ export async function sendMonthlyEarningsSummary(
       message += formattedSummary;
       
       // Add monthly-specific insights
-      message += `\n\n🎯 **Monthly Highlights:**\n`;
+      message += `\n\n🎯 *Monthly Highlights:*\n`;
       
       if (earningsSummary.insights?.largestPayment) {
-    message += `• Your biggest win: ${earningsSummary.insights.largestPayment.amount} ${earningsSummary.insights.largestPayment.token}\n`;
-  }
+        message += `• Your biggest win: ${earningsSummary.insights.largestPayment.amount} ${earningsSummary.insights.largestPayment.token}\n`;
+      }
       
       if (earningsSummary.totalFiatValue && earningsSummary.totalFiatValue > 1000) {
         message += `• Milestone achieved: Over $1,000 earned! 🎉\n`;
@@ -76,16 +76,29 @@ export async function sendMonthlyEarningsSummary(
     message += `• "Compare with previous month"\n\n`;
     message += `⚙️ To stop these reports: "disable monthly reports"`;
     
-    // Send the message via WhatsApp
-    const success = await sendWhatsAppMessage(phoneNumber, message);
+    // Send the message via Telegram
+    const { createTelegramBot } = await import('./telegramBot');
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    
+    if (!botToken) {
+      console.error('TELEGRAM_BOT_TOKEN not configured');
+      return false;
+    }
+    
+    const telegramBot = createTelegramBot({ 
+      token: botToken,
+      polling: false 
+    });
+    
+    const success = await telegramBot.sendMessage(parseInt(telegramChatId), message);
     
     if (success) {
       // Mark report as sent
       await markMonthlyReportSent(walletAddress);
-      console.log(`Monthly summary sent successfully to ${phoneNumber}`);
+      console.log(`Monthly summary sent successfully to Telegram chat: ${telegramChatId}`);
       return true;
     } else {
-      console.error(`Failed to send monthly summary to ${phoneNumber}`);
+      console.error(`Failed to send monthly summary to Telegram chat: ${telegramChatId}`);
       return false;
     }
     
@@ -173,7 +186,7 @@ export async function processMonthlyReports(): Promise<{
  */
 async function getUserPhoneNumber(walletAddress: string): Promise<string | null> {
   // TODO: Implement phone number lookup from your user database
-  // This could be from a users table, or from WhatsApp conversation history
+  // This could be from a users table, or from Telegram conversation history
   console.warn('getUserPhoneNumber not implemented - returning null');
   return null;
 }

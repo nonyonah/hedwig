@@ -47,22 +47,24 @@ function loadServerEnvironmentSync() {
           const envConfig = fs.readFileSync(envPath, 'utf8');
           
           // Parse the .env file and set environment variables
-          const envVars = envConfig
-            .split('\n')
-            .filter(line => line.trim() && !line.startsWith('#'))
-            .map(line => {
-              const equalIndex = line.indexOf('=');
-              if (equalIndex === -1) return [];
-              const key = line.substring(0, equalIndex).trim();
-              const value = line.substring(equalIndex + 1).trim();
-              return [key, value];
-            })
-            .filter(parts => parts.length === 2);
+          if (envConfig && typeof envConfig === 'string') {
+            const envVars = envConfig
+              .split('\n')
+              .filter(line => line.trim() && !line.startsWith('#'))
+              .map(line => {
+                const equalIndex = line.indexOf('=');
+                if (equalIndex === -1) return [];
+                const key = line.substring(0, equalIndex).trim();
+                const value = line.substring(equalIndex + 1).trim();
+                return [key, value];
+              })
+              .filter(parts => parts.length === 2);
           
           for (const [key, value] of envVars) {
             if (key && value && !process.env[key]) {
               process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
             }
+          }
           }
           
           console.log('Loaded environment variables from:', envPath);
@@ -128,22 +130,24 @@ export function loadServerEnvironment() {
           const envConfig = fs.readFileSync(envPath, 'utf8');
           
           // Parse the .env file and set environment variables
-          const envVars = envConfig
-            .split('\n')
-            .filter(line => line.trim() && !line.startsWith('#'))
-            .map(line => {
-              const equalIndex = line.indexOf('=');
-              if (equalIndex === -1) return [];
-              const key = line.substring(0, equalIndex).trim();
-              const value = line.substring(equalIndex + 1).trim();
-              return [key, value];
-            })
-            .filter(parts => parts.length === 2);
+          if (envConfig && typeof envConfig === 'string') {
+            const envVars = envConfig
+              .split('\n')
+              .filter(line => line.trim() && !line.startsWith('#'))
+              .map(line => {
+                const equalIndex = line.indexOf('=');
+                if (equalIndex === -1) return [];
+                const key = line.substring(0, equalIndex).trim();
+                const value = line.substring(equalIndex + 1).trim();
+                return [key, value];
+              })
+              .filter(parts => parts.length === 2);
           
           for (const [key, value] of envVars) {
             if (key && value && !process.env[key]) {
               process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
             }
+          }
           }
           
           console.log('Loaded environment variables from:', envPath);
@@ -320,8 +324,8 @@ if (!process.env.NETLIFY) {
  * Get required environment variables
  */
 export function getServerEnvironment() {
-  // BlockRadar API key
-  const blockRadarApiKey = getRequiredEnvVar('BLOCK_RADAR_API_KEY');
+  // BlockRadar API key - make it optional to prevent build errors
+  const blockRadarApiKey = getEnvVar('BLOCK_RADAR_API_KEY', '');
 
   return {
     blockRadarApiKey,

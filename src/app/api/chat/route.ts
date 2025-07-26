@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runLLM } from '@/lib/llmAgent';
 import { parseIntentAndParams } from '@/lib/intentParser';
-import { handleAction } from '../../../api/actions';
+import { handleAction } from '@/api/actions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     console.log('[Chat API] Parsed intent:', intent, 'Params:', params);
 
     // Execute the action based on the intent
-    let actionResult;
+    let actionResult: any;
     try {
       actionResult = await handleAction(
         intent,
@@ -54,11 +54,13 @@ export async function POST(request: NextRequest) {
     if (actionResult) {
       if (typeof actionResult === 'string') {
         responseMessage = actionResult;
-      } else if (actionResult && typeof actionResult === 'object' && 'text' in actionResult) {
-        responseMessage = actionResult.text;
-      } else if (actionResult && typeof actionResult === 'object' && 'name' in actionResult) {
-        // This is a WhatsApp template object, extract meaningful info
-        responseMessage = `Template sent: ${actionResult.name}`;
+      } else if (actionResult && typeof actionResult === 'object') {
+        if ('text' in actionResult && actionResult.text) {
+          responseMessage = actionResult.text;
+        } else if ('name' in actionResult && actionResult.name) {
+          // This is a response object with a name property, extract meaningful info
+          responseMessage = `Action completed: ${actionResult.name}`;
+        }
       }
     }
 

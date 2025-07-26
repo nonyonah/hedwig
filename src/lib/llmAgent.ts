@@ -47,7 +47,7 @@ export async function runLLM({
 
   // 2. Compose prompt in Gemini API format (no system role)
   const systemMessage = `
-You are Hedwig, a helpful crypto assistant for WhatsApp.
+You are Hedwig, a helpful crypto assistant for Telegram.
 Always respond ONLY with a JSON object in this format:
 {"intent": "<intent_name>", "params": { ... }}
 

@@ -7,7 +7,8 @@ export interface JobDetails {
 
 export interface Freelancer {
   id: string; // Corresponds to user ID
-  whatsappNumber: string;
+  // Note: WhatsApp number field removed in favor of Telegram integration
+  telegramChatId?: string;
   skills: string[];
   experience: string;
   portfolio: string[];

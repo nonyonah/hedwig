@@ -312,7 +312,7 @@ const receiptHTMLTemplate = `
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payment Receipt</title>
     <style>
-        /* Receipt styles - disabled until WhatsApp template is created */
+        /* Receipt styles - disabled until Telegram template is created */
         body { font-family: Arial, sans-serif; padding: 40px; }
         .receipt-header { text-align: center; margin-bottom: 30px; }
         .receipt-title { font-size: 24px; font-weight: bold; color: #2563eb; }
@@ -324,7 +324,7 @@ const receiptHTMLTemplate = `
         <div class="receipt-title">Payment Receipt</div>
         <p>Receipt #{{RECEIPT_NUMBER}}</p>
     </div>
-    <!-- Receipt content will be implemented when WhatsApp template is ready -->
+    <!-- Receipt content will be implemented when Telegram template is ready -->
 </body>
 </html>
 `;
@@ -1017,9 +1017,9 @@ export function generateInvoiceHTML(invoice: any): string {
         .replace(/{{ADDITIONAL_NOTES}}/g, invoice.additional_notes || 'Have a great day');
 }
 
-// Disabled functions for receipts and invoices (until WhatsApp templates are ready)
-export async function generateReceiptPDF(receiptData: any): Promise<Buffer> {
-    throw new Error('Receipt PDF generation is disabled until WhatsApp template is created');
+// Disabled functions for receipts and invoices (until Telegram templates are ready)
+export async function generateReceiptPDF(): Promise<Buffer> {
+  throw new Error('Receipt PDF generation is disabled until Telegram template is created');
 }
 
 export async function generateInvoicePDF(invoiceData: any): Promise<Buffer> {

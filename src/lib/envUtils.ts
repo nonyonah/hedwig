@@ -5,6 +5,11 @@
  * @throws Error if the environment variable is not found
  */
 export function getRequiredEnvVar(name: string): string {
+  // Ensure name is a string and not undefined
+  if (!name || typeof name !== 'string') {
+    throw new Error(`Invalid environment variable name: ${name}`);
+  }
+
   // Try different environment variable patterns
   const possibleNames = [
     name,
@@ -14,7 +19,7 @@ export function getRequiredEnvVar(name: string): string {
   
   for (const envName of possibleNames) {
     const value = process.env[envName];
-    if (value) {
+    if (value && typeof value === 'string') {
       return value;
     }
   }
@@ -42,4 +47,4 @@ export function getEnvVar(name: string, defaultValue: string = ''): string {
   } catch (error) {
     return defaultValue;
   }
-} 
+}

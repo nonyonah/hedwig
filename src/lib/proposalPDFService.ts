@@ -477,22 +477,4 @@ export async function sendProposalEmail(
   }
 }
 
-export function optimizeForWhatsApp(content: string): string {
-  // Optimize content for WhatsApp by:
-  // 1. Limiting length
-  // 2. Using WhatsApp-friendly formatting
-  // 3. Adding clear call-to-actions
-  
-  const maxLength = 4000; // WhatsApp message limit
-  
-  if (content.length <= maxLength) {
-    return content;
-  }
-  
-  // Truncate and add continuation message
-  const truncated = content.substring(0, maxLength - 200);
-  const lastNewline = truncated.lastIndexOf('\n');
-  
-  return truncated.substring(0, lastNewline) + 
-    '\n\n...\n\n📄 *Full proposal available via email or PDF download*\n\nType "email proposal" to send the complete version to your client.';
-}
+// Note: WhatsApp optimization function removed - use Telegram message formatting instead

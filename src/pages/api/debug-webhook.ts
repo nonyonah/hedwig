@@ -9,26 +9,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log("Body:", JSON.stringify(req.body, null, 2));
         console.log("Query:", JSON.stringify(req.query, null, 2));
 
-        // WhatsApp validation
+        // Telegram validation (deprecated endpoint)
         if (req.method === 'GET') {
-            const mode = req.query['hub.mode'];
-            const token = req.query['hub.verify_token'];
-            const challenge = req.query['hub.challenge'];
-
-            // Check if a token and mode were sent
-            if (mode && token) {
-                // Check the mode and token sent are correct
-                const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
-                if (mode === 'subscribe' && token === verifyToken) {
-                    // Respond with the challenge token from the request
-                    console.log('WEBHOOK_VERIFIED');
-                    return res.status(200).send(challenge);
-                } else {
-                    // Respond with '403 Forbidden' if verify tokens do not match
-                    return res.status(403).end();
-                }
-            }
+            return res.status(410).json({ 
+                error: 'Telegram webhook is deprecated',
+                message: 'Please use the new Telegram Bot API endpoint'
+            });
         }
+
+        const verifyToken = process.env.TELEGRAM_BOT_TOKEN;
 
         // Process incoming webhook
         if (req.method === 'POST') {

@@ -37,11 +37,7 @@ export interface PrivyWalletExportResponse {
 /**
  * Error types for better error handling
  */
-export interface WhatsAppError extends Error {
-  message: string;
-  status?: number;
-  details?: any;
-}
+// Note: WhatsApp-specific types have been removed in favor of Telegram integration
 
 export interface PrivyError extends Error {
   message: string;

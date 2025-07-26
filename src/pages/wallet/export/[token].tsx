@@ -55,7 +55,7 @@ export default function WalletExportPage() {
             <div className={styles.securityWarning}>
               <h3>What's Changed?</h3>
               <p>We've upgraded to Coinbase Developer Platform (CDP) for better security and features. Your existing wallets remain safe, but export functionality is no longer available through this method.</p>
-              <p>For wallet management, please use our WhatsApp interface or contact support.</p>
+              <p>For wallet management, please use our Telegram bot or contact support.</p>
             </div>
           </div>
         );

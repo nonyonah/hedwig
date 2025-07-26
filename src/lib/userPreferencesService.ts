@@ -163,7 +163,7 @@ export async function markMonthlyReportSent(walletAddress: string): Promise<bool
 }
 
 /**
- * Parse WhatsApp command for preference updates
+ * Parse Telegram command for preference updates
  */
 export function parsePreferenceCommand(message: string): {
   action: 'enable' | 'disable' | 'status' | 'currency' | 'categories' | null;
@@ -207,7 +207,7 @@ export function parsePreferenceCommand(message: string): {
 }
 
 /**
- * Generate preference status message for WhatsApp
+ * Generate preference status message for Telegram
  */
 export function formatPreferenceStatus(preferences: UserPreferences | null): string {
   if (!preferences) {
