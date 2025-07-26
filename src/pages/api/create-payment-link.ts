@@ -81,6 +81,9 @@ export default async function handler(
 
     // Validate network
     const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-alfajores'];
+    // DISABLED NETWORKS: BEP20 and Asset Chain are not yet active
+    // const disabledNetworks = ['bsc', 'bsc-testnet', 'asset-chain', 'asset-chain-testnet'];
+    
     if (!supportedNetworks.includes(network.toLowerCase())) {
       return res.status(400).json({
         success: false,

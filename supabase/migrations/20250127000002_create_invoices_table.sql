@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS invoices (
   milestones jsonb,
   wallet_address text not null,
   blockchain text check (blockchain in ('base','optimism','bnb','celo')) not null,
+  -- DISABLED BLOCKCHAINS: BEP20 and Asset Chain are defined but not active  
+  -- Future blockchain options: 'bsc','bsc-testnet','asset-chain','asset-chain-testnet'
   status text default 'draft' check (status in ('draft','sent','paid','partial','overdue')),
   invoice_number text,
   due_date text,

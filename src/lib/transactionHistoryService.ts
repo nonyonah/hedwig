@@ -232,6 +232,17 @@ function mapNetworkToAlchemy(network: string): string {
       return 'celo-alfajores';
     case 'optimism':
       return 'opt-mainnet';
+    // DISABLED NETWORKS: BEP20 and Asset Chain are not yet active
+    // case 'bsc':
+    // case 'bsc-mainnet':
+    //   return 'bsc-mainnet';
+    // case 'bsc-testnet':
+    //   return 'bsc-testnet';
+    // case 'asset-chain':
+    // case 'asset-chain-mainnet':
+    //   return 'asset-chain-mainnet';
+    // case 'asset-chain-testnet':
+    //   return 'asset-chain-testnet';
     default:
       // If network contains 'mainnet', use eth-mainnet as fallback
       if (network.toLowerCase().includes('mainnet')) {

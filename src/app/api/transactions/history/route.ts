@@ -85,6 +85,11 @@ export async function GET() {
       'optimism-sepolia',
       'celo-alfajores',
       'optimism'
+      // DISABLED NETWORKS: BEP20 and Asset Chain are not yet active
+      // 'bsc',
+      // 'bsc-testnet',
+      // 'asset-chain',
+      // 'asset-chain-testnet'
     ],
     examples: [
       {

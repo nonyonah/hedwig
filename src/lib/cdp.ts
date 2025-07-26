@@ -81,7 +81,48 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'solana',
     networkId: 'mainnet-beta',
   },
+  // DISABLED NETWORKS - BEP20 and Asset Chain are defined but not active
+  'bsc': {
+    name: 'bsc',
+    chainId: 56,
+  },
+  'bsc-testnet': {
+    name: 'bsc-testnet',
+    chainId: 97,
+  },
+  'asset-chain': {
+    name: 'asset-chain',
+    chainId: 42421,
+  },
+  'asset-chain-testnet': {
+    name: 'asset-chain-testnet',
+    chainId: 42420,
+  },
 };
+
+/**
+ * Active networks - BEP20 and Asset Chain are DISABLED
+ */
+export const ACTIVE_NETWORKS = [
+  'ethereum-sepolia',
+  'base-sepolia', 
+  'ethereum',
+  'base',
+  'optimism-sepolia',
+  'celo-alfajores',
+  'solana-devnet',
+  'solana'
+];
+
+/**
+ * Disabled networks - These are defined but not available for use
+ */
+export const DISABLED_NETWORKS = [
+  'bsc',
+  'bsc-testnet', 
+  'asset-chain',
+  'asset-chain-testnet'
+];
 
 /**
  * Format network name for CDP API
