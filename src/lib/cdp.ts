@@ -152,7 +152,7 @@ export function formatNetworkName(chain: string): string {
 export async function createWallet(userId: string, network: string = 'base-sepolia') {
   try {
     // First check if a wallet already exists for this user and chain
-    const chain = network.includes('solana') ? 'solana' : 'evm';
+    const chain = network;
     const { data: existingWallets } = await supabase
       .from('wallets')
       .select('*')
@@ -297,8 +297,8 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
   try {
     console.log(`[CDP] Getting or creating wallet for user ${userId} on network ${network}`);
     
-    // Determine the chain type based on the network
-    const chain = network.includes('solana') ? 'solana' : 'evm';
+    // Use the actual network name as the chain identifier
+    const chain = network;
     
     // Check if user already has a wallet on this chain
     const { data: wallets, error: walletError } = await supabase
@@ -333,7 +333,7 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
     if (error && typeof error === 'object' && 'code' in error && error.code === '23505' && 
         'message' in error && typeof error.message === 'string' && error.message.includes('wallets_user_id_chain_key')) {
       console.log(`[CDP] Wallet creation failed due to unique constraint. Attempting to fetch existing wallet.`);
-      const chain = network.includes('solana') ? 'solana' : 'evm';
+      const chain = network;
       
       const { data: existingWallet } = await supabase
         .from('wallets')

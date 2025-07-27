@@ -16,7 +16,6 @@ This guide will help you set up the Hedwig AI Assistant as a Telegram bot using 
 4. **Choose a username** for your bot (must end with 'bot', e.g., "hedwig_ai_bot")
 5. **Save your bot token** - BotFather will provide you with a token that looks like:
    ```
-   4839574812:AAFD39kkdpWt3ywyRZergyOLMaJhac60qc
    ```
 
 ## Step 2: Configure Environment Variables

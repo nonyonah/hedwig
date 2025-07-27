@@ -207,11 +207,11 @@ async function handleCommand(msg: TelegramBot.Message) {
 // Process message with AI
 async function processWithAI(message: string, chatId: number): Promise<string> {
   try {
-    // Get the actual user UUID from the database
+    // Get the actual user UUID and Telegram username from the database
     const { supabase } = await import('../../lib/supabase');
     const { data: user } = await supabase
       .from('users')
-      .select('id')
+      .select('id, telegram_username')
       .eq('telegram_chat_id', chatId)
       .single();
 
@@ -220,7 +220,8 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
     }
 
     const { runLLM } = await import('../../lib/llmAgent');
-    const userId = user.id;
+    // Use Telegram username as identifier, fallback to user UUID if no username
+    const userId = user.telegram_username || user.id;
     
     const llmResponse = await runLLM({
       userId,
@@ -436,13 +437,16 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
       try {
         const { getOrCreateCdpWallet } = await import('../../lib/cdp');
         
-        // Create EVM wallet
-        await getOrCreateCdpWallet(userId, 'evm');
-        console.log('[Webhook] Created EVM wallet for new Telegram user:', userId);
+        // Use Telegram username as wallet identifier, fallback to user UUID if no username
+        const walletIdentifier = from?.username || userId;
         
-        // Create Solana wallet
-        await getOrCreateCdpWallet(userId, 'solana');
-        console.log('[Webhook] Created Solana wallet for new Telegram user:', userId);
+        // Create EVM wallet (use base-sepolia to match the chain check in actions.ts)
+        await getOrCreateCdpWallet(walletIdentifier, 'base-sepolia');
+        console.log('[Webhook] Created EVM wallet for new Telegram user:', walletIdentifier);
+        
+        // Create Solana wallet (use solana-devnet to match the chain check in actions.ts)
+        await getOrCreateCdpWallet(walletIdentifier, 'solana-devnet');
+        console.log('[Webhook] Created Solana wallet for new Telegram user:', walletIdentifier);
       } catch (walletError) {
         console.error('[Webhook] Error creating CDP wallets for new user:', walletError);
       }
