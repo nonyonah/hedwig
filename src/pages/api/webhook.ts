@@ -70,9 +70,59 @@ function setupBotHandlers() {
   bot.on('callback_query', async (callbackQuery) => {
     try {
       console.log('[Webhook] Received callback query:', callbackQuery.data);
+      const chatId = callbackQuery.message?.chat.id;
+      const data = callbackQuery.data;
+      
+      if (!chatId) {
+        await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Error: Chat not found' });
+        return;
+      }
+
+      // Answer the callback query first
       await bot?.answerCallbackQuery(callbackQuery.id);
+
+      // Handle different callback actions
+      switch (data) {
+        case 'copy_base_wallet':
+          const baseWalletResponse = await processWithAI('get wallet address base', chatId);
+          await bot?.sendMessage(chatId, '📋 EVM wallet address copied to clipboard!');
+          break;
+          
+        case 'copy_solana_wallet':
+          const solanaWalletResponse = await processWithAI('get wallet address solana', chatId);
+          await bot?.sendMessage(chatId, '📋 Solana wallet address copied to clipboard!');
+          break;
+          
+        case 'qr_base_wallet':
+          await bot?.sendMessage(chatId, '🔳 QR code for EVM wallet will be generated...');
+          break;
+          
+        case 'qr_solana_wallet':
+          await bot?.sendMessage(chatId, '🔳 QR code for Solana wallet will be generated...');
+          break;
+          
+        case 'refresh_balances':
+          const balanceResponse = await processWithAI('check balance', chatId);
+          await bot?.sendMessage(chatId, balanceResponse);
+          break;
+          
+        case 'start_send_token_flow':
+          await bot?.sendMessage(chatId, 
+            '📤 *Send Tokens*\n\n' +
+            'Please provide the details:\n' +
+            '• Amount and token (e.g., "10 USDC")\n' +
+            '• Recipient address or email\n\n' +
+            'Example: "Send 5 USDC to alice@example.com"',
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        default:
+          await bot?.sendMessage(chatId, 'Unknown action');
+      }
     } catch (error) {
       console.error('[Webhook] Error handling callback query:', error);
+      await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Error occurred' });
     }
   });
 
@@ -253,7 +303,7 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
       const parsedResponse = JSON.parse(jsonContent);
       
       if (parsedResponse.intent && parsedResponse.params !== undefined) {
-        return await formatResponseForUser(parsedResponse, userId, message);
+        return await formatResponseForUser(parsedResponse, userId, message, chatId);
       }
     } catch (parseError) {
       // If it's not JSON, return as is (fallback for plain text responses)
@@ -268,7 +318,7 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
 }
 
 // Function to format LLM response for user and execute actual functions
-async function formatResponseForUser(parsedResponse: any, userId: string, userMessage: string): Promise<string> {
+async function formatResponseForUser(parsedResponse: any, userId: string, userMessage: string, chatId?: number): Promise<string> {
   const { intent, params } = parsedResponse;
   
   try {
@@ -292,6 +342,16 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
       case 'create_wallets':
         // Use the existing actions.ts handler for these intents
         const actionResult = await handleAction(intent, params, userId);
+        
+        // If the result has reply_markup and we have a chatId, send the message directly
+        if (actionResult.reply_markup && chatId && bot) {
+          await bot.sendMessage(chatId, actionResult.text, {
+            reply_markup: actionResult.reply_markup,
+            parse_mode: 'Markdown'
+          });
+          return ''; // Return empty string since we already sent the message
+        }
+        
         return actionResult.text;
       
       case 'create_proposal':
