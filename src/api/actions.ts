@@ -134,8 +134,11 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
           try {
             const balances = await getBalances(wallet.address, wallet.chain);
             
+            // Handle EVM balances - convert to array if needed
+            const balanceArray = Array.isArray(balances) ? balances : (balances as any)?.data || [];
+            
             // Find ETH balance
-            const ethBalance = balances?.find(b => b.asset.symbol === 'ETH');
+            const ethBalance = balanceArray.find((b: any) => b.asset?.symbol === 'ETH');
             if (ethBalance) {
               const formattedEth = formatBalance(ethBalance.amount, ethBalance.asset.decimals);
               response += `   • ETH: ${formattedEth}\n`;
@@ -144,7 +147,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
             }
             
             // Find USDC balance
-            const usdcBalance = balances?.find(b => b.asset.symbol === 'USDC');
+            const usdcBalance = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
             if (usdcBalance) {
               const formattedUsdc = formatBalance(usdcBalance.amount, usdcBalance.asset.decimals);
               response += `   • USDC: ${formattedUsdc}\n`;
@@ -161,8 +164,11 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
           try {
             const balances = await getBalances(wallet.address, wallet.chain);
             
+            // Handle Solana balances - should be an array
+            const balanceArray = Array.isArray(balances) ? balances : [];
+            
             // SOL balance
-            const solBalance = balances?.[0];
+            const solBalance = balanceArray[0];
             if (solBalance) {
               const formattedSol = formatBalance(solBalance.amount, solBalance.asset.decimals);
               response += `   • SOL: ${formattedSol}\n`;
@@ -202,10 +208,34 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
 
 async function handleGetWalletAddress(userId: string) {
   try {
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telegram_username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[handleGetWalletAddress] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+      
+      actualUserId = user.id;
+    }
+    
     const { data: wallets } = await supabase
       .from("wallets")
       .select("*")
-      .eq("user_id", userId);
+      .eq("user_id", actualUserId);
     
     if (!wallets || wallets.length === 0) {
       return {
@@ -273,10 +303,34 @@ export async function handleAction(
 
   if (blockchainIntents.includes(intent)) {
     try {
+      // Determine if userId is a UUID or username and get the actual user UUID
+      let actualUserId: string;
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+      
+      if (isUUID) {
+        actualUserId = userId;
+      } else {
+        // userId is a username, fetch the actual UUID
+        const { data: user, error: userError } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_username', userId)
+          .single();
+        
+        if (userError || !user) {
+          console.error(`[handleAction] Failed to find user with username ${userId}:`, userError);
+          return {
+            text: "❌ User not found. Please make sure you're registered with the bot.",
+          };
+        }
+        
+        actualUserId = user.id;
+      }
+      
       const { data: wallets } = await supabase
         .from("wallets")
         .select("*")
-        .eq("user_id", userId);
+        .eq("user_id", actualUserId);
       
       const hasEvm = wallets?.some((w) => w.chain === "base-sepolia");
       const hasSolana = wallets?.some((w) => w.chain === "solana-devnet");

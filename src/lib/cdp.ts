@@ -306,14 +306,15 @@ export async function createWallet(userId: string, network: string = 'base-sepol
  * @returns Wallet information
  */
 export async function getOrCreateCdpWallet(userId: string, network: string = 'base-sepolia') {
+  console.log(`[CDP] Getting or creating wallet for user ${userId} on network ${network}`);
+  
+  // Use the actual network name as the chain identifier
+  const chain = network;
+  
+  // Determine if userId is a UUID or username and get the actual user UUID
+  let actualUserId: string | undefined;
+  
   try {
-    console.log(`[CDP] Getting or creating wallet for user ${userId} on network ${network}`);
-    
-    // Use the actual network name as the chain identifier
-    const chain = network;
-    
-    // Determine if userId is a UUID or username and get the actual user UUID
-    let actualUserId: string;
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
     
     if (isUUID) {
@@ -367,17 +368,19 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
     if (error && typeof error === 'object' && 'code' in error && error.code === '23505' && 
         'message' in error && typeof error.message === 'string' && error.message.includes('wallets_user_id_chain_key')) {
       console.log(`[CDP] Wallet creation failed due to unique constraint. Attempting to fetch existing wallet.`);
-      const chain = network;
       
-      const { data: existingWallet } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('user_id', actualUserId)
-        .eq('chain', chain);
-      
-      if (existingWallet && existingWallet.length > 0) {
-        console.log(`[CDP] Found existing wallet after creation failure. Using that instead.`);
-        return existingWallet[0];
+      // Only try to fetch if we have actualUserId (user lookup was successful)
+      if (actualUserId) {
+        const { data: existingWallet } = await supabase
+          .from('wallets')
+          .select('*')
+          .eq('user_id', actualUserId)
+          .eq('chain', chain);
+        
+        if (existingWallet && existingWallet.length > 0) {
+          console.log(`[CDP] Found existing wallet after creation failure. Using that instead.`);
+          return existingWallet[0];
+        }
       }
     }
     
