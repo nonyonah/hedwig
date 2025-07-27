@@ -1,6 +1,9 @@
 // src/pages/api/webhook.ts - Telegram Bot Webhook Handler
 import type { NextApiRequest, NextApiResponse } from 'next';
 import TelegramBot from 'node-telegram-bot-api';
+import { handleAction } from '../../api/actions';
+import { processInvoiceInput } from '../../lib/invoiceService';
+import { processProposalInput } from '../../lib/proposalservice';
 
 // Global bot instance for webhook mode
 let bot: TelegramBot | null = null;
@@ -89,17 +92,19 @@ async function handleCommand(msg: TelegramBot.Message) {
   switch (command) {
     case '/start':
       await bot.sendMessage(chatId, 
-        `🤖 Welcome to Hedwig Bot!\n\n` +
+        `🦉 Welcome to Hedwig Bot!\n\n` +
         `I'm your AI assistant for crypto payments and wallet management.\n\n` +
-        `Available commands:\n` +
-        `/help - Show this help message\n` +
-        `/wallet - Check your wallet status\n` +
-        `/balance - Check your balance\n\n` +
-        `You can also just chat with me naturally!`,
+        `Use the menu below or chat with me naturally!`,
         {
           reply_markup: {
-            keyboard: [[{ text: '/help' }, { text: '/wallet' }], [{ text: '/balance' }]],
-            resize_keyboard: true
+            keyboard: [
+              [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
+              [{ text: '🔗 Payment Link' }, { text: '📝 Proposal' }],
+              [{ text: '🧾 Invoice' }, { text: '📊 View History' }],
+              [{ text: '❓ Help' }]
+            ],
+            resize_keyboard: true,
+            one_time_keyboard: false
           }
         }
       );
@@ -108,11 +113,13 @@ async function handleCommand(msg: TelegramBot.Message) {
     case '/help':
       await bot.sendMessage(chatId,
         `🆘 *Hedwig Bot Help*\n\n` +
-        `*Commands:*\n` +
-        `/start - Welcome message\n` +
-        `/help - Show this help\n` +
-        `/wallet - Wallet information\n` +
-        `/balance - Check balance\n\n` +
+        `*Quick Actions:*\n` +
+        `💰 Balance - Check wallet balances\n` +
+        `👛 Wallet - View wallet addresses\n` +
+        `🔗 Payment Link - Create payment requests\n` +
+        `📝 Proposal - Create service proposals\n` +
+        `🧾 Invoice - Create invoices\n` +
+        `📊 View History - See transactions\n\n` +
         `*Natural Language:*\n` +
         `You can also chat with me naturally! Try:\n` +
         `• "Send 10 USDC to alice@example.com"\n` +
@@ -124,19 +131,76 @@ async function handleCommand(msg: TelegramBot.Message) {
       break;
 
     case '/wallet':
-      await bot.sendMessage(chatId, 'Checking your wallet status...');
-      // Add wallet status logic here
+      const walletResponse = await processWithAI('get wallet address', chatId);
+      await bot.sendMessage(chatId, walletResponse);
       break;
 
     case '/balance':
-      await bot.sendMessage(chatId, 'Checking your balance...');
-      // Add balance check logic here
+      const balanceResponse = await processWithAI('check balance', chatId);
+      await bot.sendMessage(chatId, balanceResponse);
       break;
 
     default:
-      await bot.sendMessage(chatId, 
-        `Unknown command: ${command}\n\nUse /help to see available commands.`
-      );
+      // Handle menu button presses
+      const text = msg.text;
+      if (text === '💰 Balance') {
+        const response = await processWithAI('check balance', chatId);
+        await bot.sendMessage(chatId, response);
+      } else if (text === '👛 Wallet') {
+        const response = await processWithAI('get wallet address', chatId);
+        await bot.sendMessage(chatId, response);
+      } else if (text === '🔗 Payment Link') {
+        await bot.sendMessage(chatId, 
+          '🔗 *Create Payment Link*\n\n' +
+          'Please provide the details for your payment link:\n' +
+          '• Amount (e.g., "10 USDC")\n' +
+          '• Description (e.g., "Payment for services")\n\n' +
+          'Example: "Create payment link for 50 USDC for web development"',
+          { parse_mode: 'Markdown' }
+        );
+      } else if (text === '📝 Proposal') {
+        await bot.sendMessage(chatId,
+          '📝 *Create Proposal*\n\n' +
+          'Please provide details for your proposal:\n' +
+          '• Service type (e.g., "web development")\n' +
+          '• Client name\n' +
+          '• Project description\n' +
+          '• Budget\n\n' +
+          'Example: "Create proposal for web development project for John Doe, budget $2000"',
+          { parse_mode: 'Markdown' }
+        );
+      } else if (text === '🧾 Invoice') {
+        await bot.sendMessage(chatId,
+          '🧾 *Create Invoice*\n\n' +
+          'Please provide details for your invoice:\n' +
+          '• Client name\n' +
+          '• Amount\n' +
+          '• Description of work\n\n' +
+          'Example: "Create invoice for Jane Smith, $500 for logo design"',
+          { parse_mode: 'Markdown' }
+        );
+      } else if (text === '📊 View History') {
+        const response = await processWithAI('view proposals and invoices', chatId);
+        await bot.sendMessage(chatId, response);
+      } else if (text === '❓ Help') {
+        await bot.sendMessage(chatId,
+          `🆘 *Hedwig Bot Help*\n\n` +
+          `*Quick Actions:*\n` +
+          `💰 Balance - Check wallet balances\n` +
+          `👛 Wallet - View wallet addresses\n` +
+          `🔗 Payment Link - Create payment requests\n` +
+          `📝 Proposal - Create service proposals\n` +
+          `🧾 Invoice - Create invoices\n` +
+          `📊 View History - See transactions\n\n` +
+          `*Natural Language:*\n` +
+          `You can also chat with me naturally!`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        await bot.sendMessage(chatId, 
+          `Unknown command: ${command}\n\nUse the menu buttons or /help to see available options.`
+        );
+      }
   }
 }
 
@@ -151,19 +215,198 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
       message
     });
     
-    return llmResponse || "I'm sorry, I couldn't process your request at the moment.";
+    if (!llmResponse) {
+      return "I'm sorry, I couldn't process your request at the moment.";
+    }
+
+    // Parse JSON response from LLM agent
+    try {
+      let jsonContent = llmResponse;
+      
+      // Check if response is wrapped in markdown code blocks
+      if (llmResponse.includes('```json')) {
+        const jsonMatch = llmResponse.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch && jsonMatch[1]) {
+          jsonContent = jsonMatch[1].trim();
+        }
+      } else if (llmResponse.includes('```')) {
+        // Handle generic code blocks that might contain JSON
+        const codeMatch = llmResponse.match(/```\s*([\s\S]*?)\s*```/);
+        if (codeMatch && codeMatch[1]) {
+          jsonContent = codeMatch[1].trim();
+        }
+      }
+      
+      const parsedResponse = JSON.parse(jsonContent);
+      
+      if (parsedResponse.intent && parsedResponse.params !== undefined) {
+        return await formatResponseForUser(parsedResponse, userId, message);
+      }
+    } catch (parseError) {
+      // If it's not JSON, return as is (fallback for plain text responses)
+      console.log('[Webhook] Non-JSON response from LLM:', llmResponse);
+    }
+    
+    return llmResponse;
   } catch (error) {
     console.error('[Webhook] Error processing with AI:', error);
     return "I'm experiencing some technical difficulties. Please try again later.";
   }
 }
 
-// Ensure user exists in database
+// Function to format LLM response for user and execute actual functions
+async function formatResponseForUser(parsedResponse: any, userId: string, userMessage: string): Promise<string> {
+  const { intent, params } = parsedResponse;
+  
+  try {
+    switch (intent) {
+      case 'welcome':
+        return "🦉 Welcome to Hedwig! I'm your crypto assistant. I can help you with:\n\n" +
+               "• Creating wallets\n" +
+               "• Checking balances\n" +
+               "• Sending crypto\n" +
+               "• Creating payment links\n" +
+               "• Managing invoices and proposals\n\n" +
+               "What would you like to do?";
+      
+      case 'balance':
+      case 'wallet_balance':
+      case 'get_wallet_balance':
+      case 'get_wallet_address':
+      case 'send':
+      case 'create_payment_link':
+      case 'earnings':
+      case 'create_wallets':
+        // Use the existing actions.ts handler for these intents
+        const actionResult = await handleAction(intent, params, userId);
+        return actionResult.text;
+      
+      case 'create_proposal':
+        try {
+          // Get user info from database
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          
+          if (!user) {
+            return "❌ User not found. Please try again.";
+          }
+          
+          const proposalResult = await processProposalInput(userMessage, user);
+          return proposalResult.message;
+        } catch (error) {
+          console.error('[formatResponseForUser] Proposal error:', error);
+          return "❌ Failed to create proposal. Please try again with more details about your service.";
+        }
+      
+      case 'create_invoice':
+        try {
+          // Get user info from database
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          
+          if (!user) {
+            return "❌ User not found. Please try again.";
+          }
+          
+          const invoiceResult = await processInvoiceInput(userMessage, user);
+          return invoiceResult.message;
+        } catch (error) {
+          console.error('[formatResponseForUser] Invoice error:', error);
+          return "❌ Failed to create invoice. Please try again with more details about your project.";
+        }
+      
+      case 'view_proposals':
+        try {
+          const { supabase } = await import('../../lib/supabase');
+          const { data: proposals } = await supabase
+            .from('proposals')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          
+          if (!proposals || proposals.length === 0) {
+            return "📋 You don't have any proposals yet. Type 'create proposal' to get started!";
+          }
+          
+          let response = "📋 **Your Recent Proposals**\n\n";
+          proposals.forEach((proposal, index) => {
+            response += `${index + 1}. **${proposal.project_title || proposal.service_type}**\n`;
+            response += `   Client: ${proposal.client_name || 'Not specified'}\n`;
+            response += `   Status: ${proposal.status}\n`;
+            response += `   Budget: ${proposal.budget ? `$${proposal.budget}` : 'Not specified'}\n\n`;
+          });
+          
+          return response;
+        } catch (error) {
+          console.error('[formatResponseForUser] View proposals error:', error);
+          return "❌ Failed to fetch proposals. Please try again later.";
+        }
+      
+      case 'view_invoices':
+        try {
+          const { supabase } = await import('../../lib/supabase');
+          const { data: invoices } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('freelancer_email', userId) // Assuming userId is used as email identifier
+            .order('date_created', { ascending: false })
+            .limit(5);
+          
+          if (!invoices || invoices.length === 0) {
+            return "📋 You don't have any invoices yet. Type 'create invoice' to get started!";
+          }
+          
+          let response = "📋 **Your Recent Invoices**\n\n";
+          invoices.forEach((invoice, index) => {
+            response += `${index + 1}. **${invoice.invoice_number}**\n`;
+            response += `   Client: ${invoice.client_name}\n`;
+            response += `   Amount: $${invoice.amount}\n`;
+            response += `   Status: ${invoice.status}\n\n`;
+          });
+          
+          return response;
+        } catch (error) {
+          console.error('[formatResponseForUser] View invoices error:', error);
+          return "❌ Failed to fetch invoices. Please try again later.";
+        }
+      
+      case 'get_price':
+        return "💱 Price checking feature is currently being updated. Please use external tools for price information.";
+        
+      case 'clarification':
+        return "🤔 I need a bit more information. Could you please clarify what you'd like me to help you with?";
+      
+      default:
+        return "I understand you want help with something. Could you please be more specific about what you'd like me to do?";
+    }
+  } catch (error) {
+    console.error('[formatResponseForUser] Error:', error);
+    return "❌ Something went wrong. Please try again later.";
+  }
+}
+
+// Ensure user exists in database and create CDP wallets
 async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise<void> {
   try {
     const { supabase } = await import('../../lib/supabase');
     
-    const { error } = await supabase.rpc('get_or_create_telegram_user', {
+    // Check if user already exists
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_chat_id', chatId)
+      .single();
+
+    const { data: userId, error } = await supabase.rpc('get_or_create_telegram_user', {
       p_telegram_chat_id: chatId,
       p_telegram_username: from?.username || null,
       p_telegram_first_name: from?.first_name || null,
@@ -173,6 +416,24 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
 
     if (error) {
       console.error('[Webhook] Error ensuring user exists:', error);
+      return;
+    }
+
+    // If this is a new user (didn't exist before), create CDP wallets
+    if (!existingUser && userId) {
+      try {
+        const { getOrCreateCdpWallet } = await import('../../lib/cdp');
+        
+        // Create EVM wallet
+        await getOrCreateCdpWallet(userId, 'evm');
+        console.log('[Webhook] Created EVM wallet for new Telegram user:', userId);
+        
+        // Create Solana wallet
+        await getOrCreateCdpWallet(userId, 'solana');
+        console.log('[Webhook] Created Solana wallet for new Telegram user:', userId);
+      } catch (walletError) {
+        console.error('[Webhook] Error creating CDP wallets for new user:', walletError);
+      }
     }
   } catch (error) {
     console.error('[Webhook] Error in ensureUserExists:', error);

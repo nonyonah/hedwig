@@ -106,9 +106,13 @@ async function handleCreateWallets(userId: string) {
 
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    const balances = await getBalances(userId, 'all');
+    // Get all user wallets
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", userId);
     
-    if (!balances || Object.keys(balances).length === 0) {
+    if (!wallets || wallets.length === 0) {
       return {
         text: "You don't have any wallets yet. Type 'create wallet' to get started!"
       };
@@ -116,15 +120,76 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     
     let response = "💰 **Your Wallet Balances**\n\n";
     
-    // Format balances
-    Object.entries(balances).forEach(([key, value]) => {
-      const [network, token] = key.split('_');
-      const networkName = network.charAt(0).toUpperCase() + network.slice(1);
-      const tokenName = token.toUpperCase();
-      response += `🔹 ${networkName} ${tokenName}: ${value}\n`;
-    });
+    // Process each wallet
+    for (const wallet of wallets) {
+      try {
+        const networkName = wallet.chain === 'base-sepolia' ? 'Base Sepolia' : 
+                           wallet.chain === 'solana-devnet' ? 'Solana Devnet' : 
+                           wallet.chain;
+        
+        response += `🔹 **${networkName}**\n`;
+        
+        if (wallet.chain === 'base-sepolia') {
+          // Get EVM balances (ETH and USDC)
+          try {
+            const balances = await getBalances(wallet.address, wallet.chain);
+            
+            // Find ETH balance
+            const ethBalance = balances?.find(b => b.asset.symbol === 'ETH');
+            if (ethBalance) {
+              const formattedEth = formatBalance(ethBalance.amount, ethBalance.asset.decimals);
+              response += `   • ETH: ${formattedEth}\n`;
+            } else {
+              response += `   • ETH: 0.0\n`;
+            }
+            
+            // Find USDC balance
+            const usdcBalance = balances?.find(b => b.asset.symbol === 'USDC');
+            if (usdcBalance) {
+              const formattedUsdc = formatBalance(usdcBalance.amount, usdcBalance.asset.decimals);
+              response += `   • USDC: ${formattedUsdc}\n`;
+            } else {
+              response += `   • USDC: 0.0\n`;
+            }
+          } catch (balanceError) {
+            console.error(`[handleGetWalletBalance] Error fetching ${networkName} balances:`, balanceError);
+            response += `   • ETH: Error fetching\n`;
+            response += `   • USDC: Error fetching\n`;
+          }
+        } else if (wallet.chain === 'solana-devnet') {
+          // Get Solana balances (SOL and USDC)
+          try {
+            const balances = await getBalances(wallet.address, wallet.chain);
+            
+            // SOL balance
+            const solBalance = balances?.[0];
+            if (solBalance) {
+              const formattedSol = formatBalance(solBalance.amount, solBalance.asset.decimals);
+              response += `   • SOL: ${formattedSol}\n`;
+            } else {
+              response += `   • SOL: 0.0\n`;
+            }
+            
+            // TODO: Add USDC SPL token balance check for Solana
+            response += `   • USDC: Coming soon\n`;
+          } catch (balanceError) {
+            console.error(`[handleGetWalletBalance] Error fetching ${networkName} balances:`, balanceError);
+            response += `   • SOL: Error fetching\n`;
+            response += `   • USDC: Error fetching\n`;
+          }
+        }
+        
+        response += `   📍 Address: ${formatAddress(wallet.address)}\n\n`;
+      } catch (walletError) {
+        console.error(`[handleGetWalletBalance] Error processing wallet:`, walletError);
+        response += `   ❌ Error fetching balances\n\n`;
+      }
+    }
     
-    response += "\nType 'send' to transfer tokens or 'swap' to exchange them.";
+    response += "💡 **Available Actions:**\n";
+    response += "• Type 'send' to transfer tokens\n";
+    response += "• Type 'swap' to exchange tokens\n";
+    response += "• Type 'wallet' to see addresses";
     
     return { text: response };
   } catch (error) {

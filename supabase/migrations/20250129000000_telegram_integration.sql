@@ -1,13 +1,45 @@
--- Migration for Telegram Integration
--- This migration updates the database schema to support Telegram bot functionality
+-- Telegram Integration Migration
+-- This migration adds Telegram-specific functionality to the existing schema
 
--- Add Telegram-specific columns to users table
-ALTER TABLE public.users 
-ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT UNIQUE,
-ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(255),
-ADD COLUMN IF NOT EXISTS telegram_first_name VARCHAR(255),
-ADD COLUMN IF NOT EXISTS telegram_last_name VARCHAR(255),
-ADD COLUMN IF NOT EXISTS telegram_language_code VARCHAR(10);
+-- Add Telegram-specific columns to users table if they don't exist
+DO $$ 
+BEGIN
+    -- Add telegram_chat_id column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'users' AND column_name = 'telegram_chat_id') THEN
+        ALTER TABLE public.users ADD COLUMN telegram_chat_id BIGINT UNIQUE;
+    END IF;
+    
+    -- Add telegram_username column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'users' AND column_name = 'telegram_username') THEN
+        ALTER TABLE public.users ADD COLUMN telegram_username TEXT;
+    END IF;
+    
+    -- Add telegram_first_name column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'users' AND column_name = 'telegram_first_name') THEN
+        ALTER TABLE public.users ADD COLUMN telegram_first_name TEXT;
+    END IF;
+    
+    -- Add telegram_last_name column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'users' AND column_name = 'telegram_last_name') THEN
+        ALTER TABLE public.users ADD COLUMN telegram_last_name TEXT;
+    END IF;
+    
+    -- Add telegram_language_code column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'users' AND column_name = 'telegram_language_code') THEN
+        ALTER TABLE public.users ADD COLUMN telegram_language_code TEXT;
+    END IF;
+    
+    -- Add telegram_is_bot column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'users' AND column_name = 'telegram_is_bot') THEN
+        ALTER TABLE public.users ADD COLUMN telegram_is_bot BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$;
 
 -- Create index for telegram_chat_id for faster lookups
 CREATE INDEX IF NOT EXISTS idx_users_telegram_chat_id ON public.users(telegram_chat_id);
