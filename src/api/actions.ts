@@ -226,10 +226,10 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
           }
         }
 
-        evmBalances = `🟦 **EVM Networks**\n${allEvmBalances}`;
+        evmBalances = `💰 **Here are your balances**\n${allEvmBalances}`;
       } catch (balanceError) {
         console.error(`[handleGetWalletBalance] Error fetching EVM balances:`, balanceError);
-        evmBalances = `🟦 **EVM Networks**\n• Error fetching balances\n\n`;
+        evmBalances = `💰 **Here are your balances**\n• Error fetching balances\n\n`;
       }
     }
 
@@ -360,7 +360,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         return { text: "❌ No Solana wallet found. Type 'create wallet' to create one." };
       }
       return { 
-        text: `🌸 **Solana Address**\n\`${solanaAddress}\``,
+        text: `🌸 **Solana Address**\n\`${solanaAddress}\`\n\n💡 Use this address to receive SOL and SPL tokens on Solana network.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "📋 Copy Solana Address", copy_text: { text: solanaAddress } }]
@@ -372,7 +372,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         return { text: "❌ No EVM wallet found. Type 'create wallet' to create one." };
       }
       return { 
-        text: `🟦 **EVM Address**\n\`${evmAddress}\``,
+        text: `🟦 **EVM Address**\n\`${evmAddress}\`\n\n💡 Use this address to receive ETH, USDC and other tokens on Base and Ethereum networks.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "📋 Copy EVM Address", copy_text: { text: evmAddress } }]
@@ -381,7 +381,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
       };
     } else {
       // Show both addresses
-      const response = `🟦 **EVM Address**\n\`${evmAddress}\`\n\n🌸 **Solana Address**\n\`${solanaAddress}\``;
+      const response = `🟦 **EVM Address**\n\`${evmAddress}\`\n\n🌸 **Solana Address**\n\`${solanaAddress}\`\n\n💡 Use these addresses to receive deposits on their respective networks.`;
       
       return { 
         text: response,
