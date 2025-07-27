@@ -47,7 +47,7 @@ export interface ActionResult {
       text: string;
       callback_data?: string;
       url?: string;
-      copy_text?: string;
+      copy_text?: { text: string };
     }>>;
   };
 }
@@ -170,16 +170,16 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const evmWallet = wallets.find(w => w.chain === 'evm');
     if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
       try {
-        // Get balances for all supported EVM networks
-        const supportedEvmNetworks = ['base-sepolia', 'ethereum-sepolia'];
+        // Get balances for CDP API supported EVM networks only
+        const supportedEvmNetworks = ['base-sepolia', 'base'];
         let allEvmBalances = "";
 
         // If specific EVM chain requested, filter to that chain
         let networksToCheck = supportedEvmNetworks;
         if (requestedNetwork && requestedNetwork !== 'evm') {
           const chainMap: { [key: string]: string } = {
-            'base': 'base-sepolia',
-            'ethereum': 'ethereum-sepolia'
+            'base': 'base-sepolia', // Use testnet for now
+            'ethereum': 'base-sepolia' // Map ethereum to base-sepolia since ethereum-sepolia is not supported
           };
           const specificNetwork = chainMap[requestedNetwork];
           if (specificNetwork) {
@@ -347,7 +347,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         text: `🌸 **Solana Address**\n\`${solanaAddress}\``,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📋 Copy Solana Address", copy_text: solanaAddress }]
+            [{ text: "📋 Copy Solana Address", copy_text: { text: solanaAddress } }]
           ]
         }
       };
@@ -359,7 +359,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         text: `🟦 **EVM Address**\n\`${evmAddress}\``,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📋 Copy EVM Address", copy_text: evmAddress }]
+            [{ text: "📋 Copy EVM Address", copy_text: { text: evmAddress } }]
           ]
         }
       };
@@ -372,8 +372,8 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "📋 Copy EVM", copy_text: evmAddress },
-              { text: "📋 Copy Solana", copy_text: solanaAddress }
+              { text: "📋 Copy EVM", copy_text: { text: evmAddress } },
+              { text: "📋 Copy Solana", copy_text: { text: solanaAddress } }
             ]
           ]
         }
