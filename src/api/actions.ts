@@ -116,7 +116,7 @@ async function handleCreateWallets(userId: string) {
   }
 }
 
-export async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResult> {
+async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
@@ -182,8 +182,8 @@ export async function handleGetWalletBalance(params: ActionParams, userId: strin
               const ethToken = balances.find((b: any) => b.asset?.symbol === 'ETH' || b.symbol === 'ETH');
               const usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC' || b.symbol === 'USDC');
               
-              ethBalance = ethToken?.balance || ethToken?.amount || '0';
-              usdcBalance = usdcToken?.balance || usdcToken?.amount || '0';
+              ethBalance = (ethToken as any)?.balance || (ethToken as any)?.amount || '0';
+              usdcBalance = (usdcToken as any)?.balance || (usdcToken as any)?.amount || '0';
             } else if (balances && typeof balances === 'object' && 'data' in balances) {
               // EVM ListTokenBalancesResult format
               const balanceArray = (balances as any).data || [];
@@ -224,7 +224,7 @@ export async function handleGetWalletBalance(params: ActionParams, userId: strin
         let solAmount = '0';
         if (Array.isArray(balances)) {
           const solToken = balances.find((b: any) => b.asset?.symbol === 'SOL' || b.symbol === 'SOL');
-          solAmount = solToken?.balance || solToken?.amount || '0';
+          solAmount = (solToken as any)?.balance || (solToken as any)?.amount || '0';
           
           // Convert from lamports to SOL if needed
           if (solToken?.asset?.decimals === 9 && solToken?.amount) {
@@ -539,7 +539,9 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
       error: 'Internal server error' 
     });
   }
-}async function handleSend(params: ActionParams, userId: string) {
+}
+
+async function handleSend(params: ActionParams, userId: string) {
   try {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
