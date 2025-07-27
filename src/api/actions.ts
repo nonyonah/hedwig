@@ -170,16 +170,16 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const evmWallet = wallets.find(w => w.chain === 'evm');
     if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
       try {
-        // Get balances for CDP API supported EVM networks only
-        const supportedEvmNetworks = ['base-sepolia', 'base'];
+        // Get balances for testnet networks (base-sepolia and ethereum-sepolia)
+        const supportedEvmNetworks = ['base-sepolia', 'ethereum-sepolia'];
         let allEvmBalances = "";
 
         // If specific EVM chain requested, filter to that chain
         let networksToCheck = supportedEvmNetworks;
         if (requestedNetwork && requestedNetwork !== 'evm') {
           const chainMap: { [key: string]: string } = {
-            'base': 'base-sepolia', // Use testnet for now
-            'ethereum': 'base-sepolia' // Map ethereum to base-sepolia since ethereum-sepolia is not supported
+            'base': 'base-sepolia',
+            'ethereum': 'ethereum-sepolia'
           };
           const specificNetwork = chainMap[requestedNetwork];
           if (specificNetwork) {
@@ -203,7 +203,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               ethBalance = (ethToken as any)?.balance || (ethToken as any)?.amount || '0';
               usdcBalance = (usdcToken as any)?.balance || (usdcToken as any)?.amount || '0';
             } else if (balances && typeof balances === 'object' && 'data' in balances) {
-              // EVM ListTokenBalancesResult format
+              // EVM ListTokenBalancesResult format (from CDP or Alchemy)
               const balanceArray = (balances as any).data || [];
               const ethToken = balanceArray.find((b: any) => b.asset?.symbol === 'ETH');
               const usdcToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
@@ -240,18 +240,25 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
         const balances = await getBalances(solanaWallet.address, 'solana-devnet');
         
         let solAmount = '0';
+        let usdcAmount = '0';
+        
         if (Array.isArray(balances)) {
-          const solToken = balances.find((b: any) => b.asset?.symbol === 'SOL' || b.symbol === 'SOL');
-          solAmount = (solToken as any)?.balance || (solToken as any)?.amount || '0';
+          // New format from getSolanaBalances function
+          const solToken = balances.find((b: any) => b.asset?.symbol === 'SOL');
+          const usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC');
           
-          // Convert from lamports to SOL if needed
-          if (solToken?.asset?.decimals === 9 && solToken?.amount) {
-            solAmount = formatBalance(solToken.amount, 9);
+          if (solToken) {
+            // SOL balance is already in lamports, convert to SOL
+            solAmount = formatBalance(solToken.amount, solToken.asset.decimals);
+          }
+          
+          if (usdcToken) {
+            // USDC balance from SPL token
+            usdcAmount = formatBalance(usdcToken.amount, usdcToken.asset.decimals);
           }
         }
         
-        // TODO: Add USDC SPL token balance check for Solana
-        solanaBalances = `🌸 **Solana**\n• 19.8 USDC\n• ${parseFloat(solAmount).toFixed(4)} SOL\n\n`;
+        solanaBalances = `🌸 **Solana**\n• ${parseFloat(usdcAmount).toFixed(2)} USDC\n• ${parseFloat(solAmount).toFixed(4)} SOL\n\n`;
       } catch (balanceError) {
         console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, balanceError);
         solanaBalances = `🌸 **Solana**\n• Error fetching USDC\n• Error fetching SOL\n\n`;
@@ -265,7 +272,16 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
       response = evmBalances || "❌ No EVM wallet found.";
     } else {
       // Show all balances for general requests
-      response = `${evmBalances}${solanaBalances}Let me know if you'd like to send tokens or refresh your balances.`;
+      if (!evmBalances && !solanaBalances) {
+        response = "❌ No wallets found. Type 'create wallet' to get started!";
+      } else {
+        response = `${evmBalances || ""}${solanaBalances || ""}Let me know if you'd like to send tokens or refresh your balances.`;
+      }
+    }
+
+    // Ensure response is never empty
+    if (!response || response.trim() === "") {
+      response = "❌ Unable to fetch wallet balances. Please try again later.";
     }
 
     return { 

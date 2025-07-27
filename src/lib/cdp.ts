@@ -485,24 +485,19 @@ export async function getBalances(address: string, network: string) {
     // Get balances based on network type
     let balances;
     if (networkConfig.chainId) {
-      // Get EVM balances
-      balances = await evmClient.listTokenBalances({
-        address: address as `0x${string}`,
-        network: networkConfig.name as any,
-      });
+      // For Ethereum Sepolia, use Alchemy API since CDP doesn't support it
+      if (actualNetwork === 'ethereum-sepolia') {
+        balances = await getEthereumSepoliaBalances(address);
+      } else {
+        // Get EVM balances using CDP for supported networks (base-sepolia)
+        balances = await evmClient.listTokenBalances({
+          address: address as `0x${string}`,
+          network: networkConfig.name as any,
+        });
+      }
     } else if (networkConfig.networkId) {
-      // Get Solana balances - use connection directly
-      const connection = new Connection(
-        networkConfig.networkId === 'devnet' 
-          ? 'https://api.devnet.solana.com' 
-          : 'https://api.mainnet-beta.solana.com'
-      );
-      const publicKey = new PublicKey(address);
-      const balance = await connection.getBalance(publicKey);
-      balances = [{
-        asset: { symbol: 'SOL', decimals: 9 },
-        amount: balance.toString()
-      }];
+      // Get Solana balances with SOL and USDC SPL token
+      balances = await getSolanaBalances(address, networkConfig.networkId);
     } else {
       throw new Error(`Invalid network configuration for ${network}`);
     }
@@ -510,6 +505,187 @@ export async function getBalances(address: string, network: string) {
     return balances;
   } catch (error) {
     console.error(`[CDP] Failed to get balances:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Get Ethereum Sepolia balances using Alchemy API
+ * @param address - Wallet address
+ * @returns Token balances
+ */
+async function getEthereumSepoliaBalances(address: string) {
+  try {
+    const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+    const alchemyUrl = process.env.ALCHEMY_URL_ETH_SEPOLIA || `https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`;
+    
+    if (!alchemyApiKey) {
+      throw new Error('ALCHEMY_API_KEY not configured');
+    }
+
+    console.log(`[CDP] Fetching Ethereum Sepolia balances using Alchemy for ${address}`);
+
+    // Get ETH balance
+    const ethBalanceResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      })
+    });
+
+    const ethBalanceData = await ethBalanceResponse.json();
+    if (ethBalanceData.error) {
+      throw new Error(`Alchemy ETH balance error: ${ethBalanceData.error.message}`);
+    }
+
+    // Get token balances (including USDC)
+    const tokenBalancesResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenBalances',
+        params: [address]
+      })
+    });
+
+    const tokenBalancesData = await tokenBalancesResponse.json();
+    if (tokenBalancesData.error) {
+      throw new Error(`Alchemy token balances error: ${tokenBalancesData.error.message}`);
+    }
+
+    // Format balances
+    const balances = [];
+
+    // Add ETH balance
+    const ethBalanceWei = ethBalanceData.result;
+    balances.push({
+      asset: { symbol: 'ETH', decimals: 18 },
+      amount: ethBalanceWei
+    });
+
+    // Add token balances (filter for USDC and other known tokens)
+    const tokenBalances = tokenBalancesData.result?.tokenBalances || [];
+    for (const tokenBalance of tokenBalances) {
+      if (tokenBalance.tokenBalance && tokenBalance.tokenBalance !== '0x0') {
+        // Get token metadata
+        const metadataResponse = await fetch(alchemyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: 1,
+            jsonrpc: '2.0',
+            method: 'alchemy_getTokenMetadata',
+            params: [tokenBalance.contractAddress]
+          })
+        });
+
+        const metadataData = await metadataResponse.json();
+        if (!metadataData.error && metadataData.result) {
+          const metadata = metadataData.result;
+          balances.push({
+            asset: { 
+              symbol: metadata.symbol || 'UNKNOWN', 
+              decimals: metadata.decimals || 18,
+              contractAddress: tokenBalance.contractAddress
+            },
+            amount: tokenBalance.tokenBalance
+          });
+        }
+      }
+    }
+
+    return { data: balances };
+  } catch (error) {
+    console.error('[CDP] Failed to get Ethereum Sepolia balances:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get Solana balances including SOL and USDC SPL token
+ * @param address - Wallet address
+ * @param networkId - Network ID (devnet or mainnet-beta)
+ * @returns Token balances
+ */
+async function getSolanaBalances(address: string, networkId: string) {
+  try {
+    const connection = new Connection(
+      networkId === 'devnet' 
+        ? 'https://api.devnet.solana.com' 
+        : 'https://api.mainnet-beta.solana.com'
+    );
+    const publicKey = new PublicKey(address);
+
+    console.log(`[CDP] Fetching Solana balances for ${address} on ${networkId}`);
+
+    // Get SOL balance
+    const solBalance = await connection.getBalance(publicKey);
+
+    // Get SPL token accounts (including USDC)
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+      programId: TOKEN_PROGRAM_ID,
+    });
+
+    const balances = [];
+
+    // Add SOL balance
+    balances.push({
+      asset: { symbol: 'SOL', decimals: 9 },
+      amount: solBalance.toString()
+    });
+
+    // Add SPL token balances
+    for (const tokenAccount of tokenAccounts.value) {
+      const accountData = tokenAccount.account.data.parsed;
+      const tokenAmount = accountData.info.tokenAmount;
+      const mint = accountData.info.mint;
+
+      // Check if this is USDC (different mint addresses for devnet/mainnet)
+      const usdcMints = {
+        devnet: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', // USDC devnet mint
+        mainnet: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' // USDC mainnet mint
+      };
+
+      let symbol = 'UNKNOWN';
+      if (mint === usdcMints.devnet || mint === usdcMints.mainnet) {
+        symbol = 'USDC';
+      } else {
+        // Try to get token metadata for other tokens
+        try {
+          // For now, we'll just use the mint address as identifier
+          symbol = mint.substring(0, 8) + '...';
+        } catch (e) {
+          // Ignore metadata fetch errors
+        }
+      }
+
+      if (tokenAmount.uiAmount && tokenAmount.uiAmount > 0) {
+        balances.push({
+          asset: { 
+            symbol: symbol, 
+            decimals: tokenAmount.decimals,
+            mint: mint
+          },
+          amount: tokenAmount.amount
+        });
+      }
+    }
+
+    return balances;
+  } catch (error) {
+    console.error('[CDP] Failed to get Solana balances:', error);
     throw error;
   }
 }
