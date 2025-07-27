@@ -47,7 +47,7 @@ export interface ActionResult {
       text: string;
       callback_data?: string;
       url?: string;
-      copy_text?: string;
+      copy_text?: { text: string };
     }>>;
   };
 }
@@ -154,22 +154,42 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     }
 
     // Check if user requested specific network
-    const requestedNetwork = params.parameters?.network?.toLowerCase();
-    const requestedToken = params.parameters?.token?.toUpperCase();
+    const requestedNetwork = params?.parameters?.network?.toLowerCase();
+    
+    // Map specific chains to their categories
+    const evmChains = ['evm', 'base', 'ethereum', 'optimism', 'celo', 'polygon', 'arbitrum'];
+    const isEvmRequest = requestedNetwork && evmChains.includes(requestedNetwork);
+    const isSolanaRequest = requestedNetwork === 'solana';
+    const isSpecificChainRequest = requestedNetwork && (evmChains.includes(requestedNetwork) || requestedNetwork === 'solana');
 
-    let response = "";
     let evmBalances = "";
     let solanaBalances = "";
+    let response = "";
 
     // Get EVM wallet
     const evmWallet = wallets.find(w => w.chain === 'evm');
-    if (evmWallet && (!requestedNetwork || requestedNetwork === 'evm' || requestedNetwork === 'base' || requestedNetwork === 'ethereum')) {
+    if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
       try {
         // Get balances for all supported EVM networks
         const supportedEvmNetworks = ['base-sepolia', 'ethereum-sepolia', 'optimism-sepolia', 'celo-alfajores'];
         let allEvmBalances = "";
 
-        for (const network of supportedEvmNetworks) {
+        // If specific EVM chain requested, filter to that chain
+        let networksToCheck = supportedEvmNetworks;
+        if (requestedNetwork && requestedNetwork !== 'evm') {
+          const chainMap: { [key: string]: string } = {
+            'base': 'base-sepolia',
+            'ethereum': 'ethereum-sepolia',
+            'optimism': 'optimism-sepolia', 
+            'celo': 'celo-alfajores'
+          };
+          const specificNetwork = chainMap[requestedNetwork];
+          if (specificNetwork) {
+            networksToCheck = [specificNetwork];
+          }
+        }
+
+        for (const network of networksToCheck) {
           try {
             const balances = await getBalances(evmWallet.address, network);
             
@@ -217,7 +237,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
 
     // Get Solana wallet
     const solanaWallet = wallets.find(w => w.chain === 'solana');
-    if (solanaWallet && (!requestedNetwork || requestedNetwork === 'solana')) {
+    if (solanaWallet && (!isSpecificChainRequest || isSolanaRequest)) {
       try {
         const balances = await getBalances(solanaWallet.address, 'solana-devnet');
         
@@ -241,12 +261,12 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     }
 
     // Format response based on context
-    if (requestedNetwork === 'solana') {
+    if (isSolanaRequest) {
       response = solanaBalances || "❌ No Solana wallet found.";
-    } else if (requestedNetwork === 'evm' || requestedNetwork === 'base' || requestedNetwork === 'ethereum') {
+    } else if (isEvmRequest) {
       response = evmBalances || "❌ No EVM wallet found.";
     } else {
-      // Show all balances
+      // Show all balances for general requests
       response = `${evmBalances}${solanaBalances}Let me know if you'd like to send tokens or refresh your balances.`;
     }
 
@@ -329,7 +349,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         text: `🌸 **Solana Address**\n\`${solanaAddress}\``,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📋 Copy Solana Address", copy_text: solanaAddress }]
+            [{ text: "📋 Copy Solana Address", copy_text: { text: solanaAddress } }]
           ]
         }
       };
@@ -341,7 +361,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         text: `🟦 **EVM Address**\n\`${evmAddress}\``,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📋 Copy EVM Address", copy_text: evmAddress }]
+            [{ text: "📋 Copy EVM Address", copy_text: { text: evmAddress } }]
           ]
         }
       };
@@ -354,8 +374,8 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "📋 Copy EVM", copy_text: evmAddress },
-              { text: "📋 Copy Solana", copy_text: solanaAddress }
+              { text: "📋 Copy EVM", copy_text: { text: evmAddress } },
+              { text: "📋 Copy Solana", copy_text: { text: solanaAddress } }
             ]
           ]
         }
