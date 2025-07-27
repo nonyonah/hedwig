@@ -172,16 +172,28 @@ export async function createWallet(userId: string, network: string = 'base-sepol
     }
     
     // Fetch user details to get a unique name for the account
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('phone_number')
-      .eq('id', userId)
-      .single();
+    // Handle both UUID and username identifiers
+    let userQuery = supabase.from('users').select('phone_number, id');
+    
+    // Check if userId looks like a UUID (contains hyphens and is 36 chars) or is a username
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      userQuery = userQuery.eq('id', userId);
+    } else {
+      // Assume it's a username, query by telegram_username
+      userQuery = userQuery.eq('telegram_username', userId);
+    }
+    
+    const { data: user, error: userError } = await userQuery.single();
 
     if (userError || !user) {
       console.error(`[CDP] Failed to fetch user details for ${userId}:`, userError);
       throw new Error('Could not fetch user details to create a named wallet.');
     }
+
+    // Use the actual user UUID for wallet creation
+    const actualUserId = user.id;
 
     // Format the phone number to create a valid account name
     // CDP requires alphanumeric characters and hyphens, between 2 and 36 characters
@@ -234,7 +246,7 @@ export async function createWallet(userId: string, network: string = 'base-sepol
       const { data: wallet, error } = await supabase
         .from('wallets')
         .insert({
-          user_id: userId,
+          user_id: actualUserId, // Use the actual UUID from the database
           address: account.address,
           cdp_wallet_id: account.address, // Use address as identifier since CDP manages the account
           chain: chain,
@@ -248,11 +260,11 @@ export async function createWallet(userId: string, network: string = 'base-sepol
         // If error is due to unique constraint, try to fetch the existing wallet
         if (typeof error === 'object' && 'code' in error && error.code === '23505' && 
             'message' in error && typeof error.message === 'string' && error.message.includes('wallets_user_id_chain_key')) {
-          console.log(`[CDP] Wallet already exists for user ${userId} on chain ${chain}. Fetching existing wallet.`);
+          console.log(`[CDP] Wallet already exists for user ${actualUserId} on chain ${chain}. Fetching existing wallet.`);
           const { data: existingWallet } = await supabase
             .from('wallets')
             .select('*')
-            .eq('user_id', userId)
+            .eq('user_id', actualUserId)
             .eq('chain', chain);
           
           if (existingWallet && existingWallet.length > 0) {
@@ -271,7 +283,7 @@ export async function createWallet(userId: string, network: string = 'base-sepol
       const { data: existingWallet } = await supabase
         .from('wallets')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', actualUserId)
         .eq('chain', chain);
       
       if (existingWallet && existingWallet.length > 0) {
@@ -300,11 +312,33 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
     // Use the actual network name as the chain identifier
     const chain = network;
     
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telegram_username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[CDP] Failed to find user with username ${userId}:`, userError);
+        throw new Error(`User not found: ${userId}`);
+      }
+      
+      actualUserId = user.id;
+    }
+    
     // Check if user already has a wallet on this chain
     const { data: wallets, error: walletError } = await supabase
       .from('wallets')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', actualUserId)
       .eq('chain', chain);
       
     // If multiple wallets found, use the first one
@@ -338,7 +372,7 @@ export async function getOrCreateCdpWallet(userId: string, network: string = 'ba
       const { data: existingWallet } = await supabase
         .from('wallets')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', actualUserId)
         .eq('chain', chain);
       
       if (existingWallet && existingWallet.length > 0) {
