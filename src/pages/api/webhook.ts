@@ -207,8 +207,20 @@ async function handleCommand(msg: TelegramBot.Message) {
 // Process message with AI
 async function processWithAI(message: string, chatId: number): Promise<string> {
   try {
+    // Get the actual user UUID from the database
+    const { supabase } = await import('../../lib/supabase');
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_chat_id', chatId)
+      .single();
+
+    if (!user) {
+      return "❌ User not found. Please try /start to initialize your account.";
+    }
+
     const { runLLM } = await import('../../lib/llmAgent');
-    const userId = `telegram_${chatId}`;
+    const userId = user.id;
     
     const llmResponse = await runLLM({
       userId,
