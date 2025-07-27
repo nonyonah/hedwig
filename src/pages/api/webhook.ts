@@ -298,10 +298,42 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
         try {
           // Get user info from database
           const { supabase } = await import('../../lib/supabase');
+          
+          // Determine if userId is a UUID or username and get the actual user UUID
+          let actualUserId: string;
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+          
+          if (isUUID) {
+            actualUserId = userId;
+          } else {
+            // userId is a username, fetch the actual UUID
+            const { data: user, error: userError } = await supabase
+              .from('users')
+              .select('id')
+              .eq('telegram_username', userId)
+              .single();
+            
+            if (userError || !user) {
+              return "❌ User not found. Please make sure you're registered with the bot.";
+            }
+            
+            actualUserId = user.id;
+          }
+
+          // Check if user has wallets
+          const { data: wallets } = await supabase
+            .from("wallets")
+            .select("*")
+            .eq("user_id", actualUserId);
+
+          if (!wallets || wallets.length === 0) {
+            return "You need a wallet before creating proposals. Please type 'create wallet' to create your wallet first.";
+          }
+          
           const { data: user } = await supabase
             .from('users')
             .select('*')
-            .eq('id', userId)
+            .eq('id', actualUserId)
             .single();
           
           if (!user) {
@@ -319,10 +351,42 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
         try {
           // Get user info from database
           const { supabase } = await import('../../lib/supabase');
+          
+          // Determine if userId is a UUID or username and get the actual user UUID
+          let actualUserId: string;
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+          
+          if (isUUID) {
+            actualUserId = userId;
+          } else {
+            // userId is a username, fetch the actual UUID
+            const { data: user, error: userError } = await supabase
+              .from('users')
+              .select('id')
+              .eq('telegram_username', userId)
+              .single();
+            
+            if (userError || !user) {
+              return "❌ User not found. Please make sure you're registered with the bot.";
+            }
+            
+            actualUserId = user.id;
+          }
+
+          // Check if user has wallets
+          const { data: wallets } = await supabase
+            .from("wallets")
+            .select("*")
+            .eq("user_id", actualUserId);
+
+          if (!wallets || wallets.length === 0) {
+            return "You need a wallet before creating invoices. Please type 'create wallet' to create your wallet first.";
+          }
+          
           const { data: user } = await supabase
             .from('users')
             .select('*')
-            .eq('id', userId)
+            .eq('id', actualUserId)
             .single();
           
           if (!user) {
@@ -440,12 +504,12 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
         // Use Telegram username as wallet identifier, fallback to user UUID if no username
         const walletIdentifier = from?.username || userId;
         
-        // Create EVM wallet (use base-sepolia to match the chain check in actions.ts)
-        await getOrCreateCdpWallet(walletIdentifier, 'base-sepolia');
+        // Create EVM wallet (use evm to match the new chain naming)
+        await getOrCreateCdpWallet(walletIdentifier, 'evm');
         console.log('[Webhook] Created EVM wallet for new Telegram user:', walletIdentifier);
         
-        // Create Solana wallet (use solana-devnet to match the chain check in actions.ts)
-        await getOrCreateCdpWallet(walletIdentifier, 'solana-devnet');
+        // Create Solana wallet (use solana to match the new chain naming)
+        await getOrCreateCdpWallet(walletIdentifier, 'solana');
         console.log('[Webhook] Created Solana wallet for new Telegram user:', walletIdentifier);
       } catch (walletError) {
         console.error('[Webhook] Error creating CDP wallets for new user:', walletError);

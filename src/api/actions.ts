@@ -1,4 +1,4 @@
-import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee } from "@/lib/cdp";
+import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from '../lib/earningsService';
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
@@ -79,11 +79,11 @@ async function handleCreateWallets(userId: string) {
     console.log(`[handleCreateWallets] Creating wallets for user: ${userId}`);
     
     // Create EVM wallet (Base Sepolia)
-    const evmWallet = await createWallet(userId, 'base-sepolia');
+    const evmWallet = await createWallet(userId, 'evm');
     console.log(`[handleCreateWallets] EVM wallet created:`, evmWallet);
     
     // Create Solana wallet
-    const solanaWallet = await createWallet(userId, 'solana-devnet');
+    const solanaWallet = await createWallet(userId, 'solana');
     console.log(`[handleCreateWallets] Solana wallet created:`, solanaWallet);
     
     return {
@@ -106,11 +106,35 @@ async function handleCreateWallets(userId: string) {
 
 async function handleGetWalletBalance(params: ActionParams, userId: string) {
   try {
-    // Get all user wallets
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telegram_username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[handleGetWalletBalance] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+      
+      actualUserId = user.id;
+    }
+    
+    // Get all user wallets using the actual user UUID
     const { data: wallets } = await supabase
       .from("wallets")
       .select("*")
-      .eq("user_id", userId);
+      .eq("user_id", actualUserId);
     
     if (!wallets || wallets.length === 0) {
       return {
@@ -123,16 +147,16 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
     // Process each wallet
     for (const wallet of wallets) {
       try {
-        const networkName = wallet.chain === 'base-sepolia' ? 'Base Sepolia' : 
-                           wallet.chain === 'solana-devnet' ? 'Solana Devnet' : 
+        const networkName = wallet.chain === 'evm' ? 'EVM' : 
+                           wallet.chain === 'solana' ? 'Solana' : 
                            wallet.chain;
         
         response += `🔹 **${networkName}**\n`;
         
-        if (wallet.chain === 'base-sepolia') {
+        if (wallet.chain === 'evm') {
           // Get EVM balances (ETH and USDC)
           try {
-            const balances = await getBalances(wallet.address, wallet.chain);
+            const balances = await getBalances(wallet.address, 'base-sepolia'); // Use actual network for API calls
             
             // Handle EVM balances - convert to array if needed
             const balanceArray = Array.isArray(balances) ? balances : (balances as any)?.data || [];
@@ -159,10 +183,10 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
             response += `   • ETH: Error fetching\n`;
             response += `   • USDC: Error fetching\n`;
           }
-        } else if (wallet.chain === 'solana-devnet') {
+        } else if (wallet.chain === 'solana') {
           // Get Solana balances (SOL and USDC)
           try {
-            const balances = await getBalances(wallet.address, wallet.chain);
+            const balances = await getBalances(wallet.address, 'solana-devnet'); // Use actual network for API calls
             
             // Handle Solana balances - should be an array
             const balanceArray = Array.isArray(balances) ? balances : [];
@@ -246,9 +270,9 @@ async function handleGetWalletAddress(userId: string) {
     let response = "📍 **Your Wallet Addresses**\n\n";
     
     wallets.forEach(wallet => {
-      const networkName = wallet.chain === 'base-sepolia' ? 'Base' : 
-                         wallet.chain === 'solana-devnet' ? 'Solana' : wallet.chain;
-      response += `🔹 **${networkName}**: ${formatAddress(wallet.address)}\n`;
+      const networkName = wallet.chain === 'evm' ? 'EVM' : 
+                         wallet.chain === 'solana' ? 'Solana' : wallet.chain;
+      response += `🔹 **${networkName}**: \`${wallet.address}\`\n`;
     });
     
     response += "\nYou can share these addresses to receive crypto payments.";
@@ -332,8 +356,8 @@ export async function handleAction(
         .select("*")
         .eq("user_id", actualUserId);
       
-      const hasEvm = wallets?.some((w) => w.chain === "base-sepolia");
-      const hasSolana = wallets?.some((w) => w.chain === "solana-devnet");
+      const hasEvm = wallets?.some((w) => w.chain === "evm");
+      const hasSolana = wallets?.some((w) => w.chain === "solana");
       
       if (!hasEvm && !hasSolana) {
         return {
@@ -375,14 +399,10 @@ export async function handleAction(
       return await handleGetWalletAddress(userId);
     
     case "send":
-      return {
-        text: "💸 **Send Feature**\n\nSending crypto is currently being updated for Telegram. This feature will be available soon!"
-      };
+      return await handleSend(params, userId);
     
     case "swap":
-      return {
-        text: "🔄 **Swap Feature**\n\nToken swapping is currently being updated for Telegram. This feature will be available soon!"
-      };
+      return await handleSwap(params, userId);
     
     case "earnings":
       try {
@@ -435,6 +455,238 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
       success: false, 
       error: 'Internal server error' 
     });
+  }
+}async function handleSend(params: ActionParams, userId: string) {
+  try {
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telegram_username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[handleSend] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+      
+      actualUserId = user.id;
+    }
+
+    // Get user wallets
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", actualUserId);
+
+    if (!wallets || wallets.length === 0) {
+      return {
+        text: "You don't have any wallets yet. Type 'create wallet' to get started!"
+      };
+    }
+
+    // Extract parameters from the request
+    const { amount, token, to_address, network } = params;
+
+    if (!amount || !to_address) {
+      return {
+        text: "💸 **Send Crypto**\n\nTo send crypto, please provide:\n• Amount to send\n• Recipient address\n\nExample: 'Send 0.1 ETH to 0x123...'\n\nSupported tokens: ETH, USDC, SOL"
+      };
+    }
+
+    // Determine which wallet to use based on token/network
+    let selectedWallet;
+    let selectedNetwork;
+    
+    if (token?.toLowerCase() === 'sol' || network?.toLowerCase() === 'solana') {
+      selectedWallet = wallets.find(w => w.chain === 'solana');
+      selectedNetwork = 'solana';
+    } else {
+      // Default to EVM for ETH, USDC, etc.
+      selectedWallet = wallets.find(w => w.chain === 'evm');
+      selectedNetwork = 'evm';
+    }
+
+    if (!selectedWallet) {
+      return {
+        text: `❌ You don't have a ${selectedNetwork === 'solana' ? 'Solana' : 'EVM'} wallet. Please create one first.`
+      };
+    }
+
+    try {
+      let result;
+      const fromAddress = selectedWallet.address;
+      
+      // Determine if this is a native token transfer or token transfer
+      const isNativeToken = (
+        (selectedNetwork === 'evm' && (!token || token.toLowerCase() === 'eth')) ||
+        (selectedNetwork === 'solana' && (!token || token.toLowerCase() === 'sol'))
+      );
+
+      if (isNativeToken) {
+        // Native token transfer
+        result = await transferNativeToken(
+          fromAddress,
+          to_address,
+          amount,
+          selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
+        );
+      } else {
+        // Token transfer (USDC, etc.)
+        let tokenAddress;
+        if (token?.toLowerCase() === 'usdc') {
+          // Use appropriate USDC contract address based on network
+          if (selectedNetwork === 'evm') {
+            tokenAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
+          } else {
+            tokenAddress = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Solana Devnet USDC
+          }
+        } else {
+          return {
+            text: `❌ Unsupported token: ${token}. Supported tokens: ETH, USDC, SOL`
+          };
+        }
+
+        result = await transferToken(
+          fromAddress,
+          to_address,
+          amount,
+          tokenAddress,
+          selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
+        );
+      }
+
+      // Generate block explorer link
+      const explorerUrl = getBlockExplorerUrl(result.hash, selectedNetwork);
+      
+      // Format success message
+      const networkName = selectedNetwork === 'evm' ? 'EVM' : 'Solana';
+      const tokenSymbol = isNativeToken ? 
+        (selectedNetwork === 'evm' ? 'ETH' : 'SOL') : 
+        (token?.toUpperCase() || 'TOKEN');
+
+      return {
+        text: `✅ **Transfer Successful!**\n\n` +
+              `💰 **Amount**: ${amount} ${tokenSymbol}\n` +
+              `🌐 **Network**: ${networkName}\n` +
+              `📍 **To**: \`${to_address}\`\n` +
+              `🔗 **Transaction**: ${result.hash}\n\n` +
+              `🔍 **View on Explorer**: ${explorerUrl}\n\n` +
+              `Your crypto has been sent successfully!`
+      };
+
+    } catch (transferError) {
+      console.error('[handleSend] Transfer error:', transferError);
+      return {
+        text: `❌ **Transfer Failed**\n\nError: ${transferError.message || 'Unknown error occurred'}\n\nPlease check your balance and try again.`
+      };
+    }
+
+  } catch (error) {
+    console.error('[handleSend] Error:', error);
+    return {
+      text: "❌ Failed to process send request. Please try again later."
+    };
+  }
+}
+
+async function handleSwap(params: ActionParams, userId: string) {
+  try {
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telegram_username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[handleSwap] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+      
+      actualUserId = user.id;
+    }
+
+    // Get user wallets
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", actualUserId);
+
+    if (!wallets || wallets.length === 0) {
+      return {
+        text: "You don't have any wallets yet. Type 'create wallet' to get started!"
+      };
+    }
+
+    // Extract parameters from the request
+    const { amount, from_token, to_token, network } = params;
+
+    if (!amount || !from_token || !to_token) {
+      return {
+        text: "🔄 **Token Swap**\n\nTo swap tokens, please provide:\n• Amount to swap\n• Token to swap from\n• Token to swap to\n\nExample: 'Swap 10 USDC to ETH'\n\nSupported tokens: ETH, USDC, SOL"
+      };
+    }
+
+    // Determine which wallet to use based on tokens
+    let selectedWallet;
+    let selectedNetwork;
+    
+    // For now, we'll support EVM swaps (ETH <-> USDC)
+    if ((from_token?.toLowerCase() === 'eth' || from_token?.toLowerCase() === 'usdc') &&
+        (to_token?.toLowerCase() === 'eth' || to_token?.toLowerCase() === 'usdc')) {
+      selectedWallet = wallets.find(w => w.chain === 'evm');
+      selectedNetwork = 'evm';
+    } else if ((from_token?.toLowerCase() === 'sol') || (to_token?.toLowerCase() === 'sol')) {
+      return {
+        text: "🔄 **Solana Swaps Coming Soon**\n\nSolana token swaps are not yet supported. Currently only EVM swaps (ETH ↔ USDC) are available.\n\nPlease try swapping between ETH and USDC."
+      };
+    } else {
+      return {
+        text: `❌ Unsupported swap pair: ${from_token} → ${to_token}\n\nCurrently supported swaps:\n• ETH ↔ USDC\n\nMore trading pairs coming soon!`
+      };
+    }
+
+    if (!selectedWallet) {
+      return {
+        text: `❌ You don't have an EVM wallet. Please create one first.`
+      };
+    }
+
+    // For now, return a message indicating swap is being prepared
+    // TODO: Integrate with actual swap functionality using TokenSwapManager contract
+    return {
+      text: `🔄 **Swap Preparation**\n\n` +
+            `💱 **Swap**: ${amount} ${from_token?.toUpperCase()} → ${to_token?.toUpperCase()}\n` +
+            `🌐 **Network**: EVM\n` +
+            `👛 **Wallet**: \`${selectedWallet.address}\`\n\n` +
+            `⚠️ **Note**: Token swapping functionality is currently being integrated with our smart contracts. This feature will be fully available soon!\n\n` +
+            `For now, you can use the send feature to transfer tokens directly.`
+    };
+
+  } catch (error) {
+    console.error('[handleSwap] Error:', error);
+    return {
+      text: "❌ Failed to process swap request. Please try again later."
+    };
   }
 }
 

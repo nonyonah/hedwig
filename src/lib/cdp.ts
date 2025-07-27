@@ -144,15 +144,62 @@ export function formatNetworkName(chain: string): string {
 }
 
 /**
+ * Get block explorer URL for a transaction
+ * @param txHash - Transaction hash
+ * @param network - Network name
+ * @returns Block explorer URL
+ */
+export function getBlockExplorerUrl(txHash: string, network: string): string {
+  const actualNetwork = getActualNetworkName(network);
+  
+  switch (actualNetwork) {
+    case 'base-sepolia':
+      return `https://sepolia.basescan.org/tx/${txHash}`;
+    case 'base':
+      return `https://basescan.org/tx/${txHash}`;
+    case 'ethereum-sepolia':
+      return `https://sepolia.etherscan.io/tx/${txHash}`;
+    case 'ethereum':
+      return `https://etherscan.io/tx/${txHash}`;
+    case 'optimism-sepolia':
+      return `https://sepolia-optimism.etherscan.io/tx/${txHash}`;
+    case 'solana-devnet':
+      return `https://explorer.solana.com/tx/${txHash}?cluster=devnet`;
+    case 'solana':
+      return `https://explorer.solana.com/tx/${txHash}`;
+    default:
+      return `https://explorer.solana.com/tx/${txHash}`;
+  }
+}
+
+/**
+ * Map simplified chain names to actual network names for API calls
+ */
+function getActualNetworkName(chain: string): string {
+  switch (chain) {
+    case 'evm':
+      return 'base-sepolia';
+    case 'solana':
+      return 'solana-devnet';
+    default:
+      return chain; // Return as-is for backward compatibility
+  }
+}
+
+/**
  * Create a new wallet
  * @param userId - User ID
  * @param network - Network name (default: 'base-sepolia')
  * @returns Created wallet information
  */
-export async function createWallet(userId: string, network: string = 'base-sepolia') {
+export async function createWallet(userId: string, network: string = 'evm') {
   try {
-    // First check if a wallet already exists for this user and chain
+    // Use simplified chain name for database storage
     const chain = network;
+    // Get actual network name for CDP API calls
+    const actualNetwork = getActualNetworkName(network);
+    
+    // First check if a wallet already exists for this user and chain
     const { data: existingWallets } = await supabase
       .from('wallets')
       .select('*')
@@ -219,12 +266,12 @@ export async function createWallet(userId: string, network: string = 'base-sepol
         throw new Error('Cannot create wallet with an invalid account name.');
     }
 
-    console.log(`[CDP] Creating wallet for user ${userId} on network ${network} with name ${accountName}`);
+    console.log(`[CDP] Creating wallet for user ${userId} on network ${network} (actual: ${actualNetwork}) with name ${accountName}`);
     
-    // Get network configuration
-    const networkConfig = SUPPORTED_NETWORKS[network];
+    // Get network configuration using actual network name
+    const networkConfig = SUPPORTED_NETWORKS[actualNetwork];
     if (!networkConfig) {
-      throw new Error(`Unsupported network: ${network}`);
+      throw new Error(`Unsupported network: ${actualNetwork}`);
     }
     
     // Create account based on network type
@@ -305,11 +352,13 @@ export async function createWallet(userId: string, network: string = 'base-sepol
  * @param network - Network to create wallet on (default: base-sepolia)
  * @returns Wallet information
  */
-export async function getOrCreateCdpWallet(userId: string, network: string = 'base-sepolia') {
+export async function getOrCreateCdpWallet(userId: string, network: string = 'evm') {
   console.log(`[CDP] Getting or creating wallet for user ${userId} on network ${network}`);
   
-  // Use the actual network name as the chain identifier
+  // Use simplified chain name for database storage
   const chain = network;
+  // Get actual network name for CDP API calls
+  const actualNetwork = getActualNetworkName(network);
   
   // Determine if userId is a UUID or username and get the actual user UUID
   let actualUserId: string | undefined;
@@ -423,12 +472,14 @@ export async function getWallet(address: string) {
  */
 export async function getBalances(address: string, network: string) {
   try {
-    console.log(`[CDP] Getting balances for wallet ${address} on network ${network}`);
+    // Convert simplified chain name to actual network name if needed
+    const actualNetwork = getActualNetworkName(network);
+    console.log(`[CDP] Getting balances for wallet ${address} on network ${network} (actual: ${actualNetwork})`);
     
-    // Get network configuration
-    const networkConfig = SUPPORTED_NETWORKS[network];
+    // Get network configuration using actual network name
+    const networkConfig = SUPPORTED_NETWORKS[actualNetwork];
     if (!networkConfig) {
-      throw new Error(`Unsupported network: ${network}`);
+      throw new Error(`Unsupported network: ${actualNetwork}`);
     }
     
     // Get balances based on network type
@@ -829,5 +880,6 @@ export default {
   getTransaction,
   estimateTransactionFee,
   formatNetworkName,
+  getBlockExplorerUrl,
   SUPPORTED_NETWORKS,
 };
