@@ -47,6 +47,7 @@ export interface ActionResult {
       text: string;
       callback_data?: string;
       url?: string;
+      copy_text?: string;
     }>>;
   };
 }
@@ -115,7 +116,7 @@ async function handleCreateWallets(userId: string) {
   }
 }
 
-async function handleGetWalletBalance(params: ActionParams, userId: string) {
+export async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
@@ -140,80 +141,122 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
       
       actualUserId = user.id;
     }
-    
-    // Get all user wallets using the actual user UUID
+
     const { data: wallets } = await supabase
       .from("wallets")
       .select("*")
       .eq("user_id", actualUserId);
-    
+
     if (!wallets || wallets.length === 0) {
       return {
         text: "You don't have any wallets yet. Type 'create wallet' to get started!"
       };
     }
-    
+
+    // Check if user requested specific network
+    const requestedNetwork = params.parameters?.network?.toLowerCase();
+    const requestedToken = params.parameters?.token?.toUpperCase();
+
     let response = "";
     let evmBalances = "";
     let solanaBalances = "";
-    
-    // Process each wallet
-    for (const wallet of wallets) {
+
+    // Get EVM wallet
+    const evmWallet = wallets.find(w => w.chain === 'evm');
+    if (evmWallet && (!requestedNetwork || requestedNetwork === 'evm' || requestedNetwork === 'base' || requestedNetwork === 'ethereum')) {
       try {
-        if (wallet.chain === 'evm') {
-          // Get EVM balances (ETH and USDC)
+        // Get balances for all supported EVM networks
+        const supportedEvmNetworks = ['base-sepolia', 'ethereum-sepolia', 'optimism-sepolia', 'celo-alfajores'];
+        let allEvmBalances = "";
+
+        for (const network of supportedEvmNetworks) {
           try {
-            const balances = await getBalances(wallet.address, 'base-sepolia'); // Use actual network for API calls
+            const balances = await getBalances(evmWallet.address, network);
             
-            // Handle EVM balances - convert to array if needed
-            const balanceArray = Array.isArray(balances) ? balances : (balances as any)?.data || [];
+            // Handle different return types from getBalances
+            let ethBalance = '0';
+            let usdcBalance = '0';
             
-            // Find USDC balance first
-            const usdcBalance = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
-            const usdcAmount = usdcBalance ? formatBalance(usdcBalance.amount, usdcBalance.asset.decimals) : '0.0';
+            if (Array.isArray(balances)) {
+              // Solana format or processed EVM format
+              const ethToken = balances.find((b: any) => b.asset?.symbol === 'ETH' || b.symbol === 'ETH');
+              const usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC' || b.symbol === 'USDC');
+              
+              ethBalance = ethToken?.balance || ethToken?.amount || '0';
+              usdcBalance = usdcToken?.balance || usdcToken?.amount || '0';
+            } else if (balances && typeof balances === 'object' && 'data' in balances) {
+              // EVM ListTokenBalancesResult format
+              const balanceArray = (balances as any).data || [];
+              const ethToken = balanceArray.find((b: any) => b.asset?.symbol === 'ETH');
+              const usdcToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
+              
+              ethBalance = ethToken ? formatBalance(ethToken.amount, ethToken.asset.decimals) : '0';
+              usdcBalance = usdcToken ? formatBalance(usdcToken.amount, usdcToken.asset.decimals) : '0';
+            }
             
-            // Find ETH balance
-            const ethBalance = balanceArray.find((b: any) => b.asset?.symbol === 'ETH');
-            const ethAmount = ethBalance ? formatBalance(ethBalance.amount, ethBalance.asset.decimals) : '0.0';
+            const networkName = network.replace('-sepolia', '').replace('-alfajores', '');
+            const displayName = networkName.charAt(0).toUpperCase() + networkName.slice(1);
             
-            evmBalances = `🟦 Base\n• ${usdcAmount} USDC\n• ${ethAmount} ETH`;
-          } catch (balanceError) {
-            console.error(`[handleGetWalletBalance] Error fetching EVM balances:`, balanceError);
-            evmBalances = `🟦 Base\n• Error fetching USDC\n• Error fetching ETH`;
-          }
-        } else if (wallet.chain === 'solana') {
-          // Get Solana balances (SOL and USDC)
-          try {
-            const balances = await getBalances(wallet.address, 'solana-devnet'); // Use actual network for API calls
-            
-            // Handle Solana balances - should be an array
-            const balanceArray = Array.isArray(balances) ? balances : [];
-            
-            // SOL balance
-            const solBalance = balanceArray[0];
-            const solAmount = solBalance ? formatBalance(solBalance.amount, solBalance.asset.decimals) : '0.0';
-            
-            // TODO: Add USDC SPL token balance check for Solana
-            solanaBalances = `🌸 Solana\n• 19.8 USDC\n• ${solAmount} SOL`;
-          } catch (balanceError) {
-            console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, balanceError);
-            solanaBalances = `🌸 Solana\n• Error fetching USDC\n• Error fetching SOL`;
+            allEvmBalances += `🔹 **${displayName}**\n`;
+            allEvmBalances += `• ${parseFloat(ethBalance).toFixed(4)} ETH\n`;
+            allEvmBalances += `• ${parseFloat(usdcBalance).toFixed(2)} USDC\n\n`;
+          } catch (networkError) {
+            console.error(`[handleGetWalletBalance] Error fetching ${network} balances:`, networkError);
+            const networkName = network.replace('-sepolia', '').replace('-alfajores', '');
+            const displayName = networkName.charAt(0).toUpperCase() + networkName.slice(1);
+            allEvmBalances += `🔹 **${displayName}**\n• Error fetching balances\n\n`;
           }
         }
-      } catch (walletError) {
-        console.error(`[handleGetWalletBalance] Error processing wallet:`, walletError);
+
+        evmBalances = `🟦 **EVM Networks**\n${allEvmBalances}`;
+      } catch (balanceError) {
+        console.error(`[handleGetWalletBalance] Error fetching EVM balances:`, balanceError);
+        evmBalances = `🟦 **EVM Networks**\n• Error fetching balances\n\n`;
       }
     }
-    
-    response = `${evmBalances}\n\n${solanaBalances}\n\nLet me know if you'd like to send tokens or refresh your balances.`;
-    
+
+    // Get Solana wallet
+    const solanaWallet = wallets.find(w => w.chain === 'solana');
+    if (solanaWallet && (!requestedNetwork || requestedNetwork === 'solana')) {
+      try {
+        const balances = await getBalances(solanaWallet.address, 'solana-devnet');
+        
+        let solAmount = '0';
+        if (Array.isArray(balances)) {
+          const solToken = balances.find((b: any) => b.asset?.symbol === 'SOL' || b.symbol === 'SOL');
+          solAmount = solToken?.balance || solToken?.amount || '0';
+          
+          // Convert from lamports to SOL if needed
+          if (solToken?.asset?.decimals === 9 && solToken?.amount) {
+            solAmount = formatBalance(solToken.amount, 9);
+          }
+        }
+        
+        // TODO: Add USDC SPL token balance check for Solana
+        solanaBalances = `🌸 **Solana**\n• 19.8 USDC\n• ${parseFloat(solAmount).toFixed(4)} SOL\n\n`;
+      } catch (balanceError) {
+        console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, balanceError);
+        solanaBalances = `🌸 **Solana**\n• Error fetching USDC\n• Error fetching SOL\n\n`;
+      }
+    }
+
+    // Format response based on context
+    if (requestedNetwork === 'solana') {
+      response = solanaBalances || "❌ No Solana wallet found.";
+    } else if (requestedNetwork === 'evm' || requestedNetwork === 'base' || requestedNetwork === 'ethereum') {
+      response = evmBalances || "❌ No EVM wallet found.";
+    } else {
+      // Show all balances
+      response = `${evmBalances}${solanaBalances}Let me know if you'd like to send tokens or refresh your balances.`;
+    }
+
     return { 
       text: response,
       reply_markup: {
         inline_keyboard: [
           [
             { text: "🔄 Refresh", callback_data: "refresh_balances" },
-            { text: "📤 Send Token", callback_data: "start_send_token_flow" }
+            { text: "📤 Send", callback_data: "start_send_token_flow" }
           ]
         ]
       }
@@ -221,12 +264,12 @@ async function handleGetWalletBalance(params: ActionParams, userId: string) {
   } catch (error) {
     console.error('[handleGetWalletBalance] Error:', error);
     return {
-      text: "❌ Failed to fetch wallet balance. Please try again later."
+      text: "❌ Failed to fetch wallet balances. Please try again later."
     };
   }
 }
 
-async function handleGetWalletAddress(userId: string) {
+async function handleGetWalletAddress(userId: string, params?: ActionParams): Promise<ActionResult> {
   try {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
@@ -256,16 +299,19 @@ async function handleGetWalletAddress(userId: string) {
       .from("wallets")
       .select("*")
       .eq("user_id", actualUserId);
-    
+
     if (!wallets || wallets.length === 0) {
       return {
         text: "You don't have any wallets yet. Type 'create wallet' to get started!"
       };
     }
-    
+
+    // Check if user requested specific network
+    const requestedNetwork = params?.parameters?.network?.toLowerCase();
+
     let evmAddress = "";
     let solanaAddress = "";
-    
+
     wallets.forEach(wallet => {
       if (wallet.chain === 'evm') {
         evmAddress = wallet.address;
@@ -273,24 +319,48 @@ async function handleGetWalletAddress(userId: string) {
         solanaAddress = wallet.address;
       }
     });
-    
-    const response = `🟦 EVM\n${evmAddress}\n\n🌸 Solana\n${solanaAddress}\n\nWant me to copy one or show you a QR?`;
-    
-    return { 
-      text: response,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "📋 Copy EVM", callback_data: "copy_base_wallet" },
-            { text: "📋 Copy Solana", callback_data: "copy_solana_wallet" }
-          ],
-          [
-            { text: "🔳 QR for EVM", callback_data: "qr_base_wallet" },
-            { text: "🔳 QR for Solana", callback_data: "qr_solana_wallet" }
-          ]
-        ]
+
+    // Context-aware response
+    if (requestedNetwork === 'solana') {
+      if (!solanaAddress) {
+        return { text: "❌ No Solana wallet found. Type 'create wallet' to create one." };
       }
-    };
+      return { 
+        text: `🌸 **Solana Address**\n\`${solanaAddress}\``,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📋 Copy Solana Address", copy_text: solanaAddress }]
+          ]
+        }
+      };
+    } else if (requestedNetwork === 'evm' || requestedNetwork === 'base' || requestedNetwork === 'ethereum') {
+      if (!evmAddress) {
+        return { text: "❌ No EVM wallet found. Type 'create wallet' to create one." };
+      }
+      return { 
+        text: `🟦 **EVM Address**\n\`${evmAddress}\``,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📋 Copy EVM Address", copy_text: evmAddress }]
+          ]
+        }
+      };
+    } else {
+      // Show both addresses
+      const response = `🟦 **EVM Address**\n\`${evmAddress}\`\n\n🌸 **Solana Address**\n\`${solanaAddress}\``;
+      
+      return { 
+        text: response,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "📋 Copy EVM", copy_text: evmAddress },
+              { text: "📋 Copy Solana", copy_text: solanaAddress }
+            ]
+          ]
+        }
+      };
+    }
   } catch (error) {
     console.error('[handleGetWalletAddress] Error:', error);
     return {
@@ -409,7 +479,7 @@ export async function handleAction(
     
     case "instruction_deposit":
     case "get_wallet_address":
-      return await handleGetWalletAddress(userId);
+      return await handleGetWalletAddress(userId, params);
     
     case "send":
       return await handleSend(params, userId);

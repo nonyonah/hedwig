@@ -83,24 +83,6 @@ function setupBotHandlers() {
 
       // Handle different callback actions
       switch (data) {
-        case 'copy_base_wallet':
-          const baseWalletResponse = await processWithAI('get wallet address base', chatId);
-          await bot?.sendMessage(chatId, '📋 EVM wallet address copied to clipboard!');
-          break;
-          
-        case 'copy_solana_wallet':
-          const solanaWalletResponse = await processWithAI('get wallet address solana', chatId);
-          await bot?.sendMessage(chatId, '📋 Solana wallet address copied to clipboard!');
-          break;
-          
-        case 'qr_base_wallet':
-          await bot?.sendMessage(chatId, '🔳 QR code for EVM wallet will be generated...');
-          break;
-          
-        case 'qr_solana_wallet':
-          await bot?.sendMessage(chatId, '🔳 QR code for Solana wallet will be generated...');
-          break;
-          
         case 'refresh_balances':
           const balanceResponse = await processWithAI('check balance', chatId);
           await bot?.sendMessage(chatId, balanceResponse);

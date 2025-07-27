@@ -270,6 +270,12 @@ Response: {"intent": "create_payment_link", "params": {}}
 User: "wallet address" or "my address" or "show address"
 Response: {"intent": "get_wallet_address", "params": {}}
 
+User: "my Solana address" or "Solana wallet address" or "show me my Solana address"
+Response: {"intent": "get_wallet_address", "parameters": {"network": "Solana"}}
+
+User: "my EVM address" or "Base address" or "Ethereum address" or "show me my EVM address"
+Response: {"intent": "get_wallet_address", "parameters": {"network": "EVM"}}
+
 User: "balance" or "how much do I have"
 Response: {"intent": "balance", "parameters": {}}
 
