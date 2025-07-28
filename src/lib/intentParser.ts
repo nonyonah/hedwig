@@ -137,8 +137,18 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
     // Send/withdraw instruction keywords
     if ((text.includes('send') || text.includes('withdraw') || text.includes('transfer')) &&
         (text.includes('help') || text.includes('how') || text.includes('instruct') || 
-         text.includes('guide') || text.includes('would like to') || text.includes('want to'))) {
+         text.includes('guide') || text.includes('would like to') || text.includes('want to') ||
+         text.includes('template') || text.includes('crypto template'))) {
       const result = { intent: 'instruction_send', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+    
+    // Confirm send keywords - for transaction confirmations
+    if (text.includes('confirm send') || 
+        (text.includes('confirm') && text.includes('transfer')) ||
+        (text.includes('confirm') && text.includes('transaction'))) {
+      const result = { intent: 'send', params: { action: 'confirm_send' } };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }
@@ -146,7 +156,19 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
     // Actual send transaction keywords - if the user is actually trying to send
     if ((text.includes('send') || text.includes('transfer')) && 
         (text.includes('crypto') || text.includes('token') || text.includes('eth') || 
-         text.includes('sol') || text.includes('usdc'))) {
+         text.includes('sol') || text.includes('usdc') || text.includes('usdt') ||
+         text.includes('btc') || text.includes('matic') || text.includes('avax') ||
+         /\d+\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni)/i.test(text) ||
+         /send\s+\d+/i.test(text) || /transfer\s+\d+/i.test(text))) {
+      const result = { intent: 'send', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+    
+    // More general send patterns
+    if (text.includes('send') && 
+        (text.includes('to') || text.includes('address') || /@/.test(text) || 
+         /0x[a-fA-F0-9]{40}/.test(text) || /[a-zA-Z0-9]{32,44}/.test(text))) {
       const result = { intent: 'send', params: {} };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;

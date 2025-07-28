@@ -170,16 +170,27 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const evmWallet = wallets.find(w => w.chain === 'evm');
     if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
       try {
-        // Get balances for testnet networks (base-sepolia and ethereum-sepolia)
-        const supportedEvmNetworks = ['base-sepolia', 'ethereum-sepolia'];
+        // Get balances for testnet networks (base-sepolia only - Ethereum disabled)
+        const supportedEvmNetworks = ['base-sepolia'];
         let allEvmBalances = "";
+
+        // Get token prices for USD conversion
+        let tokenPrices: any = {};
+        try {
+          const prices = await getTokenPricesBySymbol(['ETH', 'USDC']);
+          tokenPrices = prices.reduce((acc: any, price: any) => {
+            acc[price.symbol] = price.price;
+            return acc;
+          }, {});
+        } catch (priceError) {
+          console.warn('[handleGetWalletBalance] Failed to fetch token prices:', priceError);
+        }
 
         // If specific EVM chain requested, filter to that chain
         let networksToCheck = supportedEvmNetworks;
         if (requestedNetwork && requestedNetwork !== 'evm') {
           const chainMap: { [key: string]: string } = {
-            'base': 'base-sepolia',
-            'ethereum': 'ethereum-sepolia'
+            'base': 'base-sepolia'
           };
           const specificNetwork = chainMap[requestedNetwork];
           if (specificNetwork) {
@@ -215,9 +226,26 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             const networkName = network.replace('-sepolia', '').replace('-alfajores', '');
             const displayName = networkName.charAt(0).toUpperCase() + networkName.slice(1);
             
+            // Format balances with USD equivalents
+            const ethBalanceNum = parseFloat(ethBalance);
+            const usdcBalanceNum = parseFloat(usdcBalance);
+            
+            let ethDisplay = `${ethBalanceNum.toFixed(4)} ETH`;
+            let usdcDisplay = `${usdcBalanceNum.toFixed(2)} USDC`;
+            
+            if (tokenPrices.ETH && ethBalanceNum > 0) {
+              const ethUsd = (ethBalanceNum * tokenPrices.ETH).toFixed(2);
+              ethDisplay += ` ($${ethUsd})`;
+            }
+            
+            if (tokenPrices.USDC && usdcBalanceNum > 0) {
+              const usdcUsd = (usdcBalanceNum * tokenPrices.USDC).toFixed(2);
+              usdcDisplay += ` ($${usdcUsd})`;
+            }
+            
             allEvmBalances += `🔹 **${displayName}**\n`;
-            allEvmBalances += `• ${parseFloat(ethBalance).toFixed(4)} ETH\n`;
-            allEvmBalances += `• ${parseFloat(usdcBalance).toFixed(2)} USDC\n\n`;
+            allEvmBalances += `• ${ethDisplay}\n`;
+            allEvmBalances += `• ${usdcDisplay}\n\n`;
           } catch (networkError) {
             console.error(`[handleGetWalletBalance] Error fetching ${network} balances:`, networkError);
             const networkName = network.replace('-sepolia', '').replace('-alfajores', '');
@@ -258,7 +286,36 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
           }
         }
         
-        solanaBalances = `🌸 **Solana**\n• ${parseFloat(usdcAmount).toFixed(2)} USDC\n• ${parseFloat(solAmount).toFixed(4)} SOL\n\n`;
+        // Get token prices for USD conversion
+        let tokenPrices: any = {};
+        try {
+          const prices = await getTokenPricesBySymbol(['SOL', 'USDC']);
+          tokenPrices = prices.reduce((acc: any, price: any) => {
+            acc[price.symbol] = price.price;
+            return acc;
+          }, {});
+        } catch (priceError) {
+          console.warn('[handleGetWalletBalance] Failed to fetch Solana token prices:', priceError);
+        }
+        
+        // Format balances with USD equivalents
+        const solBalanceNum = parseFloat(solAmount);
+        const usdcBalanceNum = parseFloat(usdcAmount);
+        
+        let solDisplay = `${solBalanceNum.toFixed(4)} SOL`;
+        let usdcDisplay = `${usdcBalanceNum.toFixed(2)} USDC`;
+        
+        if (tokenPrices.SOL && solBalanceNum > 0) {
+          const solUsd = (solBalanceNum * tokenPrices.SOL).toFixed(2);
+          solDisplay += ` ($${solUsd})`;
+        }
+        
+        if (tokenPrices.USDC && usdcBalanceNum > 0) {
+          const usdcUsd = (usdcBalanceNum * tokenPrices.USDC).toFixed(2);
+          usdcDisplay += ` ($${usdcUsd})`;
+        }
+        
+        solanaBalances = `🌸 **Solana**\n• ${usdcDisplay}\n• ${solDisplay}\n\n`;
       } catch (balanceError) {
         console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, balanceError);
         solanaBalances = `🌸 **Solana**\n• Error fetching USDC\n• Error fetching SOL\n\n`;
@@ -367,28 +424,28 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
           ]
         }
       };
-    } else if (requestedNetwork === 'evm' || requestedNetwork === 'base' || requestedNetwork === 'ethereum') {
+    } else if (requestedNetwork === 'evm' || requestedNetwork === 'base') {
       if (!evmAddress) {
         return { text: "❌ No EVM wallet found. Type 'create wallet' to create one." };
       }
       return { 
-        text: `🟦 **EVM Address**\n\`${evmAddress}\`\n\n💡 Use this address to receive ETH, USDC and other tokens on Base and Ethereum networks.`,
+        text: `🟦 **Base Address**\n\`${evmAddress}\`\n\n💡 Use this address to receive ETH, USDC and other tokens on Base network.`,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📋 Copy EVM Address", copy_text: { text: evmAddress } }]
+            [{ text: "📋 Copy Base Address", copy_text: { text: evmAddress } }]
           ]
         }
       };
     } else {
       // Show both addresses
-      const response = `🟦 **EVM Address**\n\`${evmAddress}\`\n\n🌸 **Solana Address**\n\`${solanaAddress}\`\n\n💡 Use these addresses to receive deposits on their respective networks.`;
+      const response = `🟦 **Base Address**\n\`${evmAddress}\`\n\n🌸 **Solana Address**\n\`${solanaAddress}\`\n\n💡 Use these addresses to receive deposits on their respective networks.`;
       
       return { 
         text: response,
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "📋 Copy EVM", copy_text: { text: evmAddress } },
+              { text: "📋 Copy Base", copy_text: { text: evmAddress } },
               { text: "📋 Copy Solana", copy_text: { text: solanaAddress } }
             ]
           ]
@@ -515,6 +572,7 @@ export async function handleAction(
     case "get_wallet_address":
       return await handleGetWalletAddress(userId, params);
     
+    case "instruction_send":
     case "send":
       return await handleSend(params, userId);
     
@@ -614,110 +672,224 @@ async function handleSend(params: ActionParams, userId: string) {
     }
 
     // Extract parameters from the request
-    const { amount, token, to_address, network } = params;
+    const { amount, token, to_address, recipient, network, confirm } = params;
+    const recipientAddress = to_address || recipient;
 
-    if (!amount || !to_address) {
-      return {
-        text: "💸 **Send Crypto**\n\nTo send crypto, please provide:\n• Amount to send\n• Recipient address\n\nExample: 'Send 0.1 ETH to 0x123...'\n\nSupported tokens: ETH, USDC, SOL"
-      };
-    }
-
-    // Determine which wallet to use based on token/network
-    let selectedWallet;
-    let selectedNetwork;
-    
-    if (token?.toLowerCase() === 'sol' || network?.toLowerCase() === 'solana') {
-      selectedWallet = wallets.find(w => w.chain === 'solana');
-      selectedNetwork = 'solana';
-    } else {
-      // Default to EVM for ETH, USDC, etc.
-      selectedWallet = wallets.find(w => w.chain === 'evm');
-      selectedNetwork = 'evm';
-    }
-
-    if (!selectedWallet) {
-      return {
-        text: `❌ You don't have a ${selectedNetwork === 'solana' ? 'Solana' : 'EVM'} wallet. Please create one first.`
-      };
-    }
-
-    try {
-      let result;
-      const fromAddress = selectedWallet.address;
-      
-      // Determine if this is a native token transfer or token transfer
-      const isNativeToken = (
-        (selectedNetwork === 'evm' && (!token || token.toLowerCase() === 'eth')) ||
-        (selectedNetwork === 'solana' && (!token || token.toLowerCase() === 'sol'))
-      );
-
-      if (isNativeToken) {
-        // Native token transfer
-        result = await transferNativeToken(
-          fromAddress,
-          to_address,
-          amount,
-          selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
-        );
-      } else {
-        // Token transfer (USDC, etc.)
-        let tokenAddress;
-        if (token?.toLowerCase() === 'usdc') {
-          // Use appropriate USDC contract address based on network
-          if (selectedNetwork === 'evm') {
-            tokenAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
-          } else {
-            tokenAddress = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Solana Devnet USDC
-          }
-        } else {
-          return {
-            text: `❌ Unsupported token: ${token}. Supported tokens: ETH, USDC, SOL`
-          };
-        }
-
-        result = await transferToken(
-          fromAddress,
-          to_address,
-          tokenAddress,
-          amount,
-          18, // decimals
-          selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
-        );
+    // Check if this is a confirmation request
+    if (confirm === 'yes' || confirm === 'true' || params.action === 'confirm_send') {
+      // User is confirming the transaction - execute it
+      if (!amount || !recipientAddress) {
+        return {
+          text: "❌ Missing transaction details. Please start the send process again."
+        };
       }
 
-      // Generate block explorer link
-      const explorerUrl = getBlockExplorerUrl(result.hash, selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet');
+      // Determine which wallet to use based on token/network
+      let selectedWallet;
+      let selectedNetwork;
       
-      // Format success message
-      const networkName = selectedNetwork === 'evm' ? 'Base' : 'Solana';
+      if (token?.toLowerCase() === 'sol' || network?.toLowerCase() === 'solana') {
+        selectedWallet = wallets.find(w => w.chain === 'solana');
+        selectedNetwork = 'solana';
+      } else {
+        // Default to EVM for ETH, USDC, etc.
+        selectedWallet = wallets.find(w => w.chain === 'evm');
+        selectedNetwork = 'evm';
+      }
+
+      if (!selectedWallet) {
+        return {
+          text: `❌ You don't have a ${selectedNetwork === 'solana' ? 'Solana' : 'Base'} wallet. Please create one first.`
+        };
+      }
+
+      try {
+        let result;
+        const fromAddress = selectedWallet.address;
+        
+        // Determine if this is a native token transfer or token transfer
+        const isNativeToken = (
+          (selectedNetwork === 'evm' && (!token || token.toLowerCase() === 'eth')) ||
+          (selectedNetwork === 'solana' && (!token || token.toLowerCase() === 'sol'))
+        );
+
+        if (isNativeToken) {
+          // Native token transfer using CDP API <mcreference link="https://docs.cdp.coinbase.com/wallet-api/v2/using-the-wallet-api/transfers" index="1">1</mcreference>
+          result = await transferNativeToken(
+            fromAddress,
+            recipientAddress,
+            amount,
+            selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
+          );
+        } else {
+          // Token transfer using CDP API <mcreference link="https://docs.cdp.coinbase.com/wallet-api/v2/evm-features/sending-transactions" index="2">2</mcreference>
+          let tokenAddress;
+          if (token?.toLowerCase() === 'usdc') {
+            // Use appropriate USDC contract address based on network
+            if (selectedNetwork === 'evm') {
+              tokenAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
+            } else {
+              tokenAddress = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Solana Devnet USDC
+            }
+          } else {
+            return {
+              text: `❌ Unsupported token: ${token}. Supported tokens: ETH, USDC, SOL`
+            };
+          }
+
+          result = await transferToken(
+            fromAddress,
+            recipientAddress,
+            tokenAddress,
+            amount,
+            selectedNetwork === 'evm' ? 6 : 6, // USDC has 6 decimals
+            selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
+          );
+        }
+
+        // Generate block explorer link
+        const explorerUrl = getBlockExplorerUrl(result.hash, selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet');
+        
+        // Format success message
+        const networkName = selectedNetwork === 'evm' ? 'Base' : 'Solana';
+        const tokenSymbol = isNativeToken ? 
+          (selectedNetwork === 'evm' ? 'ETH' : 'SOL') : 
+          (token?.toUpperCase() || 'TOKEN');
+
+        return {
+          text: `✅ **Transfer Successful!**\n\n` +
+                `💰 **Amount**: ${amount} ${tokenSymbol}\n` +
+                `🌐 **Network**: ${networkName}\n` +
+                `📍 **To**: \`${recipientAddress}\`\n` +
+                `🔗 **Transaction**: ${result.hash}\n\n` +
+                `Your crypto has been sent successfully!`,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "🔗 View Transaction", url: explorerUrl },
+                { text: "📦 Check Balance", callback_data: "refresh_balances" }
+              ]
+            ]
+          }
+        };
+
+      } catch (error) {
+        console.error('[handleSend] Transfer error:', error);
+        return {
+          text: `❌ **Transfer Failed**\n\n` +
+                `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
+                `Please check:\n` +
+                `• You have sufficient balance\n` +
+                `• The recipient address is valid\n` +
+                `• The network is correct`
+        };
+      }
+    }
+
+    // Check if we have all required information for confirmation
+    if (amount && recipientAddress && (token || network)) {
+      // We have all the info - show confirmation with gas estimation
+      
+      // Determine which wallet to use based on token/network
+      let selectedWallet;
+      let selectedNetwork;
+      let networkName;
+      
+      if (token?.toLowerCase() === 'sol' || network?.toLowerCase() === 'solana') {
+        selectedWallet = wallets.find(w => w.chain === 'solana');
+        selectedNetwork = 'solana-devnet';
+        networkName = 'Solana';
+      } else {
+        // Default to EVM for ETH, USDC, etc.
+        selectedWallet = wallets.find(w => w.chain === 'evm');
+        selectedNetwork = 'base-sepolia';
+        networkName = 'Base';
+      }
+
+      if (!selectedWallet) {
+        return {
+          text: `❌ You don't have a ${networkName} wallet. Please create one first.`
+        };
+      }
+
+      // Determine transaction type for gas estimation
+      const isNativeToken = (
+        (selectedNetwork === 'base-sepolia' && (!token || token.toLowerCase() === 'eth')) ||
+        (selectedNetwork === 'solana-devnet' && (!token || token.toLowerCase() === 'sol'))
+      );
+      
+      const transactionType = isNativeToken ? 'native' : 'token';
+      
+      // Estimate gas fee
+      let estimatedFee;
+      try {
+        estimatedFee = await estimateTransactionFee(selectedNetwork, transactionType);
+      } catch (error) {
+        console.error('[handleSend] Fee estimation error:', error);
+        estimatedFee = selectedNetwork.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
+      }
+
+      // Determine token symbol for display
       const tokenSymbol = isNativeToken ? 
-        (selectedNetwork === 'evm' ? 'ETH' : 'SOL') : 
+        (selectedNetwork.includes('solana') ? 'SOL' : 'ETH') : 
         (token?.toUpperCase() || 'TOKEN');
 
+      // Truncate addresses for display
+      const truncatedRecipient = `${recipientAddress.slice(0, 8)}...${recipientAddress.slice(-6)}`;
+      const truncatedFrom = `${selectedWallet.address.slice(0, 8)}...${selectedWallet.address.slice(-6)}`;
+
+      // Create a short transaction ID for callback data (Telegram has 64 byte limit)
+      const transactionId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+      
+      // Store transaction details temporarily (you could use Redis or database for production)
+      // For now, we'll encode essential info in a shorter format
+      const shortCallbackData = `confirm_${transactionId}`;
+
       return {
-        text: `✅ **Transfer Successful!**\n\n` +
-              `💰 **Amount**: ${amount} ${tokenSymbol}\n` +
-              `🌐 **Network**: ${networkName}\n` +
-              `📍 **To**: \`${to_address}\`\n` +
-              `🔗 **Transaction**: ${result.hash}\n\n` +
-              `Your crypto has been sent successfully!`,
+        text: `💸 **Confirm Transfer**\n\n` +
+              `**Transaction Summary:**\n` +
+              `💰 Amount: **${amount} ${tokenSymbol}**\n` +
+              `🌐 Network: **${networkName}**\n` +
+              `📤 From: \`${truncatedFrom}\`\n` +
+              `📥 To: \`${truncatedRecipient}\`\n` +
+              `⛽ Est. Fee: **${estimatedFee}**\n` +
+              `⏱️ Est. Time: **~30 seconds**\n\n` +
+              `⚠️ **Please verify all details before confirming.**\n` +
+              `This transaction cannot be reversed.\n\n` +
+              `**Transaction Details:**\n` +
+              `Amount: ${amount}\n` +
+              `Token: ${token || 'native'}\n` +
+              `To: ${recipientAddress}\n` +
+              `Network: ${selectedNetwork}`,
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "🔗 View Transaction", url: explorerUrl },
-              { text: "📦 Check Balance", callback_data: "refresh_balances" }
+              { text: "✅ Confirm & Send", callback_data: shortCallbackData },
+              { text: "❌ Cancel", callback_data: "cancel_send" }
             ]
           ]
         }
       };
-
-    } catch (transferError: unknown) {
-      console.error('[handleSend] Transfer error:', transferError);
-      const errorMessage = transferError instanceof Error ? transferError.message : 'Unknown error occurred';
-      return {
-        text: `❌ **Transfer Failed**\n\nError: ${errorMessage}\n\nPlease check your balance and try again.`
-      };
     }
+
+    // If we don't have all the information, show the single template to collect everything
+    return {
+      text: "💸 **Send Crypto**\n\n" +
+            "Please provide the following information in your message:\n\n" +
+            "**Required Details:**\n" +
+            "• **Amount & Token**: e.g., `0.1 ETH`, `10 USDC`, `5 SOL`\n" +
+            "• **Recipient Address**: The destination wallet address\n" +
+            "• **Network/Chain**: `Base`, `Solana`, or specify token type\n\n" +
+            "**Example Messages:**\n" +
+            "• `Send 0.1 ETH to 0x1234...5678 on Base`\n" +
+            "• `Transfer 10 USDC to 9WzD...AWWM on Solana`\n" +
+            "• `Send 5 SOL to alice.sol`\n\n" +
+            "**Supported Tokens:**\n" +
+            "• ETH (Base network)\n" +
+            "• USDC (Base or Solana)\n" +
+            "• SOL (Solana network)\n\n" +
+            "💡 **Tip**: Include all details in one message for faster processing!"
+    };
 
   } catch (error) {
     console.error('[handleSend] Error:', error);

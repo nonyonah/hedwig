@@ -56,7 +56,10 @@ function setupBotHandlers() {
       } else if (msg.text) {
         // Process with AI
         const response = await processWithAI(msg.text, chatId);
-        await bot?.sendMessage(chatId, response);
+        // Only send message if response is not empty
+        if (response && response.trim() !== '') {
+          await bot?.sendMessage(chatId, response);
+        }
       } else {
         await bot?.sendMessage(chatId, 'Please send a text message or use a command like /start');
       }
@@ -78,29 +81,172 @@ function setupBotHandlers() {
         return;
       }
 
-      // Answer the callback query first
-      await bot?.answerCallbackQuery(callbackQuery.id);
-
       // Handle different callback actions
       switch (data) {
         case 'refresh_balances':
-          const balanceResponse = await processWithAI('check balance', chatId);
-          await bot?.sendMessage(chatId, balanceResponse);
+          const refreshBalanceResponse = await processWithAI('check balance', chatId);
+          // Only answer the callback query, don't send additional message
+          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Refreshing balances...' });
           break;
           
         case 'start_send_token_flow':
-          await bot?.sendMessage(chatId, 
-            '📤 *Send Tokens*\n\n' +
-            'Please provide the details:\n' +
-            '• Amount and token (e.g., "10 USDC")\n' +
-            '• Recipient address or email\n\n' +
-            'Example: "Send 5 USDC to alice@example.com"',
-            { parse_mode: 'Markdown' }
-          );
+        case 'send_crypto':
+          await bot?.answerCallbackQuery(callbackQuery.id);
+          const sendResponse = await processWithAI('send crypto template', chatId);
+          if (sendResponse && sendResponse.trim() !== '') {
+            await bot?.sendMessage(chatId, sendResponse);
+          }
+          break;
+
+        case 'check_balance':
+          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Checking balances...' });
+          const balanceResponse = await processWithAI('check balance', chatId);
+          // The response will be sent by the processWithAI function
+          break;
+
+        case 'cancel_send':
+          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Transfer cancelled' });
+          await bot?.sendMessage(chatId, '❌ Transfer cancelled.');
           break;
           
         default:
-          await bot?.sendMessage(chatId, 'Unknown action');
+          // Handle confirm_send callback data
+          if (data?.startsWith('confirm_')) {
+            await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing transfer...' });
+            
+            // Immediately disable the button by editing the message
+            if (callbackQuery.message) {
+              try {
+                await bot?.editMessageReplyMarkup(
+                  { inline_keyboard: [] }, // Remove all buttons
+                  {
+                    chat_id: callbackQuery.message.chat.id,
+                    message_id: callbackQuery.message.message_id
+                  }
+                );
+              } catch (error) {
+                console.error('[Webhook] Error disabling button:', error);
+              }
+            }
+            
+            // Parse transaction details from the original message text
+            const messageText = callbackQuery.message?.text || '';
+            console.log('[Webhook] Parsing message text:', messageText);
+            
+            // Extract transaction details from the message
+            // Look for the "Transaction Details:" section which contains the full, untruncated values
+            const transactionDetailsMatch = messageText.match(/\*\*Transaction Details:\*\*\n([\s\S]*?)$/);
+            let amount, token, recipient, network;
+            
+            if (transactionDetailsMatch) {
+              const detailsSection = transactionDetailsMatch[1];
+              console.log('[Webhook] Transaction details section found:', detailsSection);
+              
+              // Extract from the details section which has full values
+              const amountMatch = detailsSection.match(/Amount:\s*([^\n\r]+)/);
+              const tokenMatch = detailsSection.match(/Token:\s*([^\n\r]+)/);
+              const toMatch = detailsSection.match(/To:\s*([^\n\r]+)/);
+              const networkMatch = detailsSection.match(/Network:\s*([^\n\r]+)/);
+              
+              amount = amountMatch?.[1]?.trim();
+              token = tokenMatch?.[1]?.trim();
+              recipient = toMatch?.[1]?.trim();
+              network = networkMatch?.[1]?.trim();
+              
+              console.log('[Webhook] Extracted from Transaction Details section:', {
+                amount,
+                token,
+                recipient,
+                network
+              });
+            } else {
+              console.log('[Webhook] Transaction Details section not found, trying fallback parsing');
+              // Fallback: try to extract from the entire message
+              // Look for the last occurrence of each field to get the full values
+              const amountMatches = [...messageText.matchAll(/Amount:\s*([^\n\r]+)/g)];
+              const tokenMatches = [...messageText.matchAll(/Token:\s*([^\n\r]+)/g)];
+              const toMatches = [...messageText.matchAll(/To:\s*([^\n\r]+)/g)];
+              const networkMatches = [...messageText.matchAll(/Network:\s*([^\n\r]+)/g)];
+              
+              // Use the last match (from Transaction Details section if it exists)
+              amount = amountMatches.length > 0 ? amountMatches[amountMatches.length - 1][1]?.trim() : undefined;
+              token = tokenMatches.length > 0 ? tokenMatches[tokenMatches.length - 1][1]?.trim() : undefined;
+              recipient = toMatches.length > 0 ? toMatches[toMatches.length - 1][1]?.trim() : undefined;
+              network = networkMatches.length > 0 ? networkMatches[networkMatches.length - 1][1]?.trim() : undefined;
+              
+              console.log('[Webhook] Extracted from fallback parsing:', {
+                amount,
+                token,
+                recipient,
+                network
+              });
+            }
+            
+            console.log('[Webhook] Parsed transaction details:', {
+              amount,
+              token,
+              recipient,
+              network
+            });
+            
+            if (amount && recipient && network) {
+              // Import required modules
+              const { parseIntentAndParams } = await import('@/lib/intentParser');
+              const { handleAction } = await import('@/api/actions');
+              
+              try {
+                // Get the actual user UUID from the database
+                const { supabase } = await import('../../lib/supabase');
+                const { data: user } = await supabase
+                  .from('users')
+                  .select('id, telegram_username')
+                  .eq('telegram_chat_id', chatId)
+                  .single();
+
+                if (!user) {
+                  await bot?.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+                  return;
+                }
+
+                // Use the user's UUID as the identifier for handleAction
+                const transferResult = await handleAction(
+                  'send',
+                  {
+                    amount,
+                    token: token === 'native' || token === null ? undefined : token,
+                    recipient: recipient,
+                    network,
+                    confirm: 'true'
+                  },
+                  user.id
+                );
+                
+                // Send the result
+                if (transferResult && typeof transferResult === 'object' && 'text' in transferResult) {
+                  await bot?.sendMessage(chatId, transferResult.text, { parse_mode: 'Markdown' });
+                } else if (typeof transferResult === 'string') {
+                  await bot?.sendMessage(chatId, transferResult, { parse_mode: 'Markdown' });
+                } else {
+                  await bot?.sendMessage(chatId, '✅ Transfer completed successfully!');
+                }
+              } catch (error) {
+                console.error('[webhook] Transfer error:', error);
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                await bot?.sendMessage(chatId, `❌ Transfer failed: ${errorMessage}. Please try again.`);
+              }
+            } else {
+              console.log('[Webhook] Failed to parse transaction details from message:', messageText);
+              console.log('[Webhook] Missing required fields:', {
+                hasAmount: !!amount,
+                hasRecipient: !!recipient,
+                hasNetwork: !!network,
+                hasToken: !!token
+              });
+              await bot?.sendMessage(chatId, '❌ Could not parse transaction details. Please start the send process again.');
+            }
+          } else {
+            await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Unknown action' });
+          }
       }
     } catch (error) {
       console.error('[Webhook] Error handling callback query:', error);
@@ -131,9 +277,9 @@ async function handleCommand(msg: TelegramBot.Message) {
           reply_markup: {
             keyboard: [
               [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
-              [{ text: '🔗 Payment Link' }, { text: '📝 Proposal' }],
-              [{ text: '🧾 Invoice' }, { text: '📊 View History' }],
-              [{ text: '❓ Help' }]
+              [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
+              [{ text: '📝 Proposal' }, { text: '🧾 Invoice' }],
+              [{ text: '📊 View History' }, { text: '❓ Help' }]
             ],
             resize_keyboard: true,
             one_time_keyboard: false
@@ -144,22 +290,23 @@ async function handleCommand(msg: TelegramBot.Message) {
 
     case '/help':
       await bot.sendMessage(chatId,
-        `🆘 *Hedwig Bot Help*\n\n` +
-        `*Quick Actions:*\n` +
-        `💰 Balance - Check wallet balances\n` +
-        `👛 Wallet - View wallet addresses\n` +
-        `🔗 Payment Link - Create payment requests\n` +
-        `📝 Proposal - Create service proposals\n` +
-        `🧾 Invoice - Create invoices\n` +
-        `📊 View History - See transactions\n\n` +
-        `*Natural Language:*\n` +
-        `You can also chat with me naturally! Try:\n` +
-        `• "Send 10 USDC to alice@example.com"\n` +
-        `• "What's my balance?"\n` +
-        `• "Create an invoice for $100"\n` +
-        `• "Show my transaction history"`,
-        { parse_mode: 'Markdown' }
-      );
+          `🆘 *Hedwig Bot Help*\n\n` +
+          `*Quick Actions:*\n` +
+          `💰 Balance - Check wallet balances\n` +
+          `👛 Wallet - View wallet addresses\n` +
+          `💸 Send Crypto - Send tokens to others\n` +
+          `🔗 Payment Link - Create payment requests\n` +
+          `📝 Proposal - Create service proposals\n` +
+          `🧾 Invoice - Create invoices\n` +
+          `📊 View History - See transactions\n\n` +
+          `*Natural Language:*\n` +
+          `You can also chat with me naturally! Try:\n` +
+          `• "Send 10 USDC to alice@example.com"\n` +
+          `• "What's my balance?"\n` +
+          `• "Create an invoice for $100"\n` +
+          `• "Show my transaction history"`,
+          { parse_mode: 'Markdown' }
+        );
       break;
 
     case '/wallet':
@@ -181,6 +328,11 @@ async function handleCommand(msg: TelegramBot.Message) {
       } else if (text === '👛 Wallet') {
         const response = await processWithAI('get wallet address', chatId);
         await bot.sendMessage(chatId, response);
+      } else if (text === '💸 Send Crypto') {
+        const response = await processWithAI('send crypto template', chatId);
+        if (response && response.trim() !== '') {
+          await bot.sendMessage(chatId, response);
+        }
       } else if (text === '🔗 Payment Link') {
         await bot.sendMessage(chatId, 
           '🔗 *Create Payment Link*\n\n' +
@@ -220,6 +372,7 @@ async function handleCommand(msg: TelegramBot.Message) {
           `*Quick Actions:*\n` +
           `💰 Balance - Check wallet balances\n` +
           `👛 Wallet - View wallet addresses\n` +
+          `💸 Send Crypto - Send tokens to others\n` +
           `🔗 Payment Link - Create payment requests\n` +
           `📝 Proposal - Create service proposals\n` +
           `🧾 Invoice - Create invoices\n` +

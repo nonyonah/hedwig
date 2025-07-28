@@ -464,8 +464,12 @@ Choose an action below:`;
           { text: '📊 Check Earnings', callback_data: 'check_earnings' }
         ],
         [
-          { text: '🔄 Token Swap', callback_data: 'token_swap' },
-          { text: '📈 Payment Status', callback_data: 'payment_status' }
+          { text: '💸 Send Crypto', callback_data: 'send_crypto' },
+          { text: '🔄 Token Swap', callback_data: 'token_swap' }
+        ],
+        [
+          { text: '📈 Payment Status', callback_data: 'payment_status' },
+          { text: '💳 Check Balance', callback_data: 'check_balance' }
         ],
         [
           { text: '📋 Help', callback_data: 'help' },
@@ -496,8 +500,20 @@ Choose an action below:`;
    */
   private async processWithAI(message: string, chatId: number): Promise<string> {
     try {
-      // Use the user's Telegram chat ID as userId for context
-      const userId = `telegram_${chatId}`;
+      // Get the actual user UUID from the database
+      const { supabase } = await import('./supabase');
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, telegram_username')
+        .eq('telegram_chat_id', chatId)
+        .single();
+
+      if (!user) {
+        return "❌ User not found. Please try /start to initialize your account.";
+      }
+
+      // Use Telegram username as identifier for LLM, fallback to user UUID if no username
+      const llmUserId = user.telegram_username || user.id;
       
       // Import required modules
       const { parseIntentAndParams } = await import('@/lib/intentParser');
@@ -505,7 +521,7 @@ Choose an action below:`;
       
       // Get LLM response
       const llmResponse = await runLLM({
-        userId,
+        userId: llmUserId,
         message
       });
       
@@ -516,13 +532,13 @@ Choose an action below:`;
       
       console.log('[TelegramBot] Parsed intent:', intent, 'Params:', params);
       
-      // Execute the action based on the intent
+      // Execute the action based on the intent using the user's UUID
       let actionResult: any;
       try {
         actionResult = await handleAction(
           intent,
           params,
-          userId
+          user.id
         );
       } catch (actionError) {
         console.error('[TelegramBot] Action execution error:', actionError);

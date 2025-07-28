@@ -53,8 +53,10 @@ export interface NetworkConfig {
 async function getBaseSepoliaBalances(address: string) {
   try {
     const baseSepoliaRpc = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
+    const usdcContractAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
     
     console.log(`[CDP] Fetching Base Sepolia balances using Coinbase RPC for ${address}`);
+    console.log(`[CDP] Using USDC contract address: ${usdcContractAddress}`);
 
     // Get ETH balance
     const ethBalanceResponse = await fetch(baseSepoliaRpc, {
@@ -71,8 +73,47 @@ async function getBaseSepoliaBalances(address: string) {
     });
 
     const ethBalanceData = await ethBalanceResponse.json();
+    console.log(`[CDP] ETH balance response:`, ethBalanceData);
+    
     if (ethBalanceData.error) {
       throw new Error(`Base Sepolia ETH balance error: ${ethBalanceData.error.message}`);
+    }
+
+    // Get USDC balance using ERC-20 balanceOf method
+    const balanceOfData = `0x70a08231000000000000000000000000${address.slice(2)}`;
+    console.log(`[CDP] USDC balanceOf call data: ${balanceOfData}`);
+    
+    const usdcBalanceResponse = await fetch(baseSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 2,
+        jsonrpc: '2.0',
+        method: 'eth_call',
+        params: [
+          {
+            to: usdcContractAddress,
+            data: balanceOfData
+          },
+          'latest'
+        ]
+      })
+    });
+
+    const usdcBalanceData = await usdcBalanceResponse.json();
+    console.log(`[CDP] USDC balance response:`, usdcBalanceData);
+    
+    let usdcBalance = '0';
+    if (!usdcBalanceData.error && usdcBalanceData.result) {
+      usdcBalance = usdcBalanceData.result;
+      console.log(`[CDP] USDC balance (hex): ${usdcBalance}`);
+      // Convert hex to decimal for logging
+      const usdcBalanceDecimal = parseInt(usdcBalance, 16);
+      console.log(`[CDP] USDC balance (decimal): ${usdcBalanceDecimal}`);
+    } else if (usdcBalanceData.error) {
+      console.error(`[CDP] USDC balance error:`, usdcBalanceData.error);
     }
 
     // Format balances
@@ -85,12 +126,13 @@ async function getBaseSepoliaBalances(address: string) {
       amount: ethBalanceWei
     });
 
-    // Add USDC with 0 balance for consistency (Base Sepolia USDC contract would need to be queried separately)
+    // Add USDC balance
     balances.push({
-      asset: { symbol: 'USDC', decimals: 6 },
-      amount: '0'
+      asset: { symbol: 'USDC', decimals: 6, contractAddress: usdcContractAddress },
+      amount: usdcBalance
     });
 
+    console.log(`[CDP] Final Base Sepolia balances:`, balances);
     return { data: balances };
   } catch (error) {
     console.error('[CDP] Failed to get Base Sepolia balances:', error);
@@ -767,7 +809,7 @@ async function getSolanaBalances(address: string, networkId: string) {
 
       // Check if this is USDC (different mint addresses for devnet/mainnet)
       const usdcMints = {
-        devnet: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', // USDC devnet mint
+        devnet: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', // USDC devnet mint (updated)
         mainnet: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' // USDC mainnet mint
       };
 
@@ -830,22 +872,24 @@ export async function transferNativeToken(
   try {
     console.log(`[CDP] Transferring ${amount} native tokens from ${fromAddress} to ${toAddress} on network ${network}`);
     
-    // Get wallet from database
+    // Get network configuration first to determine wallet type
+    const networkConfig = SUPPORTED_NETWORKS[network];
+    if (!networkConfig) {
+      throw new Error(`Unsupported network: ${network}`);
+    }
+    
+    // Get wallet from database - filter by chain type to avoid multiple rows
+    const isEVM = !!networkConfig.chainId;
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('cdp_wallet_id')
+      .select('cdp_wallet_id, chain')
       .eq('address', fromAddress)
+      .eq('chain', isEVM ? 'evm' : 'solana')
       .single();
     
     if (error || !wallet) {
       console.error(`[CDP] Failed to get wallet from database:`, error);
       throw error || new Error(`Wallet not found: ${fromAddress}`);
-    }
-    
-    // Get network configuration
-    const networkConfig = SUPPORTED_NETWORKS[network];
-    if (!networkConfig) {
-      throw new Error(`Unsupported network: ${network}`);
     }
     
     // Convert amount to wei (for EVM) or lamports (for Solana)
@@ -939,22 +983,24 @@ export async function transferToken(
   try {
     console.log(`[CDP] Transferring ${amount} tokens (${tokenAddress}) from ${fromAddress} to ${toAddress} on network ${network}`);
     
-    // Get wallet from database
+    // Get network configuration first to determine wallet type
+    const networkConfig = SUPPORTED_NETWORKS[network];
+    if (!networkConfig) {
+      throw new Error(`Unsupported network: ${network}`);
+    }
+    
+    // Get wallet from database - filter by chain type to avoid multiple rows
+    const isEVM = !!networkConfig.chainId;
     const { data: wallet, error } = await supabase
       .from('wallets')
-      .select('cdp_wallet_id')
+      .select('cdp_wallet_id, chain')
       .eq('address', fromAddress)
+      .eq('chain', isEVM ? 'evm' : 'solana')
       .single();
     
     if (error || !wallet) {
       console.error(`[CDP] Failed to get wallet from database:`, error);
       throw error || new Error(`Wallet not found: ${fromAddress}`);
-    }
-    
-    // Get network configuration
-    const networkConfig = SUPPORTED_NETWORKS[network];
-    if (!networkConfig) {
-      throw new Error(`Unsupported network: ${network}`);
     }
     
     // Convert amount to token units
