@@ -223,7 +223,11 @@ function setupBotHandlers() {
                 
                 // Send the result
                 if (transferResult && typeof transferResult === 'object' && 'text' in transferResult) {
-                  await bot?.sendMessage(chatId, transferResult.text, { parse_mode: 'Markdown' });
+                  const messageOptions: any = { parse_mode: 'Markdown' };
+                  if ('reply_markup' in transferResult) {
+                    messageOptions.reply_markup = transferResult.reply_markup;
+                  }
+                  await bot?.sendMessage(chatId, transferResult.text, messageOptions);
                 } else if (typeof transferResult === 'string') {
                   await bot?.sendMessage(chatId, transferResult, { parse_mode: 'Markdown' });
                 } else {
