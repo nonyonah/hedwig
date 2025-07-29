@@ -42,35 +42,59 @@ const PaymentLink: React.FC = () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Sample data for demonstration
-  const samplePaymentData: PaymentLinkData = {
-    id: id as string || '1',
-    title: 'Website Development Payment',
-    description: 'Payment for custom website development project including design, development, and deployment.',
-    amount: 2500,
-    currency: 'USD',
-    status: 'active',
-    expiresAt: '2024-02-15T23:59:59Z',
-    createdAt: '2024-01-15T10:00:00Z',
-    merchant: {
-      name: 'Hedwig Studio',
-      email: 'hello@hedwig.app'
-    },
-    paymentMethods: ['crypto', 'bank'],
-    bankDetails: {
-      accountName: 'Hedwig Studio LLC',
-      accountNumber: '****1234',
-      routingNumber: '021000021',
-      bankName: 'Chase Bank'
-    }
-  };
-
   useEffect(() => {
-    // In a real app, fetch payment link data from Supabase
-    // For now, use sample data
-    setPaymentData(samplePaymentData);
-    setLoading(false);
-  }, [id]);
+    const fetchPaymentLinkData = async () => {
+      if (!id) return;
+      
+      try {
+        const { data: paymentLink, error } = await supabase
+          .from('payment_links')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching payment link:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (paymentLink) {
+          // Transform database data to match our interface
+          const transformedData: PaymentLinkData = {
+            id: paymentLink.id,
+            title: paymentLink.payment_reason || 'Payment Request',
+            description: paymentLink.payment_reason || 'Payment request via Hedwig',
+            amount: paymentLink.amount,
+            currency: 'USD', // Default currency, could be made dynamic
+            status: paymentLink.status === 'paid' ? 'paid' : 
+                   (paymentLink.expires_at && new Date(paymentLink.expires_at) < new Date()) ? 'expired' : 'active',
+            expiresAt: paymentLink.expires_at || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            createdAt: paymentLink.created_at,
+            merchant: {
+              name: paymentLink.user_name || 'Hedwig User',
+              email: paymentLink.recipient_email || 'user@hedwig.app'
+            },
+            paymentMethods: ['crypto', 'bank'],
+            bankDetails: {
+              accountName: paymentLink.user_name || 'Hedwig User',
+              accountNumber: '****1234',
+              routingNumber: '021000021',
+              bankName: 'Default Bank'
+            }
+          };
+          
+          setPaymentData(transformedData);
+        }
+      } catch (error) {
+        console.error('Error fetching payment link:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPaymentLinkData();
+  }, [id, supabase]);
 
   const handleCopyPaymentLink = () => {
     const url = `${window.location.origin}/payment-link/${id}`;

@@ -56,82 +56,86 @@ const Proposal: React.FC = () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Sample data for demonstration
-  const sampleProposalData: ProposalData = {
-    id: id as string || '1',
-    title: 'E-commerce Website Development',
-    client: {
-      name: 'Sarah Johnson',
-      email: 'sarah@techstartup.com',
-      company: 'Tech Startup Inc.'
-    },
-    freelancer: {
-      name: 'Alex Chen',
-      email: 'alex@hedwig.app',
-      company: 'Hedwig Studio'
-    },
-    projectSummary: 'Development of a modern, responsive e-commerce website with payment integration, inventory management, and admin dashboard. The project includes custom design, mobile optimization, and SEO implementation.',
-    totalAmount: 8500,
-    currency: 'USD',
-    estimatedDuration: '6-8 weeks',
-    status: 'sent',
-    createdAt: '2024-01-15T10:00:00Z',
-    expiresAt: '2024-02-15T23:59:59Z',
-    sections: [
-      {
-        title: 'Project Overview',
-        content: 'This project involves creating a comprehensive e-commerce solution that will serve as the foundation for your online business. We will focus on user experience, performance, and scalability to ensure your platform can grow with your business needs.'
-      },
-      {
-        title: 'Technical Approach',
-        content: 'We will use modern web technologies including React.js for the frontend, Node.js for the backend, and PostgreSQL for the database. The platform will be hosted on AWS with CDN integration for optimal performance worldwide.'
-      },
-      {
-        title: 'Design Philosophy',
-        content: 'Our design approach prioritizes user experience and conversion optimization. We will create a clean, intuitive interface that guides customers through the purchasing process while maintaining your brand identity.'
-      }
-    ],
-    phases: [
-      {
-        phase: 'Discovery & Planning',
-        duration: '1 week',
-        deliverables: ['Requirements analysis', 'Technical specification', 'Project timeline', 'Wireframes'],
-        cost: 1500
-      },
-      {
-        phase: 'Design & Prototyping',
-        duration: '2 weeks',
-        deliverables: ['UI/UX design', 'Interactive prototype', 'Design system', 'Client feedback integration'],
-        cost: 2500
-      },
-      {
-        phase: 'Development',
-        duration: '3-4 weeks',
-        deliverables: ['Frontend development', 'Backend API', 'Database setup', 'Payment integration'],
-        cost: 3500
-      },
-      {
-        phase: 'Testing & Launch',
-        duration: '1 week',
-        deliverables: ['Quality assurance', 'Performance optimization', 'Deployment', 'Training & documentation'],
-        cost: 1000
-      }
-    ],
-    terms: [
-      'Payment schedule: 30% upfront, 40% at milestone completion, 30% upon project delivery',
-      'All source code and design files will be transferred upon final payment',
-      'Includes 30 days of post-launch support and bug fixes',
-      'Additional features or scope changes will be quoted separately',
-      'Project timeline may vary based on client feedback and approval speed'
-    ]
-  };
-
   useEffect(() => {
-    // In a real app, fetch proposal data from Supabase
-    // For now, use sample data
-    setProposalData(sampleProposalData);
-    setLoading(false);
-  }, [id]);
+    const fetchProposalData = async () => {
+      if (!id) return;
+      
+      try {
+        const { data: proposal, error } = await supabase
+          .from('proposals')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching proposal:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (proposal) {
+          // Transform database data to match our interface
+          const transformedData: ProposalData = {
+            id: proposal.id,
+            title: proposal.project_title || 'Project Proposal',
+            client: {
+              name: proposal.client_name,
+              email: proposal.client_email,
+              company: proposal.client_name // Using client_name as company for now
+            },
+            freelancer: {
+              name: 'Hedwig User', // Could be enhanced with user data
+              email: 'user@hedwig.app',
+              company: 'Hedwig Studio'
+            },
+            projectSummary: proposal.description || 'No description provided',
+            totalAmount: proposal.budget || 0,
+            currency: proposal.currency || 'USD',
+            estimatedDuration: proposal.timeline || 'To be determined',
+            status: proposal.status || 'draft',
+            createdAt: proposal.created_at,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+            sections: [
+              {
+                title: 'Project Overview',
+                content: proposal.description || 'No description provided'
+              },
+              {
+                title: 'Service Type',
+                content: `This proposal is for ${proposal.service_type || 'general services'}.`
+              },
+              {
+                title: 'Deliverables',
+                content: proposal.deliverables || 'Deliverables to be defined during project planning.'
+              }
+            ],
+            phases: [
+              {
+                phase: 'Project Execution',
+                duration: proposal.timeline || 'To be determined',
+                deliverables: proposal.deliverables ? proposal.deliverables.split(',').map((d: string) => d.trim()) : ['To be defined'],
+                cost: proposal.budget || 0
+              }
+            ],
+            terms: [
+              'Payment terms to be agreed upon project acceptance',
+              'All deliverables will be provided as specified in the proposal',
+              'Project timeline may vary based on client feedback and requirements',
+              'Additional features or scope changes will be quoted separately'
+            ]
+          };
+          
+          setProposalData(transformedData);
+        }
+      } catch (error) {
+        console.error('Error fetching proposal:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProposalData();
+  }, [id, supabase]);
 
   const handleCopyProposalUrl = () => {
     const url = `${window.location.origin}/proposal/${id}`;

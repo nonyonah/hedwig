@@ -114,7 +114,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const paymentLink = `${baseUrl}/pay/${data.id}`;
+    const paymentLink = `${baseUrl}/payment-link/${data.id}`;
 
     // TODO: Send email if recipientEmail is provided
     if (recipientEmail) {

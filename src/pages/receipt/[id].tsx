@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { createClient } from '@supabase/supabase-js';
 import { Copy, Download, Mail, ExternalLink, CheckCircle } from 'lucide-react';
 
 interface ReceiptData {
@@ -21,33 +22,68 @@ interface ReceiptData {
   receiptUrl: string;
 }
 
-// Sample data - in real implementation, this would come from API
-const sampleReceiptData: ReceiptData = {
-  id: 'RCP-2024-001',
-  status: 'completed',
-  amount: 2500.00,
-  currency: 'USDC',
-  transactionHash: '0x1234567890abcdef1234567890abcdef12345678',
-  network: 'Polygon',
-  confirmations: 15,
-  fromWallet: '0xabcd...5678',
-  toWallet: '0x9876...dcba',
-  merchantName: 'TechCorp Solutions',
-  merchantEmail: 'billing@techcorp.com',
-  customerName: 'John Smith',
-  customerEmail: 'john.smith@email.com',
-  description: 'Web Development Services - Q4 2024',
-  timestamp: '2024-01-15T10:30:00Z',
-  receiptUrl: 'https://hedwig.app/receipt/RCP-2024-001'
-};
-
 const Receipt: React.FC = () => {
   const router = useRouter();
   const { id } = router.query;
   const [copied, setCopied] = useState<string | null>(null);
-  
-  // In real implementation, fetch receipt data based on id
-  const receiptData = sampleReceiptData;
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Initialize Supabase client
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  useEffect(() => {
+    const fetchReceiptData = async () => {
+      if (!id) return;
+      
+      try {
+        const { data: paymentLink, error } = await supabase
+          .from('payment_links')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching receipt data:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (paymentLink && paymentLink.status === 'paid') {
+          // Transform database data to match our interface
+          const transformedData: ReceiptData = {
+            id: `RCP-${paymentLink.id}`,
+            status: 'completed',
+            amount: paymentLink.paid_amount || paymentLink.amount,
+            currency: paymentLink.token || 'USDC',
+            transactionHash: paymentLink.transaction_hash || '0x0000000000000000000000000000000000000000',
+            network: paymentLink.network || 'Polygon',
+            confirmations: 15, // Default value
+            fromWallet: 'N/A', // Not stored in current schema
+            toWallet: paymentLink.wallet_address,
+            merchantName: paymentLink.user_name || 'Hedwig User',
+            merchantEmail: paymentLink.recipient_email || 'user@hedwig.app',
+            customerName: 'Customer', // Not stored in current schema
+            customerEmail: 'customer@email.com', // Not stored in current schema
+            description: paymentLink.payment_reason || 'Payment via Hedwig',
+            timestamp: paymentLink.paid_at || paymentLink.created_at,
+            receiptUrl: `${window.location.origin}/receipt/${id}`
+          };
+          
+          setReceiptData(transformedData);
+        }
+      } catch (error) {
+        console.error('Error fetching receipt data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReceiptData();
+  }, [id, supabase]);
 
   const copyToClipboard = async (text: string, type: string) => {
     try {
@@ -93,6 +129,33 @@ const Receipt: React.FC = () => {
         return 'text-gray-600 bg-gray-50';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading receipt...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!receiptData) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Receipt not found or payment not completed.</p>
+          <button
+            onClick={() => router.back()}
+            className="text-blue-600 hover:text-blue-800"
+          >
+            Go back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">

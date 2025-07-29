@@ -124,7 +124,7 @@ export default async function handler(
       });
     }
 
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/pay/${data.id}`;
+    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/payment-link/${data.id}`;
 
     // TODO: Send email if recipientEmail is provided
     if (recipientEmail) {

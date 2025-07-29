@@ -51,56 +51,67 @@ const Invoice: React.FC = () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Sample data for demonstration
-  const sampleInvoiceData: InvoiceData = {
-    id: id as string || '1',
-    invoiceNumber: 'INV-2024-001',
-    status: 'sent',
-    issueDate: '2024-01-15',
-    dueDate: '2024-02-15',
-    merchant: {
-      name: 'Hedwig Studio',
-      email: 'hello@hedwig.app',
-      address: '123 Business St, Suite 100\nSan Francisco, CA 94105\nUnited States'
-    },
-    client: {
-      name: 'Acme Corporation',
-      email: 'billing@acme.com',
-      address: '456 Client Ave\nNew York, NY 10001\nUnited States'
-    },
-    items: [
-      {
-        description: 'Web Development Services',
-        quantity: 40,
-        rate: 150,
-        amount: 6000
-      },
-      {
-        description: 'UI/UX Design',
-        quantity: 20,
-        rate: 120,
-        amount: 2400
-      },
-      {
-        description: 'Project Management',
-        quantity: 10,
-        rate: 100,
-        amount: 1000
-      }
-    ],
-    subtotal: 9400,
-    tax: 940,
-    total: 10340,
-    notes: 'Payment is due within 30 days. Late payments may incur additional fees.',
-    paymentMethods: ['crypto', 'bank']
-  };
-
   useEffect(() => {
-    // In a real app, fetch invoice data from Supabase
-    // For now, use sample data
-    setInvoiceData(sampleInvoiceData);
-    setLoading(false);
-  }, [id]);
+    const fetchInvoiceData = async () => {
+      if (!id) return;
+      
+      try {
+        const { data: invoice, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching invoice:', error);
+          setLoading(false);
+          return;
+        }
+
+        if (invoice) {
+          // Transform database data to match our interface
+          const transformedData: InvoiceData = {
+            id: invoice.id,
+            invoiceNumber: invoice.invoice_number || `INV-${invoice.id.slice(0, 8)}`,
+            status: invoice.status || 'draft',
+            issueDate: new Date(invoice.date_created).toISOString().split('T')[0],
+            dueDate: invoice.due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            merchant: {
+              name: invoice.freelancer_name,
+              email: invoice.freelancer_email,
+              address: 'Address not specified'
+            },
+            client: {
+              name: invoice.client_name,
+              email: invoice.client_email,
+              address: 'Address not specified'
+            },
+            items: [
+              {
+                description: invoice.project_description,
+                quantity: 1,
+                rate: invoice.amount,
+                amount: invoice.amount
+              }
+            ],
+            subtotal: invoice.amount,
+            tax: 0,
+            total: invoice.amount,
+            notes: invoice.additional_notes || 'Payment is due within 30 days.',
+            paymentMethods: ['crypto', 'bank']
+          };
+          
+          setInvoiceData(transformedData);
+        }
+      } catch (error) {
+        console.error('Error fetching invoice:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInvoiceData();
+  }, [id, supabase]);
 
   const handleCopyInvoiceUrl = () => {
     const url = `${window.location.origin}/invoice/${id}`;
