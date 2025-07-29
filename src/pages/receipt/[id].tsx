@@ -37,7 +37,7 @@ const Receipt: React.FC = () => {
 
   useEffect(() => {
     const fetchReceiptData = async () => {
-      if (!id) return;
+      if (!id || !router.isReady) return;
       
       try {
         const { data: paymentLink, error } = await supabase
@@ -83,7 +83,7 @@ const Receipt: React.FC = () => {
     };
 
     fetchReceiptData();
-  }, [id, supabase]);
+  }, [id, router.isReady, supabase]);
 
   const copyToClipboard = async (text: string, type: string) => {
     try {

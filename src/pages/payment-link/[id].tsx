@@ -44,7 +44,7 @@ const PaymentLink: React.FC = () => {
 
   useEffect(() => {
     const fetchPaymentLinkData = async () => {
-      if (!id) return;
+      if (!id || !router.isReady) return;
       
       try {
         const { data: paymentLink, error } = await supabase
@@ -94,7 +94,7 @@ const PaymentLink: React.FC = () => {
     };
 
     fetchPaymentLinkData();
-  }, [id, supabase]);
+  }, [id, router.isReady, supabase]);
 
   const handleCopyPaymentLink = () => {
     const url = `${window.location.origin}/payment-link/${id}`;
@@ -340,5 +340,19 @@ const PaymentLink: React.FC = () => {
     </div>
   );
 };
+
+export async function getStaticPaths() {
+  return {
+    paths: [],
+    fallback: 'blocking'
+  };
+}
+
+export async function getStaticProps() {
+  return {
+    props: {},
+    revalidate: 1
+  };
+}
 
 export default PaymentLink;

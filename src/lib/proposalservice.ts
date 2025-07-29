@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from '@/lib/serverEnv';
+import { Resend } from 'resend';
 
 // Load environment variables
 loadServerEnvironment();
@@ -8,6 +9,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export interface CreateProposalParams {
   title: string;
@@ -195,11 +198,23 @@ export async function createProposal(params: CreateProposalParams): Promise<Crea
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
     const proposalLink = `${baseUrl}/proposal/${data.id}`;
 
-    // TODO: Send email if recipientEmail is provided
+    // Send email if recipientEmail is provided
     if (recipientEmail) {
       try {
-        // Email sending logic would go here
-        console.log(`Proposal email would be sent to ${recipientEmail} for proposal ${proposalLink}`);
+        await sendProposalEmail({
+          recipientEmail,
+          title,
+          description,
+          amount,
+          token,
+          network,
+          proposalLink,
+          freelancerName: userName,
+          deadline,
+          deliverables,
+          milestones
+        });
+        console.log(`Proposal email sent to ${recipientEmail}`);
       } catch (emailError) {
         console.error('Email sending failed:', emailError);
         // Don't fail the request if email fails, just log it
@@ -218,5 +233,136 @@ export async function createProposal(params: CreateProposalParams): Promise<Crea
       success: false,
       error: 'Internal server error'
     };
+  }
+}
+
+interface SendProposalEmailParams {
+  recipientEmail: string;
+  title: string;
+  description: string;
+  amount?: number;
+  token?: string;
+  network?: string;
+  proposalLink: string;
+  freelancerName: string;
+  deadline?: string;
+  deliverables?: string[];
+  milestones?: Array<{
+    title: string;
+    description: string;
+    amount?: number;
+    dueDate?: string;
+  }>;
+}
+
+async function sendProposalEmail(params: SendProposalEmailParams): Promise<void> {
+  const { recipientEmail, title, description, amount, token, network, proposalLink, freelancerName, deadline, deliverables, milestones } = params;
+
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is not configured');
+  }
+
+  // Get user data for personalized sender email
+  const { data: userData } = await supabase
+    .from('users')
+    .select('email, name')
+    .eq('name', freelancerName)
+    .single();
+
+  const senderEmail = userData?.email || 'noreply@hedwigbot.xyz';
+  const displayName = userData?.name || freelancerName;
+
+  const deliverablesHtml = deliverables && deliverables.length > 0 
+    ? `<div class="section">
+         <h4>Deliverables:</h4>
+         <ul>${deliverables.map(item => `<li>${item}</li>`).join('')}</ul>
+       </div>`
+    : '';
+
+  const milestonesHtml = milestones && milestones.length > 0
+    ? `<div class="section">
+         <h4>Milestones:</h4>
+         ${milestones.map(milestone => `
+           <div class="milestone">
+             <strong>${milestone.title}</strong>
+             <p>${milestone.description}</p>
+             ${milestone.amount ? `<p>Amount: ${milestone.amount} ${token || 'USD'}</p>` : ''}
+             ${milestone.dueDate ? `<p>Due: ${new Date(milestone.dueDate).toLocaleDateString()}</p>` : ''}
+           </div>
+         `).join('')}
+       </div>`
+    : '';
+
+  const emailHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Project Proposal: ${title}</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .proposal-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #6f42c1; }
+        .section { margin: 15px 0; }
+        .milestone { background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 5px; border-left: 3px solid #6f42c1; }
+        .button { display: inline-block; background: #6f42c1; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
+        .security-notice { background: #e7e3ff; border: 1px solid #d1c4e9; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>📋 Project Proposal</h1>
+        <h2>${title}</h2>
+        <p>Proposal from ${displayName}</p>
+      </div>
+      
+      <div class="content">
+        <div class="proposal-details">
+          <h3>Proposal Details</h3>
+          <p><strong>From:</strong> ${displayName} (${senderEmail})</p>
+          <p><strong>Project:</strong> ${title}</p>
+          <div class="section">
+            <h4>Description:</h4>
+            <p>${description}</p>
+          </div>
+          ${amount && token ? `<p><strong>Budget:</strong> ${amount} ${token.toUpperCase()}</p>` : ''}
+          ${network ? `<p><strong>Network:</strong> ${network.toUpperCase()}</p>` : ''}
+          ${deadline ? `<p><strong>Deadline:</strong> ${new Date(deadline).toLocaleDateString()}</p>` : ''}
+          ${deliverablesHtml}
+          ${milestonesHtml}
+        </div>
+        
+        <div class="security-notice">
+          <p><strong>📋 Professional Proposal:</strong> This is an official project proposal. Please review all details carefully before proceeding.</p>
+        </div>
+        
+        <div style="text-align: center;">
+          <a href="${proposalLink}" class="button">View Full Proposal</a>
+        </div>
+        
+        <p>If the button doesn't work, copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; background: #f0f0f0; padding: 10px; border-radius: 5px;">${proposalLink}</p>
+      </div>
+      
+      <div class="footer">
+        <p>This proposal was sent via Hedwig Bot</p>
+        <p>If you have any questions about this proposal, please contact ${displayName} directly.</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const result = await resend.emails.send({
+    from: `${displayName} <${senderEmail}>`,
+    to: recipientEmail,
+    subject: `Project Proposal: ${title}`,
+    html: emailHtml
+  });
+
+  if (result.error) {
+    throw new Error(`Failed to send email: ${result.error.message}`);
   }
 }

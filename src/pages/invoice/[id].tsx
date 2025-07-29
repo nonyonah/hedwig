@@ -53,7 +53,7 @@ const Invoice: React.FC = () => {
 
   useEffect(() => {
     const fetchInvoiceData = async () => {
-      if (!id) return;
+      if (!id || !router.isReady) return;
       
       try {
         const { data: invoice, error } = await supabase
@@ -111,7 +111,7 @@ const Invoice: React.FC = () => {
     };
 
     fetchInvoiceData();
-  }, [id, supabase]);
+  }, [id, router.isReady, supabase]);
 
   const handleCopyInvoiceUrl = () => {
     const url = `${window.location.origin}/invoice/${id}`;
@@ -351,5 +351,19 @@ const Invoice: React.FC = () => {
     </div>
   );
 };
+
+export async function getStaticPaths() {
+  return {
+    paths: [],
+    fallback: 'blocking'
+  };
+}
+
+export async function getStaticProps() {
+  return {
+    props: {},
+    revalidate: 1
+  };
+}
 
 export default Invoice;

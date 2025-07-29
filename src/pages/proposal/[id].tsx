@@ -58,7 +58,7 @@ const Proposal: React.FC = () => {
 
   useEffect(() => {
     const fetchProposalData = async () => {
-      if (!id) return;
+      if (!id || !router.isReady) return;
       
       try {
         const { data: proposal, error } = await supabase
@@ -135,7 +135,7 @@ const Proposal: React.FC = () => {
     };
 
     fetchProposalData();
-  }, [id, supabase]);
+  }, [id, router.isReady, supabase]);
 
   const handleCopyProposalUrl = () => {
     const url = `${window.location.origin}/proposal/${id}`;
@@ -433,5 +433,19 @@ const Proposal: React.FC = () => {
     </div>
   );
 };
+
+export async function getStaticPaths() {
+  return {
+    paths: [],
+    fallback: 'blocking'
+  };
+}
+
+export async function getStaticProps() {
+  return {
+    props: {},
+    revalidate: 1
+  };
+}
 
 export default Proposal;
