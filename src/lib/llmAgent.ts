@@ -80,6 +80,8 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "send me a payment link", "I need a payment link"
    - "request money", "ask for payment"
    - Simple payment requests without detailed billing information
+   - NEVER ask for clarification - proceed with creating payment link and prompt for missing details
+   - Even simple requests like "create payment link" should use this intent
 
 2. INVOICE REQUESTS: Always use "create_invoice" intent for:
    - "invoice", "create invoice", "generate invoice", "send invoice"
@@ -88,8 +90,19 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "invoice for services", "invoice for project"
    - "detailed invoice", "itemized invoice"
    - Any request for formal invoicing with professional formatting
+   - NEVER ask for clarification - proceed with creating invoice and prompt for missing details
+   - Even simple requests like "create invoice" should use this intent
 
-3. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
+3. PROPOSAL REQUESTS: Always use "create_proposal" intent for:
+   - "proposal", "create proposal", "generate proposal", "draft proposal"
+   - "project proposal", "proposal for", "need a proposal"
+   - "quote", "estimate", "project quote", "service quote"
+   - "proposal for web development", "mobile app proposal", "design proposal"
+   - Any request to create or generate a project proposal
+   - NEVER ask for clarification - proceed with creating proposal and prompt for missing details
+   - Even simple requests like "create proposal" should use this intent
+
+4. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
    - "wallet address", "my address", "show address", "view address"
    - "what is my address", "what are my addresses", "wallet addresses"
    - "deposit", "receive", "how to deposit", "where to send"
@@ -168,6 +181,7 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "quote", "estimate", "project quote", "service quote"
    - "proposal for web development", "mobile app proposal", "design proposal"
    - Any request to create or generate a project proposal
+   - NEVER ask for clarification - proceed with creating proposal and prompt for missing details
 
 10. SEND PROPOSAL REQUESTS: Always use "send_proposal" intent for:
     - "send proposal", "email proposal", "send proposal to client"

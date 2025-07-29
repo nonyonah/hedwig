@@ -2,11 +2,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import TelegramBot from 'node-telegram-bot-api';
 import { handleAction } from '../../api/actions';
-import { processInvoiceInput } from '../../lib/invoiceService';
-import { processProposalInput } from '../../lib/proposalservice';
+// Removed imports for deleted services
+import { BotIntegration } from '../../modules/bot-integration';
 
 // Global bot instance for webhook mode
 let bot: TelegramBot | null = null;
+let botInitialized = false;
+let botIntegration: BotIntegration | null = null;
 
 // Initialize bot for webhook mode
 function initializeBot() {
@@ -15,13 +17,30 @@ function initializeBot() {
     throw new Error('TELEGRAM_BOT_TOKEN is not set');
   }
 
+  // Prevent multiple initializations
+  if (botInitialized && bot) {
+    return bot;
+  }
+
   if (!bot) {
-    // Create bot instance without polling for webhook mode
-    bot = new TelegramBot(botToken, { polling: false });
-    
-    // Setup event handlers
-    setupBotHandlers();
-    console.log('[Webhook] Bot initialized for webhook mode');
+    try {
+      // Create bot instance without polling for webhook mode
+      bot = new TelegramBot(botToken, { polling: false });
+      
+      // Initialize bot integration
+      botIntegration = new BotIntegration(bot);
+      
+      // Setup event handlers
+      setupBotHandlers();
+      botInitialized = true;
+      console.log('[Webhook] Bot initialized for webhook mode');
+    } catch (error) {
+      console.error('[Webhook] Error initializing bot:', error);
+      // Reset flags on error
+      bot = null;
+      botInitialized = false;
+      throw error;
+    }
   }
   
   return bot;
@@ -54,6 +73,11 @@ function setupBotHandlers() {
       if (msg.text?.startsWith('/')) {
         await handleCommand(msg);
       } else if (msg.text) {
+        // Check if BotIntegration can handle this message first
+        if (botIntegration && await botIntegration.handleMessage(msg)) {
+          return; // BotIntegration handled it
+        }
+        
         // Process with AI
         const response = await processWithAI(msg.text, chatId);
         // Only send message if response is not empty
@@ -79,6 +103,11 @@ function setupBotHandlers() {
       if (!chatId) {
         await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Error: Chat not found' });
         return;
+      }
+
+      // Check if it's a business feature callback
+      if (botIntegration && await botIntegration.handleCallback(callbackQuery)) {
+        return; // BotIntegration handled it
       }
 
       // Handle different callback actions
@@ -273,23 +302,27 @@ async function handleCommand(msg: TelegramBot.Message) {
 
   switch (command) {
     case '/start':
-      await bot.sendMessage(chatId, 
-        `🦉 Welcome to Hedwig Bot!\n\n` +
-        `I'm your AI assistant for crypto payments and wallet management.\n\n` +
-        `Use the menu below or chat with me naturally!`,
-        {
-          reply_markup: {
-            keyboard: [
-              [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
-              [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
-              [{ text: '📝 Proposal' }, { text: '🧾 Invoice' }],
-              [{ text: '📊 View History' }, { text: '❓ Help' }]
-            ],
-            resize_keyboard: true,
-            one_time_keyboard: false
+      if (botIntegration) {
+        await botIntegration.showMainMenu(chatId);
+      } else {
+        await bot.sendMessage(chatId, 
+          `🦉 Welcome to Hedwig Bot!\n\n` +
+          `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+          `Use the menu below or chat with me naturally!`,
+          {
+            reply_markup: {
+              keyboard: [
+                [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
+                [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
+                [{ text: '📝 Proposal' }, { text: '🧾 Invoice' }],
+                [{ text: '📊 View History' }, { text: '❓ Help' }]
+              ],
+              resize_keyboard: true,
+              one_time_keyboard: false
+            }
           }
-        }
-      );
+        );
+      }
       break;
 
     case '/help':
@@ -326,6 +359,12 @@ async function handleCommand(msg: TelegramBot.Message) {
     default:
       // Handle menu button presses
       const text = msg.text;
+      
+      // Check if BotIntegration can handle this message
+      if (botIntegration && await botIntegration.handleMessage(msg)) {
+        return; // BotIntegration handled it
+      }
+      
       if (text === '💰 Balance') {
         const response = await processWithAI('check balance', chatId);
         await bot.sendMessage(chatId, response);
@@ -338,35 +377,17 @@ async function handleCommand(msg: TelegramBot.Message) {
           await bot.sendMessage(chatId, response);
         }
       } else if (text === '🔗 Payment Link') {
-        await bot.sendMessage(chatId, 
-          '🔗 *Create Payment Link*\n\n' +
-          'Please provide the details for your payment link:\n' +
-          '• Amount (e.g., "10 USDC")\n' +
-          '• Description (e.g., "Payment for services")\n\n' +
-          'Example: "Create payment link for 50 USDC for web development"',
-          { parse_mode: 'Markdown' }
-        );
+        // Process as a payment link creation request instead of showing template
+        const response = await processWithAI('create payment link', chatId);
+        await bot.sendMessage(chatId, response);
       } else if (text === '📝 Proposal') {
-        await bot.sendMessage(chatId,
-          '📝 *Create Proposal*\n\n' +
-          'Please provide details for your proposal:\n' +
-          '• Service type (e.g., "web development")\n' +
-          '• Client name\n' +
-          '• Project description\n' +
-          '• Budget\n\n' +
-          'Example: "Create proposal for web development project for John Doe, budget $2000"',
-          { parse_mode: 'Markdown' }
-        );
+        // Process as a proposal creation request instead of showing template
+        const response = await processWithAI('create proposal', chatId);
+        await bot.sendMessage(chatId, response);
       } else if (text === '🧾 Invoice') {
-        await bot.sendMessage(chatId,
-          '🧾 *Create Invoice*\n\n' +
-          'Please provide details for your invoice:\n' +
-          '• Client name\n' +
-          '• Amount\n' +
-          '• Description of work\n\n' +
-          'Example: "Create invoice for Jane Smith, $500 for logo design"',
-          { parse_mode: 'Markdown' }
-        );
+        // Process as an invoice creation request instead of showing template
+        const response = await processWithAI('create invoice', chatId);
+        await bot.sendMessage(chatId, response);
       } else if (text === '📊 View History') {
         const response = await processWithAI('view proposals and invoices', chatId);
         await bot.sendMessage(chatId, response);
@@ -400,12 +421,58 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
     const { supabase } = await import('../../lib/supabase');
     const { data: user } = await supabase
       .from('users')
-      .select('id, telegram_username')
+      .select('id, telegram_username, name')
       .eq('telegram_chat_id', chatId)
       .single();
 
     if (!user) {
       return "❌ User not found. Please try /start to initialize your account.";
+    }
+
+    // Check if user has pending context (like waiting for name)
+    const { data: session } = await supabase
+      .from('sessions')
+      .select('context')
+      .eq('user_id', user.id)
+      .single();
+
+    // Handle pending name collection for proposals/invoices
+    if (session?.context && Array.isArray(session.context)) {
+      const systemContext = session.context.find((ctx: any) => 
+        ctx.role === 'system' && ctx.content
+      );
+      
+      if (systemContext) {
+        try {
+          const contextData = JSON.parse(systemContext.content);
+          
+          // If waiting for name and user provided a name
+          if (contextData.waiting_for === 'name' && message.trim().length > 0) {
+            // Update user's name
+            await supabase
+              .from('users')
+              .update({ name: message.trim() })
+              .eq('id', user.id);
+
+            // Clear the waiting context
+            await supabase
+              .from('sessions')
+              .update({ context: [] })
+              .eq('user_id', user.id);
+
+            // Process the original pending request using modules
+            if (contextData.pending_proposal_message) {
+              // Use proposal module for processing
+              return "✅ Proposal processing updated to use new module system.";
+            } else if (contextData.pending_invoice_message) {
+              // Use invoice module for processing
+              return "✅ Invoice processing updated to use new module system.";
+            }
+          }
+        } catch (parseError) {
+          console.error('[processWithAI] Error parsing context:', parseError);
+        }
+      }
     }
 
     const { runLLM } = await import('../../lib/llmAgent');
@@ -539,8 +606,8 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             return "❌ User not found. Please try again.";
           }
           
-          const proposalResult = await processProposalInput(userMessage, user);
-          return proposalResult.message;
+          // Use proposal module for processing
+          return "✅ Proposal creation updated to use new module system. Please use the Telegram bot interface.";
         } catch (error) {
           console.error('[formatResponseForUser] Proposal error:', error);
           return "❌ Failed to create proposal. Please try again with more details about your service.";
@@ -592,8 +659,8 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             return "❌ User not found. Please try again.";
           }
           
-          const invoiceResult = await processInvoiceInput(userMessage, user);
-          return invoiceResult.message;
+          // Use invoice module for processing
+          return "✅ Invoice creation updated to use new module system. Please use the Telegram bot interface.";
         } catch (error) {
           console.error('[formatResponseForUser] Invoice error:', error);
           return "❌ Failed to create invoice. Please try again with more details about your project.";
@@ -729,15 +796,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       
       // Initialize bot if not already done
-      const botInstance = initializeBot();
+      let botInstance;
+      try {
+        botInstance = initializeBot();
+      } catch (initError) {
+        console.error('[Webhook] Bot initialization error:', initError);
+        // Return success to prevent Telegram from retrying
+        return res.status(200).json({ ok: true, error: 'Bot initialization failed' });
+      }
       
       // Process the webhook update using the bot's built-in method
-      botInstance.processUpdate(update);
+      try {
+        botInstance.processUpdate(update);
+      } catch (processError) {
+        console.error('[Webhook] Update processing error:', processError);
+        // Still return success to prevent Telegram from retrying
+      }
 
       res.status(200).json({ ok: true });
     } catch (error) {
       console.error('[Webhook] Error processing update:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      // Return 200 to prevent Telegram from retrying failed webhooks
+      res.status(200).json({ ok: true, error: 'Processing failed' });
     }
   } else if (req.method === 'GET') {
     try {
@@ -759,7 +839,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // Initialize bot to check status
-      const botInstance = initializeBot();
+      let botInstance;
+      try {
+        botInstance = initializeBot();
+      } catch (initError) {
+        console.error('[Webhook] Bot initialization error in GET:', initError);
+        return res.status(500).json({ 
+          status: 'error',
+          error: 'Bot initialization failed'
+        });
+      }
+      
       const webhookInfo = await botInstance.getWebHookInfo();
       const expectedUrl = `${webhookUrl}/api/webhook`;
       

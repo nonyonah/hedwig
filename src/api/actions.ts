@@ -2,14 +2,7 @@ import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transf
 import { createClient } from "@supabase/supabase-js";
 import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from '../lib/earningsService';
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
-import { 
-  processProposalInput, 
-  getProposal, 
-  getUserProposals, 
-  saveProposal,
-  type ProposalData 
-} from '../lib/proposalservice';
-import { sendProposalEmail, generatePDF } from '../lib/proposalPDFService';
+// Proposal service imports removed - using new module system
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -579,6 +572,9 @@ export async function handleAction(
     case "swap":
       return await handleSwap(params, userId);
     
+    case "create_payment_link":
+      return await handleCreatePaymentLink(params, userId);
+    
     case "earnings":
       try {
         const summary = await getEarningsSummary({ walletAddress: userId });
@@ -601,6 +597,7 @@ export async function handleAction(
               "• `balance` - Check wallet balances\n" +
               "• `address` - Get wallet addresses\n" +
               "• `earnings` - View earnings summary\n" +
+              "• `create payment link` - Create payment links\n" +
               "• `help` - Show this help message\n\n" +
               "More features coming soon for Telegram!"
       };
@@ -895,6 +892,176 @@ async function handleSend(params: ActionParams, userId: string) {
     console.error('[handleSend] Error:', error);
     return {
       text: "❌ Failed to process send request. Please try again later."
+    };
+  }
+}
+
+async function handleCreatePaymentLink(params: ActionParams, userId: string) {
+  try {
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('telegram_username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[handleCreatePaymentLink] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+      
+      actualUserId = user.id;
+    }
+
+    // Get user wallets and user info
+    const [walletsResult, userResult] = await Promise.all([
+      supabase.from("wallets").select("*").eq("user_id", actualUserId),
+      supabase.from("users").select("name, email").eq("id", actualUserId).single()
+    ]);
+
+    const { data: wallets } = walletsResult;
+    const { data: user } = userResult;
+
+    if (!wallets || wallets.length === 0) {
+      return {
+        text: "You don't have any wallets yet. Type 'create wallet' to get started!"
+      };
+    }
+
+    // Find EVM wallet (payment links currently support EVM chains)
+    const evmWallet = wallets.find(w => w.chain === 'evm');
+    if (!evmWallet) {
+      return {
+        text: "You need an EVM wallet to create payment links. Please create a wallet first."
+      };
+    }
+
+    // Extract parameters from the request
+    const { amount, token, network, recipient_email, for: paymentReason } = params;
+
+    // Check if we have all required information
+    if (!amount || !token || !paymentReason) {
+      return {
+        text: "💳 **Create Payment Link**\n\n" +
+              "Please provide the following information:\n\n" +
+              "**Required Details:**\n" +
+              "• **Amount & Token**: e.g., `100 USDC`, `0.5 ETH`\n" +
+              "• **Purpose**: What the payment is for\n" +
+              "• **Network** (optional): `base`, `ethereum`, `polygon`\n" +
+              "• **Recipient Email** (optional): To send the link via email\n\n" +
+              "**Example Messages:**\n" +
+              "• `Create payment link for 100 USDC for web development`\n" +
+              "• `Payment link 0.5 ETH for consulting services`\n" +
+              "• `Link for 50 USDT for design work, send to client@example.com`\n\n" +
+              "**Supported Tokens:**\n" +
+              "• ETH, USDC, USDT, DAI, WETH\n" +
+              "• MATIC, ARB, OP\n\n" +
+              "💡 **Tip**: Include all details in one message for faster processing!"
+      };
+    }
+
+    // Set default values
+    const selectedNetwork = network?.toLowerCase() || 'base';
+    const selectedToken = token?.toUpperCase() || 'USDC';
+    const userName = user?.name || 'Hedwig User';
+
+    // Validate network and token
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-alfajores'];
+    const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP'];
+
+    if (!supportedNetworks.includes(selectedNetwork)) {
+      return {
+        text: `❌ Unsupported network: ${selectedNetwork}\n\nSupported networks: ${supportedNetworks.join(', ')}`
+      };
+    }
+
+    if (!supportedTokens.includes(selectedToken)) {
+      return {
+        text: `❌ Unsupported token: ${selectedToken}\n\nSupported tokens: ${supportedTokens.join(', ')}`
+      };
+    }
+
+    try {
+      // Call the existing payment link API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz'}/api/create-payment-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: parseFloat(amount),
+          token: selectedToken,
+          network: selectedNetwork,
+          walletAddress: evmWallet.address,
+          userName: userName,
+          for: paymentReason,
+          recipientEmail: recipient_email
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to create payment link');
+      }
+
+      // Format success message
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+      const paymentUrl = `${baseUrl}/pay/${result.id}`;
+      
+      let successMessage = `✅ **Payment Link Created Successfully!** 💳\n\n` +
+                          `💰 **Amount**: ${amount} ${selectedToken}\n` +
+                          `🌐 **Network**: ${selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)}\n` +
+                          `💼 **For**: ${paymentReason}\n` +
+                          `👛 **Wallet**: \`${evmWallet.address.slice(0, 8)}...${evmWallet.address.slice(-6)}\`\n\n` +
+                          `🔗 **Payment Link**: ${paymentUrl}\n\n`;
+
+      if (recipient_email) {
+        successMessage += `📧 **Email sent to**: ${recipient_email}\n\n`;
+      }
+
+      successMessage += `💡 **Share this link** with anyone who needs to pay you!\n` +
+                       `⏰ **Link expires** in 7 days\n\n` +
+                       `You'll be notified when payments are received.`;
+
+      return {
+        text: successMessage,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "🔗 Open Payment Link", url: paymentUrl },
+              { text: "📊 View Earnings", callback_data: "view_earnings" }
+            ]
+          ]
+        }
+      };
+
+    } catch (error) {
+      console.error('[handleCreatePaymentLink] API call error:', error);
+      return {
+        text: `❌ **Failed to create payment link**\n\n` +
+              `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
+              `Please check:\n` +
+              `• Your wallet is properly set up\n` +
+              `• The amount and token are valid\n` +
+              `• The network is supported\n\n` +
+              `Try again or contact support if the issue persists.`
+      };
+    }
+
+  } catch (error) {
+    console.error('[handleCreatePaymentLink] Error:', error);
+    return {
+      text: "❌ Failed to process payment link request. Please try again later."
     };
   }
 }
