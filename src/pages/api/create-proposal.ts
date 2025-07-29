@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { createProposal, CreateProposalParams, CreateProposalResult } from '@/lib/proposalService';
+import { createProposal, CreateProposalParams, CreateProposalResult } from '@/lib/proposalservice';
 
 export default async function handler(
   req: NextApiRequest,

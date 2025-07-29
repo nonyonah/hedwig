@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { listProposals, ProposalListItem } from '../../lib/proposalService';
+import { listProposals, ProposalListItem } from '../../lib/proposalservice';
 
 interface ListProposalsRequest {
   userIdentifier?: string;
