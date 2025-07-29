@@ -69,9 +69,7 @@ export default function ProposalPage() {
     try {
       const result = await pay({
         to: proposal.wallet_address,
-        amount: proposal.budget.toString(),
-        token: proposal.currency,
-        network: proposal.blockchain
+        amount: proposal.budget.toString()
       });
 
       if (result.status === 'success') {

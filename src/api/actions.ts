@@ -993,7 +993,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
 
     try {
       // Use direct payment link service
-      const { createPaymentLink } = await import('@/lib/paymentLinkService');
+      const { createPaymentLink } = await import('@/lib/paymentlinkservice');
       
       const result = await createPaymentLink({
         amount: parseFloat(amount),

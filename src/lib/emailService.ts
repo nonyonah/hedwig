@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 interface EmailAttachment {
   filename: string;
@@ -12,55 +12,34 @@ interface EmailOptions {
   attachments?: EmailAttachment[];
 }
 
-// Create transporter based on environment
-const createTransporter = () => {
-  if (process.env.EMAIL_SERVICE === 'gmail') {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
-  } else if (process.env.EMAIL_SERVICE === 'smtp') {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD
-      }
-    });
-  } else {
-    // Default to Gmail
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
-  }
-};
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendEmailWithAttachment(options: EmailOptions): Promise<boolean> {
   try {
-    const transporter = createTransporter();
-    
-    const mailOptions = {
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    const emailData: any = {
+      from: process.env.EMAIL_FROM || 'noreply@hedwig.app',
       to: options.to,
       subject: options.subject,
       html: options.html,
-      attachments: options.attachments?.map(att => ({
-        filename: att.filename,
-        content: att.content
-      }))
     };
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully:', result.messageId);
+    // Add attachments if provided
+    if (options.attachments && options.attachments.length > 0) {
+      emailData.attachments = options.attachments.map(att => ({
+        filename: att.filename,
+        content: att.content,
+      }));
+    }
+
+    const result = await resend.emails.send(emailData);
+    
+    if (result.error) {
+      console.error('Error sending email:', result.error);
+      return false;
+    }
+    
+    console.log('Email sent successfully:', result.data?.id);
     return true;
   } catch (error) {
     console.error('Error sending email:', error);

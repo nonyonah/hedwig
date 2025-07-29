@@ -66,9 +66,7 @@ export default function InvoicePage() {
     try {
       const result = await pay({
         to: invoice.wallet_address,
-        amount: invoice.amount.toString(),
-        token: invoice.currency,
-        network: invoice.blockchain
+        amount: invoice.amount.toString()
       });
 
       if (result.status === 'success') {
