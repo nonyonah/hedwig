@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Download, Share2, Wallet, Building, CheckCircle, Calendar, DollarSign } from 'lucide-react';
-import { generateInvoicePDF } from '@/modules/pdf-generator';
-import { createClient } from '@supabase/supabase-js';
+import { Separator } from '@/components/ui/separator';
+import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface InvoiceItem {
+  id: string;
   description: string;
   quantity: number;
   rate: number;
@@ -20,350 +21,344 @@ interface InvoiceData {
   status: 'draft' | 'sent' | 'paid' | 'overdue';
   issueDate: string;
   dueDate: string;
-  merchant: {
+  fromCompany: {
     name: string;
-    email: string;
     address: string;
-    logo?: string;
+    email: string;
+    phone: string;
   };
-  client: {
+  toCompany: {
     name: string;
-    email: string;
     address: string;
+    email: string;
+    phone: string;
   };
   items: InvoiceItem[];
   subtotal: number;
   tax: number;
   total: number;
-  notes?: string;
-  paymentMethods: string[];
+  notes: string;
+  paymentTerms: string;
 }
 
-const Invoice: React.FC = () => {
+export default function InvoicePage() {
   const router = useRouter();
   const { id } = router.query;
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank'>('crypto');
 
-  // Initialize Supabase client
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
+  // Sample data - replace with actual API call
   useEffect(() => {
-    const fetchInvoiceData = async () => {
-      if (!id || !router.isReady) return;
-      
-      try {
-        const { data: invoice, error } = await supabase
-          .from('invoices')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        if (error) {
-          console.error('Error fetching invoice:', error);
-          setLoading(false);
-          return;
-        }
-
-        if (invoice) {
-          // Transform database data to match our interface
-          const transformedData: InvoiceData = {
-            id: invoice.id,
-            invoiceNumber: invoice.invoice_number || `INV-${invoice.id.slice(0, 8)}`,
-            status: invoice.status || 'draft',
-            issueDate: new Date(invoice.date_created).toISOString().split('T')[0],
-            dueDate: invoice.due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            merchant: {
-              name: invoice.freelancer_name,
-              email: invoice.freelancer_email,
-              address: 'Address not specified'
+    if (id) {
+      // Simulate API call
+      setTimeout(() => {
+        setInvoiceData({
+          id: id as string,
+          invoiceNumber: 'INV-2024-001',
+          status: 'sent',
+          issueDate: '2024-01-15',
+          dueDate: '2024-02-15',
+          fromCompany: {
+            name: 'Acme Corp',
+            address: '123 Business St, Suite 100\nNew York, NY 10001',
+            email: 'billing@acmecorp.com',
+            phone: '+1 (555) 123-4567'
+          },
+          toCompany: {
+            name: 'Client Company LLC',
+            address: '456 Client Ave\nLos Angeles, CA 90210',
+            email: 'accounts@clientco.com',
+            phone: '+1 (555) 987-6543'
+          },
+          items: [
+            {
+              id: '1',
+              description: 'Website Design & Development',
+              quantity: 1,
+              rate: 2500.00,
+              amount: 2500.00
             },
-            client: {
-              name: invoice.client_name,
-              email: invoice.client_email,
-              address: 'Address not specified'
+            {
+              id: '2',
+              description: 'Content Management System Setup',
+              quantity: 1,
+              rate: 800.00,
+              amount: 800.00
             },
-            items: [
-              {
-                description: invoice.project_description,
-                quantity: 1,
-                rate: invoice.amount,
-                amount: invoice.amount
-              }
-            ],
-            subtotal: invoice.amount,
-            tax: 0,
-            total: invoice.amount,
-            notes: invoice.additional_notes || 'Payment is due within 30 days.',
-            paymentMethods: ['crypto', 'bank']
-          };
-          
-          setInvoiceData(transformedData);
-        }
-      } catch (error) {
-        console.error('Error fetching invoice:', error);
-      } finally {
+            {
+              id: '3',
+              description: 'SEO Optimization',
+              quantity: 1,
+              rate: 500.00,
+              amount: 500.00
+            }
+          ],
+          subtotal: 3800.00,
+          tax: 304.00,
+          total: 4104.00,
+          notes: 'Thank you for your business! Payment is due within 30 days.',
+          paymentTerms: 'Net 30'
+        });
         setLoading(false);
-      }
-    };
-
-    fetchInvoiceData();
-  }, [id, router.isReady, supabase]);
-
-  const handleCopyInvoiceUrl = () => {
-    const url = `${window.location.origin}/invoice/${id}`;
-    navigator.clipboard.writeText(url);
-    // You could add a toast notification here
-  };
-
-  const handleDownloadPDF = async () => {
-    if (!invoiceData) return;
-    
-    try {
-      // Convert to the format expected by generateInvoicePDF
-      const invoiceForPDF = {
-        id: invoiceData.id,
-        user_id: 'sample-user-id', // In real implementation, get from auth
-        invoice_number: invoiceData.invoiceNumber,
-        due_date: invoiceData.dueDate,
-        freelancer_name: invoiceData.merchant.name,
-        freelancer_email: invoiceData.merchant.email,
-        client_name: invoiceData.client.name,
-        client_email: invoiceData.client.email,
-        project_description: invoiceData.items.map(item => item.description).join(', '),
-        amount: invoiceData.total,
-        currency: 'USD' as 'USD' | 'NGN',
-        deliverables: invoiceData.notes || '',
-        status: 'sent' as const,
-        payment_methods: {
-          usdc_base: 'sample-address',
-          flutterwave: true
-        }
-      };
-      
-      const pdfBuffer = await generateInvoicePDF(invoiceForPDF);
-      const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `invoice-${invoiceData.invoiceNumber}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
+      }, 1000);
     }
+  }, [id]);
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success('Invoice link copied to clipboard');
   };
 
-  const handlePayment = (method: 'crypto' | 'bank') => {
-    // Redirect to payment flow
-    router.push(`/payment?invoice=${id}&method=${method}`);
+  const handleDownloadPDF = () => {
+    // Implement PDF download logic
+    toast.success('PDF download started');
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid': return 'bg-green-100 text-green-800';
-      case 'sent': return 'bg-blue-100 text-blue-800';
-      case 'overdue': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const handleSendInvoice = () => {
+    // Implement send invoice logic
+    toast.success('Invoice sent successfully');
+  };
+
+  const handlePayment = () => {
+    // Implement payment logic
+    toast.info('Redirecting to payment...');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading invoice...</p>
-        </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   if (!invoiceData) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-foreground mb-2">Invoice Not Found</h1>
-          <p className="text-muted-foreground">The invoice you're looking for doesn't exist.</p>
-        </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Invoice Not Found</h2>
+              <p className="text-gray-600">The invoice you're looking for doesn't exist.</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
+  const statusColor = {
+    draft: 'bg-gray-100 text-gray-800',
+    sent: 'bg-blue-100 text-blue-800',
+    paid: 'bg-green-100 text-green-800',
+    overdue: 'bg-red-100 text-red-800'
+  };
+
+  const isOverdue = new Date(invoiceData.dueDate) < new Date() && invoiceData.status !== 'paid';
+
   return (
-    <div className="min-h-screen bg-background py-8">
-      <div className="max-w-4xl mx-auto px-4">
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex justify-between items-start mb-8">
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Invoice</h1>
-            <p className="text-muted-foreground">Invoice #{invoiceData.invoiceNumber}</p>
+            <h1 className="text-3xl font-bold text-gray-900">Invoice</h1>
+            <p className="text-gray-600 mt-1">{invoiceData.invoiceNumber}</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleCopyInvoiceUrl}>
-              <Copy className="w-4 h-4 mr-2" />
-              Copy Link
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleDownloadPDF}>
-              <Download className="w-4 h-4 mr-2" />
-              Download PDF
-            </Button>
-            <Button variant="outline" size="sm">
-              <Share2 className="w-4 h-4 mr-2" />
-              Share
-            </Button>
+          <div className="flex items-center gap-3">
+            <Badge className={statusColor[isOverdue ? 'overdue' : invoiceData.status]}>
+              {isOverdue ? 'Overdue' : invoiceData.status.charAt(0).toUpperCase() + invoiceData.status.slice(1)}
+            </Badge>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleCopyLink}>
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Link
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDownloadPDF}>
+                <Download className="h-4 w-4 mr-2" />
+                Download PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleSendInvoice}>
+                <Send className="h-4 w-4 mr-2" />
+                Send Invoice
+              </Button>
+            </div>
           </div>
         </div>
 
-        <Card className="border border-border shadow-sm">
+        {/* Invoice Details */}
+        <Card className="mb-6">
           <CardContent className="p-8">
-            {/* Status and Dates */}
-            <div className="flex justify-between items-start mb-8">
+            {/* Header Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+              {/* From Company */}
               <div>
-                <Badge className={getStatusColor(invoiceData.status)}>
-                  {invoiceData.status.charAt(0).toUpperCase() + invoiceData.status.slice(1)}
-                </Badge>
-                <div className="mt-4 space-y-1">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Issue Date:</span>
-                    <span className="font-medium">{new Date(invoiceData.issueDate).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Due Date:</span>
-                    <span className="font-medium">{new Date(invoiceData.dueDate).toLocaleDateString()}</span>
-                  </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <Building className="h-5 w-5 mr-2" />
+                  From
+                </h3>
+                <div className="space-y-1">
+                  <p className="font-medium">{invoiceData.fromCompany.name}</p>
+                  <p className="text-gray-600 whitespace-pre-line">{invoiceData.fromCompany.address}</p>
+                  <p className="text-gray-600">{invoiceData.fromCompany.email}</p>
+                  <p className="text-gray-600">{invoiceData.fromCompany.phone}</p>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-5 h-5 text-primary" />
-                  <span className="text-2xl font-bold text-foreground">${invoiceData.total.toLocaleString()}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Total Amount</p>
-              </div>
-            </div>
 
-            {/* Party Information */}
-            <div className="grid md:grid-cols-2 gap-8 mb-8">
+              {/* To Company */}
               <div>
-                <h3 className="font-semibold text-foreground mb-3">From</h3>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p className="font-medium text-foreground">{invoiceData.merchant.name}</p>
-                  <p>{invoiceData.merchant.email}</p>
-                  <div className="whitespace-pre-line">{invoiceData.merchant.address}</div>
-                </div>
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground mb-3">To</h3>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p className="font-medium text-foreground">{invoiceData.client.name}</p>
-                  <p>{invoiceData.client.email}</p>
-                  <div className="whitespace-pre-line">{invoiceData.client.address}</div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <User className="h-5 w-5 mr-2" />
+                  Bill To
+                </h3>
+                <div className="space-y-1">
+                  <p className="font-medium">{invoiceData.toCompany.name}</p>
+                  <p className="text-gray-600 whitespace-pre-line">{invoiceData.toCompany.address}</p>
+                  <p className="text-gray-600">{invoiceData.toCompany.email}</p>
+                  <p className="text-gray-600">{invoiceData.toCompany.phone}</p>
                 </div>
               </div>
             </div>
 
-            {/* Items */}
+            {/* Invoice Info */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 mb-1">Invoice Number</h4>
+                <p className="text-lg font-semibold">{invoiceData.invoiceNumber}</p>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
+                  <Calendar className="h-4 w-4 mr-1" />
+                  Issue Date
+                </h4>
+                <p className="text-lg font-semibold">{new Date(invoiceData.issueDate).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
+                  <Calendar className="h-4 w-4 mr-1" />
+                  Due Date
+                </h4>
+                <p className="text-lg font-semibold">{new Date(invoiceData.dueDate).toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            <Separator className="my-8" />
+
+            {/* Items Table */}
             <div className="mb-8">
-              <h3 className="font-semibold text-foreground mb-4">Items</h3>
-              <div className="border border-border rounded-lg overflow-hidden">
-                <div className="bg-muted/30 px-4 py-3 grid grid-cols-12 gap-4 text-sm font-medium text-muted-foreground">
-                  <div className="col-span-6">Description</div>
-                  <div className="col-span-2 text-center">Qty</div>
-                  <div className="col-span-2 text-right">Rate</div>
-                  <div className="col-span-2 text-right">Amount</div>
-                </div>
-                {invoiceData.items.map((item, index) => (
-                  <div key={index} className="px-4 py-3 grid grid-cols-12 gap-4 text-sm border-t border-border">
-                    <div className="col-span-6 font-medium text-foreground">{item.description}</div>
-                    <div className="col-span-2 text-center text-muted-foreground">{item.quantity}</div>
-                    <div className="col-span-2 text-right text-muted-foreground">${item.rate}</div>
-                    <div className="col-span-2 text-right font-medium text-foreground">${item.amount.toLocaleString()}</div>
-                  </div>
-                ))}
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <FileText className="h-5 w-5 mr-2" />
+                Items
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-3 px-4 font-medium text-gray-500">Description</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Qty</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Rate</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-500">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceData.items.map((item) => (
+                      <tr key={item.id} className="border-b border-gray-100">
+                        <td className="py-4 px-4">
+                          <p className="font-medium text-gray-900">{item.description}</p>
+                        </td>
+                        <td className="py-4 px-4 text-right text-gray-600">{item.quantity}</td>
+                        <td className="py-4 px-4 text-right text-gray-600">${item.rate.toFixed(2)}</td>
+                        <td className="py-4 px-4 text-right font-medium">${item.amount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+            </div>
 
-              {/* Totals */}
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-medium text-foreground">${invoiceData.subtotal.toLocaleString()}</span>
+            {/* Totals */}
+            <div className="flex justify-end">
+              <div className="w-full max-w-sm space-y-2">
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="font-medium">${invoiceData.subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tax (10%)</span>
-                  <span className="font-medium text-foreground">${invoiceData.tax.toLocaleString()}</span>
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-600">Tax (8%):</span>
+                  <span className="font-medium">${invoiceData.tax.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-lg font-bold text-foreground">
-                  <span>Total</span>
-                  <span>${invoiceData.total.toLocaleString()}</span>
+                <Separator />
+                <div className="flex justify-between py-3">
+                  <span className="text-lg font-semibold">Total:</span>
+                  <span className="text-lg font-bold text-blue-600">${invoiceData.total.toFixed(2)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Payment Methods */}
-            {invoiceData.status !== "paid" && (
-              <div className="bg-muted/30 rounded-lg p-6 mb-6">
-                <h3 className="font-semibold text-foreground mb-4">Payment Options</h3>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Button
-                    variant="outline"
-                    className="h-auto p-4 flex flex-col items-center gap-3"
-                    onClick={() => handlePayment("crypto")}
-                  >
-                    <Wallet className="w-8 h-8 text-primary" />
-                    <div className="text-center">
-                      <p className="font-medium">Pay with Crypto</p>
-                      <p className="text-xs text-muted-foreground">Connect your wallet</p>
+            {/* Notes and Payment Terms */}
+            {(invoiceData.notes || invoiceData.paymentTerms) && (
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {invoiceData.notes && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500 mb-2">Notes</h4>
+                      <p className="text-gray-600">{invoiceData.notes}</p>
                     </div>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-auto p-4 flex flex-col items-center gap-3"
-                    onClick={() => handlePayment("bank")}
-                  >
-                    <Building className="w-8 h-8 text-primary" />
-                    <div className="text-center">
-                      <p className="font-medium">Bank Transfer</p>
-                      <p className="text-xs text-muted-foreground">Wire transfer or ACH</p>
+                  )}
+                  {invoiceData.paymentTerms && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500 mb-2">Payment Terms</h4>
+                      <p className="text-gray-600">{invoiceData.paymentTerms}</p>
                     </div>
-                  </Button>
+                  )}
                 </div>
-              </div>
-            )}
-
-            {/* Notes */}
-            {invoiceData.notes && (
-              <div className="border-t border-border pt-6">
-                <h3 className="font-semibold text-foreground mb-2">Notes</h3>
-                <p className="text-sm text-muted-foreground">{invoiceData.notes}</p>
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Payment Section */}
+        {invoiceData.status !== 'paid' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <DollarSign className="h-5 w-5 mr-2" />
+                Pay Invoice
+              </CardTitle>
+              <CardDescription>
+                Choose your preferred payment method to complete the payment.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <Button
+                  variant={paymentMethod === 'crypto' ? 'default' : 'outline'}
+                  className="h-20 flex flex-col items-center justify-center"
+                  onClick={() => setPaymentMethod('crypto')}
+                >
+                  <Wallet className="h-6 w-6 mb-2" />
+                  <span>Crypto Payment</span>
+                </Button>
+                <Button
+                  variant={paymentMethod === 'bank' ? 'default' : 'outline'}
+                  className="h-20 flex flex-col items-center justify-center"
+                  onClick={() => setPaymentMethod('bank')}
+                >
+                  <CreditCard className="h-6 w-6 mb-2" />
+                  <span>Bank Transfer</span>
+                </Button>
+              </div>
+
+              <div className="text-center">
+                <Button onClick={handlePayment} className="bg-blue-600 hover:bg-blue-700 px-8">
+                  Pay ${invoiceData.total.toFixed(2)} via {paymentMethod === 'crypto' ? 'Crypto' : 'Bank Transfer'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
-};
-
-export async function getStaticPaths() {
-  return {
-    paths: [],
-    fallback: 'blocking'
-  };
 }
-
-export async function getStaticProps() {
-  return {
-    props: {},
-    revalidate: 1
-  };
-}
-
-export default Invoice;

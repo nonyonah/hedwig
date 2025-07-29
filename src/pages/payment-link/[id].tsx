@@ -1,358 +1,257 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Wallet, Building, Clock, DollarSign, User, Calendar } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { Separator } from '@/components/ui/separator';
+import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield } from 'lucide-react';
+import { toast } from 'sonner';
 
-interface PaymentLinkData {
+interface PaymentData {
   id: string;
   title: string;
   description: string;
   amount: number;
   currency: string;
-  status: 'active' | 'expired' | 'paid';
+  status: 'pending' | 'completed' | 'expired';
   expiresAt: string;
+  recipientName: string;
+  recipientEmail: string;
   createdAt: string;
-  merchant: {
-    name: string;
-    email: string;
-    logo?: string;
-  };
-  paymentMethods: string[];
-  bankDetails?: {
-    accountName: string;
-    accountNumber: string;
-    routingNumber: string;
-    bankName: string;
-  };
 }
 
-const PaymentLink: React.FC = () => {
+export default function PaymentLinkPage() {
   const router = useRouter();
   const { id } = router.query;
-  const [paymentData, setPaymentData] = useState<PaymentLinkData | null>(null);
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank'>('crypto');
   const [walletConnected, setWalletConnected] = useState(false);
 
-  // Initialize Supabase client
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
+  // Sample data - replace with actual API call
   useEffect(() => {
-    const fetchPaymentLinkData = async () => {
-      if (!id || !router.isReady) return;
-      
-      try {
-        const { data: paymentLink, error } = await supabase
-          .from('payment_links')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        if (error) {
-          console.error('Error fetching payment link:', error);
-          setLoading(false);
-          return;
-        }
-
-        if (paymentLink) {
-          // Transform database data to match our interface
-          const transformedData: PaymentLinkData = {
-            id: paymentLink.id,
-            title: paymentLink.payment_reason || 'Payment Request',
-            description: paymentLink.payment_reason || 'Payment request via Hedwig',
-            amount: paymentLink.amount,
-            currency: 'USD', // Default currency, could be made dynamic
-            status: paymentLink.status === 'paid' ? 'paid' : 
-                   (paymentLink.expires_at && new Date(paymentLink.expires_at) < new Date()) ? 'expired' : 'active',
-            expiresAt: paymentLink.expires_at || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            createdAt: paymentLink.created_at,
-            merchant: {
-              name: paymentLink.user_name || 'Hedwig User',
-              email: paymentLink.recipient_email || 'user@hedwig.app'
-            },
-            paymentMethods: ['crypto', 'bank'],
-            bankDetails: {
-              accountName: paymentLink.user_name || 'Hedwig User',
-              accountNumber: '****1234',
-              routingNumber: '021000021',
-              bankName: 'Default Bank'
-            }
-          };
-          
-          setPaymentData(transformedData);
-        }
-      } catch (error) {
-        console.error('Error fetching payment link:', error);
-      } finally {
+    if (id) {
+      // Simulate API call
+      setTimeout(() => {
+        setPaymentData({
+          id: id as string,
+          title: 'Website Development Services',
+          description: 'Full-stack web development for e-commerce platform including frontend, backend, and database setup.',
+          amount: 2500.00,
+          currency: 'USD',
+          status: 'pending',
+          expiresAt: '2024-02-15T23:59:59Z',
+          recipientName: 'John Doe',
+          recipientEmail: 'john@example.com',
+          createdAt: '2024-01-15T10:30:00Z'
+        });
         setLoading(false);
-      }
-    };
+      }, 1000);
+    }
+  }, [id]);
 
-    fetchPaymentLinkData();
-  }, [id, router.isReady, supabase]);
-
-  const handleCopyPaymentLink = () => {
-    const url = `${window.location.origin}/payment-link/${id}`;
-    navigator.clipboard.writeText(url);
-    // You could add a toast notification here
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success('Payment link copied to clipboard');
   };
 
   const handleConnectWallet = () => {
     // Implement wallet connection logic
     setWalletConnected(true);
-    // You could integrate with WalletConnect or other wallet providers
-  };
-
-  const handleCryptoPayment = () => {
-    if (!walletConnected) {
-      handleConnectWallet();
-      return;
-    }
-    // Redirect to crypto payment flow
-    router.push(`/payment?link=${id}&method=crypto`);
+    toast.success('Wallet connected successfully');
   };
 
   const handleBankPayment = () => {
-    // Redirect to bank payment flow
-    router.push(`/payment?link=${id}&method=bank`);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid': return 'bg-green-100 text-green-800';
-      case 'active': return 'bg-blue-100 text-blue-800';
-      case 'expired': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const isExpired = () => {
-    if (!paymentData) return false;
-    return new Date(paymentData.expiresAt) < new Date();
-  };
-
-  const getTimeRemaining = () => {
-    if (!paymentData) return '';
-    const now = new Date();
-    const expiry = new Date(paymentData.expiresAt);
-    const diff = expiry.getTime() - now.getTime();
-    
-    if (diff <= 0) return 'Expired';
-    
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
-    if (days > 0) return `${days} day${days > 1 ? 's' : ''} remaining`;
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} remaining`;
-    return 'Less than 1 hour remaining';
+    // Implement bank payment logic
+    toast.info('Redirecting to bank payment...');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading payment link...</p>
-        </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   if (!paymentData) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-foreground mb-2">Payment Link Not Found</h1>
-          <p className="text-muted-foreground">The payment link you're looking for doesn't exist.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-background py-8">
-      <div className="max-w-2xl mx-auto px-4">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Payment Request</h1>
-          <p className="text-muted-foreground">Complete your payment securely</p>
-        </div>
-
-        <Card className="border border-border shadow-sm">
-          <CardContent className="p-8">
-            {/* Status and Amount */}
-            <div className="text-center mb-8">
-              <div className="flex justify-center items-center gap-2 mb-4">
-                <Badge className={getStatusColor(paymentData.status)}>
-                  {paymentData.status.charAt(0).toUpperCase() + paymentData.status.slice(1)}
-                </Badge>
-                {!isExpired() && paymentData.status === 'active' && (
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Clock className="w-4 h-4" />
-                    <span>{getTimeRemaining()}</span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="mb-4">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <DollarSign className="w-8 h-8 text-primary" />
-                  <span className="text-4xl font-bold text-foreground">
-                    {paymentData.amount.toLocaleString()}
-                  </span>
-                  <span className="text-2xl text-muted-foreground">{paymentData.currency}</span>
-                </div>
-                <p className="text-lg font-medium text-foreground">{paymentData.title}</p>
-                <p className="text-muted-foreground mt-2">{paymentData.description}</p>
-              </div>
-            </div>
-
-            {/* Merchant Info */}
-            <div className="bg-muted/30 rounded-lg p-4 mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                  <User className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">{paymentData.merchant.name}</p>
-                  <p className="text-sm text-muted-foreground">{paymentData.merchant.email}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Methods */}
-            {paymentData.status === 'active' && !isExpired() && (
-              <div className="space-y-4 mb-8">
-                <h3 className="font-semibold text-foreground mb-4">Choose Payment Method</h3>
-                
-                <div className="grid gap-4">
-                  {paymentData.paymentMethods.includes('crypto') && (
-                    <Button
-                      variant="outline"
-                      className="h-auto p-6 flex items-center justify-between"
-                      onClick={handleCryptoPayment}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                          <Wallet className="w-6 h-6 text-primary" />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-medium text-foreground">Pay with Crypto</p>
-                          <p className="text-sm text-muted-foreground">
-                            {walletConnected ? 'Wallet connected' : 'Connect your wallet'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Instant</p>
-                      </div>
-                    </Button>
-                  )}
-
-                  {paymentData.paymentMethods.includes('bank') && (
-                    <Button
-                      variant="outline"
-                      className="h-auto p-6 flex items-center justify-between"
-                      onClick={handleBankPayment}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                          <Building className="w-6 h-6 text-primary" />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-medium text-foreground">Bank Transfer</p>
-                          <p className="text-sm text-muted-foreground">Wire transfer or ACH</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">1-3 days</p>
-                      </div>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Bank Transfer Details */}
-            {paymentData.bankDetails && (
-              <div className="bg-muted/30 rounded-lg p-6 mb-6">
-                <h3 className="font-semibold text-foreground mb-4">Bank Transfer Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Account Name</p>
-                    <p className="font-medium text-foreground">{paymentData.bankDetails.accountName}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Account Number</p>
-                    <p className="font-medium text-foreground">{paymentData.bankDetails.accountNumber}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Routing Number</p>
-                    <p className="font-medium text-foreground">{paymentData.bankDetails.routingNumber}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Bank Name</p>
-                    <p className="font-medium text-foreground">{paymentData.bankDetails.bankName}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Payment Info */}
-            <div className="border-t border-border pt-6 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Payment ID</span>
-                <span className="font-medium text-foreground">{paymentData.id}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Created</span>
-                <span className="font-medium text-foreground">
-                  {new Date(paymentData.createdAt).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Expires</span>
-                <span className="font-medium text-foreground">
-                  {new Date(paymentData.expiresAt).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
-
-            {/* Copy Link Button */}
-            <div className="mt-6">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleCopyPaymentLink}
-              >
-                <Copy className="w-4 h-4 mr-2" />
-                Copy Payment Link
-              </Button>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Payment Link Not Found</h2>
+              <p className="text-gray-600">The payment link you're looking for doesn't exist or has expired.</p>
             </div>
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  const isExpired = new Date(paymentData.expiresAt) < new Date();
+  const statusColor = {
+    pending: 'bg-yellow-100 text-yellow-800',
+    completed: 'bg-green-100 text-green-800',
+    expired: 'bg-red-100 text-red-800'
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Request</h1>
+          <p className="text-gray-600">Complete your payment securely</p>
+        </div>
+
+        {/* Payment Details Card */}
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xl">{paymentData.title}</CardTitle>
+              <Badge className={statusColor[isExpired ? 'expired' : paymentData.status]}>
+                {isExpired ? 'Expired' : paymentData.status.charAt(0).toUpperCase() + paymentData.status.slice(1)}
+              </Badge>
+            </div>
+            <CardDescription>{paymentData.description}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Amount */}
+              <div className="text-center py-6 bg-gray-50 rounded-lg">
+                <div className="text-3xl font-bold text-gray-900">
+                  ${paymentData.amount.toLocaleString()}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">{paymentData.currency}</div>
+              </div>
+
+              {/* Recipient Info */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-600">To:</span>
+                  <div className="font-medium">{paymentData.recipientName}</div>
+                  <div className="text-gray-600">{paymentData.recipientEmail}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Expires:</span>
+                  <div className="font-medium flex items-center">
+                    <Clock className="h-4 w-4 mr-1" />
+                    {new Date(paymentData.expiresAt).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Payment Method Selection */}
+        {!isExpired && paymentData.status === 'pending' && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Choose Payment Method</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <Button
+                  variant={paymentMethod === 'crypto' ? 'default' : 'outline'}
+                  className="h-20 flex flex-col items-center justify-center"
+                  onClick={() => setPaymentMethod('crypto')}
+                >
+                  <Wallet className="h-6 w-6 mb-2" />
+                  <span>Crypto Wallet</span>
+                </Button>
+                <Button
+                  variant={paymentMethod === 'bank' ? 'default' : 'outline'}
+                  className="h-20 flex flex-col items-center justify-center"
+                  onClick={() => setPaymentMethod('bank')}
+                >
+                  <CreditCard className="h-6 w-6 mb-2" />
+                  <span>Bank Transfer</span>
+                </Button>
+              </div>
+
+              <Separator className="my-6" />
+
+              {/* Crypto Payment */}
+              {paymentMethod === 'crypto' && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold">Pay with Crypto</h3>
+                  {!walletConnected ? (
+                    <Button onClick={handleConnectWallet} className="w-full bg-blue-600 hover:bg-blue-700">
+                      <Wallet className="h-4 w-4 mr-2" />
+                      Connect Wallet
+                    </Button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                        <span className="text-green-800">Wallet Connected</span>
+                        <Badge className="bg-green-100 text-green-800">Ready</Badge>
+                      </div>
+                      <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                        Pay ${paymentData.amount.toLocaleString()} USDC
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Bank Payment */}
+              {paymentMethod === 'bank' && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold">Bank Transfer</h3>
+                  <p className="text-sm text-gray-600">
+                    You will be redirected to complete the payment via bank transfer.
+                  </p>
+                  <Button onClick={handleBankPayment} className="w-full bg-blue-600 hover:bg-blue-700">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Proceed with Bank Transfer
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Payment Info */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Payment ID:</span>
+                <span className="font-mono">{paymentData.id}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Created:</span>
+                <span>{new Date(paymentData.createdAt).toLocaleDateString()}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Expires:</span>
+                <span>{new Date(paymentData.expiresAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Copy Link Button */}
+        <Button
+          onClick={handleCopyLink}
+          variant="outline"
+          className="w-full mb-6"
+        >
+          <Copy className="h-4 w-4 mr-2" />
+          Copy Payment Link
+        </Button>
+
+        {/* Security Notice */}
+        <div className="text-center text-sm text-gray-600">
+          <div className="flex items-center justify-center mb-2">
+            <Shield className="h-4 w-4 mr-1" />
+            <span>Secure Payment</span>
+          </div>
+          <p>Your payment is protected by end-to-end encryption</p>
+        </div>
+      </div>
     </div>
   );
-};
-
-export async function getStaticPaths() {
-  return {
-    paths: [],
-    fallback: 'blocking'
-  };
 }
-
-export async function getStaticProps() {
-  return {
-    props: {},
-    revalidate: 1
-  };
-}
-
-export default PaymentLink;
