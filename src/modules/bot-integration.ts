@@ -46,8 +46,7 @@ export class BotIntegration {
           { text: '📋 My Proposals', callback_data: 'business_proposals' }
         ],
         [
-          { text: '💰 Payment Stats', callback_data: 'business_stats' },
-          { text: '⚙️ Settings', callback_data: 'business_settings' }
+          { text: '💰 Payment Stats', callback_data: 'business_stats' }
         ],
         [
           { text: '🔙 Back to Main Menu', callback_data: 'main_menu' }

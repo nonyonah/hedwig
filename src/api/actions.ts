@@ -946,10 +946,11 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     }
 
     // Extract parameters from the request
-    const { amount, token, network, recipient_email, for: paymentReason } = params;
+    const { amount, token, network, recipient_email, for: paymentReason, description } = params;
+    const finalPaymentReason = paymentReason || description;
 
     // Check if we have all required information
-    if (!amount || !token || !paymentReason) {
+    if (!amount || !token || !finalPaymentReason) {
       return {
         text: "💳 **Create Payment Link**\n\n" +
               "Please provide the following information:\n\n" +
@@ -991,32 +992,25 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     }
 
     try {
-      // Call the existing payment link API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz'}/api/create-payment-link`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount: parseFloat(amount),
-          token: selectedToken,
-          network: selectedNetwork,
-          walletAddress: evmWallet.address,
-          userName: userName,
-          for: paymentReason,
-          recipientEmail: recipient_email
-        }),
+      // Use direct payment link service
+      const { createPaymentLink } = await import('@/lib/paymentLinkService');
+      
+      const result = await createPaymentLink({
+        amount: parseFloat(amount),
+        token: selectedToken,
+        network: selectedNetwork,
+        walletAddress: evmWallet.address,
+        userName: userName,
+        paymentReason: finalPaymentReason,
+        recipientEmail: recipient_email
       });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
+      if (!result.success) {
         throw new Error(result.error || 'Failed to create payment link');
       }
 
       // Format success message
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-      const paymentUrl = `${baseUrl}/pay/${result.id}`;
+      const paymentUrl = result.paymentLink;
       
       let successMessage = `✅ **Payment Link Created Successfully!** 💳\n\n` +
                           `💰 **Amount**: ${amount} ${selectedToken}\n` +
