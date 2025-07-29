@@ -18,7 +18,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export async function sendEmailWithAttachment(options: EmailOptions): Promise<boolean> {
   try {
     const emailData: any = {
-      from: process.env.EMAIL_FROM || 'noreply@hedwig.app',
+      from: process.env.EMAIL_FROM || 'http://localhost:3000',
       to: options.to,
       subject: options.subject,
       html: options.html,
