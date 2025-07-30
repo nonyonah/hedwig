@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield } from 'lucide-react';
+import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield, Building } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PaymentData {
@@ -18,6 +18,13 @@ interface PaymentData {
   recipientName: string;
   recipientEmail: string;
   createdAt: string;
+  walletAddress: string;
+  bankDetails: {
+    accountName: string;
+    bankName: string;
+    accountNumber: string;
+    routingNumber: string;
+  };
 }
 
 export default function PaymentLinkPage() {
@@ -25,7 +32,7 @@ export default function PaymentLinkPage() {
   const { id } = router.query;
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank'>('crypto');
+  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank' | null>(null);
   const [walletConnected, setWalletConnected] = useState(false);
 
   // Sample data - replace with actual API call
@@ -40,10 +47,17 @@ export default function PaymentLinkPage() {
           amount: 2500.00,
           currency: 'USD',
           status: 'pending',
-          expiresAt: '2024-02-15T23:59:59Z',
+          expiresAt: '2025-07-30T23:59:59Z',
           recipientName: 'John Doe',
           recipientEmail: 'john@example.com',
-          createdAt: '2024-01-15T10:30:00Z'
+          createdAt: '2024-01-15T10:30:00Z',
+          walletAddress: '0x742d35Cc6634C0532925a3b8D4C9db96DfB3f681',
+          bankDetails: {
+            accountName: 'John Doe',
+            bankName: 'Chase Bank',
+            accountNumber: '****1234',
+            routingNumber: '021000021'
+          }
         });
         setLoading(false);
       }, 1000);
@@ -150,65 +164,122 @@ export default function PaymentLinkPage() {
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Choose Payment Method</CardTitle>
+              <CardDescription>Select your preferred payment option</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 mb-6">
+            <CardContent className="space-y-4">
+              {/* Stablecoin Payment */}
+              <div className="border rounded-lg p-4">
                 <Button
-                  variant={paymentMethod === 'crypto' ? 'default' : 'outline'}
-                  className="h-20 flex flex-col items-center justify-center"
-                  onClick={() => setPaymentMethod('crypto')}
+                  variant="ghost"
+                  className="w-full justify-between p-0 h-auto"
+                  onClick={() => setPaymentMethod(paymentMethod === 'crypto' ? null : 'crypto')}
                 >
-                  <Wallet className="h-6 w-6 mb-2" />
-                  <span>Crypto Wallet</span>
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <Wallet className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium">Stablecoin Payment</div>
+                      <div className="text-sm text-gray-600">Pay with USDC, USDT, or other stablecoins</div>
+                    </div>
+                  </div>
+                  <div className="text-gray-400">
+                    {paymentMethod === 'crypto' ? '−' : '+'}
+                  </div>
                 </Button>
-                <Button
-                  variant={paymentMethod === 'bank' ? 'default' : 'outline'}
-                  className="h-20 flex flex-col items-center justify-center"
-                  onClick={() => setPaymentMethod('bank')}
-                >
-                  <CreditCard className="h-6 w-6 mb-2" />
-                  <span>Bank Transfer</span>
-                </Button>
-              </div>
-
-              <Separator className="my-6" />
-
-              {/* Crypto Payment */}
-              {paymentMethod === 'crypto' && (
-                <div className="space-y-4">
-                  <h3 className="font-semibold">Pay with Crypto</h3>
-                  {!walletConnected ? (
-                    <Button onClick={handleConnectWallet} className="w-full bg-blue-600 hover:bg-blue-700">
+                
+                {paymentMethod === 'crypto' && (
+                  <div className="mt-4 pt-4 border-t space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Recipient:</span>
+                        <span className="font-medium">{paymentData.recipientName}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Wallet Address:</span>
+                        <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+                          {paymentData.walletAddress}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Amount:</span>
+                        <span className="font-medium">${paymentData.amount.toLocaleString()} USDC</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Description:</span>
+                        <span className="text-right max-w-xs">{paymentData.description}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Chain:</span>
+                        <span className="font-medium">Ethereum (ERC-20)</span>
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={handleConnectWallet} 
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
                       <Wallet className="h-4 w-4 mr-2" />
                       Connect Wallet
                     </Button>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                        <span className="text-green-800">Wallet Connected</span>
-                        <Badge className="bg-green-100 text-green-800">Ready</Badge>
-                      </div>
-                      <Button className="w-full bg-blue-600 hover:bg-blue-700">
-                        Pay ${paymentData.amount.toLocaleString()} USDC
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
 
-              {/* Bank Payment */}
-              {paymentMethod === 'bank' && (
-                <div className="space-y-4">
-                  <h3 className="font-semibold">Bank Transfer</h3>
-                  <p className="text-sm text-gray-600">
-                    You will be redirected to complete the payment via bank transfer.
-                  </p>
-                  <Button onClick={handleBankPayment} className="w-full bg-blue-600 hover:bg-blue-700">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Proceed with Bank Transfer
-                  </Button>
-                </div>
-              )}
+              {/* Bank Transfer */}
+              <div className="border rounded-lg p-4">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-between p-0 h-auto"
+                  onClick={() => setPaymentMethod(paymentMethod === 'bank' ? null : 'bank')}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <Building className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium">Bank Transfer</div>
+                      <div className="text-sm text-gray-600">Traditional wire transfer or ACH</div>
+                    </div>
+                  </div>
+                  <div className="text-gray-400">
+                    {paymentMethod === 'bank' ? '−' : '+'}
+                  </div>
+                </Button>
+                
+                {paymentMethod === 'bank' && (
+                  <div className="mt-4 pt-4 border-t space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Account Name:</span>
+                        <span className="font-medium">{paymentData.bankDetails.accountName}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Bank Name:</span>
+                        <span className="font-medium">{paymentData.bankDetails.bankName}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Account Number:</span>
+                        <span className="font-mono">{paymentData.bankDetails.accountNumber}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Routing Number:</span>
+                        <span className="font-mono">{paymentData.bankDetails.routingNumber}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Amount:</span>
+                        <span className="font-medium">${paymentData.amount.toLocaleString()} {paymentData.currency}</span>
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={handleBankPayment} 
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Proceed with Bank Transfer
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
