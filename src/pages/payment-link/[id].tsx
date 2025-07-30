@@ -4,9 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield, Building, CheckCircle, AlertCircle, Download, Send } from 'lucide-react';
+import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield, Building, CheckCircle, AlertCircle, Download, Send, ChevronDown } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { createClient } from '@supabase/supabase-js';
 import { flutterwaveService } from '@/lib/flutterwaveService';
 
@@ -48,10 +49,17 @@ export default function PaymentLinkPage() {
   const router = useRouter()
   const { id } = router.query
   const { ready, authenticated, user, login, logout, connectWallet } = usePrivy()
+  const { wallets } = useWallets()
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
   const [loading, setLoading] = useState(true)
   const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | 'bank' | 'crypto' | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [selectedChain, setSelectedChain] = useState<string>('base-sepolia');
+
+  // Supported chains (testnet for now)
+  const supportedChains = [
+    { id: 'base-sepolia', name: 'Base Sepolia (Testnet)', symbol: 'ETH' }
+  ];
 
   useEffect(() => {
     const fetchPaymentData = async () => {
@@ -173,6 +181,73 @@ export default function PaymentLinkPage() {
       setProcessingPayment(false)
     }
   }
+
+  const handleCryptoPayment = async () => {
+    if (!paymentData || !wallets.length) {
+      toast.error('No wallet connected')
+      return
+    }
+
+    const wallet = wallets[0] // Use the first connected wallet
+    if (wallet.chainType !== 'ethereum') {
+      toast.error('Please connect an Ethereum-compatible wallet')
+      return
+    }
+
+    setProcessingPayment(true)
+    try {
+      // Convert amount to Wei (assuming USDC has 6 decimals)
+      const amountInWei = (paymentData.amount * 1000000).toString()
+      
+      // USDC contract address on Base Sepolia
+      const usdcContractAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+      
+      // ERC-20 transfer function signature
+      const transferFunctionSignature = '0xa9059cbb'
+      
+      // Encode recipient address (remove 0x and pad to 32 bytes)
+      const recipientAddress = paymentData.walletAddress.slice(2).padStart(64, '0')
+      
+      // Encode amount (pad to 32 bytes)
+      const amountHex = parseInt(amountInWei).toString(16).padStart(64, '0')
+      
+      // Construct transaction data
+      const data = transferFunctionSignature + recipientAddress + amountHex
+
+      const transactionRequest = {
+        to: usdcContractAddress,
+        value: '0x0', // No ETH being sent
+        data: data,
+        chainId: 84532 // Base Sepolia chain ID
+      }
+
+      // Send the transaction
+      const txHash = await wallet.sendTransaction(transactionRequest)
+      
+      toast.success(`Transaction sent! Hash: ${txHash}`)
+      
+      // Update payment status to paid
+      const { error } = await supabase
+        .from('payment_links')
+        .update({ status: 'paid' })
+        .eq('id', id)
+      
+      if (error) {
+        console.error('Error updating payment status:', error)
+      } else {
+        setPaymentData(prev => prev ? { ...prev, status: 'paid' } : null)
+        toast.success('Payment completed successfully!')
+      }
+      
+    } catch (error) {
+      console.error('Error sending transaction:', error)
+      toast.error('Failed to send payment transaction')
+    } finally {
+      setProcessingPayment(false)
+    }
+  }
+
+
 
   if (loading) {
     return (
@@ -304,18 +379,30 @@ export default function PaymentLinkPage() {
                         <span className="text-gray-600">Description:</span>
                         <span className="text-right max-w-xs">{paymentData.description}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-sm items-center">
                         <span className="text-gray-600">Chain:</span>
-                        <span className="font-medium">Ethereum (ERC-20)</span>
+                        <Select value={selectedChain} onValueChange={setSelectedChain}>
+                          <SelectTrigger className="w-48 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {supportedChains.map((chain) => (
+                              <SelectItem key={chain.id} value={chain.id}>
+                                {chain.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                     <Button 
-                      onClick={handleConnectWallet}
+                      onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                      disabled={!ready}
+                      disabled={!ready || processingPayment}
                     >
                       <Wallet className="h-4 w-4 mr-2" />
-                      {authenticated ? 'Wallet Connected' : 'Connect Wallet'}
+                      {processingPayment ? 'Processing...' : 
+                       authenticated && wallets.length > 0 ? 'Pay with Crypto' : 'Connect Wallet'}
                     </Button>
                   </div>
                 )}
