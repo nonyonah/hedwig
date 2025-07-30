@@ -23,6 +23,11 @@ export class TelegramBotService {
 
     this.setupEventHandlers();
     
+    // Setup bot commands menu
+    this.setupBotCommands().catch(error => {
+      console.error('[TelegramBot] Failed to setup bot commands:', error);
+    });
+    
     if (config.webhook) {
       this.setupWebhook(config.webhook.url, config.webhook.port);
     }
@@ -630,6 +635,31 @@ Choose an action below:`;
       }
     } catch (error) {
       console.error('[TelegramBot] Error in logMessage:', error);
+    }
+  }
+
+  /**
+   * Setup bot commands menu
+   */
+  async setupBotCommands(): Promise<void> {
+    try {
+      const commands = [
+        { command: 'start', description: 'Start the bot and show main menu' },
+        { command: 'help', description: 'Show help and available commands' },
+        { command: 'wallet', description: 'View wallet information' },
+        { command: 'balance', description: 'Check wallet balance' },
+        { command: 'send', description: 'Send crypto to someone' },
+        { command: 'history', description: 'View transaction history' },
+        { command: 'invoice', description: 'Create an invoice' },
+        { command: 'proposal', description: 'Create a proposal' },
+        { command: 'paymentlink', description: 'Create a payment link' }
+      ];
+
+      await this.bot.setMyCommands(commands);
+      console.log('[TelegramBot] Bot commands menu set successfully');
+    } catch (error) {
+      console.error('[TelegramBot] Error setting bot commands:', error);
+      throw error;
     }
   }
 

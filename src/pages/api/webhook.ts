@@ -356,6 +356,31 @@ async function handleCommand(msg: TelegramBot.Message) {
       await bot.sendMessage(chatId, balanceResponse);
       break;
 
+    case '/send':
+      const sendResponse = await processWithAI('send crypto template', chatId);
+      await bot.sendMessage(chatId, sendResponse);
+      break;
+
+    case '/history':
+      const historyResponse = await processWithAI('view transaction history', chatId);
+      await bot.sendMessage(chatId, historyResponse);
+      break;
+
+    case '/invoice':
+      const invoiceResponse = await processWithAI('create invoice', chatId);
+      await bot.sendMessage(chatId, invoiceResponse);
+      break;
+
+    case '/proposal':
+      const proposalResponse = await processWithAI('create proposal', chatId);
+      await bot.sendMessage(chatId, proposalResponse);
+      break;
+
+    case '/paymentlink':
+      const paymentLinkResponse = await processWithAI('create payment link', chatId);
+      await bot.sendMessage(chatId, paymentLinkResponse);
+      break;
+
     default:
       // Handle menu button presses
       const text = msg.text;

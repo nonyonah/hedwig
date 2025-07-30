@@ -189,7 +189,11 @@ export default function PaymentLinkPage() {
     }
 
     const wallet = wallets[0] // Use the first connected wallet
-    if (wallet.walletClientType !== 'privy') {
+    console.log('Wallet object:', wallet)
+    console.log('Wallet client type:', wallet.walletClientType)
+    
+    // Check if wallet supports Ethereum (most wallets do)
+    if (!wallet.walletClientType || wallet.walletClientType === 'solana') {
       toast.error('Please connect an Ethereum-compatible wallet')
       return
     }
@@ -413,7 +417,7 @@ export default function PaymentLinkPage() {
                     >
                       <Wallet className="h-4 w-4 mr-2" />
                       {processingPayment ? 'Processing...' : 
-                       authenticated && wallets.length > 0 ? 'Pay with Crypto' : 'Connect Wallet'}
+                       authenticated && wallets.length > 0 ? `Pay $${paymentData.amount.toLocaleString()} USDC` : 'Connect Wallet'}
                     </Button>
                   </div>
                 )}
