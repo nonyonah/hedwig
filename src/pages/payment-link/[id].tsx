@@ -4,8 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield, Building } from 'lucide-react';
+import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield, Building, CheckCircle, AlertCircle, Download, Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePrivy } from '@privy-io/react-auth';
+import { createClient } from '@supabase/supabase-js';
+import { flutterwaveService } from '@/lib/flutterwaveService';
 
 interface PaymentData {
   id: string;
@@ -13,72 +16,163 @@ interface PaymentData {
   description: string;
   amount: number;
   currency: string;
-  status: 'pending' | 'completed' | 'expired';
-  expiresAt: string;
-  recipientName: string;
-  recipientEmail: string;
-  createdAt: string;
+  status: 'pending' | 'paid' | 'expired';
+  recipient: {
+    name: string;
+    email: string;
+  };
   walletAddress: string;
+  expiresAt: string;
   bankDetails: {
     accountName: string;
     bankName: string;
     accountNumber: string;
     routingNumber: string;
   };
+  network: string;
+  token: string;
+  payment_reason: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export default function PaymentLinkPage() {
-  const router = useRouter();
-  const { id } = router.query;
-  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank' | null>(null);
-  const [walletConnected, setWalletConnected] = useState(false);
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
-  // Sample data - replace with actual API call
+// flutterwaveService is imported from the service file
+
+export default function PaymentLinkPage() {
+  const router = useRouter()
+  const { id } = router.query
+  const { ready, authenticated, user, login, logout, connectWallet } = usePrivy()
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | 'bank' | 'crypto' | null>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+
   useEffect(() => {
-    if (id) {
-      // Simulate API call
-      setTimeout(() => {
-        setPaymentData({
-          id: id as string,
-          title: 'Website Development Services',
-          description: 'Full-stack web development for e-commerce platform including frontend, backend, and database setup.',
-          amount: 2500.00,
-          currency: 'USD',
-          status: 'pending',
-          expiresAt: '2025-07-30T23:59:59Z',
-          recipientName: 'John Doe',
-          recipientEmail: 'john@example.com',
-          createdAt: '2024-01-15T10:30:00Z',
-          walletAddress: '0x742d35Cc6634C0532925a3b8D4C9db96DfB3f681',
-          bankDetails: {
-            accountName: 'John Doe',
-            bankName: 'Chase Bank',
-            accountNumber: '****1234',
-            routingNumber: '021000021'
-          }
-        });
-        setLoading(false);
-      }, 1000);
+    const fetchPaymentData = async () => {
+      if (!id) return
+      
+      try {
+        const { data, error } = await supabase
+          .from('payment_links')
+          .select('*')
+          .eq('id', id)
+          .single()
+
+        if (error) {
+          console.error('Error fetching payment data:', error)
+          toast.error('Failed to load payment data')
+          return
+        }
+
+        if (data) {
+          setPaymentData({
+            id: data.id,
+            title: data.payment_reason || 'Payment Request',
+            description: data.payment_reason || 'Payment for services',
+            amount: parseFloat(data.amount),
+            currency: data.token,
+            status: data.status,
+            recipient: {
+              name: data.user_name,
+              email: data.recipient_email || ''
+            },
+            walletAddress: data.wallet_address,
+            expiresAt: data.expires_at,
+            bankDetails: {
+              accountName: data.user_name,
+              bankName: 'Flutterwave Virtual Account',
+              accountNumber: 'Generated on payment',
+              routingNumber: 'N/A'
+            },
+            network: data.network,
+            token: data.token,
+            payment_reason: data.payment_reason,
+            created_at: data.created_at,
+            updated_at: data.updated_at
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching payment data:', error)
+        toast.error('Failed to load payment data')
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [id]);
+
+    fetchPaymentData()
+  }, [id])
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    toast.success('Payment link copied to clipboard');
-  };
+    navigator.clipboard.writeText(window.location.href)
+    toast.success('Payment link copied to clipboard!')
+  }
 
-  const handleConnectWallet = () => {
-    // Implement wallet connection logic
-    setWalletConnected(true);
-    toast.success('Wallet connected successfully');
-  };
+  const handleConnectWallet = async () => {
+    if (!ready) {
+      toast.error('Wallet not ready')
+      return
+    }
 
-  const handleBankPayment = () => {
-    // Implement bank payment logic
-    toast.info('Redirecting to bank payment...');
-  };
+    try {
+      if (!authenticated) {
+        await login()
+      } else {
+        await connectWallet()
+      }
+      toast.success('Wallet connected successfully!')
+    } catch (error) {
+      console.error('Error connecting wallet:', error)
+      toast.error('Failed to connect wallet')
+    }
+  }
+
+  const handleBankPayment = async () => {
+    if (!paymentData) return
+    
+    setProcessingPayment(true)
+    try {
+      const bankPaymentData = await flutterwaveService.createBankPaymentForCrypto({
+        id: id as string,
+        amount: paymentData.amount.toString(),
+        currency: paymentData.currency,
+        recipientName: paymentData.recipient.name,
+        reason: paymentData.payment_reason
+      }, {
+        email: paymentData.recipient.email,
+        firstname: paymentData.recipient.name.split(' ')[0] || 'Customer',
+        lastname: paymentData.recipient.name.split(' ')[1] || '',
+        phonenumber: '+2348000000000' // Default phone number
+      })
+
+      if (bankPaymentData.accountNumber) {
+        // Update payment data with bank details
+        setPaymentData(prev => prev ? {
+          ...prev,
+          bankDetails: {
+            accountName: bankPaymentData.accountName,
+            bankName: bankPaymentData.bankName,
+            accountNumber: bankPaymentData.accountNumber,
+            routingNumber: bankPaymentData.reference
+          }
+        } : null)
+        
+        toast.success('Bank payment details generated!')
+      } else {
+        toast.error('Failed to generate bank payment details')
+      }
+    } catch (error) {
+      console.error('Error creating bank payment:', error)
+      toast.error('Failed to process bank payment')
+    } finally {
+      setProcessingPayment(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -106,6 +200,7 @@ export default function PaymentLinkPage() {
   const isExpired = new Date(paymentData.expiresAt) < new Date();
   const statusColor = {
     pending: 'bg-yellow-100 text-yellow-800',
+    paid: 'bg-green-100 text-green-800',
     completed: 'bg-green-100 text-green-800',
     expired: 'bg-red-100 text-red-800'
   };
@@ -144,8 +239,8 @@ export default function PaymentLinkPage() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-600">To:</span>
-                  <div className="font-medium">{paymentData.recipientName}</div>
-                  <div className="text-gray-600">{paymentData.recipientEmail}</div>
+                  <div className="font-medium">{paymentData.recipient.name}</div>
+                  <div className="text-gray-600">{paymentData.recipient.email}</div>
                 </div>
                 <div>
                   <span className="text-gray-600">Expires:</span>
@@ -171,12 +266,12 @@ export default function PaymentLinkPage() {
               <div className="border rounded-lg p-4">
                 <Button
                   variant="ghost"
-                  className="w-full justify-between p-0 h-auto"
-                  onClick={() => setPaymentMethod(paymentMethod === 'crypto' ? null : 'crypto')}
+                  className="w-full justify-between p-0 h-auto hover:bg-gray-50"
+                  onClick={() => setPaymentMethod(paymentMethod === 'stablecoin' ? null : 'stablecoin')}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <Wallet className="h-5 w-5 text-blue-600" />
+                    <div className="p-2 bg-gray-100 rounded-lg">
+                      <Wallet className="h-5 w-5 text-gray-600" />
                     </div>
                     <div className="text-left">
                       <div className="font-medium">Stablecoin Payment</div>
@@ -184,16 +279,16 @@ export default function PaymentLinkPage() {
                     </div>
                   </div>
                   <div className="text-gray-400">
-                    {paymentMethod === 'crypto' ? '−' : '+'}
+                    {paymentMethod === 'stablecoin' ? '−' : '+'}
                   </div>
                 </Button>
                 
-                {paymentMethod === 'crypto' && (
+                {paymentMethod === 'stablecoin' && (
                   <div className="mt-4 pt-4 border-t space-y-4">
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Recipient:</span>
-                        <span className="font-medium">{paymentData.recipientName}</span>
+                        <span className="font-medium">{paymentData.recipient.name}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Wallet Address:</span>
@@ -215,11 +310,12 @@ export default function PaymentLinkPage() {
                       </div>
                     </div>
                     <Button 
-                      onClick={handleConnectWallet} 
-                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      onClick={handleConnectWallet}
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                      disabled={!ready}
                     >
                       <Wallet className="h-4 w-4 mr-2" />
-                      Connect Wallet
+                      {authenticated ? 'Wallet Connected' : 'Connect Wallet'}
                     </Button>
                   </div>
                 )}
@@ -229,12 +325,12 @@ export default function PaymentLinkPage() {
               <div className="border rounded-lg p-4">
                 <Button
                   variant="ghost"
-                  className="w-full justify-between p-0 h-auto"
+                  className="w-full justify-between p-0 h-auto hover:bg-gray-50"
                   onClick={() => setPaymentMethod(paymentMethod === 'bank' ? null : 'bank')}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <Building className="h-5 w-5 text-green-600" />
+                    <div className="p-2 bg-gray-100 rounded-lg">
+                      <Building className="h-5 w-5 text-gray-600" />
                     </div>
                     <div className="text-left">
                       <div className="font-medium">Bank Transfer</div>
@@ -272,10 +368,11 @@ export default function PaymentLinkPage() {
                     </div>
                     <Button 
                       onClick={handleBankPayment} 
-                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                      disabled={processingPayment}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Proceed with Bank Transfer
+                      {processingPayment ? 'Processing...' : 'Proceed with Bank Transfer'}
                     </Button>
                   </div>
                 )}
@@ -294,7 +391,7 @@ export default function PaymentLinkPage() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Created:</span>
-                <span>{new Date(paymentData.createdAt).toLocaleDateString()}</span>
+                <span>{new Date(paymentData.created_at).toLocaleDateString()}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Expires:</span>
