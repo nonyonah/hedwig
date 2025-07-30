@@ -189,10 +189,13 @@ export default function PaymentLinkPage() {
     }
 
     const wallet = wallets[0] // Use the first connected wallet
-    if (wallet.chainType !== 'ethereum') {
+    if (wallet.walletClientType !== 'privy') {
       toast.error('Please connect an Ethereum-compatible wallet')
       return
     }
+
+    // Get the Ethereum provider from the wallet
+    const provider = await wallet.getEthereumProvider()
 
     setProcessingPayment(true)
     try {
@@ -221,8 +224,16 @@ export default function PaymentLinkPage() {
         chainId: 84532 // Base Sepolia chain ID
       }
 
-      // Send the transaction
-      const txHash = await wallet.sendTransaction(transactionRequest)
+      // Send the transaction using the provider
+      const txHash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: wallet.address,
+          to: usdcContractAddress,
+          value: '0x0',
+          data: data,
+        }]
+      })
       
       toast.success(`Transaction sent! Hash: ${txHash}`)
       
