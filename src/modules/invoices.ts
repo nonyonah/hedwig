@@ -433,17 +433,17 @@ export class InvoiceModule {
   private async getOngoingInvoice(userId: string) {
     const { data: userState } = await supabase
       .from('user_states')
-      .select('*')
+      .select('state_data')
       .eq('user_id', userId)
-      .eq('action', 'creating_invoice')
-      .single();
+      .eq('state_type', 'creating_invoice')
+      .maybeSingle();
 
-    if (!userState) return null;
+    if (!userState?.state_data) return null;
 
     const { data: invoice } = await supabase
       .from('invoices')
       .select('*')
-      .eq('id', userState.invoice_id)
+      .eq('id', userState.state_data.invoice_id)
       .single();
 
     return invoice;
@@ -455,7 +455,8 @@ export class InvoiceModule {
       .from('user_states')
       .upsert({
         user_id: userId,
-        ...state,
+        state_type: 'creating_invoice',
+        state_data: state,
         updated_at: new Date().toISOString()
       });
   }
@@ -464,11 +465,12 @@ export class InvoiceModule {
   private async getUserState(userId: string) {
     const { data } = await supabase
       .from('user_states')
-      .select('*')
+      .select('state_data')
       .eq('user_id', userId)
-      .single();
+      .eq('state_type', 'creating_invoice')
+      .maybeSingle();
     
-    return data;
+    return data?.state_data;
   }
 
   // Clear user state
@@ -476,7 +478,8 @@ export class InvoiceModule {
     await supabase
       .from('user_states')
       .delete()
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('state_type', 'creating_invoice');
   }
 
   // Send step prompt
