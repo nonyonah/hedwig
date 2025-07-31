@@ -1,43 +1,29 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { createClient } from '@supabase/supabase-js';
-// Generate invoice number function moved here
-function generateInvoiceNumber(): string {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return `INV-${year}${month}${day}-${random}`;
-}
-import { generateInvoicePDF } from './pdf-generator';
-import { sendEmailWithAttachment } from '../lib/emailService';
+import { supabase } from '../lib/supabase';
+import { sendEmail } from '../lib/email';
+import { generateInvoicePDF } from '../lib/pdf-generator';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-export interface InvoiceData {
-  id?: string;
-  user_id: string;
+interface InvoiceData {
+  id: string;
   invoice_number: string;
   freelancer_name: string;
   freelancer_email: string;
   client_name: string;
   client_email: string;
   project_description: string;
-  deliverables: string;
+  quantity: number;
+  rate: number;
   amount: number;
-  currency: 'USD' | 'NGN';
+  currency: string;
   due_date: string;
-  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  status: string;
   payment_methods: {
-    usdc_base?: string;
-    usdc_solana?: string;
+    usdc_base?: boolean;
+    usdc_solana?: boolean;
     flutterwave?: boolean;
   };
-  created_at?: string;
-  updated_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export class InvoiceModule {
@@ -47,156 +33,178 @@ export class InvoiceModule {
     this.bot = bot;
   }
 
-  // Main invoice creation flow
-  async handleInvoiceCreation(chatId: number, userId: string, initialMessage?: string) {
+  // Handle invoice creation command
+  async handleInvoiceCreation(chatId: number, userId: string) {
     try {
-      // Check if user has an ongoing invoice creation
+      // Check if user already has an ongoing invoice creation
       const ongoingInvoice = await this.getOngoingInvoice(userId);
-      
       if (ongoingInvoice) {
-        return this.continueInvoiceCreation(chatId, userId, ongoingInvoice, initialMessage);
+        await this.bot.sendMessage(chatId, 
+          `You already have an ongoing invoice creation. Please complete it first or cancel it.\n\n` +
+          `Invoice #${ongoingInvoice.invoice_number}\n` +
+          `Status: ${ongoingInvoice.status}`
+        );
+        return;
       }
 
-      // Start new invoice creation
-      const invoiceData: Partial<InvoiceData> = {
-        user_id: userId,
-        invoice_number: generateInvoiceNumber(),
-        status: 'draft',
-        currency: 'USD',
-        payment_methods: {
-          usdc_base: '',
-          usdc_solana: '',
-          flutterwave: true
-        }
-      };
-
-      // Save initial invoice
+      // Generate invoice number
+      const invoiceNumber = `INV-${Date.now()}`;
+      
+      // Create new invoice record
       const { data: invoice, error } = await supabase
         .from('invoices')
-        .insert([invoiceData])
+        .insert({
+          invoice_number: invoiceNumber,
+          status: 'draft',
+          currency: 'USD',
+          payment_methods: {
+            usdc_base: true,
+            usdc_solana: true,
+            flutterwave: true
+          }
+        })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error creating invoice:', error);
+        await this.bot.sendMessage(chatId, '❌ Failed to create invoice. Please try again.');
+        return;
+      }
 
-      // Start the creation flow
-      await this.bot.sendMessage(chatId, 
-        `📋 *Creating New Invoice ${invoice.invoice_number}*\n\n` +
-        `Let's gather the invoice details step by step.\n\n` +
-        `*Step 1/7:* What's your name (freelancer/service provider)?`,
-        { 
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '❌ Cancel', callback_data: `cancel_invoice_${invoice.id}` }
-            ]]
-          }
-        }
-      );
-
-      // Set user state
-      await this.setUserState(userId, 'creating_invoice', {
+      // Set user state for invoice creation
+      await this.setUserState(userId, {
+        action: 'creating_invoice',
         invoice_id: invoice.id,
         step: 'freelancer_name'
       });
 
-      return `Invoice creation started for ${invoice.invoice_number}`;
+      await this.sendStepPrompt(chatId, 'freelancer_name', invoice.id);
     } catch (error) {
-      console.error('Error creating invoice:', error);
-      return '❌ Failed to start invoice creation. Please try again.';
+      console.error('Error in handleInvoiceCreation:', error);
+      await this.bot.sendMessage(chatId, '❌ An error occurred. Please try again.');
     }
   }
 
-  // Continue invoice creation based on current step
-  async continueInvoiceCreation(chatId: number, userId: string, invoiceData: any, userInput?: string) {
+  // Continue invoice creation process
+  async continueInvoiceCreation(chatId: number, userId: string, userInput: string) {
     try {
-      const { invoice_id, step } = invoiceData;
-      
-      if (!userInput) {
-        return this.sendStepPrompt(chatId, step, invoice_id);
+      const userState = await this.getUserState(userId);
+      if (!userState || userState.action !== 'creating_invoice') {
+        return 'No ongoing invoice creation found.';
       }
 
-      // Process user input based on current step
-      const updateData: any = {};
+      const { invoice_id, step } = userState;
       let nextStep = '';
       let responseMessage = '';
+      const updateData: any = {};
 
       switch (step) {
         case 'freelancer_name':
           updateData.freelancer_name = userInput.trim();
           nextStep = 'freelancer_email';
-          responseMessage = `✅ Freelancer name: ${userInput}\n\n*Step 2/7:* What's your email address?`;
+          responseMessage = `✅ Freelancer: ${userInput}\n\n*Step 2/9:* What's your email address?`;
           break;
 
         case 'freelancer_email':
           if (!this.isValidEmail(userInput)) {
-            return '❌ Please enter a valid email address.';
+            return '❌ Please enter a valid email address';
           }
           updateData.freelancer_email = userInput.trim();
           nextStep = 'client_name';
-          responseMessage = `✅ Email: ${userInput}\n\n*Step 3/7:* What's your client's name?`;
+          responseMessage = `✅ Email: ${userInput}\n\n*Step 3/9:* What's your client's name?`;
           break;
 
         case 'client_name':
           updateData.client_name = userInput.trim();
           nextStep = 'client_email';
-          responseMessage = `✅ Client name: ${userInput}\n\n*Step 4/7:* What's your client's email address?`;
+          responseMessage = `✅ Client: ${userInput}\n\n*Step 4/9:* What's your client's email address?`;
           break;
 
         case 'client_email':
           if (!this.isValidEmail(userInput)) {
-            return '❌ Please enter a valid email address.';
+            return '❌ Please enter a valid email address';
           }
           updateData.client_email = userInput.trim();
           nextStep = 'project_description';
-          responseMessage = `✅ Client email: ${userInput}\n\n*Step 5/7:* Describe the project/service provided:`;
+          responseMessage = `✅ Client email: ${userInput}\n\n*Step 5/9:* What's the project description?`;
           break;
 
         case 'project_description':
           updateData.project_description = userInput.trim();
-          nextStep = 'amount';
-          responseMessage = `✅ Project description saved\n\n*Step 6/7:* What's the total amount? (e.g., 500 USD or 200000 NGN)`;
+          nextStep = 'quantity';
+          responseMessage = `✅ Project: ${userInput}\n\n*Step 6/9:* How many units/hours? (e.g., 1, 5, 10)`;
           break;
 
-        case 'amount':
-          const amountData = this.parseAmount(userInput);
-          if (!amountData) {
-            return '❌ Please enter a valid amount (e.g., 500 USD or 200000 NGN)';
+        case 'quantity':
+          const quantity = parseInt(userInput.trim());
+          if (isNaN(quantity) || quantity <= 0) {
+            return '❌ Please enter a valid quantity (positive number)';
           }
-          updateData.amount = amountData.amount;
-          updateData.currency = amountData.currency;
+          updateData.quantity = quantity;
+          nextStep = 'rate';
+          responseMessage = `✅ Quantity: ${quantity}\n\n*Step 7/9:* What's the rate per unit? (e.g., 100, 50.5)`;
+          break;
+
+        case 'rate':
+          const rateData = this.parseAmount(userInput);
+          if (!rateData) {
+            return '❌ Please enter a valid rate (e.g., 100, 50.5)';
+          }
+          updateData.rate = rateData.amount;
+          updateData.currency = rateData.currency;
+          
+          // Calculate total amount
+          const currentInvoice = await this.getCurrentInvoiceData(invoice_id);
+          const totalAmount = (currentInvoice?.quantity || 1) * rateData.amount;
+          updateData.amount = totalAmount;
+          
           nextStep = 'due_date';
-          responseMessage = `✅ Amount: ${amountData.amount} ${amountData.currency}\n\n*Step 7/7:* When is the payment due? (e.g., 2024-02-15 or "in 30 days")`;
+          responseMessage = `✅ Rate: ${rateData.amount} ${rateData.currency} per unit\n✅ Total: ${totalAmount} ${rateData.currency}\n\n*Step 8/9:* When is the payment due? (e.g., 2024-02-15 or "in 30 days")`;
           break;
 
         case 'due_date':
+          console.log(`[InvoiceModule] Processing due date input: "${userInput}"`);
           const dueDate = this.parseDueDate(userInput);
+          console.log(`[InvoiceModule] Parsed due date result: ${dueDate}`);
           if (!dueDate) {
-            return '❌ Please enter a valid date (YYYY-MM-DD format or "in X days")';
+            return '❌ Please enter a valid date (YYYY-MM-DD format, "X days", or "in X days")';
           }
           updateData.due_date = dueDate;
           nextStep = 'complete';
+          responseMessage = `✅ Due date: ${dueDate}\n\n*Step 9/9:* Creating your invoice...`;
+          console.log(`[InvoiceModule] Setting nextStep to complete`);
           break;
+
+        default:
+          return '❌ Invalid step in invoice creation';
       }
 
-      // Update invoice in database
-      const { error } = await supabase
+      // Update invoice data
+      const { error: updateError } = await supabase
         .from('invoices')
         .update(updateData)
         .eq('id', invoice_id);
 
-      if (error) throw error;
-
-      if (nextStep === 'complete') {
-        return this.completeInvoiceCreation(chatId, userId, invoice_id);
+      if (updateError) {
+        console.error('Error updating invoice:', updateError);
+        return '❌ Error saving invoice data. Please try again.';
       }
 
-      // Update user state and send next prompt
-      await this.setUserState(userId, 'creating_invoice', {
+      // Update user state
+      await this.setUserState(userId, {
+        action: 'creating_invoice',
         invoice_id,
         step: nextStep
       });
 
+      // If complete, finish the invoice creation
+      if (nextStep === 'complete') {
+        console.log(`[InvoiceModule] Calling completeInvoiceCreation`);
+        return await this.completeInvoiceCreation(chatId, userId, invoice_id);
+      }
+
+      // Send response with cancel option
       await this.bot.sendMessage(chatId, responseMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
@@ -213,9 +221,27 @@ export class InvoiceModule {
     }
   }
 
+  // Get current invoice data helper method
+  private async getCurrentInvoiceData(invoiceId: string) {
+    const { data: invoice, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('id', invoiceId)
+      .single();
+    
+    if (error) {
+      console.error('Error fetching current invoice data:', error);
+      return null;
+    }
+    
+    return invoice;
+  }
+
   // Complete invoice creation and show preview
   async completeInvoiceCreation(chatId: number, userId: string, invoiceId: string) {
     try {
+      console.log(`[InvoiceModule] Completing invoice creation for invoice ID: ${invoiceId}`);
+      
       // Get complete invoice data
       const { data: invoice, error } = await supabase
         .from('invoices')
@@ -223,7 +249,22 @@ export class InvoiceModule {
         .eq('id', invoiceId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error(`[InvoiceModule] Error fetching invoice ${invoiceId}:`, error);
+        if (error.code === 'PGRST116') {
+          await this.bot.sendMessage(chatId, '❌ Invoice not found. Please start a new invoice creation.');
+          await this.clearUserState(userId);
+          return 'Invoice not found';
+        }
+        throw error;
+      }
+
+      if (!invoice) {
+        console.error(`[InvoiceModule] No invoice data returned for ID: ${invoiceId}`);
+        await this.bot.sendMessage(chatId, '❌ Invoice data not found. Please start a new invoice creation.');
+        await this.clearUserState(userId);
+        return 'Invoice data not found';
+      }
 
       // Clear user state
       await this.clearUserState(userId);
@@ -262,6 +303,8 @@ export class InvoiceModule {
       `*From:* ${invoice.freelancer_name} (${invoice.freelancer_email})\n` +
       `*To:* ${invoice.client_name} (${invoice.client_email})\n` +
       `*Project:* ${invoice.project_description}\n` +
+      `*Quantity:* ${invoice.quantity}\n` +
+      `*Rate:* ${invoice.rate} ${invoice.currency}\n` +
       `*Amount:* ${invoice.amount} ${invoice.currency}\n` +
       `*Due Date:* ${invoice.due_date}\n` +
       `*Status:* ${invoice.status.toUpperCase()}\n\n` +
@@ -287,6 +330,12 @@ export class InvoiceModule {
       } else if (data.startsWith('pdf_invoice_')) {
         const invoiceId = data.replace('pdf_invoice_', '');
         await this.generateAndSendPDF(chatId, invoiceId);
+      } else if (data.startsWith('edit_invoice_')) {
+        const invoiceId = data.replace('edit_invoice_', '');
+        await this.editInvoice(chatId, invoiceId);
+      } else if (data.startsWith('delete_invoice_')) {
+        const invoiceId = data.replace('delete_invoice_', '');
+        await this.deleteInvoice(chatId, invoiceId);
       } else if (data.startsWith('cancel_invoice_')) {
         const invoiceId = data.replace('cancel_invoice_', '');
         await this.cancelInvoiceCreation(chatId, invoiceId);
@@ -308,16 +357,20 @@ export class InvoiceModule {
         .eq('id', invoiceId)
         .single();
 
-      if (!invoice) throw new Error('Invoice not found');
+      if (!invoice) {
+        await this.bot.sendMessage(chatId, '❌ Invoice not found.');
+        return;
+      }
 
       // Generate PDF
       const pdfBuffer = await generateInvoicePDF(invoice);
       
       // Send email with PDF attachment
-      await sendEmailWithAttachment({
+      const emailTemplate = this.generateEmailTemplate(invoice);
+      await sendEmail({
         to: invoice.client_email,
-        subject: `Invoice ${invoice.invoice_number} from ${invoice.freelancer_name}`,
-        html: this.generateEmailTemplate(invoice),
+        subject: `Invoice ${invoice.invoice_number}`,
+        html: emailTemplate,
         attachments: [{
           filename: `invoice-${invoice.invoice_number}.pdf`,
           content: pdfBuffer
@@ -330,16 +383,14 @@ export class InvoiceModule {
         .update({ status: 'sent' })
         .eq('id', invoiceId);
 
-      await this.bot.sendMessage(chatId, 
-        `✅ Invoice ${invoice.invoice_number} sent successfully to ${invoice.client_email}!`
-      );
+      await this.bot.sendMessage(chatId, `✅ Invoice sent to ${invoice.client_email}`);
     } catch (error) {
       console.error('Error sending invoice:', error);
       await this.bot.sendMessage(chatId, '❌ Failed to send invoice. Please try again.');
     }
   }
 
-  // Generate and send PDF to user
+  // Generate and send PDF
   private async generateAndSendPDF(chatId: number, invoiceId: string) {
     try {
       const { data: invoice } = await supabase
@@ -348,13 +399,14 @@ export class InvoiceModule {
         .eq('id', invoiceId)
         .single();
 
-      if (!invoice) throw new Error('Invoice not found');
+      if (!invoice) {
+        await this.bot.sendMessage(chatId, '❌ Invoice not found.');
+        return;
+      }
 
       const pdfBuffer = await generateInvoicePDF(invoice);
       
       await this.bot.sendDocument(chatId, pdfBuffer, {
-        caption: `📄 Invoice ${invoice.invoice_number} PDF generated successfully!`
-      }, {
         filename: `invoice-${invoice.invoice_number}.pdf`
       });
     } catch (error) {
@@ -363,51 +415,88 @@ export class InvoiceModule {
     }
   }
 
-  // Utility functions
+  // Get ongoing invoice for user
   private async getOngoingInvoice(userId: string) {
-    const { data } = await supabase
+    const { data: userState } = await supabase
       .from('user_states')
-      .select('state_data')
+      .select('*')
       .eq('user_id', userId)
-      .eq('state_type', 'creating_invoice')
+      .eq('action', 'creating_invoice')
       .single();
-    
-    return data?.state_data;
+
+    if (!userState) return null;
+
+    const { data: invoice } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('id', userState.invoice_id)
+      .single();
+
+    return invoice;
   }
 
-  private async setUserState(userId: string, stateType: string, stateData: any) {
+  // Set user state
+  private async setUserState(userId: string, state: any) {
     await supabase
       .from('user_states')
       .upsert({
         user_id: userId,
-        state_type: stateType,
-        state_data: stateData,
+        ...state,
         updated_at: new Date().toISOString()
       });
   }
 
+  // Get user state
+  private async getUserState(userId: string) {
+    const { data } = await supabase
+      .from('user_states')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    return data;
+  }
+
+  // Clear user state
   private async clearUserState(userId: string) {
     await supabase
       .from('user_states')
       .delete()
-      .eq('user_id', userId)
-      .eq('state_type', 'creating_invoice');
+      .eq('user_id', userId);
   }
 
+  // Send step prompt
   private async sendStepPrompt(chatId: number, step: string, invoiceId: string) {
-    const prompts: { [key: string]: string } = {
-      'freelancer_name': '*Step 1/7:* What\'s your name (freelancer/service provider)?',
-      'freelancer_email': '*Step 2/7:* What\'s your email address?',
-      'client_name': '*Step 3/7:* What\'s your client\'s name?',
-      'client_email': '*Step 4/7:* What\'s your client\'s email address?',
-      'project_description': '*Step 5/7:* Describe the project/service provided:',
-      'amount': '*Step 6/7:* What\'s the invoice amount? (e.g., 500 USD or 200000 NGN)',
-      'due_date': '*Step 7/7:* When is the payment due? (e.g., "in 30 days" or "2024-02-15")'
-    };
-
-    const prompt = prompts[step] || 'Please provide the required information:';
+    let message = '';
     
-    await this.bot.sendMessage(chatId, prompt, {
+    switch (step) {
+      case 'freelancer_name':
+        message = '*Step 1/9:* What\'s your name (freelancer)?';
+        break;
+      case 'freelancer_email':
+        message = '*Step 2/9:* What\'s your email address?';
+        break;
+      case 'client_name':
+        message = '*Step 3/9:* What\'s your client\'s name?';
+        break;
+      case 'client_email':
+        message = '*Step 4/9:* What\'s your client\'s email address?';
+        break;
+      case 'project_description':
+        message = '*Step 5/9:* What\'s the project description?';
+        break;
+      case 'quantity':
+        message = '*Step 6/9:* How many units/hours? (e.g., 1, 5, 10)';
+        break;
+      case 'rate':
+        message = '*Step 7/9:* What\'s the rate per unit? (e.g., 100, 50.5)';
+        break;
+      case 'due_date':
+        message = '*Step 8/9:* When is the payment due? (e.g., 2024-02-15 or "in 30 days")';
+        break;
+    }
+
+    await this.bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
@@ -417,77 +506,152 @@ export class InvoiceModule {
     });
   }
 
+  // Validate email
   private isValidEmail(email: string): boolean {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   }
 
-  private parseAmount(input: string): { amount: number; currency: 'USD' | 'NGN' } | null {
-    const match = input.match(/(\d+(?:\.\d+)?)\s*(USD|NGN|usd|ngn|\$|₦)?/i);
+  // Parse amount with currency
+  private parseAmount(input: string): { amount: number; currency: string } | null {
+    const cleanInput = input.trim().replace(/,/g, '');
+    const match = cleanInput.match(/^([0-9]+\.?[0-9]*)\s*([A-Z]{3})?$/i);
+    
     if (!match) return null;
-
+    
     const amount = parseFloat(match[1]);
-    let currency: 'USD' | 'NGN' = 'USD';
-
-    if (match[2]) {
-      const currencyStr = match[2].toUpperCase();
-      if (currencyStr === 'NGN' || currencyStr === '₦') {
-        currency = 'NGN';
-      }
-    }
-
+    const currency = match[2]?.toUpperCase() || 'USD';
+    
     return { amount, currency };
   }
 
+  // Parse due date
   private parseDueDate(input: string): string | null {
-    // Handle "in X days" format
-    const daysMatch = input.match(/in\s+(\d+)\s+days?/i);
+    const cleanInput = input.trim().toLowerCase();
+    
+    // Check for "X days" or "in X days" format
+    const daysMatch = cleanInput.match(/^(?:in\s+)?(\d+)\s+days?$/);
     if (daysMatch) {
       const days = parseInt(daysMatch[1]);
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + days);
-      return dueDate.toISOString().split('T')[0];
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + days);
+      return futureDate.toISOString().split('T')[0];
     }
-
-    // Handle YYYY-MM-DD format
+    
+    // Check for YYYY-MM-DD format
     const dateMatch = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (dateMatch) {
-      return input;
+      const date = new Date(input);
+      if (!isNaN(date.getTime())) {
+        return input;
+      }
     }
-
+    
     return null;
   }
 
+  // Generate email template
   private generateEmailTemplate(invoice: InvoiceData): string {
     return `
       <h2>Invoice ${invoice.invoice_number}</h2>
       <p>Dear ${invoice.client_name},</p>
       <p>Please find attached your invoice for the project: ${invoice.project_description}</p>
-      <p><strong>Amount Due:</strong> ${invoice.amount} ${invoice.currency}</p>
+      <p><strong>Amount:</strong> ${invoice.amount} ${invoice.currency}</p>
       <p><strong>Due Date:</strong> ${invoice.due_date}</p>
-      <p>You can pay using the following methods:</p>
-      <ul>
-        <li>USDC on Base Network</li>
-        <li>USDC on Solana</li>
-        <li>Bank Transfer via Flutterwave</li>
-      </ul>
-      <p>Payment link: ${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}</p>
+      <p>Thank you for your business!</p>
       <p>Best regards,<br>${invoice.freelancer_name}</p>
     `;
   }
 
+  // Cancel invoice creation
   private async cancelInvoiceCreation(chatId: number, invoiceId: string) {
     try {
-      // Delete the draft invoice
+      // Delete the invoice
       await supabase
         .from('invoices')
         .delete()
-        .eq('id', invoiceId)
-        .eq('status', 'draft');
+        .eq('id', invoiceId);
 
       await this.bot.sendMessage(chatId, '❌ Invoice creation cancelled.');
     } catch (error) {
       console.error('Error cancelling invoice:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to cancel invoice.');
+    }
+  }
+
+  // Edit invoice
+  private async editInvoice(chatId: number, invoiceId: string) {
+    try {
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', invoiceId)
+        .single();
+
+      if (!invoice) {
+        await this.bot.sendMessage(chatId, '❌ Invoice not found.');
+        return;
+      }
+
+      await this.bot.sendMessage(chatId, 
+        `📝 *Edit Invoice ${invoice.invoice_number}*\n\n` +
+        `Current details:\n` +
+        `• Freelancer: ${invoice.freelancer_name}\n` +
+        `• Client: ${invoice.client_name}\n` +
+        `• Project: ${invoice.project_description}\n` +
+        `• Amount: ${invoice.amount} ${invoice.currency}\n` +
+        `• Due Date: ${invoice.due_date}\n\n` +
+        `What would you like to edit?`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '👤 Client Info', callback_data: `edit_client_${invoiceId}` }],
+              [{ text: '📋 Project Details', callback_data: `edit_project_${invoiceId}` }],
+              [{ text: '💰 Amount', callback_data: `edit_amount_${invoiceId}` }],
+              [{ text: '📅 Due Date', callback_data: `edit_due_date_${invoiceId}` }],
+              [{ text: '❌ Cancel', callback_data: `view_invoice_${invoiceId}` }]
+            ]
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error editing invoice:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to edit invoice. Please try again.');
+    }
+  }
+
+  // Delete invoice
+  private async deleteInvoice(chatId: number, invoiceId: string) {
+    try {
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('invoice_number')
+        .eq('id', invoiceId)
+        .single();
+
+      if (!invoice) {
+        await this.bot.sendMessage(chatId, '❌ Invoice not found.');
+        return;
+      }
+
+      await this.bot.sendMessage(chatId, 
+        `🗑️ *Delete Invoice*\n\n` +
+        `Are you sure you want to delete Invoice ${invoice.invoice_number}?\n` +
+        `This action cannot be undone.`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Yes, Delete', callback_data: `confirm_delete_${invoiceId}` }],
+              [{ text: '❌ Cancel', callback_data: `view_invoice_${invoiceId}` }]
+            ]
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to delete invoice. Please try again.');
     }
   }
 }

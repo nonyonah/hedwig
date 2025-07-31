@@ -48,81 +48,104 @@ export default function InvoicePage() {
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank'>('crypto');
 
-  // Sample data - replace with actual API call
+  // Fetch invoice data from API
   useEffect(() => {
     if (id) {
-      // Simulate API call
-      setTimeout(() => {
-        setInvoiceData({
-          id: id as string,
-          invoiceNumber: 'INV-2024-001',
-          status: 'sent',
-          issueDate: '2024-01-15',
-          dueDate: '2024-02-15',
-          fromCompany: {
-            name: 'Acme Corp',
-            address: '123 Business St, Suite 100\nNew York, NY 10001',
-            email: 'billing@acmecorp.com',
-            phone: '+1 (555) 123-4567'
-          },
-          toCompany: {
-            name: 'Client Company LLC',
-            address: '456 Client Ave\nLos Angeles, CA 90210',
-            email: 'accounts@clientco.com',
-            phone: '+1 (555) 987-6543'
-          },
-          items: [
-            {
-              id: '1',
-              description: 'Website Design & Development',
-              quantity: 1,
-              rate: 2500.00,
-              amount: 2500.00
-            },
-            {
-              id: '2',
-              description: 'Content Management System Setup',
-              quantity: 1,
-              rate: 800.00,
-              amount: 800.00
-            },
-            {
-              id: '3',
-              description: 'SEO Optimization',
-              quantity: 1,
-              rate: 500.00,
-              amount: 500.00
-            }
-          ],
-          subtotal: 3800.00,
-          tax: 304.00,
-          total: 4104.00,
-          notes: 'Thank you for your business! Payment is due within 30 days.',
-          paymentTerms: 'Net 30'
-        });
-        setLoading(false);
-      }, 1000);
+      fetchInvoiceData();
     }
   }, [id]);
+
+  const fetchInvoiceData = async () => {
+    try {
+      const response = await fetch(`/api/invoices/${id}`);
+      if (response.ok) {
+        const data = await response.json();
+        // Generate AI notes if not present
+        if (!data.notes) {
+          data.notes = await generateAINotes(data);
+        }
+        setInvoiceData(data);
+      } else {
+        console.error('Failed to fetch invoice data');
+      }
+    } catch (error) {
+      console.error('Error fetching invoice:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateAINotes = async (invoiceData: any) => {
+    try {
+      const response = await fetch('/api/ai/generate-notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          items: invoiceData.items,
+          total: invoiceData.total,
+          clientName: invoiceData.toCompany?.name || invoiceData.client_name
+        })
+      });
+      
+      if (response.ok) {
+        const { notes } = await response.json();
+        return notes;
+      }
+    } catch (error) {
+      console.error('Error generating AI notes:', error);
+    }
+    
+    // Fallback notes
+    return 'Thank you for your business! We appreciate the opportunity to work with you.';
+  };
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     toast.success('Invoice link copied to clipboard');
   };
 
-  const handleDownloadPDF = () => {
-    // Implement PDF download logic
-    toast.success('PDF download started');
+  const handleDownloadPDF = async () => {
+    try {
+      const response = await fetch(`/api/invoices/${id}/pdf`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `invoice-${invoiceData?.invoiceNumber}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success('PDF downloaded successfully');
+      }
+    } catch (error) {
+      toast.error('Failed to download PDF');
+    }
   };
 
-  const handleSendInvoice = () => {
-    // Implement send invoice logic
-    toast.success('Invoice sent successfully');
+  const handleSendInvoice = async () => {
+    try {
+      const response = await fetch(`/api/invoices/${id}/send`, {
+        method: 'POST'
+      });
+      if (response.ok) {
+        toast.success('Invoice sent successfully');
+        fetchInvoiceData();
+      }
+    } catch (error) {
+      toast.error('Failed to send invoice');
+    }
   };
 
   const handlePayment = () => {
-    // Implement payment logic
-    toast.info('Redirecting to payment...');
+    if (paymentMethod === 'crypto') {
+      window.location.href = `/payment/crypto/${id}`;
+    } else {
+      window.location.href = `/payment/bank/${id}`;
+    }
   };
 
   if (loading) {
@@ -334,7 +357,11 @@ export default function InvoicePage() {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <Button
                   variant={paymentMethod === 'crypto' ? 'default' : 'outline'}
-                  className="h-20 flex flex-col items-center justify-center"
+                  className={`h-20 flex flex-col items-center justify-center transition-colors ${
+                    paymentMethod === 'crypto' 
+                      ? 'bg-primary hover:bg-primary/90' 
+                      : 'hover:bg-gray-50'
+                  }`}
                   onClick={() => setPaymentMethod('crypto')}
                 >
                   <Wallet className="h-6 w-6 mb-2" />
@@ -342,7 +369,11 @@ export default function InvoicePage() {
                 </Button>
                 <Button
                   variant={paymentMethod === 'bank' ? 'default' : 'outline'}
-                  className="h-20 flex flex-col items-center justify-center"
+                  className={`h-20 flex flex-col items-center justify-center transition-colors ${
+                    paymentMethod === 'bank' 
+                      ? 'bg-primary hover:bg-primary/90' 
+                      : 'hover:bg-gray-50'
+                  }`}
                   onClick={() => setPaymentMethod('bank')}
                 >
                   <CreditCard className="h-6 w-6 mb-2" />
@@ -351,7 +382,7 @@ export default function InvoicePage() {
               </div>
 
               <div className="text-center">
-                <Button onClick={handlePayment} className="bg-blue-600 hover:bg-blue-700 px-8">
+                <Button onClick={handlePayment} className="bg-primary hover:bg-primary/90 px-8">
                   Pay ${invoiceData.total.toFixed(2)} via {paymentMethod === 'crypto' ? 'Crypto' : 'Bank Transfer'}
                 </Button>
               </div>

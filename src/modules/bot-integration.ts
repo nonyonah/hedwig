@@ -368,9 +368,20 @@ export class BotIntegration {
   // Handle text messages for business features
   async handleMessage(message: TelegramBot.Message, userId?: string) {
     if (!userId) {
-      userId = message.chat.id.toString();
+      userId = await this.getUserIdByChatId(message.chat.id);
     }
     return this.handleBusinessMessage(message, userId);
+  }
+
+  // Helper function to get user UUID by chat ID
+  private async getUserIdByChatId(chatId: number): Promise<string> {
+    const { data } = await supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_chat_id', chatId)
+      .single();
+    
+    return data?.id || chatId.toString(); // Fallback to chatId if not found
   }
 
   async handleBusinessMessage(message: TelegramBot.Message, userId: string) {
@@ -395,8 +406,11 @@ export class BotIntegration {
 
         default:
           // Check if user is in invoice creation flow
+          console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
           const ongoingInvoice = await this.getOngoingInvoice(userId);
+          console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
           if (ongoingInvoice) {
+            console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
             await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, ongoingInvoice, message.text);
             return true;
           }
@@ -429,12 +443,16 @@ export class BotIntegration {
   }
 
   private async getOngoingInvoice(userId: string) {
-    const { data } = await supabase
+    console.log(`[BotIntegration] Querying user_states for userId: ${userId}`);
+    const { data, error } = await supabase
       .from('user_states')
       .select('state_data')
       .eq('user_id', userId)
       .eq('state_type', 'creating_invoice')
       .single();
+    
+    console.log(`[BotIntegration] Query result - data:`, data);
+    console.log(`[BotIntegration] Query result - error:`, error);
     
     return data?.state_data;
   }

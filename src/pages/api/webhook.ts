@@ -2,7 +2,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import TelegramBot from 'node-telegram-bot-api';
 import { handleAction } from '../../api/actions';
-// Removed imports for deleted services
+import { processInvoiceInput } from '../../lib/invoiceService';
+import { processProposalInput } from '../../lib/proposalservice';
 import { BotIntegration } from '../../modules/bot-integration';
 
 // Global bot instance for webhook mode
@@ -356,31 +357,6 @@ async function handleCommand(msg: TelegramBot.Message) {
       await bot.sendMessage(chatId, balanceResponse);
       break;
 
-    case '/send':
-      const sendResponse = await processWithAI('send crypto template', chatId);
-      await bot.sendMessage(chatId, sendResponse);
-      break;
-
-    case '/history':
-      const historyResponse = await processWithAI('view transaction history', chatId);
-      await bot.sendMessage(chatId, historyResponse);
-      break;
-
-    case '/invoice':
-      const invoiceResponse = await processWithAI('create invoice', chatId);
-      await bot.sendMessage(chatId, invoiceResponse);
-      break;
-
-    case '/proposal':
-      const proposalResponse = await processWithAI('create proposal', chatId);
-      await bot.sendMessage(chatId, proposalResponse);
-      break;
-
-    case '/paymentlink':
-      const paymentLinkResponse = await processWithAI('create payment link', chatId);
-      await bot.sendMessage(chatId, paymentLinkResponse);
-      break;
-
     default:
       // Handle menu button presses
       const text = msg.text;
@@ -485,13 +461,16 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
               .update({ context: [] })
               .eq('user_id', user.id);
 
-            // Process the original pending request using modules
+            // Process the original pending request
             if (contextData.pending_proposal_message) {
-              // Use proposal module for processing
-              return "✅ Proposal processing updated to use new module system.";
+              const { processProposalInput } = await import('../../lib/proposalservice');
+              const result = await processProposalInput(contextData.pending_proposal_message, user.id);
+              return result.message;
             } else if (contextData.pending_invoice_message) {
-              // Use invoice module for processing
-              return "✅ Invoice processing updated to use new module system.";
+              const { processInvoiceInput } = await import('../../lib/invoiceService');
+              const updatedUser = { ...user, name: message.trim() };
+              const result = await processInvoiceInput(contextData.pending_invoice_message, updatedUser);
+              return result.message;
             }
           }
         } catch (parseError) {
@@ -631,8 +610,8 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             return "❌ User not found. Please try again.";
           }
           
-          // Use proposal module for processing
-          return "✅ Proposal creation updated to use new module system. Please use the Telegram bot interface.";
+          const proposalResult = await processProposalInput(userMessage, user);
+          return proposalResult.message;
         } catch (error) {
           console.error('[formatResponseForUser] Proposal error:', error);
           return "❌ Failed to create proposal. Please try again with more details about your service.";
@@ -684,8 +663,8 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             return "❌ User not found. Please try again.";
           }
           
-          // Use invoice module for processing
-          return "✅ Invoice creation updated to use new module system. Please use the Telegram bot interface.";
+          const invoiceResult = await processInvoiceInput(userMessage, user);
+          return invoiceResult.message;
         } catch (error) {
           console.error('[formatResponseForUser] Invoice error:', error);
           return "❌ Failed to create invoice. Please try again with more details about your project.";

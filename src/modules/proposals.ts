@@ -387,6 +387,8 @@ export class ProposalModule {
         state_type: stateType,
         state_data: stateData,
         updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,state_type'
       });
   }
 
