@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Copy, Download, Send, Calendar, DollarSign, Clock, CheckCircle } from "lucide-react";
+import { Copy, Download, Send, Calendar, DollarSign, Clock, CheckCircle, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from '@/lib/supabase';
 
@@ -54,6 +54,8 @@ const Proposal = () => {
   // Using toast from sonner
   const [proposalData, setProposalData] = useState<ProposalData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -79,43 +81,63 @@ const Proposal = () => {
         const transformedData: ProposalData = {
           proposalNumber: data.proposal_number || `PROP-${data.id}`,
           date: new Date(data.created_at).toLocaleDateString(),
-          validUntil: data.valid_until ? new Date(data.valid_until).toLocaleDateString() : '',
+          validUntil: data.updated_at ? new Date(new Date(data.updated_at).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString() : '',
           status: data.status || 'draft',
           freelancer: {
-            name: data.freelancer_name || 'Freelancer Name',
-            title: data.freelancer_title || 'Professional Title',
-            email: data.freelancer_email || 'freelancer@example.com',
-            phone: data.freelancer_phone || '+1 (555) 123-4567',
-            website: data.freelancer_website
+            name: 'Freelancer Name',
+            title: 'Professional Developer',
+            email: 'freelancer@hedwigbot.xyz',
+            phone: '+1 (555) 123-4567',
+            website: 'https://hedwigbot.xyz'
           },
           client: {
             name: data.client_name || 'Client Name',
-            company: data.client_company || 'Client Company',
+            company: 'Client Company',
             email: data.client_email || 'client@example.com'
           },
           project: {
             title: data.project_title || 'Project Title',
-            description: data.project_description || 'Project description',
-            totalCost: data.total_cost || 0,
+            description: data.description || 'Project description',
+            totalCost: Number(data.budget) || 0,
             currency: data.currency || 'USD',
             timeline: data.timeline || '4 weeks'
           },
-          sections: data.sections || [
+          sections: [
             {
               title: "Project Overview",
-              content: "I'm excited to propose a comprehensive solution that will transform your business operations."
+              content: data.description || "I'm excited to propose a comprehensive solution that will transform your business operations."
+            },
+            {
+              title: "Deliverables",
+              content: data.deliverables ? data.deliverables.join(', ') : "Custom deliverables based on project requirements"
+            },
+            {
+              title: "Features",
+              content: data.features ? data.features.join(', ') : "Advanced features tailored to your needs"
             }
           ],
-          phases: data.phases || [
+          phases: [
             {
               name: "Discovery & Planning",
               duration: "1 week",
-              deliverables: ["Requirements analysis", "Technical specification"]
+              deliverables: ["Requirements analysis", "Technical specification", "Project roadmap"]
+            },
+            {
+              name: "Development",
+              duration: data.timeline || "3 weeks",
+              deliverables: data.deliverables || ["Core functionality", "Testing", "Documentation"]
+            },
+            {
+              name: "Delivery & Support",
+              duration: "1 week",
+              deliverables: ["Final delivery", "Training", "Support documentation"]
             }
           ],
-          terms: data.terms || [
+          terms: [
             "50% deposit required to begin work",
-            "Remaining balance due upon project completion"
+            "Remaining balance due upon project completion",
+            "All deliverables included as specified",
+            "30-day support period included"
           ]
         };
         setProposalData(transformedData);
@@ -131,6 +153,74 @@ const Proposal = () => {
     const proposalUrl = window.location.href;
     navigator.clipboard.writeText(proposalUrl);
     toast.success("Proposal URL copied to clipboard");
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!id) return;
+    
+    setDownloadingPdf(true);
+    try {
+      const response = await fetch(`/api/proposals/${id}/download-pdf`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to download PDF');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `proposal-${proposalData?.proposalNumber || id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.success("PDF downloaded successfully");
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast.error("Failed to download PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!id || !proposalData?.client.email) return;
+    
+    setSendingEmail(true);
+    try {
+      const response = await fetch('/api/proposals/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          proposalId: id,
+          recipientEmail: proposalData.client.email,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send email');
+      }
+      
+      toast.success("Proposal sent successfully via email");
+      
+      // Update proposal status to 'sent'
+      if (proposalData) {
+        setProposalData({
+          ...proposalData,
+          status: 'sent'
+        });
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast.error("Failed to send proposal via email");
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   const handleAcceptProposal = () => {
@@ -173,13 +263,23 @@ const Proposal = () => {
               <Copy className="w-4 h-4" />
               Copy Link
             </Button>
-            <Button variant="outline" size="sm">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf}
+            >
               <Download className="w-4 h-4" />
-              Download PDF
+              {downloadingPdf ? 'Downloading...' : 'Download PDF'}
             </Button>
-            <Button variant="outline" size="sm">
-              <Send className="w-4 h-4" />
-              Send Proposal
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleSendEmail}
+              disabled={sendingEmail || !proposalData?.client.email}
+            >
+              <Mail className="w-4 h-4" />
+              {sendingEmail ? 'Sending...' : 'Send Email'}
             </Button>
           </div>
         </div>

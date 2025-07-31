@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, ChevronDown } from 'lucide-react';
+import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { createClient } from '@supabase/supabase-js';
@@ -57,14 +56,7 @@ export default function InvoicePage() {
   const { wallets } = useWallets();
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank' | 'stablecoin'>('crypto');
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [selectedChain, setSelectedChain] = useState<string>('base-sepolia');
-
-  // Supported chains (testnet for now)
-  const supportedChains = [
-    { id: 'base-sepolia', name: 'Base Sepolia (Testnet)', symbol: 'ETH' }
-  ];
 
   // Fetch invoice data from API
   useEffect(() => {
@@ -164,8 +156,12 @@ export default function InvoicePage() {
 
     setProcessingPayment(true);
     try {
+      // Calculate total amount with 0.5% transaction fee
+      const transactionFee = invoiceData.subtotal * 0.005;
+      const totalWithFee = invoiceData.subtotal + transactionFee;
+       
       // Convert amount to Wei (assuming USDC has 6 decimals)
-      const amountInWei = (invoiceData.total * 1000000).toString();
+      const amountInWei = (totalWithFee * 1000000).toString();
       
       // USDC contract address on Base Sepolia
       const usdcContractAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
@@ -207,7 +203,8 @@ export default function InvoicePage() {
         },
         body: JSON.stringify({ 
           status: 'paid',
-          transaction_hash: txHash 
+          transaction_hash: txHash,
+          transaction_fee: transactionFee
         })
       });
       
@@ -260,12 +257,8 @@ export default function InvoicePage() {
     }
   };
 
-  const handlePayment = () => {
-    if (paymentMethod === 'crypto') {
-      window.location.href = `/payment/crypto/${id}`;
-    } else {
-      window.location.href = `/payment/bank/${id}`;
-    }
+  const handleBankPayment = () => {
+    window.location.href = `/payment/bank/${id}`;
   };
 
   if (loading) {
@@ -428,13 +421,13 @@ export default function InvoicePage() {
                   <span className="font-medium">${invoiceData.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Tax (8%):</span>
-                  <span className="font-medium">${invoiceData.tax.toFixed(2)}</span>
+                  <span className="text-gray-600">Transaction Fee (0.5%):</span>
+                  <span className="font-medium">${(invoiceData.subtotal * 0.005).toFixed(2)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between py-3">
                   <span className="text-lg font-semibold">Total:</span>
-                  <span className="text-lg font-bold text-blue-600">${invoiceData.total.toFixed(2)}</span>
+                  <span className="text-lg font-bold text-blue-600">${(invoiceData.subtotal + (invoiceData.subtotal * 0.005)).toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -474,106 +467,33 @@ export default function InvoicePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Stablecoin Payment */}
-              <div className="border rounded-lg p-4">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-between p-0 h-auto hover:bg-gray-50"
-                  onClick={() => setPaymentMethod(paymentMethod === 'stablecoin' ? 'crypto' : 'stablecoin')}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-gray-100 rounded-lg">
-                      <Wallet className="h-5 w-5 text-gray-600" />
-                    </div>
-                    <div className="text-left">
-                      <div className="font-medium">Stablecoin Payment</div>
-                      <div className="text-sm text-gray-600">Pay with USDC using your wallet</div>
-                    </div>
-                  </div>
-                  <div className="text-gray-400">
-                    {paymentMethod === 'stablecoin' ? '−' : '+'}
-                  </div>
-                </Button>
-                
-                {paymentMethod === 'stablecoin' && (
-                  <div className="mt-4 pt-4 border-t space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Invoice Number:</span>
-                        <span className="font-medium">{invoiceData.invoiceNumber}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Amount:</span>
-                        <span className="font-medium">${invoiceData.total.toFixed(2)} USDC</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Due Date:</span>
-                        <span className="text-right">{new Date(invoiceData.dueDate).toLocaleDateString()}</span>
-                      </div>
-                      <div className="flex justify-between text-sm items-center">
-                        <span className="text-gray-600">Chain:</span>
-                        <Select value={selectedChain} onValueChange={setSelectedChain}>
-                          <SelectTrigger className="w-48 h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {supportedChains.map((chain) => (
-                              <SelectItem key={chain.id} value={chain.id}>
-                                {chain.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <Button 
-                      onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
-                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                      disabled={!ready || processingPayment}
-                    >
-                      <Wallet className="h-4 w-4 mr-2" />
-                      {processingPayment ? 'Processing...' : 
-                       authenticated && wallets.length > 0 ? `Pay $${invoiceData.total.toFixed(2)} USDC` : 'Connect Wallet'}
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* Traditional Payment Methods */}
+              {/* Payment Methods */}
               <div className="grid grid-cols-2 gap-4">
                 <Button
-                  variant={paymentMethod === 'crypto' ? 'default' : 'outline'}
-                  className={`h-20 flex flex-col items-center justify-center transition-colors ${
-                    paymentMethod === 'crypto' 
-                      ? 'bg-primary hover:bg-primary/90' 
-                      : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => setPaymentMethod('crypto')}
+                  variant="outline"
+                  className="h-20 flex flex-col items-center justify-center transition-colors hover:bg-gray-50"
+                  onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
+                  disabled={!ready || processingPayment}
                 >
                   <Wallet className="h-6 w-6 mb-2" />
-                  <span>Crypto Payment</span>
+                  <span>
+                    {processingPayment ? 'Processing...' : 
+                     authenticated && wallets.length > 0 ? 'Pay with Crypto' : 'Connect Wallet'}
+                  </span>
                 </Button>
                 <Button
-                  variant={paymentMethod === 'bank' ? 'default' : 'outline'}
-                  className={`h-20 flex flex-col items-center justify-center transition-colors ${
-                    paymentMethod === 'bank' 
-                      ? 'bg-primary hover:bg-primary/90' 
-                      : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => setPaymentMethod('bank')}
+                  variant="outline"
+                  className="h-20 flex flex-col items-center justify-center transition-colors hover:bg-gray-50"
+                  onClick={handleBankPayment}
                 >
                   <CreditCard className="h-6 w-6 mb-2" />
                   <span>Bank Transfer</span>
                 </Button>
               </div>
 
-              {paymentMethod !== 'stablecoin' && (
-                <div className="text-center">
-                  <Button onClick={handlePayment} className="bg-primary hover:bg-primary/90 px-8">
-                    Pay ${invoiceData.total.toFixed(2)} via {paymentMethod === 'crypto' ? 'Crypto' : 'Bank Transfer'}
-                  </Button>
-                </div>
-              )}
+              <div className="text-center text-sm text-gray-600">
+                Amount: ${(invoiceData.subtotal + (invoiceData.subtotal * 0.005)).toFixed(2)} • Transaction fee: 0.5%
+              </div>
             </CardContent>
           </Card>
         )}

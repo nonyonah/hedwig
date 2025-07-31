@@ -171,6 +171,7 @@ export async function createProposal(params: CreateProposalParams): Promise<Crea
     const { data, error } = await supabase
       .from('proposals')
       .insert({
+        proposal_number: proposalNumber,
         client_name: 'Client',
         client_email: recipientEmail || 'noreply@hedwigbot.xyz',
         service_type: 'Custom Service',
