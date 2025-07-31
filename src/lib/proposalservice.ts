@@ -366,3 +366,26 @@ async function sendProposalEmail(params: SendProposalEmailParams): Promise<void>
     throw new Error(`Failed to send email: ${result.error.message}`);
   }
 }
+
+// Process proposal input from user messages
+export async function processProposalInput(message: string, userId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    // This function would integrate with proposal creation logic
+    // For now, return a placeholder response that guides the user
+    return {
+      success: true,
+      message: `I'll help you create a proposal! Please provide the following details:
+
+📋 **Project Title**: What's the name of your project?
+📝 **Description**: Describe the work you'll do
+💰 **Budget**: How much will you charge?
+📅 **Timeline**: When will you complete it?
+📧 **Client Email**: Who should receive this proposal?
+
+You can provide all details in one message or I'll guide you through each step.`
+    };
+  } catch (error) {
+    console.error('Error processing proposal input:', error);
+    return { success: false, message: 'Failed to process proposal request. Please try again.' };
+  }
+}

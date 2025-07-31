@@ -42,12 +42,11 @@ export default async function handler(
         `,
         attachments: [{
           filename: `invoice-${invoice.invoice_number}.pdf`,
-          content: pdfBuffer,
-          contentType: 'application/pdf'
+          content: pdfBuffer
         }]
       });
 
-      if (emailResult.success) {
+      if (emailResult) {
         // Update invoice status to sent
         await supabase
           .from('invoices')

@@ -1,9 +1,9 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { supabase } from '../lib/supabase';
-import { sendEmail } from '../lib/email';
-import { generateInvoicePDF } from '../lib/pdf-generator';
+import { sendEmail } from '../lib/emailService';
+import { generateInvoicePDF } from './pdf-generator';
 
-interface InvoiceData {
+export interface InvoiceData {
   id: string;
   invoice_number: string;
   freelancer_name: string;
@@ -95,6 +95,20 @@ export class InvoiceModule {
       }
 
       const { invoice_id, step } = userState;
+
+      // Check if the invoice still exists (defensive programming)
+      const { data: existingInvoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('id', invoice_id)
+        .single();
+
+      if (invoiceError || !existingInvoice) {
+        console.log(`[InvoiceModule] Invoice ${invoice_id} no longer exists, clearing user state`);
+        await this.clearUserState(userId);
+        await this.bot.sendMessage(chatId, '❌ Your previous invoice was not found. Let\'s start a new one!\n\nType "📄 Invoice" to create a new invoice.');
+        return 'Previous invoice not found, state cleared';
+      }
       let nextStep = '';
       let responseMessage = '';
       const updateData: any = {};
@@ -407,7 +421,7 @@ export class InvoiceModule {
       const pdfBuffer = await generateInvoicePDF(invoice);
       
       await this.bot.sendDocument(chatId, pdfBuffer, {
-        filename: `invoice-${invoice.invoice_number}.pdf`
+        caption: `📄 Invoice #${invoice.invoice_number}`
       });
     } catch (error) {
       console.error('Error generating PDF:', error);

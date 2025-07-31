@@ -51,6 +51,9 @@ export async function sendSimpleEmail(to: string, subject: string, html: string)
   return sendEmailWithAttachment({ to, subject, html });
 }
 
+// Alias for backward compatibility
+export const sendEmail = sendEmailWithAttachment;
+
 // Template functions
 export function generateInvoiceEmailTemplate(invoice: any): string {
   return `

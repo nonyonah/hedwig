@@ -409,9 +409,9 @@ export class BotIntegration {
           console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
           const ongoingInvoice = await this.getOngoingInvoice(userId);
           console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
-          if (ongoingInvoice) {
+          if (ongoingInvoice && message.text) {
             console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
-            await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, ongoingInvoice, message.text);
+            await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
             return true;
           }
           
@@ -449,22 +449,32 @@ export class BotIntegration {
       .select('state_data')
       .eq('user_id', userId)
       .eq('state_type', 'creating_invoice')
-      .single();
+      .maybeSingle();
     
     console.log(`[BotIntegration] Query result - data:`, data);
     console.log(`[BotIntegration] Query result - error:`, error);
     
-    return data?.state_data;
+    if (error) {
+      console.error(`[BotIntegration] Error querying user_states:`, error);
+      return null;
+    }
+    
+    return data?.state_data || null;
   }
 
   private async getOngoingProposal(userId: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('user_states')
       .select('state_data')
       .eq('user_id', userId)
       .eq('state_type', 'creating_proposal')
-      .single();
+      .maybeSingle();
     
-    return data?.state_data;
+    if (error) {
+      console.error(`[BotIntegration] Error querying user_states for proposal:`, error);
+      return null;
+    }
+    
+    return data?.state_data || null;
   }
 }

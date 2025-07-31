@@ -33,9 +33,10 @@ export async function generateInvoicePDF(invoice: InvoiceData): Promise<Buffer> 
       doc.fontSize(14).text('Project Description:', 50, 230);
       doc.fontSize(12).text(invoice.project_description, 50, 250, { width: 500 });
 
-      if (invoice.deliverables) {
+      // Optional deliverables section (if available)
+      if ((invoice as any).deliverables) {
         doc.fontSize(14).text('Deliverables:', 50, 300);
-        doc.fontSize(12).text(invoice.deliverables, 50, 320, { width: 500 });
+        doc.fontSize(12).text((invoice as any).deliverables, 50, 320, { width: 500 });
       }
 
       // Amount section

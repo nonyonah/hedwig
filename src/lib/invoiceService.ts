@@ -329,3 +329,33 @@ async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<void> {
     throw new Error(`Failed to send email: ${result.error.message}`);
   }
 }
+
+// Process invoice input from user messages
+export async function processInvoiceInput(message: string, user: any): Promise<{ success: boolean; message: string }> {
+  try {
+    // Check if user has an ongoing invoice creation by querying user_states directly
+    const { data: userState } = await supabase
+      .from('user_states')
+      .select('state_data')
+      .eq('user_id', user.id)
+      .eq('state_type', 'creating_invoice')
+      .single();
+    
+    if (userState?.state_data) {
+      // User has ongoing invoice creation
+      return { 
+        success: true, 
+        message: 'Please continue your invoice creation in the Telegram bot.' 
+      };
+    } else {
+      // Start new invoice creation
+      return { 
+        success: true, 
+        message: 'To create an invoice, please use the Telegram bot and type "📄 Invoice" or use the /invoice command.' 
+      };
+    }
+  } catch (error) {
+    console.error('Error processing invoice input:', error);
+    return { success: false, message: 'Failed to process invoice request. Please try again.' };
+  }
+}
