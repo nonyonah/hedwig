@@ -341,8 +341,19 @@ export class BotIntegration {
         return true;
       }
       // Invoice module callbacks
-      else if (data.startsWith('invoice_') || data.startsWith('view_invoice_')) {
-        await this.invoiceModule.handleInvoiceCallback(callbackQuery);
+      else if (data.startsWith('invoice_') || data.startsWith('view_invoice_') || data.startsWith('cancel_invoice_') || 
+               data.startsWith('send_invoice_') || data.startsWith('pdf_invoice_') || 
+               data.startsWith('edit_invoice_') || data.startsWith('delete_invoice_') ||
+               data.startsWith('edit_client_') || data.startsWith('edit_project_') ||
+               data.startsWith('edit_amount_') || data.startsWith('edit_due_date_') ||
+               data.startsWith('confirm_delete_')) {
+        // Get proper userId for cancel operations
+        if (data.startsWith('cancel_invoice_')) {
+          const properUserId = await this.getUserIdByChatId(chatId);
+          await this.invoiceModule.handleInvoiceCallback(callbackQuery, properUserId);
+        } else {
+          await this.invoiceModule.handleInvoiceCallback(callbackQuery);
+        }
         return true;
       }
       // Proposal module callbacks

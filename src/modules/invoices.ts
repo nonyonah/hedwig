@@ -74,7 +74,6 @@ export class InvoiceModule {
 
       // Set user state for invoice creation
       await this.setUserState(userId, {
-        action: 'creating_invoice',
         invoice_id: invoice.id,
         step: 'freelancer_name'
       });
@@ -89,12 +88,18 @@ export class InvoiceModule {
   // Continue invoice creation process
   async continueInvoiceCreation(chatId: number, userId: string, userInput: string) {
     try {
+      console.log(`[InvoiceModule] continueInvoiceCreation called with userId: ${userId}, input: ${userInput}`);
+      
       const userState = await this.getUserState(userId);
-      if (!userState || userState.action !== 'creating_invoice') {
+      console.log(`[InvoiceModule] Retrieved user state:`, userState);
+      
+      if (!userState || !userState.invoice_id) {
+        console.log(`[InvoiceModule] No ongoing invoice creation found for user ${userId}`);
         return 'No ongoing invoice creation found.';
       }
 
       const { invoice_id, step } = userState;
+      console.log(`[InvoiceModule] Current step: ${step}, invoice_id: ${invoice_id}`);
 
       // Check if the invoice still exists (defensive programming)
       const { data: existingInvoice, error: invoiceError } = await supabase
@@ -113,15 +118,24 @@ export class InvoiceModule {
       let responseMessage = '';
       const updateData: any = {};
 
+      // Handle edit states
+      if (userState.editing && step.startsWith('edit_')) {
+        const editField = step.replace('edit_', '');
+        return await this.handleEditInput(chatId, userId, invoice_id, editField, userInput);
+      }
+
       switch (step) {
         case 'freelancer_name':
+          console.log(`[InvoiceModule] Processing freelancer_name step with input: ${userInput}`);
           updateData.freelancer_name = userInput.trim();
           nextStep = 'freelancer_email';
           responseMessage = `✅ Freelancer: ${userInput}\n\n*Step 2/9:* What's your email address?`;
           break;
 
         case 'freelancer_email':
+          console.log(`[InvoiceModule] Processing freelancer_email step with input: ${userInput}`);
           if (!this.isValidEmail(userInput)) {
+            console.log(`[InvoiceModule] Invalid email provided: ${userInput}`);
             return '❌ Please enter a valid email address';
           }
           updateData.freelancer_email = userInput.trim();
@@ -195,6 +209,7 @@ export class InvoiceModule {
       }
 
       // Update invoice data
+      console.log(`[InvoiceModule] Updating invoice ${invoice_id} with data:`, updateData);
       const { error: updateError } = await supabase
         .from('invoices')
         .update(updateData)
@@ -204,13 +219,15 @@ export class InvoiceModule {
         console.error('Error updating invoice:', updateError);
         return '❌ Error saving invoice data. Please try again.';
       }
+      console.log(`[InvoiceModule] Invoice updated successfully`);
 
       // Update user state
+      console.log(`[InvoiceModule] Updating user state to step: ${nextStep}`);
       await this.setUserState(userId, {
-        action: 'creating_invoice',
         invoice_id,
         step: nextStep
       });
+      console.log(`[InvoiceModule] User state updated successfully`);
 
       // If complete, finish the invoice creation
       if (nextStep === 'complete') {
@@ -311,6 +328,9 @@ export class InvoiceModule {
 
   // Generate invoice preview
   private generateInvoicePreview(invoice: InvoiceData): string {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+    const invoiceLink = `${baseUrl}/invoice/${invoice.id}`;
+    
     return (
       `📋 *Invoice Preview*\n\n` +
       `*Invoice #:* ${invoice.invoice_number}\n` +
@@ -326,12 +346,13 @@ export class InvoiceModule {
       `💰 USDC (Base Network)\n` +
       `💰 USDC (Solana)\n` +
       `💳 Bank Transfer (Flutterwave)\n\n` +
+      `🔗 *Invoice Link:* ${invoiceLink}\n\n` +
       `What would you like to do next?`
     );
   }
 
   // Handle callback queries for invoice actions
-  async handleInvoiceCallback(callbackQuery: TelegramBot.CallbackQuery) {
+  async handleInvoiceCallback(callbackQuery: TelegramBot.CallbackQuery, userId?: string) {
     const chatId = callbackQuery.message?.chat.id;
     const data = callbackQuery.data;
     
@@ -352,7 +373,22 @@ export class InvoiceModule {
         await this.deleteInvoice(chatId, invoiceId);
       } else if (data.startsWith('cancel_invoice_')) {
         const invoiceId = data.replace('cancel_invoice_', '');
-        await this.cancelInvoiceCreation(chatId, invoiceId);
+        await this.cancelInvoiceCreation(chatId, invoiceId, userId);
+      } else if (data.startsWith('edit_client_')) {
+        const invoiceId = data.replace('edit_client_', '');
+        await this.handleEditField(chatId, invoiceId, 'client');
+      } else if (data.startsWith('edit_project_')) {
+        const invoiceId = data.replace('edit_project_', '');
+        await this.handleEditField(chatId, invoiceId, 'project');
+      } else if (data.startsWith('edit_amount_')) {
+        const invoiceId = data.replace('edit_amount_', '');
+        await this.handleEditField(chatId, invoiceId, 'amount');
+      } else if (data.startsWith('edit_due_date_')) {
+        const invoiceId = data.replace('edit_due_date_', '');
+        await this.handleEditField(chatId, invoiceId, 'due_date');
+      } else if (data.startsWith('confirm_delete_')) {
+        const invoiceId = data.replace('confirm_delete_', '');
+        await this.confirmDeleteInvoice(chatId, invoiceId);
       }
 
       await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -451,24 +487,36 @@ export class InvoiceModule {
 
   // Set user state
   private async setUserState(userId: string, state: any) {
-    await supabase
+    console.log(`[InvoiceModule] setUserState called with userId: ${userId}, state:`, state);
+    const result = await supabase
       .from('user_states')
       .upsert({
         user_id: userId,
         state_type: 'creating_invoice',
         state_data: state,
         updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,state_type'
       });
+    
+    console.log(`[InvoiceModule] setUserState result:`, result);
+    if (result.error) {
+      console.error(`[InvoiceModule] Error in setUserState:`, result.error);
+    }
   }
 
   // Get user state
   private async getUserState(userId: string) {
-    const { data } = await supabase
+    console.log(`[InvoiceModule] getUserState called with userId: ${userId}`);
+    const { data, error } = await supabase
       .from('user_states')
       .select('state_data')
       .eq('user_id', userId)
       .eq('state_type', 'creating_invoice')
       .maybeSingle();
+    
+    console.log(`[InvoiceModule] getUserState result - data:`, data);
+    console.log(`[InvoiceModule] getUserState result - error:`, error);
     
     return data?.state_data;
   }
@@ -569,25 +617,86 @@ export class InvoiceModule {
 
   // Generate email template
   private generateEmailTemplate(invoice: InvoiceData): string {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
+    const invoiceLink = `${baseUrl}/invoice/${invoice.id}`;
+    
     return `
-      <h2>Invoice ${invoice.invoice_number}</h2>
-      <p>Dear ${invoice.client_name},</p>
-      <p>Please find attached your invoice for the project: ${invoice.project_description}</p>
-      <p><strong>Amount:</strong> ${invoice.amount} ${invoice.currency}</p>
-      <p><strong>Due Date:</strong> ${invoice.due_date}</p>
-      <p>Thank you for your business!</p>
-      <p>Best regards,<br>${invoice.freelancer_name}</p>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Invoice ${invoice.invoice_number}</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .invoice-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }
+          .button { display: inline-block; background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>📄 Invoice ${invoice.invoice_number}</h1>
+          <p>Payment request from ${invoice.freelancer_name}</p>
+        </div>
+        
+        <div class="content">
+          <p>Dear ${invoice.client_name},</p>
+          <p>Please find attached your invoice for the project: ${invoice.project_description}</p>
+          
+          <div class="invoice-details">
+            <h3>Invoice Details</h3>
+            <p><strong>Invoice Number:</strong> ${invoice.invoice_number}</p>
+            <p><strong>Project:</strong> ${invoice.project_description}</p>
+            <p><strong>Amount:</strong> ${invoice.amount} ${invoice.currency}</p>
+            <p><strong>Due Date:</strong> ${invoice.due_date}</p>
+          </div>
+          
+          <div style="text-align: center;">
+            <a href="${invoiceLink}" class="button">View & Pay Invoice</a>
+          </div>
+          
+          <p>If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; background: #f0f0f0; padding: 10px; border-radius: 5px;">${invoiceLink}</p>
+          
+          <p>Thank you for your business!</p>
+          <p>Best regards,<br>${invoice.freelancer_name}</p>
+        </div>
+        
+        <div class="footer">
+          <p>This invoice was sent via Hedwig Bot</p>
+          <p>If you have any questions about this invoice, please contact ${invoice.freelancer_name} directly.</p>
+        </div>
+      </body>
+      </html>
     `;
   }
 
   // Cancel invoice creation
-  private async cancelInvoiceCreation(chatId: number, invoiceId: string) {
+  private async cancelInvoiceCreation(chatId: number, invoiceId: string, userId?: string) {
     try {
       // Delete the invoice
       await supabase
         .from('invoices')
         .delete()
         .eq('id', invoiceId);
+
+      // Clear user state if userId is provided
+      if (userId) {
+        await this.clearUserState(userId);
+      } else {
+        // Fallback: get userId from chatId
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', chatId)
+          .single();
+        
+        const fallbackUserId = user?.id || chatId.toString();
+        await this.clearUserState(fallbackUserId);
+      }
 
       await this.bot.sendMessage(chatId, '❌ Invoice creation cancelled.');
     } catch (error) {
@@ -669,6 +778,168 @@ export class InvoiceModule {
     } catch (error) {
       console.error('Error deleting invoice:', error);
       await this.bot.sendMessage(chatId, '❌ Failed to delete invoice. Please try again.');
+    }
+  }
+
+  // Confirm delete invoice
+  private async confirmDeleteInvoice(chatId: number, invoiceId: string) {
+    try {
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('invoice_number')
+        .eq('id', invoiceId)
+        .single();
+
+      if (!invoice) {
+        await this.bot.sendMessage(chatId, '❌ Invoice not found.');
+        return;
+      }
+
+      // Delete the invoice
+      await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoiceId);
+
+      await this.bot.sendMessage(chatId, `✅ Invoice ${invoice.invoice_number} has been deleted.`);
+    } catch (error) {
+      console.error('Error confirming delete invoice:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to delete invoice. Please try again.');
+    }
+  }
+
+  // Handle edit field
+  private async handleEditField(chatId: number, invoiceId: string, field: string) {
+    try {
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', invoiceId)
+        .single();
+
+      if (!invoice) {
+        await this.bot.sendMessage(chatId, '❌ Invoice not found.');
+        return;
+      }
+
+      let message = '';
+      switch (field) {
+        case 'client':
+          message = `📝 *Edit Client Information*\n\n` +
+                   `Current client: ${invoice.client_name} (${invoice.client_email})\n\n` +
+                   `Please send the new client name:`;
+          break;
+        case 'project':
+          message = `📝 *Edit Project Details*\n\n` +
+                   `Current project: ${invoice.project_description}\n` +
+                   `Current quantity: ${invoice.quantity}\n` +
+                   `Current rate: ${invoice.rate}\n\n` +
+                   `Please send the new project description:`;
+          break;
+        case 'amount':
+          message = `📝 *Edit Amount*\n\n` +
+                   `Current amount: ${invoice.amount} ${invoice.currency}\n\n` +
+                   `Please send the new amount (e.g., 100 USD):`;
+          break;
+        case 'due_date':
+          message = `📝 *Edit Due Date*\n\n` +
+                   `Current due date: ${invoice.due_date}\n\n` +
+                   `Please send the new due date (e.g., 2024-02-15 or "in 30 days"):`;
+          break;
+      }
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: `edit_invoice_${invoiceId}` }
+          ]]
+        }
+      });
+
+      // Set user state for editing
+      const userId = await this.getUserIdByChatId(chatId);
+      await this.setUserState(userId, {
+        invoice_id: invoiceId,
+        step: `edit_${field}`,
+        editing: true
+      });
+
+    } catch (error) {
+      console.error('Error handling edit field:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to edit field. Please try again.');
+    }
+  }
+
+  // Helper function to get user UUID by chat ID
+  private async getUserIdByChatId(chatId: number): Promise<string> {
+    const { data } = await supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_chat_id', chatId)
+      .single();
+    
+    return data?.id || chatId.toString(); // Fallback to chatId if not found
+  }
+
+  // Handle edit input
+  private async handleEditInput(chatId: number, userId: string, invoiceId: string, field: string, userInput: string) {
+    try {
+      const updateData: any = {};
+      let responseMessage = '';
+
+      switch (field) {
+        case 'client':
+          updateData.client_name = userInput.trim();
+          responseMessage = `✅ Client name updated to: ${userInput}`;
+          break;
+        case 'project':
+          updateData.project_description = userInput.trim();
+          responseMessage = `✅ Project description updated to: ${userInput}`;
+          break;
+        case 'amount':
+          const amountData = this.parseAmount(userInput);
+          if (!amountData) {
+            return '❌ Please enter a valid amount (e.g., 100 USD)';
+          }
+          updateData.amount = amountData.amount;
+          updateData.currency = amountData.currency;
+          responseMessage = `✅ Amount updated to: ${amountData.amount} ${amountData.currency}`;
+          break;
+        case 'due_date':
+          const dueDate = this.parseDueDate(userInput);
+          if (!dueDate) {
+            return '❌ Please enter a valid date (YYYY-MM-DD format, "X days", or "in X days")';
+          }
+          updateData.due_date = dueDate;
+          responseMessage = `✅ Due date updated to: ${dueDate}`;
+          break;
+        default:
+          return '❌ Invalid edit field';
+      }
+
+      // Update invoice data
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update(updateData)
+        .eq('id', invoiceId);
+
+      if (updateError) {
+        console.error('Error updating invoice:', updateError);
+        return '❌ Error saving changes. Please try again.';
+      }
+
+      // Clear edit state
+      await this.clearUserState(userId);
+
+      // Send success message and return to edit menu
+      await this.bot.sendMessage(chatId, responseMessage);
+      await this.editInvoice(chatId, invoiceId);
+
+      return 'Edit completed successfully';
+    } catch (error) {
+      console.error('Error handling edit input:', error);
+      return '❌ Error processing edit. Please try again.';
     }
   }
 }

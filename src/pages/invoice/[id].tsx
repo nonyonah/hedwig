@@ -4,8 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { createClient } from '@supabase/supabase-js';
 
 interface InvoiceItem {
   id: string;
@@ -41,12 +44,27 @@ interface InvoiceData {
   paymentTerms: string;
 }
 
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
 export default function InvoicePage() {
   const router = useRouter();
   const { id } = router.query;
+  const { ready, authenticated, user, login, logout, connectWallet } = usePrivy();
+  const { wallets } = useWallets();
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank'>('crypto');
+  const [paymentMethod, setPaymentMethod] = useState<'crypto' | 'bank' | 'stablecoin'>('crypto');
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [selectedChain, setSelectedChain] = useState<string>('base-sepolia');
+
+  // Supported chains (testnet for now)
+  const supportedChains = [
+    { id: 'base-sepolia', name: 'Base Sepolia (Testnet)', symbol: 'ETH' }
+  ];
 
   // Fetch invoice data from API
   useEffect(() => {
@@ -104,6 +122,108 @@ export default function InvoicePage() {
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     toast.success('Invoice link copied to clipboard');
+  };
+
+  const handleConnectWallet = async () => {
+    if (!ready) {
+      toast.error('Wallet not ready');
+      return;
+    }
+
+    try {
+      if (!authenticated) {
+        await login();
+      } else {
+        await connectWallet();
+      }
+      toast.success('Wallet connected successfully!');
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      toast.error('Failed to connect wallet');
+    }
+  };
+
+  const handleCryptoPayment = async () => {
+    if (!invoiceData || !wallets.length) {
+      toast.error('No wallet connected');
+      return;
+    }
+
+    const wallet = wallets[0]; // Use the first connected wallet
+    console.log('Wallet object:', wallet);
+    console.log('Wallet client type:', wallet.walletClientType);
+    
+    // Check if wallet supports Ethereum (most wallets do)
+    if (!wallet.walletClientType || wallet.walletClientType === 'solana') {
+      toast.error('Please connect an Ethereum-compatible wallet');
+      return;
+    }
+
+    // Get the Ethereum provider from the wallet
+    const provider = await wallet.getEthereumProvider();
+
+    setProcessingPayment(true);
+    try {
+      // Convert amount to Wei (assuming USDC has 6 decimals)
+      const amountInWei = (invoiceData.total * 1000000).toString();
+      
+      // USDC contract address on Base Sepolia
+      const usdcContractAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+      
+      // ERC-20 transfer function signature
+      const transferFunctionSignature = '0xa9059cbb';
+      
+      // For demo purposes, we'll use a default recipient address
+      // In production, this should come from the invoice data
+      const recipientAddress = '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6';
+      
+      // Encode recipient address (remove 0x and pad to 32 bytes)
+      const recipientAddressEncoded = recipientAddress.slice(2).padStart(64, '0');
+      
+      // Encode amount (pad to 32 bytes)
+      const amountHex = parseInt(amountInWei).toString(16).padStart(64, '0');
+      
+      // Construct transaction data
+      const data = transferFunctionSignature + recipientAddressEncoded + amountHex;
+
+      // Send the transaction using the provider
+      const txHash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: wallet.address,
+          to: usdcContractAddress,
+          value: '0x0',
+          data: data,
+        }]
+      });
+      
+      toast.success(`Transaction sent! Hash: ${txHash}`);
+      
+      // Update invoice status to paid
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          status: 'paid',
+          transaction_hash: txHash 
+        })
+      });
+      
+      if (response.ok) {
+        setInvoiceData(prev => prev ? { ...prev, status: 'paid' } : null);
+        toast.success('Payment completed successfully!');
+      } else {
+        console.error('Error updating invoice status');
+      }
+      
+    } catch (error) {
+      console.error('Error sending transaction:', error);
+      toast.error('Failed to send payment transaction');
+    } finally {
+      setProcessingPayment(false);
+    }
   };
 
   const handleDownloadPDF = async () => {
@@ -353,8 +473,74 @@ export default function InvoicePage() {
                 Choose your preferred payment method to complete the payment.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 mb-6">
+            <CardContent className="space-y-4">
+              {/* Stablecoin Payment */}
+              <div className="border rounded-lg p-4">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-between p-0 h-auto hover:bg-gray-50"
+                  onClick={() => setPaymentMethod(paymentMethod === 'stablecoin' ? 'crypto' : 'stablecoin')}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-gray-100 rounded-lg">
+                      <Wallet className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium">Stablecoin Payment</div>
+                      <div className="text-sm text-gray-600">Pay with USDC using your wallet</div>
+                    </div>
+                  </div>
+                  <div className="text-gray-400">
+                    {paymentMethod === 'stablecoin' ? '−' : '+'}
+                  </div>
+                </Button>
+                
+                {paymentMethod === 'stablecoin' && (
+                  <div className="mt-4 pt-4 border-t space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Invoice Number:</span>
+                        <span className="font-medium">{invoiceData.invoiceNumber}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Amount:</span>
+                        <span className="font-medium">${invoiceData.total.toFixed(2)} USDC</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Due Date:</span>
+                        <span className="text-right">{new Date(invoiceData.dueDate).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex justify-between text-sm items-center">
+                        <span className="text-gray-600">Chain:</span>
+                        <Select value={selectedChain} onValueChange={setSelectedChain}>
+                          <SelectTrigger className="w-48 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {supportedChains.map((chain) => (
+                              <SelectItem key={chain.id} value={chain.id}>
+                                {chain.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                      disabled={!ready || processingPayment}
+                    >
+                      <Wallet className="h-4 w-4 mr-2" />
+                      {processingPayment ? 'Processing...' : 
+                       authenticated && wallets.length > 0 ? `Pay $${invoiceData.total.toFixed(2)} USDC` : 'Connect Wallet'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Traditional Payment Methods */}
+              <div className="grid grid-cols-2 gap-4">
                 <Button
                   variant={paymentMethod === 'crypto' ? 'default' : 'outline'}
                   className={`h-20 flex flex-col items-center justify-center transition-colors ${
@@ -381,11 +567,13 @@ export default function InvoicePage() {
                 </Button>
               </div>
 
-              <div className="text-center">
-                <Button onClick={handlePayment} className="bg-primary hover:bg-primary/90 px-8">
-                  Pay ${invoiceData.total.toFixed(2)} via {paymentMethod === 'crypto' ? 'Crypto' : 'Bank Transfer'}
-                </Button>
-              </div>
+              {paymentMethod !== 'stablecoin' && (
+                <div className="text-center">
+                  <Button onClick={handlePayment} className="bg-primary hover:bg-primary/90 px-8">
+                    Pay ${invoiceData.total.toFixed(2)} via {paymentMethod === 'crypto' ? 'Crypto' : 'Bank Transfer'}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

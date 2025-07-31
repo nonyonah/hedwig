@@ -24,31 +24,48 @@ export default async function handler(
         return res.status(404).json({ error: 'Invoice not found' });
       }
 
+      // Calculate subtotal, tax, and total
+      const quantity = invoice.quantity || 1;
+      const rate = invoice.rate || invoice.amount || invoice.price || 0;
+      const subtotal = quantity * rate;
+      const taxRate = 0.08; // 8% tax
+      const tax = subtotal * taxRate;
+      const total = subtotal + tax;
+
+      // Create items array from invoice data
+      const items = [{
+        id: '1',
+        description: invoice.project_description || 'Service',
+        quantity: quantity,
+        rate: rate,
+        amount: subtotal
+      }];
+
       // Transform database data to match frontend interface
       const transformedInvoice = {
         id: invoice.id,
-        invoiceNumber: invoice.invoice_number,
-        status: invoice.status,
-        issueDate: invoice.issue_date,
-        dueDate: invoice.due_date,
+        invoiceNumber: invoice.invoice_number || `INV-${invoice.id.slice(0, 8)}`,
+        status: invoice.status || 'draft',
+        issueDate: invoice.date_created || new Date().toISOString(),
+        dueDate: invoice.due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         fromCompany: {
-          name: invoice.sender_name,
-          address: invoice.sender_address,
-          email: invoice.sender_email,
-          phone: invoice.sender_phone || ''
+          name: invoice.freelancer_name || 'Freelancer',
+          address: invoice.freelancer_address || '',
+          email: invoice.freelancer_email || '',
+          phone: invoice.freelancer_phone || ''
         },
         toCompany: {
-          name: invoice.client_name,
-          address: invoice.client_address,
-          email: invoice.client_email,
+          name: invoice.client_name || 'Client',
+          address: invoice.client_address || '',
+          email: invoice.client_email || '',
           phone: invoice.client_phone || ''
         },
-        items: invoice.items || [],
-        subtotal: invoice.subtotal,
-        tax: invoice.tax || 0,
-        total: invoice.total_amount,
-        notes: invoice.notes,
-        paymentTerms: invoice.payment_terms || 'Net 30'
+        items: items,
+        subtotal: subtotal,
+        tax: tax,
+        total: total,
+        notes: invoice.additional_notes || 'Thank you for your business!',
+        paymentTerms: invoice.payment_instructions || 'Net 30'
       };
 
       res.status(200).json(transformedInvoice);
