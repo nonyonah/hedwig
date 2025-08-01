@@ -192,6 +192,111 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
     
+    // Payment link keywords - comprehensive detection without requiring emojis
+    if (text.includes('payment link') || 
+        text.includes('create payment link') || 
+        text.includes('generate payment link') ||
+        text.includes('payment request') || 
+        text.includes('request payment') ||
+        text.includes('send me a payment link') || 
+        text.includes('i need a payment link') ||
+        text.includes('request money') || 
+        text.includes('ask for payment') ||
+        (text.includes('create') && text.includes('payment') && text.includes('link')) ||
+        (text.includes('make') && text.includes('payment') && text.includes('link')) ||
+        (text.includes('generate') && text.includes('payment') && text.includes('request'))) {
+      const result = { intent: 'create_payment_link', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+    
+    // Invoice keywords - comprehensive detection without requiring emojis
+     if (text.includes('invoice') || 
+         text.includes('create invoice') || 
+         text.includes('generate invoice') || 
+         text.includes('send invoice') ||
+         text.includes('bill someone') || 
+         text.includes('billing') || 
+         text.includes('create bill') ||
+         text.includes('professional invoice') || 
+         text.includes('invoice with pdf') ||
+         text.includes('invoice for services') || 
+         text.includes('invoice for project') ||
+         text.includes('detailed invoice') || 
+         text.includes('itemized invoice') ||
+         (text.includes('create') && text.includes('invoice')) ||
+         (text.includes('make') && text.includes('invoice')) ||
+         (text.includes('generate') && text.includes('bill'))) {
+       const result = { intent: 'create_invoice', params: {} };
+       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+       return result;
+     }
+     
+     // Proposal keywords - comprehensive detection without requiring emojis
+      if (text.includes('proposal') || 
+          text.includes('create proposal') || 
+          text.includes('generate proposal') || 
+          text.includes('draft proposal') ||
+          text.includes('project proposal') || 
+          text.includes('proposal for') || 
+          text.includes('need a proposal') ||
+          text.includes('quote') || 
+          text.includes('estimate') || 
+          text.includes('project quote') || 
+          text.includes('service quote') ||
+          text.includes('proposal for web development') || 
+          text.includes('mobile app proposal') || 
+          text.includes('design proposal') ||
+          (text.includes('create') && text.includes('proposal')) ||
+          (text.includes('make') && text.includes('proposal')) ||
+          (text.includes('generate') && text.includes('quote'))) {
+        const result = { intent: 'create_proposal', params: {} };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
+      }
+      
+      // Earnings keywords - comprehensive detection without requiring emojis
+      if (text.includes('earnings') || 
+          text.includes('how much have i earned') || 
+          text.includes('money received') || 
+          text.includes('income') ||
+          text.includes('payments received') || 
+          text.includes('what did i receive') || 
+          text.includes('how much did i get') ||
+          text.includes('earnings summary') || 
+          text.includes('earnings report') || 
+          text.includes('payment history') ||
+          text.includes('how much money came in') || 
+          text.includes('received payments') || 
+          text.includes('incoming payments') ||
+          (text.includes('how much') && text.includes('earned')) ||
+          (text.includes('money') && text.includes('received'))) {
+        const result = { intent: 'get_earnings', params: {} };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
+      }
+      
+      // Spending keywords - comprehensive detection without requiring emojis
+      if (text.includes('spending') || 
+          text.includes('how much have i spent') || 
+          text.includes('money sent') || 
+          text.includes('payments made') ||
+          text.includes('what did i spend') || 
+          text.includes('how much did i pay') || 
+          text.includes('outgoing payments') ||
+          text.includes('spending summary') || 
+          text.includes('spending report') || 
+          text.includes('payment history sent') ||
+          text.includes('how much money went out') || 
+          text.includes('sent payments') || 
+          text.includes('transactions sent') ||
+          (text.includes('how much') && text.includes('spent')) ||
+          (text.includes('money') && text.includes('sent'))) {
+        const result = { intent: 'get_spending', params: {} };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
+      }
+
     // Currency conversion and exchange rate keywords
     if (text.includes('exchange rate') || 
         text.includes('convert') && (text.includes('usd') || text.includes('ngn') || text.includes('eur') || 
