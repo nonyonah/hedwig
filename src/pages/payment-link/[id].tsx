@@ -7,9 +7,10 @@ import { Separator } from '@/components/ui/separator';
 import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield, Building, CheckCircle, AlertCircle, Download, Send, ChevronDown } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth';
 import { createClient } from '@supabase/supabase-js';
 import { flutterwaveService } from '@/lib/flutterwaveService';
+import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 
 interface PaymentData {
   id: string;
@@ -46,15 +47,20 @@ const supabase = createClient(
 // flutterwaveService is imported from the service file
 
 export default function PaymentLinkPage() {
-  const router = useRouter()
-  const { id } = router.query
-  const { ready, authenticated, user, login, logout, connectWallet } = usePrivy()
-  const { wallets } = useWallets()
-  const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | 'bank' | 'crypto' | null>(null);
+  const router = useRouter();
+  const { id } = router.query;
+  const { ready, authenticated, login } = usePrivy();
+  const { wallets } = useWallets();
+  const { connectWallet } = useConnectWallet();
+  const { processPayment, checkTokenBalance, isProcessing } = useHedwigPayment();
+  
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | 'bank' | null>(null);
+  const [selectedChain, setSelectedChain] = useState('base');
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [selectedChain, setSelectedChain] = useState<string>('base-sepolia');
+  const [userBalance, setUserBalance] = useState<string | null>(null);
 
   // Supported chains (testnet for now)
   const supportedChains = [
@@ -115,6 +121,20 @@ export default function PaymentLinkPage() {
 
     fetchPaymentData()
   }, [id])
+
+  // Check user balance when wallet is connected
+  useEffect(() => {
+    const checkBalance = async () => {
+      if (authenticated && wallets.length > 0) {
+        const balance = await checkTokenBalance();
+        if (balance) {
+          setUserBalance(balance.balance);
+        }
+      }
+    };
+    
+    checkBalance();
+  }, [authenticated, wallets, checkTokenBalance]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href)
@@ -183,82 +203,47 @@ export default function PaymentLinkPage() {
   }
 
   const handleCryptoPayment = async () => {
-    if (!paymentData || !wallets.length) {
-      toast.error('No wallet connected')
-      return
-    }
-
-    const wallet = wallets[0] // Use the first connected wallet
-    console.log('Wallet object:', wallet)
-    console.log('Wallet client type:', wallet.walletClientType)
+    if (!wallets.length || !paymentData) return;
     
-    // Check if wallet supports Ethereum (most wallets do)
-    if (!wallet.walletClientType || wallet.walletClientType === 'solana') {
-      toast.error('Please connect an Ethereum-compatible wallet')
-      return
-    }
-
-    // Get the Ethereum provider from the wallet
-    const provider = await wallet.getEthereumProvider()
-
-    setProcessingPayment(true)
+    setProcessingPayment(true);
+    
     try {
-      // Convert amount to Wei (assuming USDC has 6 decimals)
-      const amountInWei = (paymentData.amount * 1000000).toString()
+      // Process payment through smart contract
+      const result = await processPayment({
+        amount: paymentData.amount,
+        freelancerAddress: paymentData.walletAddress,
+        invoiceId: paymentData.id
+      });
       
-      // USDC contract address on Base Sepolia
-      const usdcContractAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
-      
-      // ERC-20 transfer function signature
-      const transferFunctionSignature = '0xa9059cbb'
-      
-      // Encode recipient address (remove 0x and pad to 32 bytes)
-      const recipientAddress = paymentData.walletAddress.slice(2).padStart(64, '0')
-      
-      // Encode amount (pad to 32 bytes)
-      const amountHex = parseInt(amountInWei).toString(16).padStart(64, '0')
-      
-      // Construct transaction data
-      const data = transferFunctionSignature + recipientAddress + amountHex
-
-      const transactionRequest = {
-        to: usdcContractAddress,
-        value: '0x0', // No ETH being sent
-        data: data,
-        chainId: 84532 // Base Sepolia chain ID
-      }
-
-      // Send the transaction using the provider
-      const txHash = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{
-          from: wallet.address,
-          to: usdcContractAddress,
-          value: '0x0',
-          data: data,
-        }]
-      })
-      
-      toast.success(`Transaction sent! Hash: ${txHash}`)
-      
-      // Update payment status to paid
-      const { error } = await supabase
-        .from('payment_links')
-        .update({ status: 'paid' })
-        .eq('id', id)
-      
-      if (error) {
-        console.error('Error updating payment status:', error)
+      if (result.success) {
+        toast.success('Payment sent successfully!');
+        
+        // Update payment status in database
+        const { error: updateError } = await supabase
+          .from('payment_links')
+          .update({ 
+            status: 'completed',
+            transaction_hash: result.transactionHash,
+            paid_at: new Date().toISOString()
+          })
+          .eq('id', id);
+        
+        if (updateError) {
+          console.error('Error updating payment status:', updateError);
+        }
+        
+        // Update local state
+        setPaymentData(prev => prev ? { ...prev, status: 'paid' } : null);
+        
       } else {
-        setPaymentData(prev => prev ? { ...prev, status: 'paid' } : null)
-        toast.success('Payment completed successfully!')
+        toast.error(result.error || 'Payment failed. Please try again.');
       }
       
-    } catch (error) {
-      console.error('Error sending transaction:', error)
-      toast.error('Failed to send payment transaction')
+    } catch (error: any) {
+      console.error('Payment error:', error);
+      toast.error('Payment failed. Please try again.');
     } finally {
-      setProcessingPayment(false)
+      setProcessingPayment(false);
     }
   }
 
@@ -390,6 +375,20 @@ export default function PaymentLinkPage() {
                         <span className="text-gray-600">Amount:</span>
                         <span className="font-medium">${paymentData.amount.toLocaleString()} USDC</span>
                       </div>
+                      {userBalance && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Your Balance:</span>
+                          <span className={`font-medium ${parseFloat(userBalance) >= paymentData.amount ? 'text-green-600' : 'text-red-600'}`}>
+                            {parseFloat(userBalance).toFixed(2)} USDC
+                          </span>
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-500 mt-2 p-2 bg-gray-50 rounded">
+                        <div className="font-medium mb-1">Fee Breakdown:</div>
+                        <div>• Platform fee will be automatically deducted</div>
+                        <div>• Payment processed through secure smart contract</div>
+                        <div>• Freelancer receives the net amount after fees</div>
+                      </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Description:</span>
                         <span className="text-right max-w-xs">{paymentData.description}</span>
@@ -413,11 +412,13 @@ export default function PaymentLinkPage() {
                     <Button 
                       onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                      disabled={!ready || processingPayment}
+                      disabled={!ready || isProcessing || processingPayment || (userBalance ? parseFloat(userBalance) < paymentData.amount : false)}
                     >
                       <Wallet className="h-4 w-4 mr-2" />
-                      {processingPayment ? 'Processing...' : 
-                       authenticated && wallets.length > 0 ? `Pay $${paymentData.amount.toLocaleString()} USDC` : 'Connect Wallet'}
+                      {(isProcessing || processingPayment) ? 'Processing...' : 
+                       authenticated && wallets.length > 0 ? 
+                         (userBalance && parseFloat(userBalance) < paymentData.amount ? 'Insufficient Balance' : `Pay $${paymentData.amount.toLocaleString()} USDC`) : 
+                         'Connect Wallet'}
                     </Button>
                   </div>
                 )}

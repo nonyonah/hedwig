@@ -1,16 +1,16 @@
-require('@nomiclabs/hardhat-ethers');
+require('@nomicfoundation/hardhat-ethers');
 require('@nomiclabs/hardhat-etherscan');
-require('dotenv').config();
+require('dotenv').config({ path: '.env.local' });
 
 module.exports = {
   solidity: {
-    version: "0.8.19",
+    version: "0.8.20",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200
-      }
-    }
+        runs: 200,
+      },
+    },
   },
   networks: {
     'base-sepolia': {

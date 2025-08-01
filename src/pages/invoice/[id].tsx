@@ -6,8 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth';
 import { createClient } from '@supabase/supabase-js';
+import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 
 interface InvoiceItem {
   id: string;
@@ -28,6 +29,7 @@ interface InvoiceData {
     address: string;
     email: string;
     phone: string;
+    walletAddress?: string;
   };
   toCompany: {
     name: string;
@@ -52,11 +54,15 @@ const supabase = createClient(
 export default function InvoicePage() {
   const router = useRouter();
   const { id } = router.query;
-  const { ready, authenticated, user, login, logout, connectWallet } = usePrivy();
+  const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
+  const { connectWallet } = useConnectWallet();
+  const { processPayment, checkTokenBalance, isProcessing } = useHedwigPayment();
+  
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [userBalance, setUserBalance] = useState<string | null>(null);
 
   // Fetch invoice data from API
   useEffect(() => {
@@ -64,6 +70,20 @@ export default function InvoicePage() {
       fetchInvoiceData();
     }
   }, [id]);
+
+  // Check user balance when wallet is connected
+  useEffect(() => {
+    const checkBalance = async () => {
+      if (authenticated && wallets.length > 0) {
+        const balance = await checkTokenBalance();
+        if (balance) {
+          setUserBalance(balance.balance);
+        }
+      }
+    };
+    
+    checkBalance();
+  }, [authenticated, wallets, checkTokenBalance]);
 
   const fetchInvoiceData = async () => {
     try {
@@ -141,83 +161,45 @@ export default function InvoicePage() {
       return;
     }
 
-    const wallet = wallets[0]; // Use the first connected wallet
-    console.log('Wallet object:', wallet);
-    console.log('Wallet client type:', wallet.walletClientType);
-    
-    // Check if wallet supports Ethereum (most wallets do)
-    if (!wallet.walletClientType || wallet.walletClientType === 'solana') {
-      toast.error('Please connect an Ethereum-compatible wallet');
-      return;
-    }
-
-    // Get the Ethereum provider from the wallet
-    const provider = await wallet.getEthereumProvider();
-
     setProcessingPayment(true);
+    
     try {
-      // Calculate total amount with 0.5% transaction fee
-      const transactionFee = invoiceData.subtotal * 0.005;
-      const totalWithFee = invoiceData.subtotal + transactionFee;
-       
-      // Convert amount to Wei (assuming USDC has 6 decimals)
-      const amountInWei = (totalWithFee * 1000000).toString();
-      
-      // USDC contract address on Base Sepolia
-      const usdcContractAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
-      
-      // ERC-20 transfer function signature
-      const transferFunctionSignature = '0xa9059cbb';
-      
-      // For demo purposes, we'll use a default recipient address
-      // In production, this should come from the invoice data
-      const recipientAddress = '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6';
-      
-      // Encode recipient address (remove 0x and pad to 32 bytes)
-      const recipientAddressEncoded = recipientAddress.slice(2).padStart(64, '0');
-      
-      // Encode amount (pad to 32 bytes)
-      const amountHex = parseInt(amountInWei).toString(16).padStart(64, '0');
-      
-      // Construct transaction data
-      const data = transferFunctionSignature + recipientAddressEncoded + amountHex;
-
-      // Send the transaction using the provider
-      const txHash = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{
-          from: wallet.address,
-          to: usdcContractAddress,
-          value: '0x0',
-          data: data,
-        }]
+      // Process payment through smart contract
+      const result = await processPayment({
+        amount: invoiceData.total,
+        freelancerAddress: invoiceData.fromCompany.walletAddress || '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6', // Default for demo
+        invoiceId: invoiceData.id
       });
       
-      toast.success(`Transaction sent! Hash: ${txHash}`);
-      
-      // Update invoice status to paid
-      const response = await fetch(`/api/invoices/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          status: 'paid',
-          transaction_hash: txHash,
-          transaction_fee: transactionFee
-        })
-      });
-      
-      if (response.ok) {
-        setInvoiceData(prev => prev ? { ...prev, status: 'paid' } : null);
-        toast.success('Payment completed successfully!');
+      if (result.success) {
+        toast.success('Payment sent successfully!');
+        
+        // Update invoice status to paid
+        const response = await fetch(`/api/invoices/${id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            status: 'paid',
+            transaction_hash: result.transactionHash,
+            paid_at: new Date().toISOString()
+          })
+        });
+        
+        if (response.ok) {
+          setInvoiceData(prev => prev ? { ...prev, status: 'paid' } : null);
+          toast.success('Payment completed successfully!');
+        } else {
+          console.error('Error updating invoice status');
+        }
       } else {
-        console.error('Error updating invoice status');
+        toast.error(result.error || 'Payment failed. Please try again.');
       }
       
-    } catch (error) {
-      console.error('Error sending transaction:', error);
-      toast.error('Failed to send payment transaction');
+    } catch (error: any) {
+      console.error('Payment error:', error);
+      toast.error('Payment failed. Please try again.');
     } finally {
       setProcessingPayment(false);
     }
@@ -467,18 +449,54 @@ export default function InvoicePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* User Balance Display */}
+              {authenticated && wallets.length > 0 && userBalance && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-blue-900">Your USDC Balance:</span>
+                    <span className="text-lg font-bold text-blue-600">{userBalance} USDC</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Fee Breakdown */}
+              {authenticated && wallets.length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
+                  <h4 className="text-sm font-medium text-gray-900">Payment Breakdown</h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Invoice Amount:</span>
+                      <span>${invoiceData.total.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Platform Fee (2%):</span>
+                      <span>${(invoiceData.total * 0.02).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1">
+                      <span className="font-medium">Total to Pay:</span>
+                      <span className="font-bold">{invoiceData.total.toFixed(2)} USDC</span>
+                    </div>
+                    <div className="flex justify-between text-green-600">
+                      <span>Freelancer Receives:</span>
+                      <span>{(invoiceData.total * 0.98).toFixed(2)} USDC</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Payment Methods */}
               <div className="grid grid-cols-2 gap-4">
                 <Button
                   variant="outline"
                   className="h-20 flex flex-col items-center justify-center transition-colors hover:bg-gray-50"
                   onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
-                  disabled={!ready || processingPayment}
+                  disabled={!ready || processingPayment || isProcessing || (userBalance ? parseFloat(userBalance) < invoiceData.total : false)}
                 >
                   <Wallet className="h-6 w-6 mb-2" />
                   <span>
-                    {processingPayment ? 'Processing...' : 
-                     authenticated && wallets.length > 0 ? 'Pay with Crypto' : 'Connect Wallet'}
+                    {(processingPayment || isProcessing) ? 'Processing...' : 
+                     (userBalance && parseFloat(userBalance) < invoiceData.total) ? 'Insufficient Balance' :
+                     authenticated && wallets.length > 0 ? `Pay ${invoiceData.total.toFixed(2)} USDC` : 'Connect Wallet'}
                   </span>
                 </Button>
                 <Button
@@ -492,7 +510,7 @@ export default function InvoicePage() {
               </div>
 
               <div className="text-center text-sm text-gray-600">
-                Amount: ${(invoiceData.subtotal + (invoiceData.subtotal * 0.005)).toFixed(2)} • Transaction fee: 0.5%
+                Secure payment processing via smart contract • Base Sepolia Testnet
               </div>
             </CardContent>
           </Card>
