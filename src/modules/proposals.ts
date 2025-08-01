@@ -20,11 +20,13 @@ const supabase = createClient(
 export interface ProposalData {
   id?: string;
   user_id: string;
+  user_identifier: string;
   proposal_number: string;
   freelancer_name: string;
   freelancer_email: string;
   client_name: string;
   client_email: string;
+  service_type: string;
   project_description: string;
   scope_of_work?: string;
   timeline?: string;
@@ -61,9 +63,11 @@ export class ProposalModule {
       // Start new proposal creation
       const proposalData: Partial<ProposalData> = {
         user_id: userId,
+        user_identifier: userId,
         proposal_number: generateProposalNumber(),
         status: 'draft',
         currency: 'USD',
+        service_type: 'Custom Service',
         payment_methods: {
           usdc_base: '',
           usdc_solana: '',
@@ -291,6 +295,21 @@ export class ProposalModule {
       } else if (data.startsWith('pdf_proposal_')) {
         const proposalId = data.replace('pdf_proposal_', '');
         await this.generateAndSendPDF(chatId, proposalId);
+      } else if (data.startsWith('edit_proposal_')) {
+        const proposalId = data.replace('edit_proposal_', '');
+        await this.editProposal(chatId, proposalId);
+      } else if (data.startsWith('delete_proposal_')) {
+        const proposalId = data.replace('delete_proposal_', '');
+        await this.deleteProposal(chatId, proposalId);
+      } else if (data.startsWith('confirm_delete_proposal_')) {
+        const proposalId = data.replace('confirm_delete_proposal_', '');
+        await this.confirmDeleteProposal(chatId, proposalId);
+      } else if (data.startsWith('view_proposal_')) {
+        const proposalId = data.replace('view_proposal_', '');
+        await this.showProposalPreview(chatId, proposalId);
+      } else if (data.startsWith('edit_client_') || data.startsWith('edit_project_') || 
+                 data.startsWith('edit_amount_') || data.startsWith('edit_timeline_')) {
+        await this.handleEditSubAction(callbackQuery);
       } else if (data.startsWith('cancel_proposal_')) {
         const proposalId = data.replace('cancel_proposal_', '');
         await this.cancelProposalCreation(chatId, proposalId);
@@ -365,6 +384,259 @@ export class ProposalModule {
       console.error('Error generating PDF:', error);
       await this.bot.sendMessage(chatId, '❌ Failed to generate PDF. Please try again.');
     }
+  }
+
+  // Edit proposal
+  private async editProposal(chatId: number, proposalId: string) {
+    try {
+      const { data: proposal } = await supabase
+        .from('proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+      if (!proposal) throw new Error('Proposal not found');
+
+      await this.bot.sendMessage(chatId, 
+        `✏️ *Edit Proposal ${proposal.proposal_number}*\n\n` +
+        `What would you like to edit?`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '👤 Client Info', callback_data: `edit_client_${proposalId}` },
+                { text: '📋 Project Details', callback_data: `edit_project_${proposalId}` }
+              ],
+              [
+                { text: '💰 Amount', callback_data: `edit_amount_${proposalId}` },
+                { text: '⏰ Timeline', callback_data: `edit_timeline_${proposalId}` }
+              ],
+              [
+                { text: '🔙 Back to Proposal', callback_data: `view_proposal_${proposalId}` }
+              ]
+            ]
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error editing proposal:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to load proposal for editing. Please try again.');
+    }
+  }
+
+  // Delete proposal
+  private async deleteProposal(chatId: number, proposalId: string) {
+    try {
+      const { data: proposal } = await supabase
+        .from('proposals')
+        .select('proposal_number, status')
+        .eq('id', proposalId)
+        .single();
+
+      if (!proposal) throw new Error('Proposal not found');
+
+      await this.bot.sendMessage(chatId, 
+        `🗑️ *Delete Proposal ${proposal.proposal_number}*\n\n` +
+        `Are you sure you want to delete this proposal?\n` +
+        `This action cannot be undone.`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Yes, Delete', callback_data: `confirm_delete_proposal_${proposalId}` },
+                { text: '❌ Cancel', callback_data: `view_proposal_${proposalId}` }
+              ]
+            ]
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error deleting proposal:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to delete proposal. Please try again.');
+    }
+  }
+
+  // Confirm proposal deletion
+  private async confirmDeleteProposal(chatId: number, proposalId: string) {
+    try {
+      const { data: proposal } = await supabase
+        .from('proposals')
+        .select('proposal_number')
+        .eq('id', proposalId)
+        .single();
+
+      if (!proposal) throw new Error('Proposal not found');
+
+      // Delete the proposal
+      await supabase
+        .from('proposals')
+        .delete()
+        .eq('id', proposalId);
+
+      await this.bot.sendMessage(chatId, 
+        `✅ Proposal ${proposal.proposal_number} has been deleted successfully.`
+      );
+    } catch (error) {
+      console.error('Error confirming proposal deletion:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to delete proposal. Please try again.');
+    }
+  }
+
+  // Show proposal preview
+  private async showProposalPreview(chatId: number, proposalId: string) {
+    try {
+      const { data: proposal } = await supabase
+        .from('proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+      if (!proposal) throw new Error('Proposal not found');
+
+      const previewText = this.generateProposalPreview(proposal);
+      
+      await this.bot.sendMessage(chatId, previewText, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📧 Send to Client', callback_data: `send_proposal_${proposalId}` },
+              { text: '📄 Generate PDF', callback_data: `pdf_proposal_${proposalId}` }
+            ],
+            [
+              { text: '✏️ Edit Proposal', callback_data: `edit_proposal_${proposalId}` },
+              { text: '🗑️ Delete', callback_data: `delete_proposal_${proposalId}` }
+            ]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error showing proposal preview:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to load proposal preview. Please try again.');
+    }
+  }
+
+  // Handle edit sub-actions
+  private async handleEditSubAction(callbackQuery: any) {
+    const chatId = callbackQuery.message.chat.id;
+    const data = callbackQuery.data;
+    
+    try {
+      if (data.startsWith('edit_client_')) {
+        const proposalId = data.replace('edit_client_', '');
+        await this.startEditClientInfo(chatId, proposalId);
+      } else if (data.startsWith('edit_project_')) {
+        const proposalId = data.replace('edit_project_', '');
+        await this.startEditProjectDetails(chatId, proposalId);
+      } else if (data.startsWith('edit_amount_')) {
+        const proposalId = data.replace('edit_amount_', '');
+        await this.startEditAmount(chatId, proposalId);
+      } else if (data.startsWith('edit_timeline_')) {
+        const proposalId = data.replace('edit_timeline_', '');
+        await this.startEditTimeline(chatId, proposalId);
+      }
+    } catch (error) {
+      console.error('Error handling edit sub-action:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to start editing. Please try again.');
+    }
+  }
+
+  // Start editing client info
+  private async startEditClientInfo(chatId: number, proposalId: string) {
+    await this.bot.sendMessage(chatId, 
+      '👤 *Edit Client Information*\n\n' +
+      'What would you like to update?',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📝 Client Name', callback_data: `edit_client_name_${proposalId}` },
+              { text: '📧 Client Email', callback_data: `edit_client_email_${proposalId}` }
+            ],
+            [
+              { text: '🔙 Back to Edit Menu', callback_data: `edit_proposal_${proposalId}` }
+            ]
+          ]
+        }
+      }
+    );
+  }
+
+  // Start editing project details
+  private async startEditProjectDetails(chatId: number, proposalId: string) {
+    await this.bot.sendMessage(chatId, 
+      '📋 *Edit Project Details*\n\n' +
+      'What would you like to update?',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📝 Project Description', callback_data: `edit_description_${proposalId}` },
+              { text: '🎯 Scope of Work', callback_data: `edit_scope_${proposalId}` }
+            ],
+            [
+              { text: '🔙 Back to Edit Menu', callback_data: `edit_proposal_${proposalId}` }
+            ]
+          ]
+        }
+      }
+    );
+  }
+
+  // Start editing amount
+  private async startEditAmount(chatId: number, proposalId: string) {
+    await this.bot.sendMessage(chatId, 
+      '💰 *Edit Amount*\n\n' +
+      'Please enter the new total investment amount:\n' +
+      '(e.g., 1500 USD or 600000 NGN)',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔙 Back to Edit Menu', callback_data: `edit_proposal_${proposalId}` }
+            ]
+          ]
+        }
+      }
+    );
+
+    // Set user state for editing amount
+    const userId = chatId.toString();
+    await this.setUserState(userId, 'editing_proposal', {
+      proposalId,
+      editField: 'amount'
+    });
+  }
+
+  // Start editing timeline
+  private async startEditTimeline(chatId: number, proposalId: string) {
+    await this.bot.sendMessage(chatId, 
+      '⏰ *Edit Timeline*\n\n' +
+      'Please enter the new project timeline:\n' +
+      '(e.g., "2-3 weeks" or "30 days")',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔙 Back to Edit Menu', callback_data: `edit_proposal_${proposalId}` }
+            ]
+          ]
+        }
+      }
+    );
+
+    // Set user state for editing timeline
+    const userId = chatId.toString();
+    await this.setUserState(userId, 'editing_proposal', {
+      proposalId,
+      editField: 'timeline'
+    });
   }
 
   // Utility functions

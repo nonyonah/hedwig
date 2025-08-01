@@ -357,7 +357,10 @@ export class BotIntegration {
         return true;
       }
       // Proposal module callbacks
-      else if (data.startsWith('proposal_') || data.startsWith('view_proposal_')) {
+      else if (data.startsWith('proposal_') || data.startsWith('view_proposal_') || 
+               data.startsWith('send_proposal_') || data.startsWith('pdf_proposal_') ||
+               data.startsWith('edit_proposal_') || data.startsWith('delete_proposal_') ||
+               data.startsWith('cancel_proposal_')) {
         await this.proposalModule.handleProposalCallback(callbackQuery);
         return true;
       }
