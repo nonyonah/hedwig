@@ -296,6 +296,55 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
         return result;
       }
+      
+      // Manual reminder keywords - comprehensive detection with parameter extraction
+      if (text.includes('remind') || 
+          text.includes('reminder') || 
+          text.includes('nudge') || 
+          text.includes('follow up') ||
+          text.includes('chase') || 
+          text.includes('contact client') || 
+          text.includes('send reminder') ||
+          text.includes('manual reminder') || 
+          text.includes('remind client') || 
+          text.includes('payment reminder') ||
+          (text.includes('remind') && text.includes('client')) ||
+          (text.includes('send') && text.includes('reminder'))) {
+        
+        const params: any = {};
+        
+        // Extract target type and ID patterns
+        const paymentLinkMatch = text.match(/payment\s*link\s*(\w+)/i) || text.match(/link\s*(\w+)/i);
+        const invoiceMatch = text.match(/invoice\s*(\w+)/i);
+        const idMatch = text.match(/\b([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\b/i);
+        
+        if (paymentLinkMatch) {
+          params.targetType = 'payment_link';
+          params.targetId = paymentLinkMatch[1];
+        } else if (invoiceMatch) {
+          params.targetType = 'invoice';
+          params.targetId = invoiceMatch[1];
+        } else if (idMatch) {
+          // If we find a UUID but no specific type, we'll let the function determine the type
+          params.targetId = idMatch[1];
+        }
+        
+        // Extract custom message if provided
+        const messageMatch = text.match(/(?:message|say|tell them|with message)[\s:]+["']?([^"']+)["']?/i);
+        if (messageMatch) {
+          params.customMessage = messageMatch[1].trim();
+        }
+        
+        // Extract client email if mentioned
+        const emailMatch = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        if (emailMatch) {
+          params.clientEmail = emailMatch[1];
+        }
+        
+        const result = { intent: 'send_reminder', params };
+        console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+        return result;
+      }
 
     // Currency conversion and exchange rate keywords
     if (text.includes('exchange rate') || 

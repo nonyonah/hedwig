@@ -534,13 +534,22 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
   try {
     switch (intent) {
       case 'welcome':
-        return "🦉 Welcome to Hedwig! I'm your crypto assistant. I can help you with:\n\n" +
-               "• Creating wallets\n" +
-               "• Checking balances\n" +
-               "• Sending crypto\n" +
-               "• Creating payment links\n" +
-               "• Managing invoices and proposals\n\n" +
-               "What would you like to do?";
+        return "🦉 **Welcome back to Hedwig!** I'm your AI-powered crypto assistant.\n\n" +
+               "🚀 **What I can help you with:**\n" +
+               "• 💰 Check wallet balances\n" +
+               "• 💸 Send crypto payments\n" +
+               "• 📄 Create professional invoices\n" +
+               "• 💳 Generate payment links\n" +
+               "• 📊 Track earnings and analytics\n" +
+               "• 🔄 Perform token swaps\n" +
+               "• 📧 Send payment reminders\n" +
+               "• 📋 Manage proposals\n\n" +
+               "💬 **Just ask me naturally!** Try:\n" +
+               "• \"Check my balance\"\n" +
+               "• \"Create an invoice for $500\"\n" +
+               "• \"Send a reminder to John\"\n" +
+               "• \"Show my earnings this month\"\n\n" +
+               "What would you like to do today?";
       
       case 'balance':
       case 'wallet_balance':
@@ -726,6 +735,11 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
           return "❌ Failed to fetch invoices. Please try again later.";
         }
       
+      case 'send_reminder':
+        // Use the existing actions.ts handler for reminder functionality
+        const reminderResult = await handleAction(intent, params, userId);
+        return reminderResult.text;
+      
       case 'get_price':
         return "💱 Price checking feature is currently being updated. Please use external tools for price information.";
         
@@ -766,8 +780,19 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
       return;
     }
 
-    // If this is a new user (didn't exist before), create CDP wallets
+    // If this is a new user (didn't exist before), create CDP wallets and send welcome message
     if (!existingUser && userId) {
+      const userName = from?.first_name || from?.username || 'there';
+      
+      // Send initial welcome message
+      const welcomeMessage = `🦉 Welcome to Hedwig, ${userName}! 
+
+I'm your AI-powered crypto assistant. I'm currently setting up your secure wallets...
+
+⏳ Creating your wallets now...`;
+
+      await bot?.sendMessage(chatId, welcomeMessage);
+
       try {
         const { getOrCreateCdpWallet } = await import('../../lib/cdp');
         
@@ -775,14 +800,42 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
         const walletIdentifier = from?.username || userId;
         
         // Create EVM wallet (use evm to match the new chain naming)
-        await getOrCreateCdpWallet(walletIdentifier, 'evm');
+        const evmWallet = await getOrCreateCdpWallet(walletIdentifier, 'evm');
         console.log('[Webhook] Created EVM wallet for new Telegram user:', walletIdentifier);
         
         // Create Solana wallet (use solana to match the new chain naming)
-        await getOrCreateCdpWallet(walletIdentifier, 'solana');
+        const solanaWallet = await getOrCreateCdpWallet(walletIdentifier, 'solana');
         console.log('[Webhook] Created Solana wallet for new Telegram user:', walletIdentifier);
+
+        // Send success message with wallet details
+        const successMessage = `✅ **Your wallets are ready!**
+
+🔐 **Your Secure Wallets:**
+
+**🟦 Ethereum/Base Wallet:**
+\`${evmWallet.address}\`
+
+**🟣 Solana Wallet:**
+\`${solanaWallet.address}\`
+
+🎉 **You're all set!** I can help you with:
+• 💰 Checking balances
+• 💸 Sending crypto
+• 📄 Creating invoices
+• 💳 Creating payment links
+• 📊 Tracking earnings
+• 🔄 Token swaps
+
+Just ask me anything like "check my balance" or "create an invoice"!`;
+
+        await bot?.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
+        
       } catch (walletError) {
         console.error('[Webhook] Error creating CDP wallets for new user:', walletError);
+        
+        // Send error message to user
+        const errorMessage = `❌ There was an issue setting up your wallets. Please try typing "create wallet" to retry, or contact support if the problem persists.`;
+        await bot?.sendMessage(chatId, errorMessage);
       }
     }
   } catch (error) {

@@ -166,6 +166,13 @@ IMPORTANT INTENT RECOGNITION RULES:
    - Token-specific spending: "USDC spent", "ETH sent", "how much USDT paid"
    - Network-specific spending: "spending on Base", "Polygon spending"
 
+8. MANUAL REMINDER REQUESTS: Always use "send_reminder" intent for:
+   - "remind", "reminder", "send reminder", "manual reminder"
+   - "nudge", "follow up", "chase", "contact client"
+   - "remind client", "payment reminder", "send nudge"
+   - "follow up on payment", "chase payment", "remind about invoice"
+   - Any request to manually send reminders to clients
+
 8. SPENDING REQUESTS: Always use "get_spending" intent for:
    - "spending", "how much have I spent", "money sent", "payments made"
    - "what did I spend", "how much did I pay", "outgoing payments"

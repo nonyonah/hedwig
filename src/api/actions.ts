@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from '../lib/earningsService';
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
+import { SmartNudgeService } from '@/lib/smartNudgeService';
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -588,6 +589,9 @@ export async function handleAction(
         console.error('[handleAction] Earnings error:', error);
         return { text: "❌ Failed to fetch earnings data. Please try again later." };
       }
+    
+    case "send_reminder":
+      return await sendManualReminder(userId, params);
     
     case "help":
       return {
@@ -1200,6 +1204,126 @@ async function handleDepositNotification(
     console.error('[handleDepositNotification] Error:', error);
     return {
       text: `+${amount} ${token.toUpperCase()} received! Check your balance for details.`
+    };
+  }
+}
+
+// Manual reminder function
+async function sendManualReminder(userId: string, params: ActionParams): Promise<ActionResult> {
+  try {
+    // Extract target type, target ID, and custom message from params
+    let targetType = params.targetType || params.type;
+    let targetId = params.targetId || params.id;
+    const customMessage = params.message || params.text || params.customMessage;
+    const clientEmail = params.clientEmail;
+    
+    // If we have a targetId but no targetType, try to determine the type
+    if (targetId && !targetType) {
+      // Try to find the target in both payment_links and invoices
+      const { data: paymentLink } = await supabase
+        .from('payment_links')
+        .select('id')
+        .eq('id', targetId)
+        .eq('user_id', userId)
+        .single();
+      
+      if (paymentLink) {
+        targetType = 'payment_link';
+      } else {
+        const { data: invoice } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('id', targetId)
+          .eq('user_id', userId)
+          .single();
+        
+        if (invoice) {
+          targetType = 'invoice';
+        }
+      }
+    }
+    
+    // If we have a client email but no specific target, find the most recent unpaid item for that client
+    if (clientEmail && !targetId) {
+      const items = await SmartNudgeService.getUserRemindableItems(userId);
+      
+      // Look for items with matching client email
+      const matchingPaymentLink = items.paymentLinks.find(link => 
+        link.clientEmail.toLowerCase() === clientEmail.toLowerCase()
+      );
+      const matchingInvoice = items.invoices.find(invoice => 
+        invoice.clientEmail.toLowerCase() === clientEmail.toLowerCase()
+      );
+      
+      if (matchingPaymentLink) {
+        targetType = 'payment_link';
+        targetId = matchingPaymentLink.id;
+      } else if (matchingInvoice) {
+        targetType = 'invoice';
+        targetId = matchingInvoice.id;
+      }
+    }
+    
+    // If still no specific target, show available options with better formatting
+    if (!targetType || !targetId) {
+      const items = await SmartNudgeService.getUserRemindableItems(userId);
+      
+      if (items.paymentLinks.length === 0 && items.invoices.length === 0) {
+        return {
+          text: "📭 You don't have any unpaid payment links or invoices to send reminders for."
+        };
+      }
+      
+      let itemsList = '📋 **Choose what to remind about:**\n\n';
+      
+      if (items.paymentLinks.length > 0) {
+        itemsList += '💳 **Payment Links:**\n';
+        items.paymentLinks.forEach((link, index) => {
+          itemsList += `${index + 1}. ${link.title} - $${link.amount}\n   📧 ${link.clientEmail}\n   🆔 \`${link.id}\`\n\n`;
+        });
+      }
+      
+      if (items.invoices.length > 0) {
+        itemsList += '📄 **Invoices:**\n';
+        items.invoices.forEach((invoice, index) => {
+          itemsList += `${index + 1}. ${invoice.title} - $${invoice.amount}\n   📧 ${invoice.clientEmail}\n   🆔 \`${invoice.id}\`\n\n`;
+        });
+      }
+      
+      itemsList += '💡 **How to send a reminder:**\n';
+      itemsList += '• "Remind about payment link [ID]"\n';
+      itemsList += '• "Send reminder for invoice [ID]"\n';
+      itemsList += '• "Remind [client@email.com]"\n';
+      itemsList += '• "Send reminder with message: [your message]"';
+      
+      return {
+        text: itemsList
+      };
+    }
+    
+    // Validate target type
+    if (!['payment_link', 'invoice'].includes(targetType)) {
+      return {
+        text: "❌ Invalid target type. Must be 'payment_link' or 'invoice'."
+      };
+    }
+    
+    // Send the reminder
+    const result = await SmartNudgeService.sendManualReminder(targetType as 'payment_link' | 'invoice', targetId, customMessage);
+    
+    if (result.success) {
+      return {
+        text: `✅ Reminder sent successfully!\n\n${result.message}`
+      };
+    } else {
+      return {
+        text: `❌ Failed to send reminder: ${result.message}`
+      };
+    }
+  } catch (error) {
+    console.error('[sendManualReminder] Error:', error);
+    return {
+      text: "❌ Failed to send reminder. Please try again later."
     };
   }
 }

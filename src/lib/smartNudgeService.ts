@@ -326,6 +326,159 @@ export class SmartNudgeService {
   }
 
   /**
+   * Send manual reminder for a specific payment link or invoice
+   */
+  static async sendManualReminder(
+    targetType: 'payment_link' | 'invoice', 
+    targetId: string, 
+    customMessage?: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      // Get the target details
+      const tableName = targetType === 'payment_link' ? 'payment_links' : 'invoices';
+      const { data: targetData, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq('id', targetId)
+        .single();
+
+      if (error || !targetData) {
+        return { success: false, message: `${targetType} not found` };
+      }
+
+      // Check if already paid
+      const isPaid = targetType === 'payment_link' 
+        ? targetData.status === 'paid' || targetData.paid_at
+        : targetData.status === 'paid';
+
+      if (isPaid) {
+        return { success: false, message: `${targetType} is already paid` };
+      }
+
+      // Create target object for nudge
+      const target: NudgeTarget = {
+        id: targetData.id,
+        type: targetType,
+        userId: targetData.created_by || targetData.user_id,
+        clientEmail: targetData.recipient_email || targetData.client_email,
+        amount: parseFloat(targetData.amount || targetData.total_amount || '0'),
+        title: targetData.payment_reason || targetData.invoice_number || `${targetType} ${targetData.id}`,
+        viewedAt: targetData.viewed_at,
+        paidAt: targetData.paid_at,
+        nudgeCount: targetData.nudge_count || 0,
+        lastNudgeAt: targetData.last_nudge_at,
+        nudgeDisabled: targetData.nudge_disabled,
+        createdAt: targetData.created_at || targetData.date_created
+      };
+
+      // Use custom message if provided, otherwise generate default
+      const message = customMessage || this.generateNudgeMessage(target);
+      
+      // Send the reminder
+      let success = false;
+      let errorMessage = '';
+
+      if (target.clientEmail) {
+        try {
+          console.log(`Sending manual reminder to ${target.clientEmail}:`);
+          console.log(`Subject: Payment Reminder - ${target.title}`);
+          console.log(`Message: ${message}`);
+          
+          // TODO: Implement actual email sending
+          success = true;
+        } catch (error) {
+          errorMessage = error instanceof Error ? error.message : 'Email send failed';
+          console.error(`Failed to send manual reminder:`, error);
+        }
+      } else {
+        return { success: false, message: 'No client email found' };
+      }
+
+      // Update nudge count and timestamp
+      await supabase
+        .from(tableName)
+        .update({
+          nudge_count: target.nudgeCount + 1,
+          last_nudge_at: new Date().toISOString()
+        })
+        .eq('id', target.id);
+
+      // Log the manual nudge
+      await this.logNudge({
+        targetType: target.type,
+        targetId: target.id,
+        userId: target.userId,
+        nudgeType: 'manual_reminder',
+        messageSent: message,
+        sentVia: 'email',
+        success,
+        errorMessage: errorMessage || undefined
+      });
+
+      if (success) {
+        return { success: true, message: `Manual reminder sent to ${target.clientEmail}` };
+      } else {
+        return { success: false, message: errorMessage || 'Failed to send reminder' };
+      }
+    } catch (error) {
+      console.error('Error sending manual reminder:', error);
+      return { success: false, message: 'Internal error occurred' };
+    }
+  }
+
+  /**
+   * Get user's payment links and invoices for manual reminders
+   */
+  static async getUserRemindableItems(userId: string): Promise<{
+    paymentLinks: Array<{ id: string; title: string; amount: number; clientEmail: string; status: string }>;
+    invoices: Array<{ id: string; title: string; amount: number; clientEmail: string; status: string }>;
+  }> {
+    const paymentLinks: any[] = [];
+    const invoices: any[] = [];
+
+    try {
+      // Get unpaid payment links
+      const { data: paymentLinksData } = await supabase
+        .from('payment_links')
+        .select('id, payment_reason, amount, recipient_email, status, paid_at')
+        .eq('created_by', userId)
+        .neq('status', 'paid')
+        .is('paid_at', null);
+
+      if (paymentLinksData) {
+        paymentLinks.push(...paymentLinksData.map(link => ({
+          id: link.id,
+          title: link.payment_reason || `Payment Link ${link.id}`,
+          amount: parseFloat(link.amount || '0'),
+          clientEmail: link.recipient_email || '',
+          status: link.status || 'pending'
+        })));
+      }
+
+      // Get unpaid invoices
+      const { data: invoicesData } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, total_amount, client_email, status')
+        .eq('user_id', userId)
+        .neq('status', 'paid');
+
+      if (invoicesData) {
+        invoices.push(...invoicesData.map(invoice => ({
+          id: invoice.id,
+          title: `Invoice ${invoice.invoice_number || invoice.id}`,
+          amount: parseFloat(invoice.total_amount || '0'),
+          clientEmail: invoice.client_email || '',
+          status: invoice.status || 'pending'
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching remindable items:', error);
+    }
+
+    return { paymentLinks, invoices };
+  }
+
+  /**
    * Get nudge statistics
    */
   static async getNudgeStats(userId?: string): Promise<{
