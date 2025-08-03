@@ -173,8 +173,8 @@ export default function PaymentLinkPage() {
         reason: paymentData.payment_reason
       }, {
         email: paymentData.recipient.email,
-        firstname: paymentData.recipient.name.split(' ')[0] || 'Customer',
-        lastname: paymentData.recipient.name.split(' ')[1] || '',
+        firstname: paymentData.recipient.name ? paymentData.recipient.name.split(' ')[0] || 'Customer' : 'Customer',
+        lastname: paymentData.recipient.name ? paymentData.recipient.name.split(' ')[1] || '' : '',
         phonenumber: '+2348000000000' // Default phone number
       })
 

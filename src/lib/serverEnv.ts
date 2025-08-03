@@ -32,6 +32,13 @@ function loadServerEnvironmentSync() {
       return;
     }
 
+    // Skip environment loading during build time or when CWD is root
+    const cwd = process.cwd();
+    if (cwd === '/' || cwd === 'C:\\' || process.env.NODE_ENV === 'production') {
+      console.log('[ENV] Skipping sync environment loading during build or production');
+      return;
+    }
+
     // Try to load from .env files in different locations
     const possiblePaths = [
       path.join(process.cwd(), '.env.local'),
@@ -47,24 +54,28 @@ function loadServerEnvironmentSync() {
           const envConfig = fs.readFileSync(envPath, 'utf8');
           
           // Parse the .env file and set environment variables
-          if (envConfig && typeof envConfig === 'string') {
-            const envVars = envConfig
-              .split('\n')
-              .filter(line => line.trim() && !line.startsWith('#'))
-              .map(line => {
-                const equalIndex = line.indexOf('=');
-                if (equalIndex === -1) return [];
-                const key = line.substring(0, equalIndex).trim();
-                const value = line.substring(equalIndex + 1).trim();
-                return [key, value];
-              })
-              .filter(parts => parts.length === 2);
-          
-          for (const [key, value] of envVars) {
-            if (key && value && !process.env[key]) {
-              process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
+          if (envConfig && typeof envConfig === 'string' && envConfig.trim()) {
+            try {
+              const envVars = envConfig
+                .split('\n')
+                .filter(line => line.trim() && !line.startsWith('#'))
+                .map(line => {
+                  const equalIndex = line.indexOf('=');
+                  if (equalIndex === -1) return [];
+                  const key = line.substring(0, equalIndex).trim();
+                  const value = line.substring(equalIndex + 1).trim();
+                  return [key, value];
+                })
+                .filter(parts => parts.length === 2);
+            
+              for (const [key, value] of envVars) {
+                if (key && value && !process.env[key]) {
+                  process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
+                }
+              }
+            } catch (parseError) {
+              console.error(`Error parsing env file ${envPath}:`, parseError);
             }
-          }
           }
           
           console.log('Loaded environment variables from:', envPath);
@@ -94,6 +105,13 @@ export function loadServerEnvironment() {
   try {
     // Only run this in serverless function environment
     if (typeof window !== 'undefined') {
+      return;
+    }
+
+    // Skip environment loading during build time or when CWD is root
+    const cwd = process.cwd();
+    if (cwd === '/' || cwd === 'C:\\' || process.env.NODE_ENV === 'production') {
+      console.log('[ENV] Skipping environment loading during build or production');
       return;
     }
 
@@ -130,24 +148,28 @@ export function loadServerEnvironment() {
           const envConfig = fs.readFileSync(envPath, 'utf8');
           
           // Parse the .env file and set environment variables
-          if (envConfig && typeof envConfig === 'string') {
-            const envVars = envConfig
-              .split('\n')
-              .filter(line => line.trim() && !line.startsWith('#'))
-              .map(line => {
-                const equalIndex = line.indexOf('=');
-                if (equalIndex === -1) return [];
-                const key = line.substring(0, equalIndex).trim();
-                const value = line.substring(equalIndex + 1).trim();
-                return [key, value];
-              })
-              .filter(parts => parts.length === 2);
-          
-          for (const [key, value] of envVars) {
-            if (key && value && !process.env[key]) {
-              process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
+          if (envConfig && typeof envConfig === 'string' && envConfig.trim()) {
+            try {
+              const envVars = envConfig
+                .split('\n')
+                .filter(line => line.trim() && !line.startsWith('#'))
+                .map(line => {
+                  const equalIndex = line.indexOf('=');
+                  if (equalIndex === -1) return [];
+                  const key = line.substring(0, equalIndex).trim();
+                  const value = line.substring(equalIndex + 1).trim();
+                  return [key, value];
+                })
+                .filter(parts => parts.length === 2);
+            
+              for (const [key, value] of envVars) {
+                if (key && value && !process.env[key]) {
+                  process.env[key] = value.replace(/^["']|["']$/g, ''); // Remove quotes if present
+                }
+              }
+            } catch (parseError) {
+              console.error(`Error parsing env file ${envPath}:`, parseError);
             }
-          }
           }
           
           console.log('Loaded environment variables from:', envPath);

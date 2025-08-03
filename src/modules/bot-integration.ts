@@ -3,7 +3,8 @@ import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
 import { createClient } from '@supabase/supabase-js';
-import { getBusinessStats } from '../lib/earningsService';
+// Dynamic import to prevent serverEnv loading during build
+// import { getBusinessStats } from '../lib/earningsService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -171,7 +172,8 @@ export class BotIntegration {
   // Handle payment statistics
   async handlePaymentStats(chatId: number, userId: string) {
     try {
-      // Use the enhanced business stats service
+      // Use the enhanced business stats service with dynamic import
+      const { getBusinessStats } = await import('../lib/earningsService');
       const stats = await getBusinessStats(userId);
 
       const message = (

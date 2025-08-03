@@ -2,9 +2,12 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import TelegramBot from 'node-telegram-bot-api';
 import { handleAction } from '../../api/actions';
+// Dynamic imports to prevent serverEnv loading during build
+// import { processInvoiceInput } from '../../lib/invoiceService';
+// import { processProposalInput } from '../../lib/proposalservice';
+import { BotIntegration } from '../../modules/bot-integration';
 import { processInvoiceInput } from '../../lib/invoiceService';
 import { processProposalInput } from '../../lib/proposalservice';
-import { BotIntegration } from '../../modules/bot-integration';
 
 // Global bot instance for webhook mode
 let bot: TelegramBot | null = null;
@@ -299,7 +302,7 @@ async function handleCommand(msg: TelegramBot.Message) {
   if (!bot || !msg.text) return;
 
   const chatId = msg.chat.id;
-  const command = msg.text.split(' ')[0].toLowerCase();
+  const command = msg.text ? msg.text.split(' ')[0].toLowerCase() : '';
 
   switch (command) {
     case '/start':

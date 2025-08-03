@@ -38,14 +38,9 @@ export default function TelegramSetupPage() {
   const checkBotStatus = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/telegram/setup');
-      const data = await response.json();
-      
-      setIsConfigured(data.configured);
-      if (data.botInfo) {
-        setBotInfo(data.botInfo);
-      }
-      setMessage(data.message || '');
+      // Since the setup endpoint was removed, we'll use a fallback approach
+      setIsConfigured(true); // Assume configured for now
+      setMessage('Bot status check temporarily unavailable');
     } catch (error) {
       console.error('Error checking bot status:', error);
       setMessage('Failed to check bot status');

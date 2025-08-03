@@ -421,14 +421,23 @@ export class USDCPaymentModule {
 
     try {
       if (data.startsWith('usdc_base_')) {
-        const [, , itemId, type] = data.split('_');
-        await this.handleUSDCPayment(callbackQuery, 'base', itemId, type as 'invoice' | 'proposal');
+        const parts = data.split('_');
+        if (parts.length >= 4) {
+          const [, , itemId, type] = parts;
+          await this.handleUSDCPayment(callbackQuery, 'base', itemId, type as 'invoice' | 'proposal');
+        }
       } else if (data.startsWith('usdc_solana_')) {
-        const [, , itemId, type] = data.split('_');
-        await this.handleUSDCPayment(callbackQuery, 'solana', itemId, type as 'invoice' | 'proposal');
+        const parts = data.split('_');
+        if (parts.length >= 4) {
+          const [, , itemId, type] = parts;
+          await this.handleUSDCPayment(callbackQuery, 'solana', itemId, type as 'invoice' | 'proposal');
+        }
       } else if (data.startsWith('confirm_payment_')) {
-        const [, , itemId, type, network] = data.split('_');
-        await this.handlePaymentConfirmation(callbackQuery, itemId, type as 'invoice' | 'proposal', network as 'base' | 'solana');
+        const parts = data.split('_');
+        if (parts.length >= 5) {
+          const [, , itemId, type, network] = parts;
+          await this.handlePaymentConfirmation(callbackQuery, itemId, type as 'invoice' | 'proposal', network as 'base' | 'solana');
+        }
       }
 
       await this.bot.answerCallbackQuery(callbackQuery.id);
