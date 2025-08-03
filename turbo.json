@@ -1,21 +1,9 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "pipeline": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**"]
-    },
-    "lint": {
-      "outputs": []
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    }
-  },
   "globalDependencies": [".env"],
   "tasks": {
     "build": {
+      "outputs": [".next/**", "!.next/cache/**"],
       "env": [
         "CDP_API_KEY_ID",
         "CDP_API_KEY_SECRET",
