@@ -740,6 +740,16 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
         const reminderResult = await handleAction(intent, params, userId);
         return reminderResult.text;
       
+      case 'get_earnings':
+        // Use the existing actions.ts handler for earnings functionality
+        const earningsResult = await handleAction(intent, params, userId);
+        return earningsResult.text;
+      
+      case 'get_spending':
+        // Use the existing actions.ts handler for spending functionality
+        const spendingResult = await handleAction(intent, params, userId);
+        return spendingResult.text;
+      
       case 'get_price':
         return "💱 Price checking feature is currently being updated. Please use external tools for price information.";
         

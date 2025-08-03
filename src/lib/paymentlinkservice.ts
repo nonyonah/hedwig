@@ -84,7 +84,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     }
 
     // Validate token
-    const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP'];
+    const supportedTokens = ['USDC']; // Only USDC stablecoin is supported
     if (!supportedTokens.includes(token.toUpperCase())) {
       return {
         success: false,

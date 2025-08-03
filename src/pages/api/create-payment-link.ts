@@ -92,7 +92,7 @@ export default async function handler(
     }
 
     // Validate token
-    const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP'];
+    const supportedTokens = ['USDC']; // Only USDC stablecoin is supported
     if (!supportedTokens.includes(token.toUpperCase())) {
       return res.status(400).json({
         success: false,
@@ -241,8 +241,8 @@ async function sendPaymentLinkEmail({
             <body>
               <div class="container">
                 <div class="header">
-                  <h1>Payment Request</h1>
-                  <p>You have received a crypto payment request</p>
+                  <h1>USDC Payment Request</h1>
+                  <p>You have received a USDC stablecoin payment request</p>
                 </div>
                 
                 <div class="content">
@@ -267,6 +267,10 @@ async function sendPaymentLinkEmail({
                   </div>
                   
                   <div class="security-note">
+                    <p><strong>USDC Only:</strong> This payment link only accepts USDC stablecoin. Other cryptocurrencies are not supported.</p>
+                  </div>
+                  
+                  <div class="security-note" style="background-color: #f3f4f6; border: 1px solid #d1d5db;">
                     <p><strong>Security Notice:</strong> Always verify the payment details and recipient address before completing any transaction. This link will expire in 24 hours.</p>
                   </div>
                   
@@ -281,8 +285,8 @@ async function sendPaymentLinkEmail({
                 </div>
                 
                 <div class="footer">
-                  <p>Powered by Hedwig • Secure crypto payments</p>
-                  <p>This email was sent because a payment request was created with your email address.</p>
+                  <p>Powered by Hedwig • Secure USDC stablecoin payments</p>
+                  <p>This email was sent because a USDC payment request was created with your email address.</p>
                 </div>
               </div>
             </body>

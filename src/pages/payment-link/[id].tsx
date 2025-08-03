@@ -285,8 +285,8 @@ export default function PaymentLinkPage() {
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Request</h1>
-          <p className="text-gray-600">Complete your payment securely</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">USDC Payment Request</h1>
+          <p className="text-gray-600">Complete your USDC stablecoin payment securely</p>
         </div>
 
         {/* Payment Details Card */}
@@ -349,8 +349,8 @@ export default function PaymentLinkPage() {
                       <Wallet className="h-5 w-5 text-gray-600" />
                     </div>
                     <div className="text-left">
-                      <div className="font-medium">Stablecoin Payment</div>
-                      <div className="text-sm text-gray-600">Pay with USDC, USDT, or other stablecoins</div>
+                      <div className="font-medium">USDC Stablecoin Payment</div>
+                      <div className="text-sm text-gray-600">Pay with USDC stablecoin only</div>
                     </div>
                   </div>
                   <div className="text-gray-400">
@@ -383,10 +383,15 @@ export default function PaymentLinkPage() {
                           </span>
                         </div>
                       )}
+                      <div className="text-xs text-gray-500 mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                        <div className="font-medium mb-1 text-blue-800">💰 USDC Stablecoin Only:</div>
+                        <div className="text-blue-700">• This payment link only accepts USDC stablecoin</div>
+                        <div className="text-blue-700">• Other cryptocurrencies are not supported</div>
+                        <div className="text-blue-700">• Payment processed through secure smart contract</div>
+                      </div>
                       <div className="text-xs text-gray-500 mt-2 p-2 bg-gray-50 rounded">
-                        <div className="font-medium mb-1">Fee Breakdown:</div>
+                        <div className="font-medium mb-1">Fee Information:</div>
                         <div>• Platform fee will be automatically deducted</div>
-                        <div>• Payment processed through secure smart contract</div>
                         <div>• Freelancer receives the net amount after fees</div>
                       </div>
                       <div className="flex justify-between text-sm">

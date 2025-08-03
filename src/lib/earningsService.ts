@@ -33,7 +33,7 @@ export interface EarningsSummaryItem {
   exchangeRate?: number; // rate used for conversion
   percentage?: number; // percentage of total earnings
   category?: string; // freelance, airdrop, staking, etc.
-  source?: 'payment_link'; // source of earnings
+  source?: string; // source of earnings (payment_link, invoice, proposal, or combination)
 }
 
 export interface EarningsInsights {
@@ -103,14 +103,45 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     // Calculate date range based on timeframe
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
-    // Fetch payment links only
-    const paymentLinksData = await fetchPaymentLinks(filter, startDate, endDate);
+    // Fetch all earnings sources
+    const [paymentLinksData, invoicesData, proposalsData] = await Promise.all([
+      fetchPaymentLinks(filter, startDate, endDate),
+      fetchPaidInvoices(filter, startDate, endDate),
+      fetchAcceptedProposals(filter, startDate, endDate)
+    ]);
 
-    const payments = paymentLinksData || [];
+    const paymentLinks = paymentLinksData || [];
+    const invoices = invoicesData || [];
+    const proposals = proposalsData || [];
 
-    console.log(`[getEarningsSummary] Found ${payments.length} payment links`);
+    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals`);
 
-    if (payments.length === 0) {
+    // Combine all earnings sources
+    const allEarnings = [
+      ...paymentLinks.map(p => ({ ...p, source: 'payment_link' as const })),
+      ...invoices.map(i => ({ 
+        ...i, 
+        source: 'invoice' as const,
+        token: i.currency || 'USD', // Invoices are typically in USD
+        network: i.blockchain || 'unknown',
+        paid_amount: i.amount,
+        paid_at: i.paid_at || i.created_at || new Date().toISOString(), // Use paid_at if available, fallback to created_at
+        title: i.project_description || 'Invoice Payment',
+        description: i.additional_notes || ''
+      })),
+      ...proposals.map(p => ({ 
+        ...p, 
+        source: 'proposal' as const,
+        token: p.currency || 'USD', // Proposals have currency field
+        network: 'unknown', // Proposals don't specify network
+        paid_amount: p.amount,
+        paid_at: p.paid_at || p.created_at || new Date().toISOString(), // Use paid_at if available, fallback to created_at
+        title: p.project_title || 'Proposal Payment',
+        description: p.description || ''
+      }))
+    ];
+
+    if (allEarnings.length === 0) {
       return {
         walletAddress: filter.walletAddress,
         timeframe: filter.timeframe || 'allTime',
@@ -126,7 +157,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     }
 
     // Get unique tokens for price fetching
-    const paymentTokens = payments.map(p => p.token);
+    const paymentTokens = allEarnings.map(p => p.token);
     const uniqueTokens = [...new Set(paymentTokens)];
     
     let tokenPrices: { [key: string]: number } = {};
@@ -141,11 +172,10 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       console.warn('[getEarningsSummary] Could not fetch token prices:', priceError);
     }
 
-    // Categorize payments
-    const categorizedPayments = payments.map(payment => ({
-      ...payment,
-      category: categorizePayment(payment),
-      source: 'payment_link' as const
+    // Categorize all earnings
+    const categorizedEarnings = allEarnings.map(earning => ({
+      ...earning,
+      category: categorizePayment(earning)
     }));
 
     // Group and aggregate earnings by token and network
@@ -157,17 +187,17 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       payments: any[];
       fiatValue: number;
       category?: string;
-      source: 'payment_link';
+      sources: Set<string>;
     }>();
 
     let totalEarnings = 0;
     let totalFiatValue = 0;
 
-    // Process payment links
-    for (const payment of categorizedPayments) {
-      const key = `${payment.token}-${payment.network}`;
-      const amount = parseFloat(payment.paid_amount) || 0;
-      const fiatValue = (tokenPrices[payment.token] || 0) * amount;
+    // Process all earnings sources
+    for (const earning of categorizedEarnings) {
+      const key = `${earning.token}-${earning.network}`;
+      const amount = parseFloat(earning.paid_amount) || 0;
+      const fiatValue = (tokenPrices[earning.token] || 0) * amount;
       
       totalEarnings += amount;
       totalFiatValue += fiatValue;
@@ -176,18 +206,19 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         const existing = earningsMap.get(key)!;
         existing.total += amount;
         existing.count += 1;
-        existing.payments.push(payment);
+        existing.payments.push(earning);
         existing.fiatValue += fiatValue;
+        existing.sources.add(earning.source);
       } else {
         earningsMap.set(key, {
-          token: payment.token,
-          network: payment.network,
+          token: earning.token,
+          network: earning.network,
           total: amount,
           count: 1,
-          payments: [payment],
+          payments: [earning],
           fiatValue: fiatValue,
-          category: payment.category,
-          source: 'payment_link'
+          category: earning.category,
+          sources: new Set([earning.source])
         });
       }
     }
@@ -212,7 +243,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         exchangeRate: tokenPrices[item.token] || 0,
         percentage: totalEarnings > 0 ? Math.round((item.total / totalEarnings) * 10000) / 100 : 0,
         category: item.category,
-        source: item.source
+        source: Array.from(item.sources).join(', ') // Convert Set to comma-separated string
       };
     });
 
@@ -224,7 +255,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     timeframe: filter.timeframe || 'allTime',
     totalEarnings: Math.round(totalEarnings * 100000000) / 100000000,
     totalFiatValue: Math.round(totalFiatValue * 100) / 100,
-    totalPayments: payments.length,
+    totalPayments: allEarnings.length,
     earnings,
     period: {
       startDate: startDate || '',
@@ -233,8 +264,8 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
   };
 
     // Add insights if requested
-  if (includeInsights && payments.length > 0) {
-    result.insights = await generateEarningsInsights(categorizedPayments, earnings, filter);
+  if (includeInsights && allEarnings.length > 0) {
+    result.insights = await generateEarningsInsights(categorizedEarnings, earnings, filter);
   }
 
     return result;
@@ -290,6 +321,149 @@ async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | nul
     return payments || [];
   } catch (error) {
     console.error('[fetchPaymentLinks] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch paid invoices from database
+ */
+async function fetchPaidInvoices(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
+  try {
+    // First try with paid_at column, fallback to created_at if it doesn't exist
+    let query = supabase
+      .from('invoices')
+      .select('*')
+      .eq('wallet_address', filter.walletAddress)
+      .eq('status', 'paid')
+      .not('amount', 'is', null);
+
+    // Try to use paid_at for filtering, fallback to created_at
+    let usePaidAt = true;
+    try {
+      // Test if paid_at column exists by trying to select it
+      const testQuery = await supabase
+        .from('invoices')
+        .select('paid_at')
+        .limit(1);
+      
+      if (testQuery.error && testQuery.error.message.includes('paid_at')) {
+        usePaidAt = false;
+      }
+    } catch (e) {
+      usePaidAt = false;
+    }
+
+    if (usePaidAt) {
+      // Use paid_at for filtering
+      query = query.not('paid_at', 'is', null);
+      if (startDate) {
+        query = query.gte('paid_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('paid_at', endDate);
+      }
+      query = query.order('paid_at', { ascending: false });
+    } else {
+      // Fallback to created_at
+      if (startDate) {
+        query = query.gte('created_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate);
+      }
+      query = query.order('created_at', { ascending: false });
+    }
+
+    const { data: invoices, error } = await query;
+
+    if (error) {
+      console.error('[fetchPaidInvoices] Database error:', error);
+      throw new Error(`Failed to fetch paid invoices: ${error.message}`);
+    }
+
+    return invoices || [];
+  } catch (error) {
+    console.error('[fetchPaidInvoices] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch accepted proposals from database
+ */
+async function fetchAcceptedProposals(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
+  try {
+    // Build the query - we need to match by user_identifier since proposals don't have wallet_address
+    // We'll need to get the user's wallets first, then match proposals by user_identifier
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .eq('address', filter.walletAddress)
+      .limit(1);
+
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchAcceptedProposals] No user found for wallet address:', filter.walletAddress);
+      return [];
+    }
+
+    const userId = userWallets[0].user_id;
+
+    // First try with paid_at column, fallback to created_at if it doesn't exist
+    let query = supabase
+      .from('proposals')
+      .select('*')
+      .eq('user_identifier', userId)
+      .eq('status', 'accepted')
+      .not('amount', 'is', null);
+
+    // Try to use paid_at for filtering, fallback to created_at
+    let usePaidAt = true;
+    try {
+      // Test if paid_at column exists by trying to select it
+      const testQuery = await supabase
+        .from('proposals')
+        .select('paid_at')
+        .limit(1);
+      
+      if (testQuery.error && testQuery.error.message.includes('paid_at')) {
+        usePaidAt = false;
+      }
+    } catch (e) {
+      usePaidAt = false;
+    }
+
+    if (usePaidAt) {
+      // Use paid_at for filtering
+      query = query.not('paid_at', 'is', null);
+      if (startDate) {
+        query = query.gte('paid_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('paid_at', endDate);
+      }
+      query = query.order('paid_at', { ascending: false });
+    } else {
+      // Fallback to created_at
+      if (startDate) {
+        query = query.gte('created_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate);
+      }
+      query = query.order('created_at', { ascending: false });
+    }
+
+    const { data: proposals, error } = await query;
+
+    if (error) {
+      console.error('[fetchAcceptedProposals] Database error:', error);
+      throw new Error(`Failed to fetch accepted proposals: ${error.message}`);
+    }
+
+    return proposals || [];
+  } catch (error) {
+    console.error('[fetchAcceptedProposals] Error:', error);
     return [];
   }
 }
@@ -363,10 +537,83 @@ function categorizePayment(payment: any): string {
 }
 
 /**
+ * Get business statistics for a user (includes all invoices and proposals regardless of payment status)
+ */
+export async function getBusinessStats(userId: string) {
+  try {
+    // Get all invoices for the user
+    const { data: invoices, error: invoiceError } = await supabase
+      .from('invoices')
+      .select('status, amount, currency')
+      .eq('user_identifier', userId);
+
+    // Get all proposals for the user
+    const { data: proposals, error: proposalError } = await supabase
+      .from('proposals')
+      .select('status, amount, currency')
+      .eq('user_identifier', userId);
+
+    if (invoiceError) {
+      console.error('[getBusinessStats] Invoice error:', invoiceError);
+    }
+    if (proposalError) {
+      console.error('[getBusinessStats] Proposal error:', proposalError);
+    }
+
+    const allInvoices = invoices || [];
+    const allProposals = proposals || [];
+
+    // Calculate invoice stats
+    const invoiceStats = {
+      total: allInvoices.length,
+      paid: allInvoices.filter(i => i.status === 'paid').length,
+      pending: allInvoices.filter(i => ['sent', 'pending'].includes(i.status)).length,
+      draft: allInvoices.filter(i => i.status === 'draft').length,
+      overdue: allInvoices.filter(i => i.status === 'overdue').length,
+      revenue: allInvoices
+        .filter(i => i.status === 'paid')
+        .reduce((sum, i) => {
+          const amount = parseFloat(i.amount) || 0;
+          return sum + (i.currency === 'USD' ? amount : amount * 0.0012); // Simple conversion for non-USD
+        }, 0)
+    };
+
+    // Calculate proposal stats
+    const proposalStats = {
+      total: allProposals.length,
+      accepted: allProposals.filter(p => p.status === 'accepted').length,
+      pending: allProposals.filter(p => ['sent', 'pending'].includes(p.status)).length,
+      draft: allProposals.filter(p => p.status === 'draft').length,
+      rejected: allProposals.filter(p => p.status === 'rejected').length,
+      value: allProposals.reduce((sum, p) => {
+        const amount = parseFloat(p.amount) || 0;
+        return sum + (p.currency === 'USD' ? amount : amount * 0.0012); // Simple conversion for non-USD
+      }, 0),
+      revenue: allProposals
+        .filter(p => p.status === 'accepted')
+        .reduce((sum, p) => {
+          const amount = parseFloat(p.amount) || 0;
+          return sum + (p.currency === 'USD' ? amount : amount * 0.0012); // Simple conversion for non-USD
+        }, 0)
+    };
+
+    return {
+      invoices: invoiceStats,
+      proposals: proposalStats,
+      totalRevenue: invoiceStats.revenue + proposalStats.revenue
+    };
+
+  } catch (error) {
+    console.error('[getBusinessStats] Error:', error);
+    throw error;
+  }
+}
+
+/**
  * Generate insights for earnings data
  */
 async function generateEarningsInsights(
-  items: any[], // Payment links only
+  items: any[], // All earnings sources
   earnings: EarningsSummaryItem[], 
   filter: EarningsFilter
 ): Promise<EarningsInsights> {

@@ -3,6 +3,7 @@ import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
 import { createClient } from '@supabase/supabase-js';
+import { getBusinessStats } from '../lib/earningsService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -170,19 +171,8 @@ export class BotIntegration {
   // Handle payment statistics
   async handlePaymentStats(chatId: number, userId: string) {
     try {
-      // Get invoice stats
-      const { data: invoiceStats } = await supabase
-        .from('invoices')
-        .select('status, amount, currency')
-        .eq('user_id', userId);
-
-      // Get proposal stats
-      const { data: proposalStats } = await supabase
-        .from('proposals')
-        .select('status, amount, currency')
-        .eq('user_id', userId);
-
-      const stats = this.calculateStats(invoiceStats || [], proposalStats || []);
+      // Use the enhanced business stats service
+      const stats = await getBusinessStats(userId);
 
       const message = (
         `💰 *Payment Statistics*\n\n` +
@@ -190,13 +180,18 @@ export class BotIntegration {
         `   Total: ${stats.invoices.total}\n` +
         `   Paid: ${stats.invoices.paid}\n` +
         `   Pending: ${stats.invoices.pending}\n` +
+        `   Draft: ${stats.invoices.draft}\n` +
+        `   Overdue: ${stats.invoices.overdue}\n` +
         `   Revenue: $${stats.invoices.revenue.toFixed(2)}\n\n` +
         `📋 *Proposals:*\n` +
         `   Total: ${stats.proposals.total}\n` +
         `   Accepted: ${stats.proposals.accepted}\n` +
         `   Pending: ${stats.proposals.pending}\n` +
-        `   Value: $${stats.proposals.value.toFixed(2)}\n\n` +
-        `💵 *Total Revenue: $${(stats.invoices.revenue + stats.proposals.revenue).toFixed(2)}*`
+        `   Draft: ${stats.proposals.draft}\n` +
+        `   Rejected: ${stats.proposals.rejected}\n` +
+        `   Total Value: $${stats.proposals.value.toFixed(2)}\n` +
+        `   Revenue: $${stats.proposals.revenue.toFixed(2)}\n\n` +
+        `💵 *Total Revenue: $${stats.totalRevenue.toFixed(2)}*`
       );
 
       await this.bot.sendMessage(chatId, message, {
@@ -214,29 +209,7 @@ export class BotIntegration {
     }
   }
 
-  // Calculate statistics
-  private calculateStats(invoices: any[], proposals: any[]) {
-    const invoiceStats = {
-      total: invoices.length,
-      paid: invoices.filter(i => i.status === 'paid').length,
-      pending: invoices.filter(i => i.status === 'pending').length,
-      revenue: invoices
-        .filter(i => i.status === 'paid')
-        .reduce((sum, i) => sum + (i.currency === 'USD' ? i.amount : i.amount * 0.0012), 0)
-    };
 
-    const proposalStats = {
-      total: proposals.length,
-      accepted: proposals.filter(p => p.status === 'accepted').length,
-      pending: proposals.filter(p => p.status === 'pending').length,
-      value: proposals.reduce((sum, p) => sum + (p.currency === 'USD' ? p.amount : p.amount * 0.0012), 0),
-      revenue: proposals
-        .filter(p => p.status === 'accepted')
-        .reduce((sum, p) => sum + (p.currency === 'USD' ? p.amount : p.amount * 0.0012), 0)
-    };
-
-    return { invoices: invoiceStats, proposals: proposalStats };
-  }
 
   // Get status emoji
   private getStatusEmoji(status: string): string {
