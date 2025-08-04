@@ -9,6 +9,11 @@ import { BotIntegration } from '../../modules/bot-integration';
 import { processInvoiceInput } from '../../lib/invoiceService';
 import { processProposalInput } from '../../lib/proposalservice';
 
+// Vercel function configuration - extend timeout for webhook processing
+export const config = {
+  maxDuration: 30, // 30 seconds for Pro plan, 10 seconds for Hobby plan
+};
+
 // Global bot instance for webhook mode
 let bot: TelegramBot | null = null;
 let botInitialized = false;
@@ -65,35 +70,66 @@ function setupBotHandlers() {
 
       const chatId = msg.chat.id;
       
-      // Ensure user exists in database
-      if (msg.from) {
-        await ensureUserExists(msg.from, chatId);
-      }
-
-      // Send typing indicator
+      // Send typing indicator immediately
       await bot?.sendChatAction(chatId, 'typing');
+      
+      // Ensure user exists in database (with timeout)
+      if (msg.from) {
+        try {
+          await Promise.race([
+            ensureUserExists(msg.from, chatId),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('User creation timeout')), 8000))
+          ]);
+        } catch (userError) {
+          console.error('[Webhook] Error ensuring user exists:', userError);
+          // Continue processing even if user creation fails
+        }
+      }
 
       // Handle commands
       if (msg.text?.startsWith('/')) {
         await handleCommand(msg);
       } else if (msg.text) {
         // Check if BotIntegration can handle this message first
-        if (botIntegration && await botIntegration.handleMessage(msg)) {
-          return; // BotIntegration handled it
+        try {
+          if (botIntegration && await botIntegration.handleMessage(msg)) {
+            return; // BotIntegration handled it
+          }
+        } catch (integrationError) {
+          console.error('[Webhook] BotIntegration error:', integrationError);
+          // Continue to AI processing if integration fails
         }
         
-        // Process with AI
-        const response = await processWithAI(msg.text, chatId);
-        // Only send message if response is not empty
-        if (response && response.trim() !== '') {
-          await bot?.sendMessage(chatId, response);
+        // Process with AI (with timeout)
+        try {
+          const response = await Promise.race([
+            processWithAI(msg.text, chatId),
+            new Promise<string>((_, reject) => 
+              setTimeout(() => reject(new Error('AI processing timeout')), 15000)
+            )
+          ]);
+          
+          // Only send message if response is not empty
+          if (response && response.trim() !== '') {
+            await bot?.sendMessage(chatId, response);
+          }
+        } catch (aiError) {
+          console.error('[Webhook] AI processing error:', aiError);
+          await bot?.sendMessage(chatId, 
+            '🤖 I\'m processing your request. This might take a moment...\n\n' +
+            'If you don\'t receive a response soon, please try again or use a simpler command like /help'
+          );
         }
       } else {
         await bot?.sendMessage(chatId, 'Please send a text message or use a command like /start');
       }
     } catch (error) {
       console.error('[Webhook] Error handling message:', error);
-      await bot?.sendMessage(msg.chat.id, 'Sorry, I encountered an error. Please try again.');
+      try {
+        await bot?.sendMessage(msg.chat.id, 'Sorry, I encountered an error. Please try again.');
+      } catch (sendError) {
+        console.error('[Webhook] Error sending error message:', sendError);
+      }
     }
   });
 
@@ -109,22 +145,32 @@ function setupBotHandlers() {
         return;
       }
 
-      // Check if it's a business feature callback
-      if (botIntegration && await botIntegration.handleCallback(callbackQuery)) {
-        return; // BotIntegration handled it
+      // Answer callback query immediately to prevent timeout
+      await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing...' });
+
+      // Check if it's a business feature callback (with timeout)
+      try {
+        if (botIntegration && await Promise.race([
+          botIntegration.handleCallback(callbackQuery),
+          new Promise<boolean>((_, reject) => 
+            setTimeout(() => reject(new Error('Integration callback timeout')), 8000)
+          )
+        ])) {
+          return; // BotIntegration handled it
+        }
+      } catch (integrationError) {
+        console.error('[Webhook] BotIntegration callback error:', integrationError);
+        // Continue to manual handling if integration fails
       }
 
       // Handle different callback actions
       switch (data) {
         case 'refresh_balances':
           const refreshBalanceResponse = await processWithAI('check balance', chatId);
-          // Only answer the callback query, don't send additional message
-          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Refreshing balances...' });
           break;
           
         case 'start_send_token_flow':
         case 'send_crypto':
-          await bot?.answerCallbackQuery(callbackQuery.id);
           const sendResponse = await processWithAI('send crypto template', chatId);
           if (sendResponse && sendResponse.trim() !== '') {
             await bot?.sendMessage(chatId, sendResponse);
@@ -132,20 +178,17 @@ function setupBotHandlers() {
           break;
 
         case 'check_balance':
-          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Checking balances...' });
           const balanceResponse = await processWithAI('check balance', chatId);
           // The response will be sent by the processWithAI function
           break;
 
         case 'cancel_send':
-          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Transfer cancelled' });
           await bot?.sendMessage(chatId, '❌ Transfer cancelled.');
           break;
           
         default:
           // Handle confirm_send callback data
           if (data?.startsWith('confirm_')) {
-            await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing transfer...' });
             
             // Immediately disable the button by editing the message
             if (callbackQuery.message) {
@@ -856,6 +899,34 @@ Just ask me anything like "check my balance" or "create an invoice"!`;
   }
 }
 
+// Async processing function to handle updates without blocking the response
+async function processUpdateAsync(update: TelegramBot.Update) {
+  try {
+    console.log('[Webhook] Processing update asynchronously:', {
+      updateId: update.update_id,
+      type: update.message ? 'message' : update.callback_query ? 'callback_query' : 'other'
+    });
+    
+    // Initialize bot if not already done
+    let botInstance;
+    try {
+      botInstance = initializeBot();
+    } catch (initError) {
+      console.error('[Webhook] Bot initialization error in async processing:', initError);
+      return;
+    }
+    
+    // Process the webhook update using the bot's built-in method
+    try {
+      botInstance.processUpdate(update);
+    } catch (processError) {
+      console.error('[Webhook] Update processing error in async processing:', processError);
+    }
+  } catch (error) {
+    console.error('[Webhook] Error in async processing:', error);
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'POST') {
     try {
@@ -865,25 +936,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         type: update.message ? 'message' : update.callback_query ? 'callback_query' : 'other'
       });
       
-      // Initialize bot if not already done
-      let botInstance;
-      try {
-        botInstance = initializeBot();
-      } catch (initError) {
-        console.error('[Webhook] Bot initialization error:', initError);
-        // Return success to prevent Telegram from retrying
-        return res.status(200).json({ ok: true, error: 'Bot initialization failed' });
-      }
-      
-      // Process the webhook update using the bot's built-in method
-      try {
-        botInstance.processUpdate(update);
-      } catch (processError) {
-        console.error('[Webhook] Update processing error:', processError);
-        // Still return success to prevent Telegram from retrying
-      }
-
+      // Respond immediately to Telegram to prevent timeout
       res.status(200).json({ ok: true });
+      
+      // Process the update asynchronously without blocking the response
+      // Use setImmediate to ensure the response is sent first
+      setImmediate(() => {
+        processUpdateAsync(update).catch(error => {
+          console.error('[Webhook] Error in async update processing:', error);
+        });
+      });
+      
     } catch (error) {
       console.error('[Webhook] Error processing update:', error);
       // Return 200 to prevent Telegram from retrying failed webhooks
