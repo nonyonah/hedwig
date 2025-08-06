@@ -10,9 +10,6 @@
   "functions": {
     "src/pages/api/webhook.ts": {
       "maxDuration": 30
-    },
-    "src/pages/api/cdp-webhook.ts": {
-      "maxDuration": 30
     }
   }
 }

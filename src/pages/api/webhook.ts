@@ -811,7 +811,7 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
   }
 }
 
-// Ensure user exists in database and create CDP wallets
+// Ensure user exists in database and create wallets
 async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise<void> {
   try {
     const { supabase } = await import('../../lib/supabase');
@@ -836,7 +836,7 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
       return;
     }
 
-    // If this is a new user (didn't exist before), create CDP wallets and send welcome message
+    // If this is a new user (didn't exist before), create wallets and send welcome message
     if (!existingUser && userId) {
       const userName = from?.first_name || from?.username || 'there';
       
@@ -887,7 +887,7 @@ Just ask me anything like "check my balance" or "create an invoice"!`;
         await bot?.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
         
       } catch (walletError) {
-        console.error('[Webhook] Error creating CDP wallets for new user:', walletError);
+        console.error('[Webhook] Error creating wallets for new user:', walletError);
         
         // Send error message to user
         const errorMessage = `❌ There was an issue setting up your wallets. Please try typing "create wallet" to retry, or contact support if the problem persists.`;
