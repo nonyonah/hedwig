@@ -11,7 +11,7 @@ import { processProposalInput } from '../../lib/proposalservice';
 
 // Vercel function configuration - extend timeout for webhook processing
 export const config = {
-  maxDuration: 30, // 30 seconds for Pro plan, 10 seconds for Hobby plan
+  maxDuration: 60, // 30 seconds for Pro plan, 10 seconds for Hobby plan
 };
 
 // Global bot instance for webhook mode
@@ -267,8 +267,8 @@ function setupBotHandlers() {
             
             if (amount && recipient && network) {
               // Import required modules
-              const { parseIntentAndParams } = await import('@/lib/intentParser');
-              const { handleAction } = await import('@/api/actions');
+              const { parseIntentAndParams } = await import('../../lib/intentParser');
+              const { handleAction } = await import('../../api/actions');
               
               try {
                 // Get the actual user UUID from the database
