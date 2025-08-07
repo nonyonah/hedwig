@@ -132,76 +132,12 @@ async function getBaseSepoliaBalances(address: string) {
     // Format balances
     const balances: Balance[] = [];
 
-    // Add SOL balance
-    balances.push({
-      asset: { symbol: 'SOL', decimals: 9 },
-      amount: solBalance.toString()
-    });
-
     // Add ETH balance
     const ethBalanceWei = ethBalanceData.result;
     balances.push({
       asset: { symbol: 'ETH', decimals: 18 },
       amount: ethBalanceWei
     });
-
-    // Add token balances
-    if (tokenBalancesData.result && tokenBalancesData.result.tokenBalances) {
-      const tokenBalances = tokenBalancesData.result.tokenBalances;
-      
-      for (const tokenBalance of tokenBalances) {
-        if (tokenBalance.tokenBalance && tokenBalance.tokenBalance !== '0x0' && tokenBalance.tokenBalance !== '0x') {
-          // Get token metadata
-          try {
-            const metadataResponse = await fetch(alchemyUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                id: 1,
-                jsonrpc: '2.0',
-                method: 'alchemy_getTokenMetadata',
-                params: [tokenBalance.contractAddress]
-              })
-            });
-
-            const metadataData = await metadataResponse.json();
-            if (!metadataData.error && metadataData.result) {
-              const metadata = metadataData.result;
-              balances.push({
-                asset: { 
-                  symbol: metadata.symbol || 'UNKNOWN', 
-                  decimals: metadata.decimals || 18,
-                  contractAddress: tokenBalance.contractAddress
-                },
-                amount: tokenBalance.tokenBalance
-              });
-            }
-          } catch (metadataError) {
-            console.warn(`Failed to get metadata for token ${tokenBalance.contractAddress}:`, metadataError);
-            // Add token with default values if metadata fails
-            balances.push({
-              asset: { 
-                symbol: 'UNKNOWN', 
-                decimals: 18,
-                contractAddress: tokenBalance.contractAddress
-              },
-              amount: tokenBalance.tokenBalance
-            });
-          }
-        }
-      }
-    }
-
-    // If no USDC found, add it with 0 balance for consistency
-    const hasUsdc = balances.some(b => b.asset.symbol === 'USDC');
-    if (!hasUsdc) {
-      balances.push({
-        asset: { symbol: 'USDC', decimals: 6 },
-        amount: '0'
-      });
-    }
 
     // Add USDC balance
     balances.push({
