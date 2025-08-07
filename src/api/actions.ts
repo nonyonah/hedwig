@@ -113,6 +113,25 @@ async function resolveUserId(userId: string): Promise<string | null> {
           console.error(`[resolveUserId] Failed to create default user:`, createError);
           return null;
         }
+        
+        // Automatically create wallets for the new web user
+        try {
+          console.log(`[resolveUserId] Creating wallets for new web user...`);
+          
+          // Create EVM wallet
+          const evmWallet = await createWallet(newUser.id, 'evm');
+          console.log(`[resolveUserId] EVM wallet created for web user: ${evmWallet.address}`);
+          
+          // Create Solana wallet
+          const solanaWallet = await createWallet(newUser.id, 'solana');
+          console.log(`[resolveUserId] Solana wallet created for web user: ${solanaWallet.address}`);
+          
+          console.log(`[resolveUserId] Successfully created web user with wallets`);
+        } catch (walletError) {
+          console.error(`[resolveUserId] Failed to create wallets for web user:`, walletError);
+          // Don't fail user creation if wallet creation fails - wallets can be created later
+        }
+        
         return newUser.id;
       } else if (userError) {
         console.error(`[resolveUserId] Failed to find user:`, userError);
@@ -155,8 +174,42 @@ async function resolveUserId(userId: string): Promise<string | null> {
       return user.id;
     }
 
-    console.error(`[resolveUserId] Failed to find user with identifier ${userId}`);
-    return null;
+    // If user not found by any method, create a new user
+    console.log(`[resolveUserId] User ${userId} not found, creating new user...`);
+    
+    // Use the get_or_create_user function to create the user
+    const { data: newUserId, error: createError } = await supabase
+      .rpc('get_or_create_user', {
+        p_phone: userId,
+        p_name: userId // Use the identifier as the name for now
+      });
+    
+    if (createError) {
+      console.error(`[resolveUserId] Failed to create user ${userId}:`, createError);
+      return null;
+    }
+    
+    console.log(`[resolveUserId] Successfully created user ${userId} with ID: ${newUserId}`);
+    
+    // Automatically create wallets for the new user
+    try {
+      console.log(`[resolveUserId] Creating wallets for new user ${userId}...`);
+      
+      // Create EVM wallet
+      const evmWallet = await createWallet(newUserId, 'evm');
+      console.log(`[resolveUserId] EVM wallet created for user ${userId}: ${evmWallet.address}`);
+      
+      // Create Solana wallet
+      const solanaWallet = await createWallet(newUserId, 'solana');
+      console.log(`[resolveUserId] Solana wallet created for user ${userId}: ${solanaWallet.address}`);
+      
+      console.log(`[resolveUserId] Successfully created user ${userId} with wallets`);
+    } catch (walletError) {
+      console.error(`[resolveUserId] Failed to create wallets for user ${userId}:`, walletError);
+      // Don't fail user creation if wallet creation fails - wallets can be created later
+    }
+    
+    return newUserId;
   } catch (error) {
     console.error('[resolveUserId] Error:', error);
     return null;

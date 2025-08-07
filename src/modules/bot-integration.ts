@@ -25,17 +25,29 @@ export class BotIntegration {
   }
 
   // Enhanced main menu with business features
-  getMainMenuKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  getMainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
     return {
-      keyboard: [
-        [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
-        [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
-        [{ text: '📄 Invoice' }, { text: '📋 Proposal' }],
-        [{ text: '📊 Business Dashboard' }, { text: '📈 View History' }],
-        [{ text: '❓ Help' }]
-      ],
-      resize_keyboard: true,
-      one_time_keyboard: false
+      inline_keyboard: [
+        [
+          { text: '💰 Balance', callback_data: 'check_balance' },
+          { text: '👛 Wallet', callback_data: 'create_wallet' }
+        ],
+        [
+          { text: '💸 Send Crypto', callback_data: 'send_crypto' },
+          { text: '🔗 Payment Link', callback_data: 'payment_link' }
+        ],
+        [
+          { text: '📄 Invoice', callback_data: 'business_invoices' },
+          { text: '📋 Proposal', callback_data: 'business_proposals' }
+        ],
+        [
+          { text: '📊 Business Dashboard', callback_data: 'business_dashboard' },
+          { text: '📈 View History', callback_data: 'view_history' }
+        ],
+        [
+          { text: '❓ Help', callback_data: 'help' }
+        ]
+      ]
     };
   }
 
@@ -74,10 +86,24 @@ export class BotIntegration {
   // Handle invoice list
   async handleInvoiceList(chatId: number, userId: string) {
     try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
       const { data: invoices, error } = await supabase
         .from('invoices')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', actualUserId)
         .order('created_at', { ascending: false })
         .limit(10);
 
@@ -92,7 +118,7 @@ export class BotIntegration {
       }
 
       let message = '📄 *Your Recent Invoices*\n\n';
-      const keyboard = [];
+      const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
 
       for (const invoice of invoices) {
         const status = this.getStatusEmoji(invoice.status);
@@ -123,10 +149,24 @@ export class BotIntegration {
   // Handle proposal list
   async handleProposalList(chatId: number, userId: string) {
     try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
       const { data: proposals, error } = await supabase
         .from('proposals')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', actualUserId)
         .order('created_at', { ascending: false })
         .limit(10);
 
@@ -141,7 +181,7 @@ export class BotIntegration {
       }
 
       let message = '📋 *Your Recent Proposals*\n\n';
-      const keyboard = [];
+      const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
 
       for (const proposal of proposals) {
         const status = this.getStatusEmoji(proposal.status);
@@ -172,9 +212,23 @@ export class BotIntegration {
   // Handle payment statistics
   async handlePaymentStats(chatId: number, userId: string) {
     try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
       // Use the enhanced business stats service with dynamic import
       const { getBusinessStats } = await import('../lib/earningsService');
-      const stats = await getBusinessStats(userId);
+      const stats = await getBusinessStats(actualUserId);
 
       const message = (
         `💰 *Payment Statistics*\n\n` +
@@ -259,13 +313,268 @@ export class BotIntegration {
     });
   }
 
+  // Handle wallet creation
+  async handleCreateWallet(chatId: number, userId: string) {
+    try {
+      // Send "wallet being created" message
+      await this.bot.sendMessage(chatId, 
+        `🏦 *Creating your wallets...*\n\n` +
+        `Please wait while I set up your EVM and Solana wallets. This may take a few moments.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Ensure user exists in database first
+      let actualUserId = userId;
+      
+      // If userId is just a chatId (numeric string), we need to ensure the user exists
+      if (/^\d+$/.test(userId)) {
+        console.log(`[BotIntegration] UserId ${userId} appears to be a chatId, ensuring user exists...`);
+        
+        // Check if user already exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (existingUser) {
+          actualUserId = existingUser.id;
+          console.log(`[BotIntegration] Found existing user with UUID: ${actualUserId}`);
+        } else {
+          // Create user using the get_or_create_telegram_user function
+          console.log(`[BotIntegration] Creating new user for chatId: ${userId}`);
+          const { data: newUserId, error: createError } = await supabase.rpc('get_or_create_telegram_user', {
+            p_telegram_chat_id: parseInt(userId),
+            p_telegram_username: null,
+            p_name: null
+          });
+          
+          if (createError || !newUserId) {
+            console.error(`[BotIntegration] Failed to create user:`, createError);
+            throw new Error('Failed to create user account');
+          }
+          
+          actualUserId = newUserId;
+          console.log(`[BotIntegration] Created new user with UUID: ${actualUserId}`);
+        }
+      }
+
+      // Import createWallet function
+      const { createWallet } = await import('../lib/cdp');
+
+      // Create EVM wallet
+      const evmWallet = await createWallet(actualUserId, 'evm');
+      console.log(`[BotIntegration] EVM wallet created for user ${actualUserId}: ${evmWallet.address}`);
+
+      // Create Solana wallet
+      const solanaWallet = await createWallet(actualUserId, 'solana');
+      console.log(`[BotIntegration] Solana wallet created for user ${actualUserId}: ${solanaWallet.address}`);
+
+      // Send confirmation message with wallet addresses
+      await this.bot.sendMessage(chatId, 
+        `🎉 *Wallets Created Successfully!*\n\n` +
+        `Your crypto wallets have been created and are ready to use:\n\n` +
+        `🔷 *EVM Wallet (Base Network):*\n` +
+        `\`${evmWallet.address}\`\n\n` +
+        `🟣 *Solana Wallet:*\n` +
+        `\`${solanaWallet.address}\`\n\n` +
+        `You can now receive payments, check balances, and send crypto using these wallets!`,
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💰 Check Balance', callback_data: 'check_balance' }]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+      console.error('[BotIntegration] Error creating wallets:', error);
+      
+      await this.bot.sendMessage(chatId, 
+        `❌ *Wallet Creation Failed*\n\n` +
+        `Sorry, there was an error creating your wallets. Please try again later or contact support.\n\n` +
+        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }],
+              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+            ]
+          }
+        }
+      );
+    }
+   }
+
+  // Handle balance check
+  async handleCheckBalance(chatId: number, userId: string) {
+    try {
+      // Send "checking balance" message
+      await this.bot.sendMessage(chatId, 
+        `💰 *Checking your wallet balances...*\n\n` +
+        `Please wait while I fetch your current balances.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // First, get the actual user ID if this is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        // This looks like a chatId, get the user UUID
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+      
+      // Get user's wallets from database
+      const { data: wallets, error } = await supabase
+        .from('wallets')
+        .select('address, chain')
+        .eq('user_id', actualUserId);
+      
+      if (error) {
+        console.error('[BotIntegration] Error fetching wallets:', error);
+        await this.bot.sendMessage(chatId, 
+          `❌ *Failed to fetch wallet information*\n\nPlease try again later.`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+      
+      if (!wallets || wallets.length === 0) {
+        await this.bot.sendMessage(chatId, 
+          `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
+          { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }],
+                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              ]
+            }
+          }
+        );
+        return;
+      }
+      
+      // Import balance checking function
+      const { getBalances } = await import('../lib/cdp');
+      
+      // Find EVM and Solana wallets
+      const evmWallet = wallets.find(w => w.chain === 'evm');
+      const solanaWallet = wallets.find(w => w.chain === 'solana');
+      
+      let response = `💰 *Your Wallet Balances*\n\n`;
+      
+      // Get EVM balances if wallet exists
+      if (evmWallet) {
+        try {
+          const evmBalances = await getBalances(evmWallet.address, 'evm');
+          
+          response += `🔷 *EVM Wallet (Base Network):*\n`;
+          if (evmBalances && Array.isArray(evmBalances) && evmBalances.length > 0) {
+            evmBalances.forEach((balance: any) => {
+              const amount = balance.amount || balance.balance || '0';
+              const symbol = balance.asset?.symbol || balance.symbol || 'Unknown';
+              response += `• ${amount} ${symbol}\n`;
+            });
+          } else {
+            response += `• No balances found\n`;
+          }
+          response += `\n`;
+        } catch (evmError) {
+          console.error('[BotIntegration] Error fetching EVM balances:', evmError);
+          response += `🔷 *EVM Wallet (Base Network):* Error fetching balances\n\n`;
+        }
+      }
+      
+      // Get Solana balances if wallet exists
+      if (solanaWallet) {
+        try {
+          const solanaBalances = await getBalances(solanaWallet.address, 'solana');
+          
+          response += `🟣 *Solana Wallet:*\n`;
+          if (solanaBalances && Array.isArray(solanaBalances) && solanaBalances.length > 0) {
+            solanaBalances.forEach((balance: any) => {
+              const amount = balance.amount || balance.balance || '0';
+              const symbol = balance.asset?.symbol || balance.symbol || 'Unknown';
+              response += `• ${amount} ${symbol}\n`;
+            });
+          } else {
+            response += `• No balances found\n`;
+          }
+        } catch (solanaError) {
+          console.error('[BotIntegration] Error fetching Solana balances:', solanaError);
+          response += `🟣 *Solana Wallet:* Error fetching balances\n`;
+        }
+      }
+      
+      if (!evmWallet && !solanaWallet) {
+        response = `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`;
+      } else {
+        response += `\nUse the menu below to send crypto or manage your wallets.`;
+      }
+      
+      // Send balance information
+      await this.bot.sendMessage(chatId, response, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error checking balance:', error);
+      
+      await this.bot.sendMessage(chatId, 
+        `❌ *Balance Check Failed*\n\n` +
+        `Sorry, there was an error checking your wallet balances. Please try again later.\n\n` +
+        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Try Again', callback_data: 'check_balance' }],
+              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+            ]
+          }
+        }
+      );
+    }
+  }
+
   // Show main menu
   async showMainMenu(chatId: number) {
+    // Send welcome message with wallet creation button
     await this.bot.sendMessage(chatId, 
-      `🦉 Welcome to Hedwig Bot!\n\n` +
-      `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+      `🦉 Hi, I'm Hedwig!\n\n` +
+      `I'm your freelance assistant that can help you create proposals, invoices, payment links, and send/receive payments in stablecoins.\n\n` +
       `Use the menu below or chat with me naturally!`,
       {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+          ]
+        }
+      }
+    );
+
+    // Send main menu options
+    await this.bot.sendMessage(chatId, 
+      `🏠 *Main Menu*\n\nChoose an option:`,
+      {
+        parse_mode: 'Markdown',
         reply_markup: this.getMainMenuKeyboard()
       }
     );
@@ -284,7 +593,11 @@ export class BotIntegration {
 
     try {
       // Business dashboard callbacks
-      if (data === 'business_dashboard') {
+      if (data === 'main_menu') {
+        await this.showMainMenu(chatId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'business_dashboard') {
         await this.handleBusinessDashboard(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
@@ -304,13 +617,70 @@ export class BotIntegration {
         await this.handleBusinessSettings(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
-      } else if (data === 'main_menu') {
+      } else if (data === 'create_wallet') {
+        await this.handleCreateWallet(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'check_balance') {
+        await this.handleCheckBalance(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'send_crypto') {
         await this.bot.sendMessage(chatId, 
-          '🏠 *Main Menu*\n\nChoose an option:',
+          `💸 *Send Crypto*\n\nTo send crypto, please tell me:\n• Amount and token (e.g., "10 USDC")\n• Recipient address or email\n\nExample: "Send 10 USDC to alice@example.com"`,
+          { parse_mode: 'Markdown' }
+        );
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'payment_link') {
+        await this.bot.sendMessage(chatId, 
+          `🔗 *Payment Link*\n\nTo create a payment link, please tell me:\n• Amount and currency\n• Description (optional)\n\nExample: "Create payment link for $100 for web design services"`,
+          { parse_mode: 'Markdown' }
+        );
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'view_history') {
+        await this.bot.sendMessage(chatId, 
+          `📈 *Transaction History*\n\nChoose what you'd like to view:`,
           {
             parse_mode: 'Markdown',
-            reply_markup: this.getMainMenuKeyboard()
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '📄 My Invoices', callback_data: 'business_invoices' },
+                  { text: '📋 My Proposals', callback_data: 'business_proposals' }
+                ],
+                [
+                  { text: '💰 Payment Stats', callback_data: 'business_stats' }
+                ],
+                [
+                  { text: '🔙 Back', callback_data: 'main_menu' }
+                ]
+              ]
+            }
           }
+        );
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'help') {
+        await this.bot.sendMessage(chatId, 
+          `❓ *Help & Commands*\n\n` +
+          `*What I can do:*\n` +
+          `• 💰 Check wallet balances\n` +
+          `• 🏦 Create crypto wallets\n` +
+          `• 💸 Send crypto payments\n` +
+          `• 🔗 Create payment links\n` +
+          `• 📄 Create and manage invoices\n` +
+          `• 📋 Create and manage proposals\n` +
+          `• 📊 View business statistics\n\n` +
+          `*How to use:*\n` +
+          `Just chat with me naturally! For example:\n` +
+          `• "Check my balance"\n` +
+          `• "Send 10 USDC to alice@example.com"\n` +
+          `• "Create an invoice for $500"\n` +
+          `• "Show my proposals"\n\n` +
+          `Use the buttons below or type /start to see the main menu.`,
+          { parse_mode: 'Markdown' }
         );
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
