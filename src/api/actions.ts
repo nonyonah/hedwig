@@ -1,4 +1,4 @@
-import { getOrCreateCdpWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "@/lib/cdp";
+import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 // Earnings service temporarily removed
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
@@ -183,7 +183,43 @@ async function getUserWalletAddresses(userId: string): Promise<string[]> {
   }
 }
 
-// Core wallet functions removed - CDP, Privy, and Base Account handle wallet creation
+// Wallet creation function
+async function handleCreateWallets(userId: string) {
+  try {
+    console.log(`[handleCreateWallets] Creating wallets for user: ${userId}`);
+    
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ User not found. Please make sure you're registered with the bot.",
+      };
+    }
+
+    // Create EVM wallet
+    const evmWallet = await createWallet(actualUserId, 'evm');
+    console.log(`[handleCreateWallets] EVM wallet created:`, evmWallet);
+
+    // Create Solana wallet
+    const solanaWallet = await createWallet(actualUserId, 'solana');
+    console.log(`[handleCreateWallets] Solana wallet created:`, solanaWallet);
+
+    return {
+      text: `🎉 **Wallets Created Successfully!**\n\n` +
+            `✅ **EVM Wallet**: ${evmWallet.address}\n` +
+            `✅ **Solana Wallet**: ${solanaWallet.address}\n\n` +
+            `Your wallets are now ready to use! You can:\n` +
+            `• Check balances with \`balance\`\n` +
+            `• Send crypto with \`send\`\n` +
+            `• Create payment links with \`create payment link\`\n\n` +
+            `🔒 Your wallets are secured by Coinbase's infrastructure.`
+    };
+  } catch (error) {
+    console.error('[handleCreateWallets] Error:', error);
+    return {
+      text: "❌ Failed to create wallets. Please try again later or contact support."
+    };
+  }
+}
 
 async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
@@ -571,8 +607,58 @@ export async function handleAction(
     };
   }
 
+  // Special handling for create_wallets intent
+  if (intent === "create_wallets" || intent === "CREATE_WALLET" ||
+      intent === "create_wallet" || intent === "CREATE_WALLETS" ||
+      params.payload === "create_wallets" || params.payload === "CREATE_WALLET") {
+    return await handleCreateWallets(userId);
+  }
+
+  // Check if user has wallets for balance-related commands
+  const actualUserId = await resolveUserId(userId);
+  if (actualUserId && (intent === "balance" || intent === "show_balance" || intent === "wallet" || 
+                       intent === "wallet_balance" || intent === "get_wallet_balance" ||
+                       intent === "instruction_deposit" || intent === "get_wallet_address")) {
+    const { data: wallets } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", actualUserId);
+
+    const hasEvm = wallets?.some((w) => w.chain === "evm");
+    const hasSolana = wallets?.some((w) => w.chain === "solana");
+
+    if (!hasEvm && !hasSolana) {
+      // Automatically create wallets for the user
+      console.log(`[handleAction] No wallets found for user ${userId}, creating automatically...`);
+      
+      try {
+        // Create wallets in the background
+        const evmWallet = await createWallet(actualUserId, 'evm');
+        const solanaWallet = await createWallet(actualUserId, 'solana');
+        
+        return {
+          text: "🎉 **Welcome! I've created your wallets automatically.**\n\n" +
+                `✅ **EVM Wallet**: ${evmWallet.address}\n` +
+                `✅ **Solana Wallet**: ${solanaWallet.address}\n\n` +
+                `Your wallets are now ready! Please try your command again.`
+        };
+      } catch (error) {
+        console.error('[handleAction] Failed to auto-create wallets:', error);
+        return {
+          text: "Your wallet is being set up automatically. Please try again in a moment, or type 'create wallet' to manually create your wallets.",
+        };
+      }
+    }
+  }
+
   // Handle core intents
   switch (intent) {
+    case "create_wallet":
+    case "create_wallets":
+    case "CREATE_WALLET":
+    case "CREATE_WALLETS":
+      return await handleCreateWallets(userId);
+
     case "balance":
     case "show_balance":
     case "wallet":
@@ -668,8 +754,10 @@ export async function handleAction(
       return {
         text: "🦉 **Hedwig Help**\n\n" +
               "Available commands:\n" +
+              "• `create wallet` - Create new wallets\n" +
               "• `balance` - Check wallet balances\n" +
               "• `address` - Get wallet addresses\n" +
+              "• `send` - Send crypto to others\n" +
               "• `earnings` - View earnings summary\n" +
               "• `create payment link` - Create payment links\n" +
               "• `help` - Show this help message\n\n" +
