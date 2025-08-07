@@ -31,15 +31,29 @@ const Receipt: React.FC = () => {
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize Supabase client
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  // Initialize Supabase client with environment variable checks
+  const getSupabaseClient = () => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.warn('Supabase environment variables not found');
+      return null;
+    }
+    
+    return createClient(supabaseUrl, supabaseAnonKey);
+  };
 
   useEffect(() => {
     const fetchReceiptData = async () => {
       if (!id || !router.isReady) return;
+      
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        console.error('Supabase client not available');
+        setLoading(false);
+        return;
+      }
       
       try {
         const { data: paymentLink, error } = await supabase

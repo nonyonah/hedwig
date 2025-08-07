@@ -38,11 +38,18 @@ interface PaymentData {
   updated_at: string;
 }
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// Initialize Supabase client with environment variable checks
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('Supabase environment variables not found');
+    return null;
+  }
+  
+  return createClient(supabaseUrl, supabaseAnonKey);
+};
 
 // flutterwaveService is imported from the service file
 
@@ -70,6 +77,13 @@ export default function PaymentLinkPage() {
   useEffect(() => {
     const fetchPaymentData = async () => {
       if (!id) return
+      
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        console.error('Supabase client not available');
+        setLoading(false);
+        return;
+      }
       
       try {
         const { data, error } = await supabase
@@ -219,17 +233,20 @@ export default function PaymentLinkPage() {
         toast.success('Payment sent successfully!');
         
         // Update payment status in database
-        const { error: updateError } = await supabase
-          .from('payment_links')
-          .update({ 
-            status: 'completed',
-            transaction_hash: result.transactionHash,
-            paid_at: new Date().toISOString()
-          })
-          .eq('id', id);
-        
-        if (updateError) {
-          console.error('Error updating payment status:', updateError);
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          const { error: updateError } = await supabase
+            .from('payment_links')
+            .update({ 
+              status: 'completed',
+              transaction_hash: result.transactionHash,
+              paid_at: new Date().toISOString()
+            })
+            .eq('id', id);
+          
+          if (updateError) {
+            console.error('Error updating payment status:', updateError);
+          }
         }
         
         // Update local state

@@ -1,6 +1,6 @@
-import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "@/lib/cdp";
+import { getOrCreateCdpWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
-import { getEarningsSummary, getSpendingSummary, formatEarningsForAgent } from '../lib/earningsService';
+// Earnings service temporarily removed
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
 import { SmartNudgeService } from '@/lib/smartNudgeService';
@@ -79,29 +79,96 @@ async function updateSession(userId: string, context: any) {
   }
 }
 
-// Helper function to get user wallet addresses
-async function getUserWalletAddresses(userId: string): Promise<string[]> {
+// Helper function to resolve user ID from various formats
+async function resolveUserId(userId: string): Promise<string | null> {
   try {
-    // Determine if userId is a UUID or username and get the actual user UUID
-    let actualUserId: string;
+    // Check if userId is already a UUID
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
     
     if (isUUID) {
-      actualUserId = userId;
-    } else {
-      // userId is a username, fetch the actual UUID
+      return userId;
+    }
+
+    // Handle special web user case
+    if (userId === 'web_user_default') {
       const { data: user, error: userError } = await supabase
         .from('users')
         .select('id')
-        .eq('telegram_username', userId)
+        .eq('email', 'web_user_default@hedwig.local')
         .single();
       
-      if (userError || !user) {
-        console.error(`[getUserWalletAddresses] Failed to find user with username ${userId}:`, userError);
-        return [];
+      if (userError && userError.code === 'PGRST116') {
+        // User doesn't exist, create one
+        const { data: newUser, error: createError } = await supabase
+          .from('users')
+          .insert({
+            email: 'web_user_default@hedwig.local',
+            name: 'Web User',
+            phone_number: 'web_default'
+          })
+          .select('id')
+          .single();
+        
+        if (createError) {
+          console.error(`[resolveUserId] Failed to create default user:`, createError);
+          return null;
+        }
+        return newUser.id;
+      } else if (userError) {
+        console.error(`[resolveUserId] Failed to find user:`, userError);
+        return null;
+      } else {
+        return user.id;
       }
-      
-      actualUserId = user.id;
+    }
+
+    // Try to find by email first
+    let { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', userId)
+      .single();
+    
+    if (user) {
+      return user.id;
+    }
+
+    // If not found by email, try by phone_number
+    ({ data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone_number', userId)
+      .single());
+    
+    if (user) {
+      return user.id;
+    }
+
+    // If not found by email or phone, try by username (if it exists)
+    ({ data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', userId)
+      .single());
+    
+    if (user) {
+      return user.id;
+    }
+
+    console.error(`[resolveUserId] Failed to find user with identifier ${userId}`);
+    return null;
+  } catch (error) {
+    console.error('[resolveUserId] Error:', error);
+    return null;
+  }
+}
+
+// Helper function to get user wallet addresses
+async function getUserWalletAddresses(userId: string): Promise<string[]> {
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return [];
     }
 
     const { data: wallets } = await supabase
@@ -116,61 +183,15 @@ async function getUserWalletAddresses(userId: string): Promise<string[]> {
   }
 }
 
-// Core wallet functions
-async function handleCreateWallets(userId: string) {
-  try {
-    console.log(`[handleCreateWallets] Creating wallets for user: ${userId}`);
-    
-    // Create EVM wallet (Base Sepolia)
-    const evmWallet = await createWallet(userId, 'evm');
-    console.log(`[handleCreateWallets] EVM wallet created:`, evmWallet);
-    
-    // Create Solana wallet
-    const solanaWallet = await createWallet(userId, 'solana');
-    console.log(`[handleCreateWallets] Solana wallet created:`, solanaWallet);
-    
-    return {
-      text: `🎉 **Wallets Created Successfully!**\n\n` +
-            `🔹 **Base Wallet**: ${formatAddress(evmWallet.address)}\n` +
-            `🔹 **Solana Wallet**: ${formatAddress(solanaWallet.address)}\n\n` +
-            `Your wallets are ready! You can now:\n` +
-            `• Check your balance\n` +
-            `• Send and receive crypto\n` +
-            `• Swap tokens\n\n` +
-            `Type "balance" to see your current balances.`
-    };
-  } catch (error) {
-    console.error('[handleCreateWallets] Error:', error);
-    return {
-      text: "❌ Failed to create wallets. Please try again later."
-    };
-  }
-}
+// Core wallet functions removed - CDP, Privy, and Base Account handle wallet creation
 
 async function handleGetWalletBalance(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
-    // Determine if userId is a UUID or username and get the actual user UUID
-    let actualUserId: string;
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
-    if (isUUID) {
-      actualUserId = userId;
-    } else {
-      // userId is a username, fetch the actual UUID
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('telegram_username', userId)
-        .single();
-      
-      if (userError || !user) {
-        console.error(`[handleGetWalletBalance] Failed to find user with username ${userId}:`, userError);
-        return {
-          text: "❌ User not found. Please make sure you're registered with the bot.",
-        };
-      }
-      
-      actualUserId = user.id;
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ User not found. Please make sure you're registered with the bot.",
+      };
     }
 
     const { data: wallets } = await supabase
@@ -180,7 +201,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
 
     if (!wallets || wallets.length === 0) {
       return {
-        text: "You don't have any wallets yet. Type 'create wallet' to get started!"
+        text: "Your wallet is being set up automatically. Please try again in a moment."
       };
     }
 
@@ -393,28 +414,11 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
 
 async function handleGetWalletAddress(userId: string, params?: ActionParams): Promise<ActionResult> {
   try {
-    // Determine if userId is a UUID or username and get the actual user UUID
-    let actualUserId: string;
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
-    if (isUUID) {
-      actualUserId = userId;
-    } else {
-      // userId is a username, fetch the actual UUID
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('telegram_username', userId)
-        .single();
-      
-      if (userError || !user) {
-        console.error(`[handleGetWalletAddress] Failed to find user with username ${userId}:`, userError);
-        return {
-          text: "❌ User not found. Please make sure you're registered with the bot.",
-        };
-      }
-      
-      actualUserId = user.id;
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ User not found. Please make sure you're registered with the bot.",
+      };
     }
     
     const { data: wallets } = await supabase
@@ -424,7 +428,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
 
     if (!wallets || wallets.length === 0) {
       return {
-        text: "You don't have any wallets yet. Type 'create wallet' to get started!"
+        text: "Your wallet is being set up automatically. Please try again in a moment."
       };
     }
 
@@ -499,12 +503,6 @@ export async function handleAction(
 ): Promise<ActionResult> {
   console.log("[handleAction] Intent:", intent, "Params:", params, "UserId:", userId);
 
-  // Special handling for create_wallets intent
-  if (intent === "create_wallets" || intent === "CREATE_WALLET" || 
-      params.payload === "create_wallets" || params.payload === "CREATE_WALLET") {
-    return await handleCreateWallets(userId);
-  }
-
   // Text-based balance intent matching
   if (params.text && typeof params.text === 'string') {
     const text = params.text.toLowerCase();
@@ -516,14 +514,14 @@ export async function handleAction(
   // Special case for clarification intent
   if (intent === "clarification" || intent === "unknown") {
     return {
-      text: "I didn't understand your request. You can ask about creating a wallet, checking balance, sending crypto, or getting crypto prices.",
+      text: "I didn't understand your request. You can ask about checking balance, sending crypto, or getting crypto prices.",
     };
   }
 
   // For blockchain-related intents, verify wallet first
   const blockchainIntents = [
     "get_wallet_balance",
-    "get_wallet_address",
+    "get_wallet_address", 
     "send",
     "swap",
     "bridge",
@@ -532,28 +530,11 @@ export async function handleAction(
 
   if (blockchainIntents.includes(intent)) {
     try {
-      // Determine if userId is a UUID or username and get the actual user UUID
-      let actualUserId: string;
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-      
-      if (isUUID) {
-        actualUserId = userId;
-      } else {
-        // userId is a username, fetch the actual UUID
-        const { data: user, error: userError } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_username', userId)
-          .single();
-        
-        if (userError || !user) {
-          console.error(`[handleAction] Failed to find user with username ${userId}:`, userError);
-          return {
-            text: "❌ User not found. Please make sure you're registered with the bot.",
-          };
-        }
-        
-        actualUserId = user.id;
+      const actualUserId = await resolveUserId(userId);
+      if (!actualUserId) {
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
       }
       
       const { data: wallets } = await supabase
@@ -566,7 +547,7 @@ export async function handleAction(
       
       if (!hasEvm && !hasSolana) {
         return {
-          text: "You need a wallet before you can continue. Please type 'create wallet' to create your wallet now.",
+          text: "Your wallet is being set up automatically. Please try again in a moment.",
         };
       }
     } catch (error) {
@@ -619,7 +600,7 @@ export async function handleAction(
         // Get user's wallet addresses
         const walletAddresses = await getUserWalletAddresses(userId);
         if (!walletAddresses || walletAddresses.length === 0) {
-          return { text: "You don't have any wallets yet. Type 'create wallet' to get started!" };
+          return { text: "Your wallet is being set up automatically. Please try again in a moment." };
         }
 
         // Use the first wallet address for earnings summary
@@ -635,13 +616,13 @@ export async function handleAction(
           endDate: params.endDate
         };
 
-        const summary = await getEarningsSummary(filter, true); // Include insights
-        if (summary && summary.totalPayments > 0) {
-          const formatted = formatEarningsForAgent(summary, 'earnings');
-          return { text: formatted };
-        } else {
-          return { text: "💰 No earnings found for the specified period. Start receiving payments to track your earnings!\n\n💡 Tip: Create payment links or invoices to start earning crypto." };
-        }
+        // const summary = await getEarningsSummary(filter, true); // Include insights
+        // if (summary && summary.totalPayments > 0) {
+        //   const formatted = formatEarningsForAgent(summary, 'earnings');
+        //   return { text: formatted };
+        // } else {
+          return { text: "💰 Earnings feature temporarily unavailable. Start receiving payments to track your earnings!\n\n💡 Tip: Create payment links or invoices to start earning crypto." };
+        // }
       } catch (error) {
         console.error('[handleAction] Earnings error:', error);
         return { text: "❌ Failed to fetch earnings data. Please try again later." };
@@ -652,7 +633,7 @@ export async function handleAction(
         // Get user's wallet addresses
         const walletAddresses = await getUserWalletAddresses(userId);
         if (!walletAddresses || walletAddresses.length === 0) {
-          return { text: "You don't have any wallets yet. Type 'create wallet' to get started!" };
+          return { text: "Your wallet is being set up automatically. Please try again in a moment." };
         }
 
         // Use the first wallet address for spending summary
@@ -668,13 +649,13 @@ export async function handleAction(
           endDate: params.endDate
         };
 
-        const summary = await getSpendingSummary(filter);
-        if (summary && summary.totalPayments > 0) {
-          const formatted = formatEarningsForAgent(summary, 'spending');
-          return { text: formatted };
-        } else {
-          return { text: "💸 No spending found for the specified period. Your crypto is safe in your wallet!\n\n💡 Tip: Use the 'send' command to transfer crypto to others." };
-        }
+        // const summary = await getSpendingSummary(filter);
+        // if (summary && summary.totalPayments > 0) {
+        //   const formatted = formatEarningsForAgent(summary, 'spending');
+        //   return { text: formatted };
+        // } else {
+          return { text: "💸 Spending feature temporarily unavailable. Your crypto is safe in your wallet!\n\n💡 Tip: Use the 'send' command to transfer crypto to others." };
+        // }
       } catch (error) {
         console.error('[handleAction] Spending error:', error);
         return { text: "❌ Failed to fetch spending data. Please try again later." };
@@ -687,13 +668,26 @@ export async function handleAction(
       return {
         text: "🦉 **Hedwig Help**\n\n" +
               "Available commands:\n" +
-              "• `create wallet` - Create new wallets\n" +
               "• `balance` - Check wallet balances\n" +
               "• `address` - Get wallet addresses\n" +
               "• `earnings` - View earnings summary\n" +
               "• `create payment link` - Create payment links\n" +
               "• `help` - Show this help message\n\n" +
-              "More features coming soon for Telegram!"
+              "More features coming soon!"
+      };
+    
+    case "welcome":
+      return {
+        text: "🦉 **Welcome to Hedwig!**\n\n" +
+              "I'm your crypto assistant. I can help you:\n\n" +
+              "💰 **Check wallet balances** - Just ask \"what's my balance?\"\n" +
+              "📍 **Get wallet addresses** - Ask \"show my wallet address\"\n" +
+              "💸 **Send crypto** - Say \"send 0.1 ETH to [address]\"\n" +
+              "🔗 **Create payment links** - Request \"create payment link for 50 USDC\"\n" +
+              "📊 **View earnings** - Ask \"show my earnings\"\n" +
+              "📄 **Create invoices** - Say \"create invoice\"\n" +
+              "📋 **Make proposals** - Request \"create proposal\"\n\n" +
+              "What would you like to do today?"
       };
     
     default:
@@ -737,7 +731,7 @@ async function handleSend(params: ActionParams, userId: string) {
       const { data: user, error: userError } = await supabase
         .from('users')
         .select('id')
-        .eq('telegram_username', userId)
+        .eq('username', userId)
         .single();
       
       if (userError || !user) {
@@ -758,7 +752,7 @@ async function handleSend(params: ActionParams, userId: string) {
 
     if (!wallets || wallets.length === 0) {
       return {
-        text: "You don't have any wallets yet. Type 'create wallet' to get started!"
+        text: "Your wallet is being set up automatically. Please try again in a moment."
       };
     }
 
@@ -929,7 +923,7 @@ async function handleSend(params: ActionParams, userId: string) {
       const truncatedRecipient = `${recipientAddress.slice(0, 8)}...${recipientAddress.slice(-6)}`;
       const truncatedFrom = `${selectedWallet.address.slice(0, 8)}...${selectedWallet.address.slice(-6)}`;
 
-      // Create a short transaction ID for callback data (Telegram has 64 byte limit)
+      // Create a short transaction ID for callback data
       const transactionId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
       
       // Store transaction details temporarily (you could use Redis or database for production)
@@ -1003,7 +997,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
       const { data: user, error: userError } = await supabase
         .from('users')
         .select('id, name, email')
-        .eq('telegram_username', userId)
+        .eq('username', userId)
         .single();
       
       if (userError || !user) {
@@ -1166,7 +1160,7 @@ async function handleSwap(params: ActionParams, userId: string) {
       const { data: user, error: userError } = await supabase
         .from('users')
         .select('id')
-        .eq('telegram_username', userId)
+        .eq('username', userId)
         .single();
       
       if (userError || !user) {
@@ -1418,4 +1412,4 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
 }
 
 // Export for external use
-export { handleCreateWallets, handleGetWalletBalance, handleGetWalletAddress, handleDepositNotification, sendManualReminder };
+export { handleGetWalletBalance, handleGetWalletAddress, handleDepositNotification, sendManualReminder };
