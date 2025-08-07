@@ -285,7 +285,7 @@ Response: {"intent": "send", "params": {"amount": "0.01", "token": "ETH", "recip
 User: "create payment link for 100 USDC"
 Response: {"intent": "create_payment_link", "params": {"amount": "100", "token": "USDC"}}
 
-User: "payment link" or "I need a payment link"
+User: "payment link" or "I need a payment link" or "create payment link" or "make payment link" or "generate payment link" or "new payment link"
 Response: {"intent": "create_payment_link", "params": {}}
 
 User: "wallet address" or "my address" or "show address"
@@ -344,6 +344,12 @@ Response: {"intent": "create_invoice", "params": {"description": "consulting ser
 
 User: "bill client XYZ for logo design, $800, due in 30 days"
 Response: {"intent": "create_invoice", "params": {"client_name": "XYZ", "amount": "800", "currency": "USD", "description": "logo design", "due_date": "30 days"}}
+
+User: "invoice" or "create invoice" or "make invoice" or "new invoice"
+Response: {"intent": "create_invoice", "params": {}}
+
+User: "proposal" or "create proposal" or "generate proposal" or "make proposal" or "new proposal"
+Response: {"intent": "create_proposal", "params": {}}
 
 User: "send proposal 123 to client@company.com"
 Response: {"intent": "send_proposal", "params": {"proposal_id": "123", "client_email": "client@company.com"}}

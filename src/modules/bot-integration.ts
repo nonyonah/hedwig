@@ -906,22 +906,29 @@ export class BotIntegration {
           return true;
 
         default:
-          // Check if user is in invoice creation flow
-          console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
-          const ongoingInvoice = await this.getOngoingInvoice(userId);
-          console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
-          if (ongoingInvoice && message.text) {
-            console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
-            await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
-            return true;
+          // Only check for ongoing flows if the message is not a natural language query
+          // This prevents interference with AI processing
+          const isNaturalLanguage = this.isNaturalLanguageQuery(text);
+          
+          if (!isNaturalLanguage) {
+            // Check if user is in invoice creation flow
+            console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
+            const ongoingInvoice = await this.getOngoingInvoice(userId);
+            console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
+            if (ongoingInvoice && message.text) {
+              console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
+              await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
+              return true;
+            }
+            
+            // Check if user is in proposal creation flow
+            const ongoingProposal = await this.getOngoingProposal(userId);
+            if (ongoingProposal) {
+              await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
+              return true;
+            }
           }
           
-          // Check if user is in proposal creation flow
-          const ongoingProposal = await this.getOngoingProposal(userId);
-          if (ongoingProposal) {
-            await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
-            return true;
-          }
           return false;
       }
     } catch (error) {
@@ -977,5 +984,55 @@ export class BotIntegration {
     }
     
     return data?.state_data || null;
+  }
+
+  // Helper method to detect natural language queries
+  private isNaturalLanguageQuery(text: string): boolean {
+    const lowerText = text.toLowerCase().trim();
+    
+    // Simple patterns that indicate natural language
+    const naturalLanguagePatterns = [
+      // Questions
+      /^(what|how|when|where|why|who|can|could|would|should|is|are|do|does|did)/,
+      // Requests with natural language structure
+      /^(i want|i need|i would like|please|help me|show me|tell me|explain)/,
+      // Commands with natural language
+      /^(create|send|make|generate|get|check|view|show).*(for|to|with|my|the)/,
+      // Conversational phrases
+      /^(hello|hi|hey|thanks|thank you|ok|okay|yes|no|sure)/,
+      // Multi-word natural sentences (more than 3 words with common sentence structure)
+      /\b(and|or|but|because|since|although|however|therefore|moreover)\b/,
+    ];
+
+    // Check if it's a simple command or button text (not natural language)
+    const simpleCommands = [
+      '📄 invoice', '📋 proposal', '💰 balance', '👛 wallet',
+      '💸 send crypto', '🔗 payment link', '📈 view history', '❓ help',
+      'invoice', 'proposal', 'balance', 'wallet', 'send', 'help',
+      'create wallet', 'check balance', 'send crypto', 'payment link'
+    ];
+
+    // If it's a simple command, it's not natural language
+    if (simpleCommands.some(cmd => lowerText === cmd)) {
+      return false;
+    }
+
+    // If it matches natural language patterns, it's natural language
+    if (naturalLanguagePatterns.some(pattern => pattern.test(lowerText))) {
+      return true;
+    }
+
+    // If it's longer than 4 words and contains common words, likely natural language
+    const words = lowerText.split(/\s+/);
+    if (words.length > 4) {
+      const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+      const hasCommonWords = words.some(word => commonWords.includes(word));
+      if (hasCommonWords) {
+        return true;
+      }
+    }
+
+    // Default to false for short, simple inputs
+    return false;
   }
 }

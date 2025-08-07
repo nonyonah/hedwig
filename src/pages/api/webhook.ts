@@ -548,11 +548,11 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
     }
 
     const { runLLM } = await import('../../lib/llmAgent');
-    // Use Telegram username as identifier, fallback to user UUID if no username
-    const userId = user.telegram_username || user.id;
+    // Use Telegram username for LLM context, but always use UUID for actions
+    const llmUserId = user.telegram_username || user.id;
     
     const llmResponse = await runLLM({
-      userId,
+      userId: llmUserId,
       message
     });
     
@@ -581,7 +581,7 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
       const parsedResponse = JSON.parse(jsonContent);
       
       if (parsedResponse.intent && parsedResponse.params !== undefined) {
-        return await formatResponseForUser(parsedResponse, userId, message, chatId);
+        return await formatResponseForUser(parsedResponse, user.id, message, chatId);
       }
     } catch (parseError) {
       // If it's not JSON, return as is (fallback for plain text responses)
