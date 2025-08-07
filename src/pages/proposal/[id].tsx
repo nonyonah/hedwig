@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Copy, Download, Send, Calendar, DollarSign, Clock, CheckCircle, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 interface ProposalSection {
   title: string;
@@ -48,6 +48,19 @@ interface ProposalData {
   terms: string[];
 }
 
+// Initialize Supabase client with environment variable checks
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('Supabase environment variables not found');
+    return null;
+  }
+  
+  return createClient(supabaseUrl, supabaseAnonKey);
+};
+
 const Proposal = () => {
   const router = useRouter();
   const { id } = router.query;
@@ -64,6 +77,13 @@ const Proposal = () => {
   }, [id]);
 
   const fetchProposalData = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.error('Supabase client not available');
+      setLoading(false);
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from('proposals')
