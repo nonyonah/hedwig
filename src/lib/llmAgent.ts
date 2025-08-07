@@ -53,7 +53,7 @@ Always respond ONLY with a JSON object in this format:
 
 Valid intents:
 - create_wallets: For creating new wallets
-- get_wallet_balance: For checking wallet balance
+- balance: For checking wallet balance
 - get_wallet_address: For showing wallet addresses or deposit instructions
 - send: For sending crypto or tokens
 - swap: For swapping between tokens
@@ -292,37 +292,37 @@ User: "wallet address" or "my address" or "show address"
 Response: {"intent": "get_wallet_address", "params": {}}
 
 User: "my Solana address" or "Solana wallet address" or "show me my Solana address"
-Response: {"intent": "get_wallet_address", "parameters": {"network": "Solana"}}
+Response: {"intent": "get_wallet_address", "params": {"network": "Solana"}}
 
 User: "my EVM address" or "Base address" or "Ethereum address" or "show me my EVM address"
-Response: {"intent": "get_wallet_address", "parameters": {"network": "EVM"}}
+Response: {"intent": "get_wallet_address", "params": {"network": "EVM"}}
 
 User: "balance" or "how much do I have"
-Response: {"intent": "balance", "parameters": {}}
+Response: {"intent": "balance", "params": {}}
 
 User: "USDC balance on Base"
-Response: {"intent": "balance", "parameters": {"token": "USDC", "network": "Base"}}
+Response: {"intent": "balance", "params": {"token": "USDC", "network": "Base"}}
 
 User: "ETH balance"
-Response: {"intent": "balance", "parameters": {"token": "ETH"}}
+Response: {"intent": "balance", "params": {"token": "ETH"}}
 
 User: "my Solana balance"
-Response: {"intent": "balance", "parameters": {"network": "Solana"}}
+Response: {"intent": "balance", "params": {"network": "Solana"}}
 
 User: "How much USDC do I have on Ethereum?"
-Response: {"intent": "balance", "parameters": {"token": "USDC", "network": "Ethereum"}}
+Response: {"intent": "balance", "params": {"token": "USDC", "network": "Ethereum"}}
 
 User: "How much have I earned this month?"
-Response: {"intent": "get_earnings", "parameters": {"timeframe": "this month"}}
+Response: {"intent": "get_earnings", "params": {"timeframe": "this month"}}
 
 User: "Show me my USDC earnings on Base"
-Response: {"intent": "get_earnings", "parameters": {"token": "USDC", "network": "Base"}}
+Response: {"intent": "get_earnings", "params": {"token": "USDC", "network": "Base"}}
 
 User: "What did I spend last week?"
-Response: {"intent": "get_spending", "parameters": {"timeframe": "last week"}}
+Response: {"intent": "get_spending", "params": {"timeframe": "last week"}}
 
 User: "How much ETH did I send this year?"
-Response: {"intent": "get_spending", "parameters": {"token": "ETH", "timeframe": "this year"}}
+Response: {"intent": "get_spending", "params": {"token": "ETH", "timeframe": "this year"}}
 
 User: "0x1234567890123456789012345678901234567890" (after being asked for address)
 Response: {"intent": "send", "params": {"recipient": "0x1234567890123456789012345678901234567890"}}

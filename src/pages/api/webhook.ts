@@ -39,6 +39,9 @@ function initializeBot() {
       // Initialize bot integration
       botIntegration = new BotIntegration(bot);
       
+      // Setup Telegram menu button
+      setupTelegramMenu();
+      
       // Setup event handlers
       setupBotHandlers();
       botInitialized = true;
@@ -53,6 +56,37 @@ function initializeBot() {
   }
   
   return bot;
+}
+
+// Setup Telegram menu button
+async function setupTelegramMenu() {
+  if (!bot) return;
+  
+  try {
+    // Set the menu button for all users
+    await bot.setChatMenuButton({
+      menu_button: {
+        type: 'commands'
+      }
+    });
+
+    // Set bot commands
+    await bot.setMyCommands([
+      { command: 'start', description: '🦉 Start Hedwig Bot' },
+      { command: 'balance', description: '💰 Check wallet balance' },
+      { command: 'wallet', description: '👛 View wallet address' },
+      { command: 'send', description: '💸 Send crypto' },
+      { command: 'payment', description: '🔗 Create payment link' },
+      { command: 'invoice', description: '🧾 Create invoice' },
+      { command: 'proposal', description: '📝 Create proposal' },
+      { command: 'history', description: '📊 View transaction history' },
+      { command: 'help', description: '❓ Get help' }
+    ]);
+    
+    console.log('[Webhook] Telegram menu button configured');
+  } catch (error) {
+    console.error('[Webhook] Error setting up Telegram menu:', error);
+  }
 }
 
 // Setup bot event handlers
@@ -350,22 +384,28 @@ async function handleCommand(msg: TelegramBot.Message) {
   switch (command) {
     case '/start':
       if (botIntegration) {
-        await botIntegration.showMainMenu(chatId);
+        await botIntegration.showWelcomeMessage(chatId);
       } else {
         await bot.sendMessage(chatId, 
-          `🦉 Welcome to Hedwig Bot!\n\n` +
+          `🦉 *Welcome to Hedwig Bot!*\n\n` +
           `I'm your AI assistant for crypto payments and wallet management.\n\n` +
-          `Use the menu below or chat with me naturally!`,
-          {
+          `🚀 *What I can help you with:*\n` +
+          `• 💰 Check wallet balances\n` +
+          `• 💸 Send crypto payments\n` +
+          `• 📄 Create professional invoices\n` +
+          `• 💳 Generate payment links\n` +
+          `• 📊 Track earnings and analytics\n` +
+          `• 📋 Manage proposals\n\n` +
+          `💬 *Just ask me naturally!* Try:\n` +
+          `• "Check my balance"\n` +
+          `• "Send 10 USDC to 0x123..."\n` +
+          `• "Create an invoice for $500"\n` +
+          `• "Show my transaction history"\n\n` +
+          `📱 Use the menu button or type commands to get started!`,
+          { 
+            parse_mode: 'Markdown',
             reply_markup: {
-              keyboard: [
-                [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
-                [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
-                [{ text: '📝 Proposal' }, { text: '🧾 Invoice' }],
-                [{ text: '📊 View History' }, { text: '❓ Help' }]
-              ],
-              resize_keyboard: true,
-              one_time_keyboard: false
+              remove_keyboard: true
             }
           }
         );
@@ -375,20 +415,21 @@ async function handleCommand(msg: TelegramBot.Message) {
     case '/help':
       await bot.sendMessage(chatId,
           `🆘 *Hedwig Bot Help*\n\n` +
-          `*Quick Actions:*\n` +
-          `💰 Balance - Check wallet balances\n` +
-          `👛 Wallet - View wallet addresses\n` +
-          `💸 Send Crypto - Send tokens to others\n` +
-          `🔗 Payment Link - Create payment requests\n` +
-          `📝 Proposal - Create service proposals\n` +
-          `🧾 Invoice - Create invoices\n` +
-          `📊 View History - See transactions\n\n` +
+          `*Available Commands:*\n` +
+          `• /balance - Check wallet balances\n` +
+          `• /wallet - View wallet addresses\n` +
+          `• /send - Send crypto to others\n` +
+          `• /payment - Create payment links\n` +
+          `• /proposal - Create service proposals\n` +
+          `• /invoice - Create invoices\n` +
+          `• /history - View transaction history\n\n` +
           `*Natural Language:*\n` +
           `You can also chat with me naturally! Try:\n` +
-          `• "Send 10 USDC to alice@example.com"\n` +
+          `• "Send 10 USDC to 0x123..."\n` +
           `• "What's my balance?"\n` +
           `• "Create an invoice for $100"\n` +
-          `• "Show my transaction history"`,
+          `• "Show my transaction history"\n\n` +
+          `💡 *Tip:* Use the menu button (☰) for quick access to commands!`,
           { parse_mode: 'Markdown' }
         );
       break;
@@ -403,61 +444,42 @@ async function handleCommand(msg: TelegramBot.Message) {
       await bot.sendMessage(chatId, balanceResponse);
       break;
 
+    case '/send':
+      const sendResponse = await processWithAI('send crypto template', chatId);
+      if (sendResponse && sendResponse.trim() !== '') {
+        await bot.sendMessage(chatId, sendResponse);
+      }
+      break;
+
+    case '/payment':
+      const paymentResponse = await processWithAI('create payment link', chatId);
+      await bot.sendMessage(chatId, paymentResponse);
+      break;
+
+    case '/proposal':
+      const proposalResponse = await processWithAI('create proposal', chatId);
+      await bot.sendMessage(chatId, proposalResponse);
+      break;
+
+    case '/invoice':
+      const invoiceResponse = await processWithAI('create invoice', chatId);
+      await bot.sendMessage(chatId, invoiceResponse);
+      break;
+
+    case '/history':
+      const historyResponse = await processWithAI('view proposals and invoices', chatId);
+      await bot.sendMessage(chatId, historyResponse);
+      break;
+
     default:
-      // Handle menu button presses
-      const text = msg.text;
-      
-      // Check if BotIntegration can handle this message
-      if (botIntegration && await botIntegration.handleMessage(msg)) {
-        return; // BotIntegration handled it
-      }
-      
-      if (text === '💰 Balance') {
-        const response = await processWithAI('check balance', chatId);
-        await bot.sendMessage(chatId, response);
-      } else if (text === '👛 Wallet') {
-        const response = await processWithAI('get wallet address', chatId);
-        await bot.sendMessage(chatId, response);
-      } else if (text === '💸 Send Crypto') {
-        const response = await processWithAI('send crypto template', chatId);
-        if (response && response.trim() !== '') {
-          await bot.sendMessage(chatId, response);
-        }
-      } else if (text === '🔗 Payment Link') {
-        // Process as a payment link creation request instead of showing template
-        const response = await processWithAI('create payment link', chatId);
-        await bot.sendMessage(chatId, response);
-      } else if (text === '📝 Proposal') {
-        // Process as a proposal creation request instead of showing template
-        const response = await processWithAI('create proposal', chatId);
-        await bot.sendMessage(chatId, response);
-      } else if (text === '🧾 Invoice') {
-        // Process as an invoice creation request instead of showing template
-        const response = await processWithAI('create invoice', chatId);
-        await bot.sendMessage(chatId, response);
-      } else if (text === '📊 View History') {
-        const response = await processWithAI('view proposals and invoices', chatId);
-        await bot.sendMessage(chatId, response);
-      } else if (text === '❓ Help') {
-        await bot.sendMessage(chatId,
-          `🆘 *Hedwig Bot Help*\n\n` +
-          `*Quick Actions:*\n` +
-          `💰 Balance - Check wallet balances\n` +
-          `👛 Wallet - View wallet addresses\n` +
-          `💸 Send Crypto - Send tokens to others\n` +
-          `🔗 Payment Link - Create payment requests\n` +
-          `📝 Proposal - Create service proposals\n` +
-          `🧾 Invoice - Create invoices\n` +
-          `📊 View History - See transactions\n\n` +
-          `*Natural Language:*\n` +
-          `You can also chat with me naturally!`,
-          { parse_mode: 'Markdown' }
-        );
-      } else {
-        await bot.sendMessage(chatId, 
-          `Unknown command: ${command}\n\nUse the menu buttons or /help to see available options.`
-        );
-      }
+      // For unknown commands, provide helpful guidance
+      await bot.sendMessage(chatId, 
+        `❓ Unknown command: ${command}\n\n` +
+        `💡 Try these instead:\n` +
+        `• Use the menu button (☰) for quick commands\n` +
+        `• Type /help to see all available commands\n` +
+        `• Chat with me naturally: "Check my balance" or "Send 10 USDC"`
+      );
   }
 }
 

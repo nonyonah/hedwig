@@ -517,7 +517,18 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
 
     if (!wallets || wallets.length === 0) {
       return {
-        text: "Your wallet is being set up automatically. Please try again in a moment."
+        text: "❌ No wallets found. Would you like me to create wallets for you?\n\n" +
+              "🎯 **Wallet Creation Templates:**\n" +
+              "• Type: 'Create EVM wallet'\n" +
+              "• Type: 'Create Solana wallet'\n" +
+              "• Type: 'Create both wallets'",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🟦 Create EVM Wallet", callback_data: "create_evm_wallet" }],
+            [{ text: "🌸 Create Solana Wallet", callback_data: "create_solana_wallet" }],
+            [{ text: "✅ Create Both Wallets", callback_data: "create_wallets" }]
+          ]
+        }
       };
     }
 
@@ -538,10 +549,17 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
     // Context-aware response
     if (requestedNetwork === 'solana') {
       if (!solanaAddress) {
-        return { text: "❌ No Solana wallet found. Type 'create wallet' to create one." };
+        return { 
+          text: "❌ No Solana wallet found.\n\n🎯 **Create Solana Wallet:**\nType: 'Create Solana wallet'",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "🌸 Create Solana Wallet", callback_data: "create_solana_wallet" }]
+            ]
+          }
+        };
       }
       return { 
-        text: `🌸 **Solana Address**\n\`${solanaAddress}\`\n\n💡 Use this address to receive SOL and SPL tokens on Solana network.`,
+        text: `✅ **Your Solana Wallet**\n\n🌸 **Address:**\n\`${solanaAddress}\`\n\n💡 Use this address to receive SOL, USDC, and other SPL tokens on Solana network.\n\n🔒 Keep this address safe and share it only when receiving payments.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "📋 Copy Solana Address", copy_text: { text: solanaAddress } }]
@@ -550,10 +568,17 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
       };
     } else if (requestedNetwork === 'evm' || requestedNetwork === 'base') {
       if (!evmAddress) {
-        return { text: "❌ No EVM wallet found. Type 'create wallet' to create one." };
+        return { 
+          text: "❌ No EVM wallet found.\n\n🎯 **Create EVM Wallet:**\nType: 'Create EVM wallet'",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "🟦 Create EVM Wallet", callback_data: "create_evm_wallet" }]
+            ]
+          }
+        };
       }
       return { 
-        text: `🟦 **Base Address**\n\`${evmAddress}\`\n\n💡 Use this address to receive ETH, USDC and other tokens on Base network.`,
+        text: `✅ **Your Base Wallet**\n\n🟦 **Address:**\n\`${evmAddress}\`\n\n💡 Use this address to receive ETH, USDC, and other tokens on Base network.\n\n🔒 Keep this address safe and share it only when receiving payments.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "📋 Copy Base Address", copy_text: { text: evmAddress } }]
@@ -561,18 +586,52 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         }
       };
     } else {
-      // Show both addresses
-      const response = `🟦 **Base Address**\n\`${evmAddress}\`\n\n🌸 **Solana Address**\n\`${solanaAddress}\`\n\n💡 Use these addresses to receive deposits on their respective networks.`;
-      
-      return { 
-        text: response,
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "📋 Copy Base", copy_text: { text: evmAddress } },
-              { text: "📋 Copy Solana", copy_text: { text: solanaAddress } }
+      // Show both addresses if they exist
+      let responseText = "✅ **Your Wallet Addresses**\n\n";
+      let buttons: Array<{ text: string; copy_text?: { text: string }; callback_data?: string }> = [];
+
+      if (evmAddress) {
+        responseText += `🟦 **Base Network:**\n\`${evmAddress}\`\n\n`;
+        buttons.push({ text: "📋 Copy Base", copy_text: { text: evmAddress } });
+      }
+
+      if (solanaAddress) {
+        responseText += `🌸 **Solana Network:**\n\`${solanaAddress}\`\n\n`;
+        buttons.push({ text: "📋 Copy Solana", copy_text: { text: solanaAddress } });
+      }
+
+      responseText += "💡 Use these addresses to receive deposits on their respective networks.\n\n🔒 Keep these addresses safe and share them only when receiving payments.";
+
+      // If no wallets exist, show creation options
+      if (!evmAddress && !solanaAddress) {
+        return { 
+          text: "❌ No wallets found. Would you like me to create wallets for you?\n\n" +
+                "🎯 **Wallet Creation Templates:**\n" +
+                "• Type: 'Create EVM wallet'\n" +
+                "• Type: 'Create Solana wallet'\n" +
+                "• Type: 'Create both wallets'",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "🟦 Create EVM Wallet", callback_data: "create_evm_wallet" }],
+              [{ text: "🌸 Create Solana Wallet", callback_data: "create_solana_wallet" }],
+              [{ text: "✅ Create Both Wallets", callback_data: "create_wallets" }]
             ]
-          ]
+          }
+        };
+      }
+
+      // If only one wallet exists, offer to create the missing one
+      if (!evmAddress) {
+        buttons.push({ text: "➕ Create Base Wallet", callback_data: "create_evm_wallet" });
+      }
+      if (!solanaAddress) {
+        buttons.push({ text: "➕ Create Solana Wallet", callback_data: "create_solana_wallet" });
+      }
+
+      return { 
+        text: responseText,
+        reply_markup: {
+          inline_keyboard: buttons.length > 0 ? [buttons] : []
         }
       };
     }

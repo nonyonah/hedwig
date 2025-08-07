@@ -24,30 +24,32 @@ export class BotIntegration {
     this.usdcPaymentModule = new USDCPaymentModule(bot);
   }
 
-  // Enhanced main menu with business features
-  getMainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  // Get persistent keyboard for all messages
+  getPersistentKeyboard() {
     return {
-      inline_keyboard: [
-        [
-          { text: '💰 Balance', callback_data: 'check_balance' },
-          { text: '👛 Wallet', callback_data: 'create_wallet' }
-        ],
-        [
-          { text: '💸 Send Crypto', callback_data: 'send_crypto' },
-          { text: '🔗 Payment Link', callback_data: 'payment_link' }
-        ],
-        [
-          { text: '📄 Invoice', callback_data: 'business_invoices' },
-          { text: '📋 Proposal', callback_data: 'business_proposals' }
-        ],
-        [
-          { text: '📊 Business Dashboard', callback_data: 'business_dashboard' },
-          { text: '📈 View History', callback_data: 'view_history' }
-        ],
-        [
-          { text: '❓ Help', callback_data: 'help' }
-        ]
-      ]
+      keyboard: [
+        [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
+        [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
+        [{ text: '📝 Proposal' }, { text: '🧾 Invoice' }],
+        [{ text: '📊 View History' }, { text: '❓ Help' }]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: false
+    };
+  }
+
+  // Enhanced main menu with business features
+  getMainMenuKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+    return {
+      keyboard: [
+        [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
+        [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
+        [{ text: '📄 Invoice' }, { text: '📋 Proposal' }],
+        [{ text: '📊 Business Dashboard' }, { text: '📈 View History' }],
+        [{ text: '❓ Help' }]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: false
     };
   }
 
@@ -61,9 +63,6 @@ export class BotIntegration {
         ],
         [
           { text: '💰 Payment Stats', callback_data: 'business_stats' }
-        ],
-        [
-          { text: '🔙 Back to Main Menu', callback_data: 'main_menu' }
         ]
       ]
     };
@@ -400,8 +399,7 @@ export class BotIntegration {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }],
-              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }]
             ]
           }
         }
@@ -456,8 +454,7 @@ export class BotIntegration {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
-                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }],
-                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
               ]
             }
           }
@@ -528,8 +525,7 @@ export class BotIntegration {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }],
-            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }]
           ]
         }
       });
@@ -545,8 +541,7 @@ export class BotIntegration {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'check_balance' }],
-              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              [{ text: '🔄 Try Again', callback_data: 'check_balance' }]
             ]
           }
         }
@@ -554,28 +549,197 @@ export class BotIntegration {
     }
   }
 
-  // Show main menu
-  async showMainMenu(chatId: number) {
-    // Send welcome message with wallet creation button
+  // Handle send crypto
+  async handleSendCrypto(chatId: number, userId: string) {
     await this.bot.sendMessage(chatId, 
-      `🦉 Hi, I'm Hedwig!\n\n` +
-      `I'm your freelance assistant that can help you create proposals, invoices, payment links, and send/receive payments in stablecoins.\n\n` +
-      `Use the menu below or chat with me naturally!`,
+      `💸 *Send Crypto*\n\n` +
+      `To send cryptocurrency, you can:\n\n` +
+      `• Type naturally: "Send 10 USDC to alice@example.com"\n` +
+      `• Use the format: "Send [amount] [token] to [recipient]"\n\n` +
+      `Supported tokens: USDC, ETH, SOL\n` +
+      `Recipients can be email addresses or wallet addresses.`,
       {
+        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+            [{ text: '💰 Check Balance', callback_data: 'check_balance' }]
           ]
         }
       }
     );
+  }
 
-    // Send main menu options
+  // Handle payment link creation
+  async handlePaymentLink(chatId: number, userId: string) {
     await this.bot.sendMessage(chatId, 
-      `🏠 *Main Menu*\n\nChoose an option:`,
+      `🔗 *Create Payment Link*\n\n` +
+      `To create a payment link, you can:\n\n` +
+      `• Type: "Create payment link for $50"\n` +
+      `• Or: "Payment link for 25 USDC for web design"\n\n` +
+      `I'll help you create a shareable payment link that others can use to pay you directly.`,
+      {
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+
+  // Handle view history
+  async handleViewHistory(chatId: number, userId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      // Get recent invoices and proposals
+      const [invoicesResult, proposalsResult] = await Promise.all([
+        supabase
+          .from('invoices')
+          .select('invoice_number, client_name, amount, currency, status, created_at')
+          .eq('user_id', actualUserId)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('proposals')
+          .select('proposal_number, client_name, amount, currency, status, created_at')
+          .eq('user_id', actualUserId)
+          .order('created_at', { ascending: false })
+          .limit(5)
+      ]);
+
+      let message = '📈 *Your Recent Activity*\n\n';
+
+      // Add recent invoices
+      if (invoicesResult.data && invoicesResult.data.length > 0) {
+        message += '📄 *Recent Invoices:*\n';
+        for (const invoice of invoicesResult.data) {
+          const status = this.getStatusEmoji(invoice.status);
+          message += `${status} ${invoice.invoice_number} - ${invoice.amount} ${invoice.currency}\n`;
+        }
+        message += '\n';
+      }
+
+      // Add recent proposals
+      if (proposalsResult.data && proposalsResult.data.length > 0) {
+        message += '📋 *Recent Proposals:*\n';
+        for (const proposal of proposalsResult.data) {
+          const status = this.getStatusEmoji(proposal.status);
+          message += `${status} ${proposal.proposal_number} - ${proposal.amount} ${proposal.currency}\n`;
+        }
+        message += '\n';
+      }
+
+      if ((!invoicesResult.data || invoicesResult.data.length === 0) && 
+          (!proposalsResult.data || proposalsResult.data.length === 0)) {
+        message += 'No recent activity found.\n\n';
+        message += 'Start by creating your first invoice or proposal!';
+      }
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📄 View All Invoices', callback_data: 'business_invoices' },
+              { text: '📋 View All Proposals', callback_data: 'business_proposals' }
+            ]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error fetching history:', error);
+      await this.bot.sendMessage(chatId, '❌ Error fetching history. Please try again.');
+    }
+  }
+
+  // Handle help
+  async handleHelp(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `❓ *Help & Support*\n\n` +
+      `Here's what I can help you with:\n\n` +
+      `💰 **Wallet Management**\n` +
+      `• Check your balance\n` +
+      `• View wallet addresses\n` +
+      `• Create new wallets\n\n` +
+      `💸 **Transactions**\n` +
+      `• Send crypto to anyone\n` +
+      `• Create payment links\n` +
+      `• Generate invoices\n\n` +
+      `📊 **Business Tools**\n` +
+      `• Create proposals\n` +
+      `• Track payments\n` +
+      `• View transaction history\n\n` +
+      `Just type naturally what you want to do, and I'll help you!`,
+      {
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+
+  // Show welcome message with conditional wallet creation for new users
+  async showWelcomeMessage(chatId: number) {
+    try {
+      // Check if user exists in database
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, evm_wallet_address, solana_wallet_address')
+        .eq('telegram_chat_id', chatId)
+        .single();
+
+      const isNewUser = !user || (!user.evm_wallet_address && !user.solana_wallet_address);
+      
+      if (isNewUser) {
+        // Show welcome message with Create Wallet button for new users
+        await this.bot.sendMessage(chatId, 
+          `🦉 Welcome to Hedwig!\n\n` +
+          `I'm your freelance assistant that can help you create proposals, invoices, payment links, and send/receive payments in stablecoins.\n\n` +
+          `Let's start by creating your crypto wallets:`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔐 Create Wallet', callback_data: 'create_wallet' }]
+              ]
+            }
+          }
+        );
+      } else {
+        // Show main menu for existing users with persistent keyboard
+        await this.bot.sendMessage(chatId, 
+          `🦉 *Welcome back to Hedwig!*\n\n` +
+          `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+          `Choose an option below or chat with me naturally!`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: this.getPersistentKeyboard()
+          }
+        );
+      }
+    } catch (error) {
+      console.error('Error in showWelcomeMessage:', error);
+      // Fallback to main menu if there's an error
+      await this.showMainMenu(chatId);
+    }
+  }
+
+  // Show main menu
+  async showMainMenu(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `🦉 *Welcome to Hedwig!*\n\n` +
+      `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+      `Choose an option below or chat with me naturally!`,
       {
         parse_mode: 'Markdown',
-        reply_markup: this.getMainMenuKeyboard()
+        reply_markup: this.getPersistentKeyboard()
       }
     );
   }
@@ -593,11 +757,7 @@ export class BotIntegration {
 
     try {
       // Business dashboard callbacks
-      if (data === 'main_menu') {
-        await this.showMainMenu(chatId);
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
-      } else if (data === 'business_dashboard') {
+      if (data === 'business_dashboard') {
         await this.handleBusinessDashboard(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
@@ -617,6 +777,7 @@ export class BotIntegration {
         await this.handleBusinessSettings(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+
       } else if (data === 'create_wallet') {
         await this.handleCreateWallet(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -626,62 +787,19 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'send_crypto') {
-        await this.bot.sendMessage(chatId, 
-          `💸 *Send Crypto*\n\nTo send crypto, please tell me:\n• Amount and token (e.g., "10 USDC")\n• Recipient address or email\n\nExample: "Send 10 USDC to alice@example.com"`,
-          { parse_mode: 'Markdown' }
-        );
+        await this.handleSendCrypto(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'payment_link') {
-        await this.bot.sendMessage(chatId, 
-          `🔗 *Payment Link*\n\nTo create a payment link, please tell me:\n• Amount and currency\n• Description (optional)\n\nExample: "Create payment link for $100 for web design services"`,
-          { parse_mode: 'Markdown' }
-        );
+        await this.handlePaymentLink(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'view_history') {
-        await this.bot.sendMessage(chatId, 
-          `📈 *Transaction History*\n\nChoose what you'd like to view:`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '📄 My Invoices', callback_data: 'business_invoices' },
-                  { text: '📋 My Proposals', callback_data: 'business_proposals' }
-                ],
-                [
-                  { text: '💰 Payment Stats', callback_data: 'business_stats' }
-                ],
-                [
-                  { text: '🔙 Back', callback_data: 'main_menu' }
-                ]
-              ]
-            }
-          }
-        );
+        await this.handleViewHistory(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'help') {
-        await this.bot.sendMessage(chatId, 
-          `❓ *Help & Commands*\n\n` +
-          `*What I can do:*\n` +
-          `• 💰 Check wallet balances\n` +
-          `• 🏦 Create crypto wallets\n` +
-          `• 💸 Send crypto payments\n` +
-          `• 🔗 Create payment links\n` +
-          `• 📄 Create and manage invoices\n` +
-          `• 📋 Create and manage proposals\n` +
-          `• 📊 View business statistics\n\n` +
-          `*How to use:*\n` +
-          `Just chat with me naturally! For example:\n` +
-          `• "Check my balance"\n` +
-          `• "Send 10 USDC to alice@example.com"\n` +
-          `• "Create an invoice for $500"\n` +
-          `• "Show my proposals"\n\n` +
-          `Use the buttons below or type /start to see the main menu.`,
-          { parse_mode: 'Markdown' }
-        );
+        await this.handleHelp(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
@@ -761,6 +879,30 @@ export class BotIntegration {
 
         case '📊 Business Dashboard':
           await this.handleBusinessDashboard(chatId);
+          return true;
+
+        case '💰 Balance':
+          await this.handleCheckBalance(chatId, userId);
+          return true;
+
+        case '👛 Wallet':
+          await this.handleCreateWallet(chatId, userId);
+          return true;
+
+        case '💸 Send Crypto':
+          await this.handleSendCrypto(chatId, userId);
+          return true;
+
+        case '🔗 Payment Link':
+          await this.handlePaymentLink(chatId, userId);
+          return true;
+
+        case '📈 View History':
+          await this.handleViewHistory(chatId, userId);
+          return true;
+
+        case '❓ Help':
+          await this.handleHelp(chatId);
           return true;
 
         default:
