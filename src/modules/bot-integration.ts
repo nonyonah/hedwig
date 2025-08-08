@@ -81,7 +81,8 @@ export class BotIntegration {
           { text: '📋 My Proposals', callback_data: 'business_proposals' }
         ],
         [
-          { text: '💰 Payment Stats', callback_data: 'business_stats' }
+          { text: '🔄 Ongoing Creations', callback_data: 'ongoing_creations' },
+          { text: '💰 Earnings Summary', callback_data: 'earnings_summary' }
         ],
         [
           { text: '🔙 Back to Menu', callback_data: 'main_menu' }
@@ -297,6 +298,164 @@ export class BotIntegration {
     } catch (error) {
       console.error('Error fetching payment stats:', error);
       await this.bot.sendMessage(chatId, '❌ Error fetching payment statistics.');
+    }
+  }
+
+  // Handle ongoing creations
+  async handleOngoingCreations(chatId: number, userId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      // Check for ongoing invoice and proposal creations
+      const { data: userStates } = await supabase
+        .from('user_states')
+        .select('state_type, state_data')
+        .eq('user_id', actualUserId)
+        .in('state_type', ['creating_invoice', 'creating_proposal']);
+
+      const ongoingInvoice = userStates?.find(state => state.state_type === 'creating_invoice')?.state_data;
+      const ongoingProposal = userStates?.find(state => state.state_type === 'creating_proposal')?.state_data;
+
+      let message = '🔄 *Ongoing Creations*\n\n';
+      const buttons: any[] = [];
+
+      if (ongoingInvoice) {
+        const step = ongoingInvoice.step || 'unknown';
+        message += `📄 **Invoice Creation**\n`;
+        message += `• Status: In progress (Step: ${step})\n`;
+        message += `• Freelancer: ${ongoingInvoice.freelancer_name || 'Not set'}\n`;
+        message += `• Client: ${ongoingInvoice.client_name || 'Not set'}\n`;
+        message += `• Project: ${ongoingInvoice.project_description || 'Not set'}\n`;
+        message += `• Amount: ${ongoingInvoice.amount ? `${ongoingInvoice.amount} ${ongoingInvoice.currency || 'USD'}` : 'Not set'}\n\n`;
+        
+        buttons.push([
+          { text: '▶️ Continue Invoice', callback_data: 'continue_invoice' },
+          { text: '❌ Cancel Invoice', callback_data: 'cancel_ongoing_invoice' }
+        ]);
+      }
+
+      if (ongoingProposal) {
+        const step = ongoingProposal.step || 'unknown';
+        message += `📋 **Proposal Creation**\n`;
+        message += `• Status: In progress (Step: ${step})\n`;
+        message += `• Freelancer: ${ongoingProposal.freelancer_name || 'Not set'}\n`;
+        message += `• Client: ${ongoingProposal.client_name || 'Not set'}\n`;
+        message += `• Project: ${ongoingProposal.project_description || 'Not set'}\n`;
+        message += `• Amount: ${ongoingProposal.amount ? `${ongoingProposal.amount} ${ongoingProposal.currency || 'USD'}` : 'Not set'}\n\n`;
+        
+        buttons.push([
+          { text: '▶️ Continue Proposal', callback_data: 'continue_proposal' },
+          { text: '❌ Cancel Proposal', callback_data: 'cancel_ongoing_proposal' }
+        ]);
+      }
+
+      if (!ongoingInvoice && !ongoingProposal) {
+        message += '✅ No ongoing creations found.\n\n';
+        message += 'You can start creating a new invoice or proposal from the main menu.';
+      }
+
+      buttons.push([{ text: '🔙 Back to Dashboard', callback_data: 'business_dashboard' }]);
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: buttons
+        }
+      });
+    } catch (error) {
+      console.error('Error handling ongoing creations:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to load ongoing creations.');
+    }
+  }
+
+  // Handle ongoing creations
+  async handleOngoingCreations(chatId: number, userId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      // Check for ongoing invoice and proposal creations
+      const { data: userStates } = await supabase
+        .from('user_states')
+        .select('state_type, state_data')
+        .eq('user_id', actualUserId)
+        .in('state_type', ['creating_invoice', 'creating_proposal']);
+
+      const ongoingInvoice = userStates?.find(state => state.state_type === 'creating_invoice')?.state_data;
+      const ongoingProposal = userStates?.find(state => state.state_type === 'creating_proposal')?.state_data;
+
+      let message = '🔄 *Ongoing Creations*\n\n';
+      const buttons: any[] = [];
+
+      if (ongoingInvoice) {
+        const step = ongoingInvoice.step || 'unknown';
+        message += `📄 **Invoice Creation**\n`;
+        message += `• Status: In progress (Step: ${step})\n`;
+        message += `• Freelancer: ${ongoingInvoice.freelancer_name || 'Not set'}\n`;
+        message += `• Client: ${ongoingInvoice.client_name || 'Not set'}\n`;
+        message += `• Project: ${ongoingInvoice.project_description || 'Not set'}\n`;
+        message += `• Amount: ${ongoingInvoice.amount ? `${ongoingInvoice.amount} ${ongoingInvoice.currency || 'USD'}` : 'Not set'}\n\n`;
+        
+        buttons.push([
+          { text: '▶️ Continue Invoice', callback_data: 'continue_invoice' },
+          { text: '❌ Cancel Invoice', callback_data: 'cancel_ongoing_invoice' }
+        ]);
+      }
+
+      if (ongoingProposal) {
+        const step = ongoingProposal.step || 'unknown';
+        message += `📋 **Proposal Creation**\n`;
+        message += `• Status: In progress (Step: ${step})\n`;
+        message += `• Freelancer: ${ongoingProposal.freelancer_name || 'Not set'}\n`;
+        message += `• Client: ${ongoingProposal.client_name || 'Not set'}\n`;
+        message += `• Project: ${ongoingProposal.project_description || 'Not set'}\n`;
+        message += `• Amount: ${ongoingProposal.amount ? `${ongoingProposal.amount} ${ongoingProposal.currency || 'USD'}` : 'Not set'}\n\n`;
+        
+        buttons.push([
+          { text: '▶️ Continue Proposal', callback_data: 'continue_proposal' },
+          { text: '❌ Cancel Proposal', callback_data: 'cancel_ongoing_proposal' }
+        ]);
+      }
+
+      if (!ongoingInvoice && !ongoingProposal) {
+        message += '✅ No ongoing creations found.\n\n';
+        message += 'You can start creating a new invoice or proposal from the main menu.';
+      }
+
+      buttons.push([{ text: '🔙 Back to Dashboard', callback_data: 'business_dashboard' }]);
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: buttons
+        }
+      });
+    } catch (error) {
+      console.error('Error handling ongoing creations:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to load ongoing creations.');
     }
   }
 
@@ -904,6 +1063,10 @@ export class BotIntegration {
         await this.handlePaymentStats(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data === 'ongoing_creations') {
+        await this.handleOngoingCreations(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       } else if (data === 'business_settings') {
         await this.handleBusinessSettings(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -954,8 +1117,14 @@ export class BotIntegration {
       else if (data.startsWith('proposal_') || data.startsWith('view_proposal_') || 
                data.startsWith('send_proposal_') || data.startsWith('pdf_proposal_') ||
                data.startsWith('edit_proposal_') || data.startsWith('delete_proposal_') ||
-               data.startsWith('cancel_proposal_')) {
-        await this.proposalModule.handleProposalCallback(callbackQuery);
+               data.startsWith('cancel_proposal_') || data.startsWith('continue_proposal_')) {
+        // Get proper userId for cancel operations
+        if (data.startsWith('cancel_proposal_') || data.startsWith('continue_proposal_')) {
+          const properUserId = await this.getUserIdByChatId(chatId);
+          await this.proposalModule.handleProposalCallback(callbackQuery, properUserId);
+        } else {
+          await this.proposalModule.handleProposalCallback(callbackQuery);
+        }
         return true;
       }
       // USDC payment callbacks
