@@ -792,6 +792,12 @@ export async function handleAction(
     case "create_payment_link":
       return await handleCreatePaymentLink(params, userId);
     
+    case "create_invoice":
+      return await handleCreateInvoice(params, userId);
+    
+    case "create_proposal":
+      return await handleCreateProposal(params, userId);
+    
     case "earnings":
     case "get_earnings":
       try {
@@ -1607,6 +1613,128 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
     console.error('[sendManualReminder] Error:', error);
     return {
       text: "❌ Failed to send reminder. Please try again later."
+    };
+  }
+}
+
+async function handleCreateInvoice(params: ActionParams, userId: string) {
+  try {
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[handleCreateInvoice] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+      
+      actualUserId = user.id;
+    }
+
+    // Import and use the invoice creation service
+    const { InvoiceModule } = await import('@/modules/invoices');
+    
+    // Get the user's chat ID for Telegram interaction
+    const { data: user } = await supabase
+      .from('users')
+      .select('telegram_chat_id')
+      .eq('id', actualUserId)
+      .single();
+    
+    if (!user?.telegram_chat_id) {
+      return {
+        text: "❌ Telegram chat ID not found. Please make sure you're using the Telegram bot."
+      };
+    }
+    
+    // Initialize the bot and start invoice creation
+    const TelegramBot = require('node-telegram-bot-api');
+    const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+    const invoiceModule = new InvoiceModule(bot);
+    
+    await invoiceModule.handleInvoiceCreation(user.telegram_chat_id, actualUserId);
+    
+    return {
+      text: "✅ Invoice creation started! Please check your Telegram bot for the next steps."
+    };
+
+  } catch (error) {
+    console.error('[handleCreateInvoice] Error:', error);
+    return {
+      text: "❌ Failed to start invoice creation. Please try again later."
+    };
+  }
+}
+
+async function handleCreateProposal(params: ActionParams, userId: string) {
+  try {
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', userId)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[handleCreateProposal] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+      
+      actualUserId = user.id;
+    }
+
+    // Import and use the proposal creation service
+    const { ProposalModule } = await import('@/modules/proposals');
+    
+    // Get the user's chat ID for Telegram interaction
+    const { data: user } = await supabase
+      .from('users')
+      .select('telegram_chat_id')
+      .eq('id', actualUserId)
+      .single();
+    
+    if (!user?.telegram_chat_id) {
+      return {
+        text: "❌ Telegram chat ID not found. Please make sure you're using the Telegram bot."
+      };
+    }
+    
+    // Initialize the bot and start proposal creation
+    const TelegramBot = require('node-telegram-bot-api');
+    const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+    const proposalModule = new ProposalModule(bot);
+    
+    await proposalModule.handleProposalCreation(user.telegram_chat_id, actualUserId);
+    
+    return {
+      text: "✅ Proposal creation started! Please check your Telegram bot for the next steps."
+    };
+
+  } catch (error) {
+    console.error('[handleCreateProposal] Error:', error);
+    return {
+      text: "❌ Failed to start proposal creation. Please try again later."
     };
   }
 }

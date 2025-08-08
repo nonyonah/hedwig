@@ -695,57 +695,9 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
         }
       
       case 'create_invoice':
-        try {
-          // Get user info from database
-          const { supabase } = await import('../../lib/supabase');
-          
-          // Determine if userId is a UUID or username and get the actual user UUID
-          let actualUserId: string;
-          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-          
-          if (isUUID) {
-            actualUserId = userId;
-          } else {
-            // userId is a username, fetch the actual UUID
-            const { data: user, error: userError } = await supabase
-              .from('users')
-              .select('id')
-              .eq('telegram_username', userId)
-              .single();
-            
-            if (userError || !user) {
-              return "❌ User not found. Please make sure you're registered with the bot.";
-            }
-            
-            actualUserId = user.id;
-          }
-
-          // Check if user has wallets
-          const { data: wallets } = await supabase
-            .from("wallets")
-            .select("*")
-            .eq("user_id", actualUserId);
-
-          if (!wallets || wallets.length === 0) {
-            return "You need a wallet before creating invoices. Please type 'create wallet' to create your wallet first.";
-          }
-          
-          const { data: user } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', actualUserId)
-            .single();
-          
-          if (!user) {
-            return "❌ User not found. Please try again.";
-          }
-          
-          const invoiceResult = await processInvoiceInput(userMessage, user);
-          return invoiceResult.message;
-        } catch (error) {
-          console.error('[formatResponseForUser] Invoice error:', error);
-          return "❌ Failed to create invoice. Please try again with more details about your project.";
-        }
+        // Use the existing actions.ts handler for invoice functionality
+        const invoiceResult = await handleAction(intent, params, userId);
+        return invoiceResult.text;
       
       case 'view_proposals':
         try {
