@@ -312,7 +312,17 @@ export class ProposalModule {
         await this.handleEditSubAction(callbackQuery);
       } else if (data.startsWith('cancel_proposal_')) {
         const proposalId = data.replace('cancel_proposal_', '');
-        await this.cancelProposalCreation(chatId, proposalId);
+        // Get userId for state clearing
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        await this.cancelProposalCreation(chatId, proposalId, actualUserId);
       }
 
       await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -694,7 +704,7 @@ export class ProposalModule {
     return { amount, currency };
   }
 
-  private async cancelProposalCreation(chatId: number, proposalId: string) {
+  async cancelProposalCreation(chatId: number, proposalId: string, userId?: string) {
     try {
       // Delete the draft proposal
       await supabase
@@ -703,9 +713,25 @@ export class ProposalModule {
         .eq('id', proposalId)
         .eq('status', 'draft');
 
+      // Clear user state if userId is provided
+      if (userId) {
+        await this.clearUserState(userId);
+      } else {
+        // Fallback: get userId from chatId
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', chatId)
+          .single();
+        
+        const fallbackUserId = user?.id || chatId.toString();
+        await this.clearUserState(fallbackUserId);
+      }
+
       await this.bot.sendMessage(chatId, '❌ Proposal creation cancelled.');
     } catch (error) {
       console.error('Error cancelling proposal:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to cancel proposal.');
     }
   }
 

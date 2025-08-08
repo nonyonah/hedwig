@@ -31,8 +31,7 @@ export class BotIntegration {
         [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
         [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
         [{ text: '📝 Proposal' }, { text: '🧾 Invoice' }],
-        [{ text: '💰 Earnings Summary' }, { text: '📊 Menu' }],
-        [{ text: '❓ Help' }]
+        [{ text: '📊 View History' }, { text: '❓ Help' }]
       ],
       resize_keyboard: true,
       one_time_keyboard: false
@@ -46,29 +45,11 @@ export class BotIntegration {
         [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
         [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
         [{ text: '📄 Invoice' }, { text: '📋 Proposal' }],
-        [{ text: '💰 Earnings Summary' }, { text: '📊 Menu' }],
+        [{ text: '📊 Business Dashboard' }, { text: '📈 View History' }],
         [{ text: '❓ Help' }]
       ],
       resize_keyboard: true,
       one_time_keyboard: false
-    };
-  }
-
-  // Menu keyboard with business dashboard and other options
-  getMenuKeyboard() {
-    return {
-      inline_keyboard: [
-        [
-          { text: '📊 Business Dashboard', callback_data: 'business_dashboard' }
-        ],
-        [
-          { text: '💰 Earnings Summary', callback_data: 'transaction_history' },
-          { text: '⚙️ Settings', callback_data: 'settings' }
-        ],
-        [
-          { text: '🔙 Back to Main', callback_data: 'back_to_main' }
-        ]
-      ]
     };
   }
 
@@ -81,28 +62,13 @@ export class BotIntegration {
           { text: '📋 My Proposals', callback_data: 'business_proposals' }
         ],
         [
-          { text: '🔄 Ongoing Creations', callback_data: 'ongoing_creations' },
-          { text: '💰 Earnings Summary', callback_data: 'earnings_summary' }
+          { text: '💰 Payment Stats', callback_data: 'business_stats' }
         ],
         [
-          { text: '🔙 Back to Menu', callback_data: 'main_menu' }
+          { text: '🔙 Back to Main Menu', callback_data: 'main_menu' }
         ]
       ]
     };
-  }
-
-  // Handle menu
-  async handleMenu(chatId: number) {
-    const message = (
-      `📊 *Menu*\n\n` +
-      `Access business features and settings from here.\n\n` +
-      `What would you like to do?`
-    );
-
-    await this.bot.sendMessage(chatId, message, {
-      parse_mode: 'Markdown',
-      reply_markup: this.getMenuKeyboard()
-    });
   }
 
   // Handle business dashboard
@@ -301,84 +267,6 @@ export class BotIntegration {
     }
   }
 
-  // Handle ongoing creations
-  async handleOngoingCreations(chatId: number, userId: string) {
-    try {
-      // Get the actual user UUID if userId is a chatId
-      let actualUserId = userId;
-      if (/^\d+$/.test(userId)) {
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', parseInt(userId))
-          .single();
-        
-        if (user) {
-          actualUserId = user.id;
-        }
-      }
-
-      // Check for ongoing invoice and proposal creations
-      const { data: userStates } = await supabase
-        .from('user_states')
-        .select('state_type, state_data')
-        .eq('user_id', actualUserId)
-        .in('state_type', ['creating_invoice', 'creating_proposal']);
-
-      const ongoingInvoice = userStates?.find(state => state.state_type === 'creating_invoice')?.state_data;
-      const ongoingProposal = userStates?.find(state => state.state_type === 'creating_proposal')?.state_data;
-
-      let message = '🔄 *Ongoing Creations*\n\n';
-      const buttons: any[] = [];
-
-      if (ongoingInvoice) {
-        const step = ongoingInvoice.step || 'unknown';
-        message += `📄 **Invoice Creation**\n`;
-        message += `• Status: In progress (Step: ${step})\n`;
-        message += `• Freelancer: ${ongoingInvoice.freelancer_name || 'Not set'}\n`;
-        message += `• Client: ${ongoingInvoice.client_name || 'Not set'}\n`;
-        message += `• Project: ${ongoingInvoice.project_description || 'Not set'}\n`;
-        message += `• Amount: ${ongoingInvoice.amount ? `${ongoingInvoice.amount} ${ongoingInvoice.currency || 'USD'}` : 'Not set'}\n\n`;
-        
-        buttons.push([
-          { text: '▶️ Continue Invoice', callback_data: 'continue_invoice' },
-          { text: '❌ Cancel Invoice', callback_data: 'cancel_ongoing_invoice' }
-        ]);
-      }
-
-      if (ongoingProposal) {
-        const step = ongoingProposal.step || 'unknown';
-        message += `📋 **Proposal Creation**\n`;
-        message += `• Status: In progress (Step: ${step})\n`;
-        message += `• Freelancer: ${ongoingProposal.freelancer_name || 'Not set'}\n`;
-        message += `• Client: ${ongoingProposal.client_name || 'Not set'}\n`;
-        message += `• Project: ${ongoingProposal.project_description || 'Not set'}\n`;
-        message += `• Amount: ${ongoingProposal.amount ? `${ongoingProposal.amount} ${ongoingProposal.currency || 'USD'}` : 'Not set'}\n\n`;
-        
-        buttons.push([
-          { text: '▶️ Continue Proposal', callback_data: 'continue_proposal' },
-          { text: '❌ Cancel Proposal', callback_data: 'cancel_ongoing_proposal' }
-        ]);
-      }
-
-      if (!ongoingInvoice && !ongoingProposal) {
-        message += '✅ No ongoing creations found.\n\n';
-        message += 'You can start creating a new invoice or proposal from the main menu.';
-      }
-
-      buttons.push([{ text: '🔙 Back to Dashboard', callback_data: 'business_dashboard' }]);
-
-      await this.bot.sendMessage(chatId, message, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: buttons
-        }
-      });
-    } catch (error) {
-      console.error('Error handling ongoing creations:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to load ongoing creations.');
-    }
-  }
 
 
   // Get status emoji
@@ -514,7 +402,8 @@ export class BotIntegration {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }]
+              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }],
+              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
             ]
           }
         }
@@ -569,7 +458,8 @@ export class BotIntegration {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
-                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }],
+                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
               ]
             }
           }
@@ -640,7 +530,8 @@ export class BotIntegration {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }]
+            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
           ]
         }
       });
@@ -656,7 +547,8 @@ export class BotIntegration {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'check_balance' }]
+              [{ text: '🔄 Try Again', callback_data: 'check_balance' }],
+              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
             ]
           }
         }
@@ -698,8 +590,8 @@ export class BotIntegration {
     );
   }
 
-  // Handle earnings summary with creative display
-  async handleEarningsSummary(chatId: number, userId: string) {
+  // Handle view history
+  async handleViewHistory(chatId: number, userId: string) {
     try {
       // Get the actual user UUID if userId is a chatId
       let actualUserId = userId;
@@ -715,114 +607,48 @@ export class BotIntegration {
         }
       }
 
-      // Get earnings data from invoices and payment links
-      const [invoicesResult, paymentLinksResult, proposalsResult] = await Promise.all([
+      // Get recent invoices and proposals
+      const [invoicesResult, proposalsResult] = await Promise.all([
         supabase
           .from('invoices')
-          .select('amount, currency, status, created_at, client_name')
-          .eq('user_id', actualUserId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('payment_links')
-          .select('amount, currency, status, created_at, title')
-          .eq('user_id', actualUserId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('proposals')
-          .select('amount, currency, status, created_at, client_name')
+          .select('invoice_number, client_name, amount, currency, status, created_at')
           .eq('user_id', actualUserId)
           .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('proposals')
+          .select('proposal_number, client_name, amount, currency, status, created_at')
+          .eq('user_id', actualUserId)
+          .order('created_at', { ascending: false })
+          .limit(5)
       ]);
 
-      // Calculate earnings statistics
-      const invoices = invoicesResult.data || [];
-      const paymentLinks = paymentLinksResult.data || [];
-      const proposals = proposalsResult.data || [];
+      let message = '📈 *Your Recent Activity*\n\n';
 
-      // Calculate totals
-      let totalEarned = 0;
-      let totalPending = 0;
-      let totalProposed = 0;
-      let paidInvoices = 0;
-      let paidPaymentLinks = 0;
-      let acceptedProposals = 0;
-
-      // Process invoices
-      invoices.forEach(invoice => {
-        const amount = parseFloat(invoice.amount) || 0;
-        if (invoice.status === 'paid') {
-          totalEarned += amount;
-          paidInvoices++;
-        } else if (invoice.status === 'sent' || invoice.status === 'pending') {
-          totalPending += amount;
+      // Add recent invoices
+      if (invoicesResult.data && invoicesResult.data.length > 0) {
+        message += '📄 *Recent Invoices:*\n';
+        for (const invoice of invoicesResult.data) {
+          const status = this.getStatusEmoji(invoice.status);
+          message += `${status} ${invoice.invoice_number} - ${invoice.amount} ${invoice.currency}\n`;
         }
-      });
-
-      // Process payment links
-      paymentLinks.forEach(link => {
-        const amount = parseFloat(link.amount) || 0;
-        if (link.status === 'paid') {
-          totalEarned += amount;
-          paidPaymentLinks++;
-        } else if (link.status === 'active') {
-          totalPending += amount;
-        }
-      });
-
-      // Process proposals
-      proposals.forEach(proposal => {
-        const amount = parseFloat(proposal.amount) || 0;
-        if (proposal.status === 'accepted') {
-          acceptedProposals++;
-        }
-        totalProposed += amount;
-      });
-
-      // Create creative earnings message
-      let message = '💰 *Your Earnings Dashboard* 🚀\n\n';
-      
-      // Earnings overview with emojis
-      message += '┌─────────────────────────┐\n';
-      message += '│  💎 *EARNINGS OVERVIEW*  │\n';
-      message += '└─────────────────────────┘\n\n';
-
-      if (totalEarned > 0) {
-        message += `🎉 *Total Earned:* $${totalEarned.toFixed(2)} USDC\n`;
-        message += `📈 *Success Rate:* ${Math.round(((paidInvoices + paidPaymentLinks) / Math.max(invoices.length + paymentLinks.length, 1)) * 100)}%\n\n`;
-      } else {
-        message += `🌱 *Getting Started:* $0.00 USDC\n`;
-        message += `💡 *Ready to earn your first payment!*\n\n`;
+        message += '\n';
       }
 
-      // Breakdown section
-      message += '📊 *BREAKDOWN*\n';
-      message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-      message += `💳 Paid Invoices: ${paidInvoices} ($${invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0).toFixed(2)})\n`;
-      message += `🔗 Paid Links: ${paidPaymentLinks} ($${paymentLinks.filter(l => l.status === 'paid').reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0).toFixed(2)})\n`;
-      message += `📋 Accepted Proposals: ${acceptedProposals}\n\n`;
-
-      // Pending section
-      if (totalPending > 0) {
-        message += '⏳ *PENDING PAYMENTS*\n';
-        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-        message += `💰 Awaiting: $${totalPending.toFixed(2)} USDC\n`;
-        message += `📝 Items: ${invoices.filter(i => i.status === 'sent' || i.status === 'pending').length + paymentLinks.filter(l => l.status === 'active').length}\n\n`;
+      // Add recent proposals
+      if (proposalsResult.data && proposalsResult.data.length > 0) {
+        message += '📋 *Recent Proposals:*\n';
+        for (const proposal of proposalsResult.data) {
+          const status = this.getStatusEmoji(proposal.status);
+          message += `${status} ${proposal.proposal_number} - ${proposal.amount} ${proposal.currency}\n`;
+        }
+        message += '\n';
       }
 
-      // Motivational section
-      if (totalEarned === 0) {
-        message += '🎯 *GET STARTED*\n';
-        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-        message += '• Create your first invoice 📄\n';
-        message += '• Generate a payment link 🔗\n';
-        message += '• Send a proposal 📋\n';
-        message += '• Start earning crypto! 💎\n';
-      } else {
-        message += '🔥 *KEEP GROWING*\n';
-        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-        message += `• You're earning an average of $${(totalEarned / Math.max(paidInvoices + paidPaymentLinks, 1)).toFixed(2)} per payment\n`;
-        message += '• Create more payment links for passive income\n';
-        message += '• Follow up on pending payments\n';
+      if ((!invoicesResult.data || invoicesResult.data.length === 0) && 
+          (!proposalsResult.data || proposalsResult.data.length === 0)) {
+        message += 'No recent activity found.\n\n';
+        message += 'Start by creating your first invoice or proposal!';
       }
 
       await this.bot.sendMessage(chatId, message, {
@@ -830,20 +656,16 @@ export class BotIntegration {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '📄 My Invoices', callback_data: 'business_invoices' },
-              { text: '🔗 Payment Links', callback_data: 'view_payment_links' }
-            ],
-            [
-              { text: '📋 My Proposals', callback_data: 'business_proposals' },
-              { text: '💰 Create Payment Link', callback_data: 'create_payment_link' }
+              { text: '📄 View All Invoices', callback_data: 'business_invoices' },
+              { text: '📋 View All Proposals', callback_data: 'business_proposals' }
             ]
           ]
         }
       });
 
     } catch (error) {
-      console.error('Error fetching earnings summary:', error);
-      await this.bot.sendMessage(chatId, '❌ Error fetching earnings data. Please try again.');
+      console.error('Error fetching history:', error);
+      await this.bot.sendMessage(chatId, '❌ Error fetching history. Please try again.');
     }
   }
 
@@ -898,16 +720,8 @@ export class BotIntegration {
           }
         );
       } else {
-        // Show main menu for existing users with persistent keyboard
-        await this.bot.sendMessage(chatId, 
-          `🦉 *Welcome back to Hedwig!*\n\n` +
-          `I'm your AI assistant for crypto payments and wallet management.\n\n` +
-          `Choose an option below or chat with me naturally!`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: this.getPersistentKeyboard()
-          }
-        );
+        // Show main menu for existing users
+        await this.showMainMenu(chatId);
       }
     } catch (error) {
       console.error('Error in showWelcomeMessage:', error);
@@ -941,33 +755,8 @@ export class BotIntegration {
     }
 
     try {
-      // Menu callbacks
-      if (data === 'main_menu') {
-        await this.handleMenu(chatId);
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
-      } else if (data === 'back_to_main') {
-        // Send main menu message
-        await this.bot.sendMessage(chatId, 
-          '🏠 *Welcome back to the main menu!*\n\nChoose an option below:', 
-          { 
-            parse_mode: 'Markdown',
-            reply_markup: this.getPersistentKeyboard()
-          }
-        );
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
-      } else if (data === 'transaction_history') {
-        await this.handleEarningsSummary(chatId, userId);
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
-      } else if (data === 'settings') {
-        await this.handleBusinessSettings(chatId);
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
-      }
       // Business dashboard callbacks
-      else if (data === 'business_dashboard') {
+      if (data === 'business_dashboard') {
         await this.handleBusinessDashboard(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
@@ -983,15 +772,20 @@ export class BotIntegration {
         await this.handlePaymentStats(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
-      } else if (data === 'ongoing_creations') {
-        await this.handleOngoingCreations(chatId, userId);
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
       } else if (data === 'business_settings') {
         await this.handleBusinessSettings(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
-
+      } else if (data === 'main_menu') {
+        await this.bot.sendMessage(chatId, 
+          '🏠 *Main Menu*\n\nChoose an option:',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: this.getMainMenuKeyboard()
+          }
+        );
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       } else if (data === 'create_wallet') {
         await this.handleCreateWallet(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -1009,7 +803,7 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'view_history') {
-        await this.handleEarningsSummary(chatId, userId);
+        await this.handleViewHistory(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'help') {
@@ -1023,9 +817,9 @@ export class BotIntegration {
                data.startsWith('edit_invoice_') || data.startsWith('delete_invoice_') ||
                data.startsWith('edit_client_') || data.startsWith('edit_project_') ||
                data.startsWith('edit_amount_') || data.startsWith('edit_due_date_') ||
-               data.startsWith('confirm_delete_') || data.startsWith('continue_invoice_')) {
-        // Get proper userId for cancel and continue operations
-        if (data.startsWith('cancel_invoice_') || data.startsWith('continue_invoice_')) {
+               data.startsWith('confirm_delete_')) {
+        // Get proper userId for cancel operations
+        if (data.startsWith('cancel_invoice_')) {
           const properUserId = await this.getUserIdByChatId(chatId);
           await this.invoiceModule.handleInvoiceCallback(callbackQuery, properUserId);
         } else {
@@ -1033,39 +827,12 @@ export class BotIntegration {
         }
         return true;
       }
-      // Ongoing creation specific callbacks
-      else if (data.startsWith('continue_ongoing_') || data.startsWith('cancel_ongoing_')) {
-        const properUserId = await this.getUserIdByChatId(chatId);
-        
-        if (data.startsWith('continue_ongoing_invoice_')) {
-          const invoiceId = data.replace('continue_ongoing_invoice_', '');
-          await this.handleContinueInvoice(chatId, properUserId, invoiceId);
-        } else if (data.startsWith('cancel_ongoing_invoice_')) {
-          const invoiceId = data.replace('cancel_ongoing_invoice_', '');
-          await this.handleCancelOngoingInvoice(chatId, properUserId, invoiceId);
-        } else if (data.startsWith('continue_ongoing_proposal_')) {
-          const proposalId = data.replace('continue_ongoing_proposal_', '');
-          await this.handleContinueProposal(chatId, properUserId, proposalId);
-        } else if (data.startsWith('cancel_ongoing_proposal_')) {
-          const proposalId = data.replace('cancel_ongoing_proposal_', '');
-          await this.handleCancelOngoingProposal(chatId, properUserId, proposalId);
-        }
-        
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
-      }
       // Proposal module callbacks
       else if (data.startsWith('proposal_') || data.startsWith('view_proposal_') || 
                data.startsWith('send_proposal_') || data.startsWith('pdf_proposal_') ||
                data.startsWith('edit_proposal_') || data.startsWith('delete_proposal_') ||
-               data.startsWith('cancel_proposal_') || data.startsWith('continue_proposal_')) {
-        // Get proper userId for cancel operations
-        if (data.startsWith('cancel_proposal_') || data.startsWith('continue_proposal_')) {
-          const properUserId = await this.getUserIdByChatId(chatId);
-          await this.proposalModule.handleProposalCallback(callbackQuery, properUserId);
-        } else {
-          await this.proposalModule.handleProposalCallback(callbackQuery);
-        }
+               data.startsWith('cancel_proposal_')) {
+        await this.proposalModule.handleProposalCallback(callbackQuery);
         return true;
       }
       // USDC payment callbacks
@@ -1118,8 +885,8 @@ export class BotIntegration {
           await this.proposalModule.handleProposalCreation(chatId, userId);
           return true;
 
-        case '📊 Menu':
-          await this.handleMenu(chatId);
+        case '📊 Business Dashboard':
+          await this.handleBusinessDashboard(chatId);
           return true;
 
         case '💰 Balance':
@@ -1138,8 +905,8 @@ export class BotIntegration {
           await this.handlePaymentLink(chatId, userId);
           return true;
 
-        case '💰 Earnings Summary':
-          await this.handleEarningsSummary(chatId, userId);
+        case '📈 View History':
+          await this.handleViewHistory(chatId, userId);
           return true;
 
         case '❓ Help':
@@ -1147,29 +914,22 @@ export class BotIntegration {
           return true;
 
         default:
-          // Only check for ongoing flows if the message is not a natural language query
-          // This prevents interference with AI processing
-          const isNaturalLanguage = this.isNaturalLanguageQuery(text);
-          
-          if (!isNaturalLanguage) {
-            // Check if user is in invoice creation flow
-            console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
-            const ongoingInvoice = await this.getOngoingInvoice(userId);
-            console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
-            if (ongoingInvoice && message.text) {
-              console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
-              await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
-              return true;
-            }
-            
-            // Check if user is in proposal creation flow
-            const ongoingProposal = await this.getOngoingProposal(userId);
-            if (ongoingProposal) {
-              await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
-              return true;
-            }
+          // Check if user is in invoice creation flow
+          console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
+          const ongoingInvoice = await this.getOngoingInvoice(userId);
+          console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
+          if (ongoingInvoice && message.text) {
+            console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
+            await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
+            return true;
           }
           
+          // Check if user is in proposal creation flow
+          const ongoingProposal = await this.getOngoingProposal(userId);
+          if (ongoingProposal) {
+            await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
+            return true;
+          }
           return false;
       }
     } catch (error) {
@@ -1225,129 +985,5 @@ export class BotIntegration {
     }
     
     return data?.state_data || null;
-  }
-
-  // Helper method to detect natural language queries
-  private isNaturalLanguageQuery(text: string): boolean {
-    const lowerText = text.toLowerCase().trim();
-    
-    // Simple patterns that indicate natural language
-    const naturalLanguagePatterns = [
-      // Questions
-      /^(what|how|when|where|why|who|can|could|would|should|is|are|do|does|did)/,
-      // Requests with natural language structure
-      /^(i want|i need|i would like|please|help me|show me|tell me|explain)/,
-      // Commands with natural language
-      /^(create|send|make|generate|get|check|view|show).*(for|to|with|my|the)/,
-      // Conversational phrases
-      /^(hello|hi|hey|thanks|thank you|ok|okay|yes|no|sure)/,
-      // Multi-word natural sentences (more than 3 words with common sentence structure)
-      /\b(and|or|but|because|since|although|however|therefore|moreover)\b/,
-    ];
-
-    // Check if it's a simple command or button text (not natural language)
-    const simpleCommands = [
-      '📄 invoice', '📋 proposal', '💰 balance', '👛 wallet',
-      '💸 send crypto', '🔗 payment link', '💰 earnings summary', '❓ help',
-      'invoice', 'proposal', 'balance', 'wallet', 'send', 'help',
-      'create wallet', 'check balance', 'send crypto', 'payment link'
-    ];
-
-    // If it's a simple command, it's not natural language
-    if (simpleCommands.some(cmd => lowerText === cmd)) {
-      return false;
-    }
-
-    // If it matches natural language patterns, it's natural language
-    if (naturalLanguagePatterns.some(pattern => pattern.test(lowerText))) {
-      return true;
-    }
-
-    // If it's longer than 4 words and contains common words, likely natural language
-    const words = lowerText.split(/\s+/);
-    if (words.length > 4) {
-      const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
-      const hasCommonWords = words.some(word => commonWords.includes(word));
-      if (hasCommonWords) {
-        return true;
-      }
-    }
-
-    // Default to false for short, simple inputs
-    return false;
-  }
-
-  // Handler methods for ongoing creation operations
-  private async handleContinueInvoice(chatId: number, userId: string, invoiceId: string) {
-    try {
-      // Get the ongoing invoice state
-      const ongoingInvoice = await this.getOngoingInvoice(userId);
-      if (ongoingInvoice && ongoingInvoice.invoiceId === invoiceId) {
-        // Continue the invoice creation process
-        await this.invoiceModule.continueInvoiceCreation(chatId, userId, '');
-      } else {
-        await this.bot.sendMessage(chatId, '❌ No ongoing invoice found with that ID.');
-      }
-    } catch (error) {
-      console.error('Error continuing invoice:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to continue invoice creation.');
-    }
-  }
-
-  private async handleCancelOngoingInvoice(chatId: number, userId: string, invoiceId: string) {
-    try {
-      // Cancel the ongoing invoice creation
-      await this.invoiceModule.cancelInvoiceCreation(chatId, invoiceId, userId);
-      await this.bot.sendMessage(chatId, '❌ Invoice creation cancelled.');
-    } catch (error) {
-      console.error('Error cancelling invoice:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to cancel invoice creation.');
-    }
-  }
-
-  private async handleContinueProposal(chatId: number, userId: string, proposalId: string) {
-    try {
-      // Get the ongoing proposal state
-      const ongoingProposal = await this.getOngoingProposal(userId);
-      if (ongoingProposal && ongoingProposal.proposalId === proposalId) {
-        // Continue the proposal creation process
-        await this.proposalModule.continueProposalCreation(chatId, userId, ongoingProposal, '');
-      } else {
-        await this.bot.sendMessage(chatId, '❌ No ongoing proposal found with that ID.');
-      }
-    } catch (error) {
-      console.error('Error continuing proposal:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to continue proposal creation.');
-    }
-  }
-
-  private async handleCancelOngoingProposal(chatId: number, userId: string, proposalId: string) {
-    try {
-      // Cancel the ongoing proposal creation by calling the cancel method
-      const callbackQuery = {
-        id: 'ongoing_cancel',
-        data: `cancel_proposal_${proposalId}`,
-        message: { chat: { id: chatId } }
-      } as TelegramBot.CallbackQuery;
-      
-      await this.proposalModule.handleProposalCallback(callbackQuery, userId);
-      // Clear user state
-      await this.clearUserState(userId);
-      await this.bot.sendMessage(chatId, '❌ Proposal creation cancelled.');
-    } catch (error) {
-      console.error('Error cancelling proposal:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to cancel proposal creation.');
-    }
-  }
-
-  private async clearUserState(userId: string) {
-    try {
-      await supabase
-        .from('user_states')
-        .delete()
-        .eq('user_id', userId);
-    } catch (error) {
-      console.error('Error clearing user state:', error);
-    }
   }
 }
