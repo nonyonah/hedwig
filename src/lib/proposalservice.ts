@@ -369,24 +369,194 @@ async function sendProposalEmail(params: SendProposalEmailParams): Promise<void>
 }
 
 // Process proposal input from user messages
-export async function processProposalInput(message: string, userId: string): Promise<{ success: boolean; message: string }> {
+export async function processProposalInput(message: string, user: any): Promise<{ success: boolean; message: string }> {
   try {
-    // This function would integrate with proposal creation logic
-    // For now, return a placeholder response that guides the user
-    return {
-      success: true,
-      message: `I'll help you create a proposal! Please provide the following details:
-
-📋 **Project Title**: What's the name of your project?
-📝 **Description**: Describe the work you'll do
-💰 **Budget**: How much will you charge?
-📅 **Timeline**: When will you complete it?
-📧 **Client Email**: Who should receive this proposal?
-
-You can provide all details in one message or I'll guide you through each step.`
-    };
+    // Check if user has an ongoing proposal creation by querying user_states directly
+    const { data: userState } = await supabase
+      .from('user_states')
+      .select('state_data')
+      .eq('user_id', user.id)
+      .eq('state_type', 'creating_proposal')
+      .single();
+    
+    if (userState?.state_data) {
+      // User has ongoing proposal creation - this should be handled by the bot integration
+      return { 
+        success: true, 
+        message: 'I see you have an ongoing proposal creation. Please continue in the Telegram bot or type "cancel proposal" to start over.' 
+      };
+    } else {
+      // Check if user has a name, if not, ask for it first
+      if (!user.name || user.name.trim() === '') {
+        // Store the pending proposal message in session context
+        await supabase
+          .from('sessions')
+          .upsert({
+            user_id: user.id,
+            context: [{
+              role: 'system',
+              content: JSON.stringify({
+                waiting_for: 'name',
+                pending_proposal_message: message
+              })
+            }]
+          });
+        
+        return {
+          success: true,
+          message: "Before creating a proposal, I need to know your name for the proposal. What's your full name?"
+        };
+      }
+      
+      // Start new proposal creation with AI-powered parsing
+      const proposalDetails = parseProposalFromMessage(message);
+      
+      if (proposalDetails.hasBasicInfo) {
+        // Try to create proposal directly if we have enough info
+        try {
+          // Get user's wallet address
+          const { data: wallets } = await supabase
+            .from('wallets')
+            .select('address, network')
+            .eq('user_id', user.id)
+            .limit(1);
+          
+          if (!wallets || wallets.length === 0) {
+            return {
+              success: false,
+              message: "You need a wallet before creating proposals. Please type 'create wallet' to create your wallet first."
+            };
+          }
+          
+          const wallet = wallets[0];
+          
+          const proposalParams: CreateProposalParams = {
+            title: proposalDetails.title || 'Professional Services Proposal',
+            description: proposalDetails.description || 'Professional services as discussed',
+            amount: proposalDetails.amount,
+            token: proposalDetails.token || 'USDC',
+            network: proposalDetails.network || wallet.network || 'base',
+            walletAddress: wallet.address,
+            userName: user.name,
+            recipientEmail: proposalDetails.email,
+            deadline: proposalDetails.deadline,
+            deliverables: proposalDetails.deliverables
+          };
+          
+          const result = await createProposal(proposalParams);
+          
+          if (result.success) {
+            return {
+              success: true,
+              message: `✅ **Proposal Created Successfully!**\n\n📋 **Proposal Details:**\n• Title: ${proposalParams.title}\n• Description: ${proposalParams.description}\n${proposalParams.amount ? `• Budget: ${proposalParams.amount} ${proposalParams.token}` : ''}\n• Network: ${proposalParams.network}\n\n🔗 **Proposal Link:**\n${result.proposalLink}\n\n${proposalParams.recipientEmail ? '📧 Email sent to client!' : '💡 Share this link with your client for review.'}`
+            };
+          } else {
+            return {
+              success: false,
+              message: `❌ Failed to create proposal: ${result.error}`
+            };
+          }
+        } catch (error) {
+          console.error('Error creating proposal directly:', error);
+          return {
+            success: false,
+            message: 'Failed to create proposal. Please try again or use the step-by-step process in the Telegram bot.'
+          };
+        }
+      } else {
+        // Guide user to provide more details
+        return {
+          success: true,
+          message: `I'll help you create a proposal! I need a few more details:\n\n📋 **Required Information:**\n• 📝 **Project Title**: What's the name of your project?\n• 📄 **Description**: Describe the work you'll do\n• 💰 **Budget**: How much will you charge? (optional)\n• 📅 **Timeline**: When will you complete it?\n• 📧 **Client Email**: Who should receive this proposal?\n\nYou can provide all details in one message like:\n"Create proposal for website redesign project, will redesign company website with modern UI, budget $2000, send to client@email.com, deadline in 4 weeks"\n\nOr I can guide you step-by-step in the Telegram bot by typing "📝 Proposal".`
+        };
+      }
+    }
   } catch (error) {
     console.error('Error processing proposal input:', error);
     return { success: false, message: 'Failed to process proposal request. Please try again.' };
   }
+}
+
+// Helper function to parse proposal details from natural language
+function parseProposalFromMessage(message: string): {
+  title?: string;
+  description?: string;
+  amount?: number;
+  token?: string;
+  network?: string;
+  email?: string;
+  deadline?: string;
+  deliverables?: string[];
+  hasBasicInfo: boolean;
+} {
+  const result: any = {};
+  
+  // Parse amount
+  const amountMatch = message.match(/\$?(\d+(?:\.\d{2})?)/);
+  if (amountMatch) {
+    result.amount = parseFloat(amountMatch[1]);
+  }
+  
+  // Parse token
+  const tokenMatch = message.match(/\b(USDC|ETH|USDT|DAI|WETH|MATIC|ARB|OP)\b/i);
+  if (tokenMatch) {
+    result.token = tokenMatch[1].toUpperCase();
+  }
+  
+  // Parse email
+  const emailMatch = message.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
+  if (emailMatch) {
+    result.email = emailMatch[0];
+  }
+  
+  // Parse title/project name
+  const titlePatterns = [
+    /proposal for (.+?)(?:\s*,|\s*project|\s*will|\s*budget|\s*send|\s*deadline|\s*$)/i,
+    /create proposal (.+?)(?:\s*,|\s*project|\s*will|\s*budget|\s*send|\s*deadline|\s*$)/i,
+    /(.+?) project/i
+  ];
+  
+  for (const pattern of titlePatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      result.title = match[1].trim();
+      break;
+    }
+  }
+  
+  // Parse description
+  const descriptionPatterns = [
+    /will (.+?)(?:\s*,|\s*budget|\s*send|\s*deadline|\s*$)/i,
+    /description[:\s]+(.+?)(?:\s*,|\s*budget|\s*send|\s*deadline|\s*$)/i,
+    /project[:\s]+(.+?)(?:\s*,|\s*budget|\s*send|\s*deadline|\s*$)/i
+  ];
+  
+  for (const pattern of descriptionPatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      result.description = match[1].trim();
+      break;
+    }
+  }
+  
+  // Parse deadline
+  const deadlinePatterns = [
+    /deadline in (\d+) (?:weeks?|days?)/i,
+    /deadline (\d{4}-\d{2}-\d{2})/i,
+    /deadline (.+?)(?:\s*$)/i,
+    /in (\d+) (?:weeks?|days?)$/i
+  ];
+  
+  for (const pattern of deadlinePatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      result.deadline = match[1].trim();
+      break;
+    }
+  }
+  
+  // Determine if we have basic info
+  result.hasBasicInfo = !!(result.title || result.description || message.includes('proposal'));
+  
+  return result;
 }

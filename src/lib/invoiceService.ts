@@ -342,20 +342,162 @@ export async function processInvoiceInput(message: string, user: any): Promise<{
       .single();
     
     if (userState?.state_data) {
-      // User has ongoing invoice creation
+      // User has ongoing invoice creation - this should be handled by the bot integration
       return { 
         success: true, 
-        message: 'Please continue your invoice creation in the Telegram bot.' 
+        message: 'I see you have an ongoing invoice creation. Please continue in the Telegram bot or type "cancel invoice" to start over.' 
       };
     } else {
-      // Start new invoice creation
-      return { 
-        success: true, 
-        message: 'To create an invoice, please use the Telegram bot and type "📄 Invoice" or use the /invoice command.' 
-      };
+      // Check if user has a name, if not, ask for it first
+      if (!user.name || user.name.trim() === '') {
+        // Store the pending invoice message in session context
+        await supabase
+          .from('sessions')
+          .upsert({
+            user_id: user.id,
+            context: [{
+              role: 'system',
+              content: JSON.stringify({
+                waiting_for: 'name',
+                pending_invoice_message: message
+              })
+            }]
+          });
+        
+        return {
+          success: true,
+          message: "Before creating an invoice, I need to know your name for the invoice. What's your full name?"
+        };
+      }
+      
+      // Start new invoice creation with AI-powered parsing
+      const invoiceDetails = parseInvoiceFromMessage(message);
+      
+      if (invoiceDetails.hasBasicInfo) {
+        // Try to create invoice directly if we have enough info
+        try {
+          // Get user's wallet address
+          const { data: wallets } = await supabase
+            .from('wallets')
+            .select('address, network')
+            .eq('user_id', user.id)
+            .limit(1);
+          
+          if (!wallets || wallets.length === 0) {
+            return {
+              success: false,
+              message: "You need a wallet before creating invoices. Please type 'create wallet' to create your wallet first."
+            };
+          }
+          
+          const wallet = wallets[0];
+          
+          const invoiceParams: CreateInvoiceParams = {
+            amount: invoiceDetails.amount || 100,
+            token: invoiceDetails.token || 'USDC',
+            network: invoiceDetails.network || wallet.network || 'base',
+            walletAddress: wallet.address,
+            userName: user.name,
+            description: invoiceDetails.description || 'Professional services',
+            recipientEmail: invoiceDetails.email,
+            dueDate: invoiceDetails.dueDate
+          };
+          
+          const result = await createInvoice(invoiceParams);
+          
+          if (result.success) {
+            return {
+              success: true,
+              message: `✅ **Invoice Created Successfully!**\n\n📄 **Invoice Details:**\n• Amount: ${invoiceParams.amount} ${invoiceParams.token}\n• Description: ${invoiceParams.description}\n• Network: ${invoiceParams.network}\n\n🔗 **Invoice Link:**\n${result.invoiceLink}\n\n${invoiceParams.recipientEmail ? '📧 Email sent to client!' : '💡 Share this link with your client to receive payment.'}`
+            };
+          } else {
+            return {
+              success: false,
+              message: `❌ Failed to create invoice: ${result.error}`
+            };
+          }
+        } catch (error) {
+          console.error('Error creating invoice directly:', error);
+          return {
+            success: false,
+            message: 'Failed to create invoice. Please try again or use the step-by-step process in the Telegram bot.'
+          };
+        }
+      } else {
+        // Guide user to provide more details
+        return {
+          success: true,
+          message: `I'll help you create an invoice! I need a few more details:\n\n📋 **Required Information:**\n• 💰 **Amount**: How much to charge?\n• 📝 **Description**: What service/product?\n• 📧 **Client Email**: Who should receive this?\n• 📅 **Due Date**: When is payment due?\n\nYou can provide all details in one message like:\n"Create invoice for $500 for website design, send to client@email.com, due in 30 days"\n\nOr I can guide you step-by-step in the Telegram bot by typing "📄 Invoice".`
+        };
+      }
     }
   } catch (error) {
     console.error('Error processing invoice input:', error);
     return { success: false, message: 'Failed to process invoice request. Please try again.' };
   }
+}
+
+// Helper function to parse invoice details from natural language
+function parseInvoiceFromMessage(message: string): {
+  amount?: number;
+  token?: string;
+  network?: string;
+  description?: string;
+  email?: string;
+  dueDate?: string;
+  hasBasicInfo: boolean;
+} {
+  const result: any = {};
+  
+  // Parse amount
+  const amountMatch = message.match(/\$?(\d+(?:\.\d{2})?)/);
+  if (amountMatch) {
+    result.amount = parseFloat(amountMatch[1]);
+  }
+  
+  // Parse token
+  const tokenMatch = message.match(/\b(USDC|ETH|USDT|DAI|WETH|MATIC|ARB|OP)\b/i);
+  if (tokenMatch) {
+    result.token = tokenMatch[1].toUpperCase();
+  }
+  
+  // Parse email
+  const emailMatch = message.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
+  if (emailMatch) {
+    result.email = emailMatch[0];
+  }
+  
+  // Parse description (look for common patterns)
+  const descriptionPatterns = [
+    /for (.+?)(?:\s*,|\s*send|\s*due|\s*$)/i,
+    /invoice (.+?)(?:\s*,|\s*send|\s*due|\s*$)/i
+  ];
+  
+  for (const pattern of descriptionPatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      result.description = match[1].trim();
+      break;
+    }
+  }
+  
+  // Parse due date
+  const dueDatePatterns = [
+    /due in (\d+) days?/i,
+    /due (\d{4}-\d{2}-\d{2})/i,
+    /due (.+?)(?:\s*$)/i
+  ];
+  
+  for (const pattern of dueDatePatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      result.dueDate = match[1].trim();
+      break;
+    }
+  }
+  
+  // Determine if we have basic info
+  result.hasBasicInfo = !!(result.amount && (result.description || message.includes('invoice')));
+  
+  return result;
 }

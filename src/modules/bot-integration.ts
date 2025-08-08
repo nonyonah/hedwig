@@ -62,7 +62,7 @@ export class BotIntegration {
           { text: '📊 Business Dashboard', callback_data: 'business_dashboard' }
         ],
         [
-          { text: '📈 Transaction History', callback_data: 'transaction_history' },
+          { text: '💰 Earnings Summary', callback_data: 'transaction_history' },
           { text: '⚙️ Settings', callback_data: 'settings' }
         ],
         [
