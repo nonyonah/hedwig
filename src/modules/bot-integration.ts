@@ -45,7 +45,7 @@ export class BotIntegration {
         [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
         [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
         [{ text: '📄 Invoice' }, { text: '📋 Proposal' }],
-        [{ text: '📊 Business Dashboard' }, { text: '📈 View History' }],
+        [{ text: '📊 Business Dashboard' }, { text: '💰 Earnings Summary' }],
         [{ text: '❓ Help' }]
       ],
       resize_keyboard: true,
@@ -63,9 +63,6 @@ export class BotIntegration {
         ],
         [
           { text: '💰 Payment Stats', callback_data: 'business_stats' }
-        ],
-        [
-          { text: '🔙 Back to Main Menu', callback_data: 'main_menu' }
         ]
       ]
     };
@@ -402,8 +399,7 @@ export class BotIntegration {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }],
-              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }]
             ]
           }
         }
@@ -458,8 +454,7 @@ export class BotIntegration {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
-                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }],
-                [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
               ]
             }
           }
@@ -530,8 +525,7 @@ export class BotIntegration {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }],
-            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }]
           ]
         }
       });
@@ -547,8 +541,7 @@ export class BotIntegration {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'check_balance' }],
-              [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+              [{ text: '🔄 Try Again', callback_data: 'check_balance' }]
             ]
           }
         }
@@ -590,8 +583,8 @@ export class BotIntegration {
     );
   }
 
-  // Handle view history
-  async handleViewHistory(chatId: number, userId: string) {
+  // Handle earnings summary with creative display
+  async handleEarningsSummary(chatId: number, userId: string) {
     try {
       // Get the actual user UUID if userId is a chatId
       let actualUserId = userId;
@@ -607,48 +600,114 @@ export class BotIntegration {
         }
       }
 
-      // Get recent invoices and proposals
-      const [invoicesResult, proposalsResult] = await Promise.all([
+      // Get earnings data from invoices and payment links
+      const [invoicesResult, paymentLinksResult, proposalsResult] = await Promise.all([
         supabase
           .from('invoices')
-          .select('invoice_number, client_name, amount, currency, status, created_at')
+          .select('amount, currency, status, created_at, client_name')
           .eq('user_id', actualUserId)
-          .order('created_at', { ascending: false })
-          .limit(5),
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('payment_links')
+          .select('amount, currency, status, created_at, title')
+          .eq('user_id', actualUserId)
+          .order('created_at', { ascending: false }),
         supabase
           .from('proposals')
-          .select('proposal_number, client_name, amount, currency, status, created_at')
+          .select('amount, currency, status, created_at, client_name')
           .eq('user_id', actualUserId)
           .order('created_at', { ascending: false })
-          .limit(5)
       ]);
 
-      let message = '📈 *Your Recent Activity*\n\n';
+      // Calculate earnings statistics
+      const invoices = invoicesResult.data || [];
+      const paymentLinks = paymentLinksResult.data || [];
+      const proposals = proposalsResult.data || [];
 
-      // Add recent invoices
-      if (invoicesResult.data && invoicesResult.data.length > 0) {
-        message += '📄 *Recent Invoices:*\n';
-        for (const invoice of invoicesResult.data) {
-          const status = this.getStatusEmoji(invoice.status);
-          message += `${status} ${invoice.invoice_number} - ${invoice.amount} ${invoice.currency}\n`;
+      // Calculate totals
+      let totalEarned = 0;
+      let totalPending = 0;
+      let totalProposed = 0;
+      let paidInvoices = 0;
+      let paidPaymentLinks = 0;
+      let acceptedProposals = 0;
+
+      // Process invoices
+      invoices.forEach(invoice => {
+        const amount = parseFloat(invoice.amount) || 0;
+        if (invoice.status === 'paid') {
+          totalEarned += amount;
+          paidInvoices++;
+        } else if (invoice.status === 'sent' || invoice.status === 'pending') {
+          totalPending += amount;
         }
-        message += '\n';
+      });
+
+      // Process payment links
+      paymentLinks.forEach(link => {
+        const amount = parseFloat(link.amount) || 0;
+        if (link.status === 'paid') {
+          totalEarned += amount;
+          paidPaymentLinks++;
+        } else if (link.status === 'active') {
+          totalPending += amount;
+        }
+      });
+
+      // Process proposals
+      proposals.forEach(proposal => {
+        const amount = parseFloat(proposal.amount) || 0;
+        if (proposal.status === 'accepted') {
+          acceptedProposals++;
+        }
+        totalProposed += amount;
+      });
+
+      // Create creative earnings message
+      let message = '💰 *Your Earnings Dashboard* 🚀\n\n';
+      
+      // Earnings overview with emojis
+      message += '┌─────────────────────────┐\n';
+      message += '│  💎 *EARNINGS OVERVIEW*  │\n';
+      message += '└─────────────────────────┘\n\n';
+
+      if (totalEarned > 0) {
+        message += `🎉 *Total Earned:* $${totalEarned.toFixed(2)} USDC\n`;
+        message += `📈 *Success Rate:* ${Math.round(((paidInvoices + paidPaymentLinks) / Math.max(invoices.length + paymentLinks.length, 1)) * 100)}%\n\n`;
+      } else {
+        message += `🌱 *Getting Started:* $0.00 USDC\n`;
+        message += `💡 *Ready to earn your first payment!*\n\n`;
       }
 
-      // Add recent proposals
-      if (proposalsResult.data && proposalsResult.data.length > 0) {
-        message += '📋 *Recent Proposals:*\n';
-        for (const proposal of proposalsResult.data) {
-          const status = this.getStatusEmoji(proposal.status);
-          message += `${status} ${proposal.proposal_number} - ${proposal.amount} ${proposal.currency}\n`;
-        }
-        message += '\n';
+      // Breakdown section
+      message += '📊 *BREAKDOWN*\n';
+      message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+      message += `💳 Paid Invoices: ${paidInvoices} ($${invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0).toFixed(2)})\n`;
+      message += `🔗 Paid Links: ${paidPaymentLinks} ($${paymentLinks.filter(l => l.status === 'paid').reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0).toFixed(2)})\n`;
+      message += `📋 Accepted Proposals: ${acceptedProposals}\n\n`;
+
+      // Pending section
+      if (totalPending > 0) {
+        message += '⏳ *PENDING PAYMENTS*\n';
+        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+        message += `💰 Awaiting: $${totalPending.toFixed(2)} USDC\n`;
+        message += `📝 Items: ${invoices.filter(i => i.status === 'sent' || i.status === 'pending').length + paymentLinks.filter(l => l.status === 'active').length}\n\n`;
       }
 
-      if ((!invoicesResult.data || invoicesResult.data.length === 0) && 
-          (!proposalsResult.data || proposalsResult.data.length === 0)) {
-        message += 'No recent activity found.\n\n';
-        message += 'Start by creating your first invoice or proposal!';
+      // Motivational section
+      if (totalEarned === 0) {
+        message += '🎯 *GET STARTED*\n';
+        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+        message += '• Create your first invoice 📄\n';
+        message += '• Generate a payment link 🔗\n';
+        message += '• Send a proposal 📋\n';
+        message += '• Start earning crypto! 💎\n';
+      } else {
+        message += '🔥 *KEEP GROWING*\n';
+        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+        message += `• You're earning an average of $${(totalEarned / Math.max(paidInvoices + paidPaymentLinks, 1)).toFixed(2)} per payment\n`;
+        message += '• Create more payment links for passive income\n';
+        message += '• Follow up on pending payments\n';
       }
 
       await this.bot.sendMessage(chatId, message, {
@@ -656,16 +715,20 @@ export class BotIntegration {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '📄 View All Invoices', callback_data: 'business_invoices' },
-              { text: '📋 View All Proposals', callback_data: 'business_proposals' }
+              { text: '📄 My Invoices', callback_data: 'business_invoices' },
+              { text: '🔗 Payment Links', callback_data: 'view_payment_links' }
+            ],
+            [
+              { text: '📋 My Proposals', callback_data: 'business_proposals' },
+              { text: '💰 Create Payment Link', callback_data: 'create_payment_link' }
             ]
           ]
         }
       });
 
     } catch (error) {
-      console.error('Error fetching history:', error);
-      await this.bot.sendMessage(chatId, '❌ Error fetching history. Please try again.');
+      console.error('Error fetching earnings summary:', error);
+      await this.bot.sendMessage(chatId, '❌ Error fetching earnings data. Please try again.');
     }
   }
 
@@ -720,8 +783,16 @@ export class BotIntegration {
           }
         );
       } else {
-        // Show main menu for existing users
-        await this.showMainMenu(chatId);
+        // Show main menu for existing users with persistent keyboard
+        await this.bot.sendMessage(chatId, 
+          `🦉 *Welcome back to Hedwig!*\n\n` +
+          `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+          `Choose an option below or chat with me naturally!`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: this.getPersistentKeyboard()
+          }
+        );
       }
     } catch (error) {
       console.error('Error in showWelcomeMessage:', error);
@@ -776,16 +847,7 @@ export class BotIntegration {
         await this.handleBusinessSettings(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
-      } else if (data === 'main_menu') {
-        await this.bot.sendMessage(chatId, 
-          '🏠 *Main Menu*\n\nChoose an option:',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: this.getMainMenuKeyboard()
-          }
-        );
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
+
       } else if (data === 'create_wallet') {
         await this.handleCreateWallet(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -803,7 +865,7 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'view_history') {
-        await this.handleViewHistory(chatId, userId);
+        await this.handleEarningsSummary(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'help') {
@@ -905,31 +967,62 @@ export class BotIntegration {
           await this.handlePaymentLink(chatId, userId);
           return true;
 
-        case '📈 View History':
-          await this.handleViewHistory(chatId, userId);
+        case '💰 Earnings Summary':
+          await this.handleEarningsSummary(chatId, userId);
           return true;
 
         case '❓ Help':
           await this.handleHelp(chatId);
           return true;
 
-        default:
-          // Check if user is in invoice creation flow
-          console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
-          const ongoingInvoice = await this.getOngoingInvoice(userId);
-          console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
-          if (ongoingInvoice && message.text) {
-            console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
-            await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
-            return true;
+        case 'cancel proposal':
+        // Handle cancellation of ongoing proposal creation
+        const ongoingProposal = await this.getOngoingProposal(userId);
+        if (ongoingProposal) {
+          const { proposal_id } = ongoingProposal;
+          await this.proposalModule.cancelProposalCreation(chatId, proposal_id, userId);
+          return true;
+        } else {
+          await this.bot.sendMessage(chatId, 'No ongoing proposal creation found to cancel.');
+          return true;
+        }
+
+      case 'cancel invoice':
+        // Handle cancellation of ongoing invoice creation
+        const ongoingInvoice = await this.getOngoingInvoice(userId);
+        if (ongoingInvoice) {
+          const { invoice_id } = ongoingInvoice;
+          await this.invoiceModule.cancelInvoiceCreation(chatId, invoice_id, userId);
+          return true;
+        } else {
+          await this.bot.sendMessage(chatId, 'No ongoing invoice creation found to cancel.');
+          return true;
+        }
+
+      default:
+          // Only check for ongoing flows if the message is not a natural language query
+          // This prevents interference with AI processing
+          const isNaturalLanguage = this.isNaturalLanguageQuery(text);
+          
+          if (!isNaturalLanguage) {
+            // Check if user is in invoice creation flow
+            console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
+            const ongoingInvoice = await this.getOngoingInvoice(userId);
+            console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
+            if (ongoingInvoice && message.text) {
+              console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
+              await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
+              return true;
+            }
+            
+            // Check if user is in proposal creation flow
+            const ongoingProposal = await this.getOngoingProposal(userId);
+            if (ongoingProposal) {
+              await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
+              return true;
+            }
           }
           
-          // Check if user is in proposal creation flow
-          const ongoingProposal = await this.getOngoingProposal(userId);
-          if (ongoingProposal) {
-            await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
-            return true;
-          }
           return false;
       }
     } catch (error) {
@@ -985,5 +1078,55 @@ export class BotIntegration {
     }
     
     return data?.state_data || null;
+  }
+
+  // Helper method to detect natural language queries
+  private isNaturalLanguageQuery(text: string): boolean {
+    const lowerText = text.toLowerCase().trim();
+    
+    // Simple patterns that indicate natural language
+    const naturalLanguagePatterns = [
+      // Questions
+      /^(what|how|when|where|why|who|can|could|would|should|is|are|do|does|did)/,
+      // Requests with natural language structure
+      /^(i want|i need|i would like|please|help me|show me|tell me|explain)/,
+      // Commands with natural language
+      /^(create|send|make|generate|get|check|view|show).*(for|to|with|my|the)/,
+      // Conversational phrases
+      /^(hello|hi|hey|thanks|thank you|ok|okay|yes|no|sure)/,
+      // Multi-word natural sentences (more than 3 words with common sentence structure)
+      /\b(and|or|but|because|since|although|however|therefore|moreover)\b/,
+    ];
+
+    // Check if it's a simple command or button text (not natural language)
+    const simpleCommands = [
+      '📄 invoice', '📋 proposal', '💰 balance', '👛 wallet',
+      '💸 send crypto', '🔗 payment link', '💰 earnings summary', '❓ help',
+      'invoice', 'proposal', 'balance', 'wallet', 'send', 'help',
+      'create wallet', 'check balance', 'send crypto', 'payment link'
+    ];
+
+    // If it's a simple command, it's not natural language
+    if (simpleCommands.some(cmd => lowerText === cmd)) {
+      return false;
+    }
+
+    // If it matches natural language patterns, it's natural language
+    if (naturalLanguagePatterns.some(pattern => pattern.test(lowerText))) {
+      return true;
+    }
+
+    // If it's longer than 4 words and contains common words, likely natural language
+    const words = lowerText.split(/\s+/);
+    if (words.length > 4) {
+      const commonWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+      const hasCommonWords = words.some(word => commonWords.includes(word));
+      if (hasCommonWords) {
+        return true;
+      }
+    }
+
+    // Default to false for short, simple inputs
+    return false;
   }
 }
