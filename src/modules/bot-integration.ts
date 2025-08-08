@@ -1297,7 +1297,7 @@ export class BotIntegration {
   private async handleCancelOngoingInvoice(chatId: number, userId: string, invoiceId: string) {
     try {
       // Cancel the ongoing invoice creation
-      await this.invoiceModule.cancelInvoice(chatId, invoiceId, userId);
+      await this.invoiceModule.cancelInvoiceCreation(chatId, invoiceId, userId);
       await this.bot.sendMessage(chatId, '❌ Invoice creation cancelled.');
     } catch (error) {
       console.error('Error cancelling invoice:', error);
@@ -1331,10 +1331,23 @@ export class BotIntegration {
       } as TelegramBot.CallbackQuery;
       
       await this.proposalModule.handleProposalCallback(callbackQuery, userId);
+      // Clear user state
+      await this.clearUserState(userId);
       await this.bot.sendMessage(chatId, '❌ Proposal creation cancelled.');
     } catch (error) {
       console.error('Error cancelling proposal:', error);
       await this.bot.sendMessage(chatId, '❌ Failed to cancel proposal creation.');
+    }
+  }
+
+  private async clearUserState(userId: string) {
+    try {
+      await supabase
+        .from('user_states')
+        .delete()
+        .eq('user_id', userId);
+    } catch (error) {
+      console.error('Error clearing user state:', error);
     }
   }
 }

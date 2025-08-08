@@ -675,7 +675,7 @@ export class InvoiceModule {
   }
 
   // Cancel invoice creation
-  private async cancelInvoiceCreation(chatId: number, invoiceId: string, userId?: string) {
+  async cancelInvoiceCreation(chatId: number, invoiceId: string, userId?: string) {
     try {
       // Delete the invoice
       await supabase
