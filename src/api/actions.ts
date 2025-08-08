@@ -1667,7 +1667,7 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
     await invoiceModule.handleInvoiceCreation(user.telegram_chat_id, actualUserId);
     
     return {
-      text: "✅ Invoice creation started! Please check your Telegram bot for the next steps."
+      text: "✅ Invoice creation process initiated. Continue in your Telegram bot."
     };
 
   } catch (error) {
@@ -1728,7 +1728,7 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
     await proposalModule.handleProposalCreation(user.telegram_chat_id, actualUserId);
     
     return {
-      text: "✅ Proposal creation started! Please check your Telegram bot for the next steps."
+      text: "✅ Proposal creation process initiated. Continue in your Telegram bot."
     };
 
   } catch (error) {

@@ -380,86 +380,6 @@ export class BotIntegration {
     }
   }
 
-  // Handle ongoing creations
-  async handleOngoingCreations(chatId: number, userId: string) {
-    try {
-      // Get the actual user UUID if userId is a chatId
-      let actualUserId = userId;
-      if (/^\d+$/.test(userId)) {
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', parseInt(userId))
-          .single();
-        
-        if (user) {
-          actualUserId = user.id;
-        }
-      }
-
-      // Check for ongoing invoice and proposal creations
-      const { data: userStates } = await supabase
-        .from('user_states')
-        .select('state_type, state_data')
-        .eq('user_id', actualUserId)
-        .in('state_type', ['creating_invoice', 'creating_proposal']);
-
-      const ongoingInvoice = userStates?.find(state => state.state_type === 'creating_invoice')?.state_data;
-      const ongoingProposal = userStates?.find(state => state.state_type === 'creating_proposal')?.state_data;
-
-      let message = '🔄 *Ongoing Creations*\n\n';
-      const buttons: any[] = [];
-
-      if (ongoingInvoice) {
-        const step = ongoingInvoice.step || 'unknown';
-        message += `📄 **Invoice Creation**\n`;
-        message += `• Status: In progress (Step: ${step})\n`;
-        message += `• Freelancer: ${ongoingInvoice.freelancer_name || 'Not set'}\n`;
-        message += `• Client: ${ongoingInvoice.client_name || 'Not set'}\n`;
-        message += `• Project: ${ongoingInvoice.project_description || 'Not set'}\n`;
-        message += `• Amount: ${ongoingInvoice.amount ? `${ongoingInvoice.amount} ${ongoingInvoice.currency || 'USD'}` : 'Not set'}\n\n`;
-        
-        buttons.push([
-          { text: '▶️ Continue Invoice', callback_data: 'continue_invoice' },
-          { text: '❌ Cancel Invoice', callback_data: 'cancel_ongoing_invoice' }
-        ]);
-      }
-
-      if (ongoingProposal) {
-        const step = ongoingProposal.step || 'unknown';
-        message += `📋 **Proposal Creation**\n`;
-        message += `• Status: In progress (Step: ${step})\n`;
-        message += `• Freelancer: ${ongoingProposal.freelancer_name || 'Not set'}\n`;
-        message += `• Client: ${ongoingProposal.client_name || 'Not set'}\n`;
-        message += `• Project: ${ongoingProposal.project_description || 'Not set'}\n`;
-        message += `• Amount: ${ongoingProposal.amount ? `${ongoingProposal.amount} ${ongoingProposal.currency || 'USD'}` : 'Not set'}\n\n`;
-        
-        buttons.push([
-          { text: '▶️ Continue Proposal', callback_data: 'continue_proposal' },
-          { text: '❌ Cancel Proposal', callback_data: 'cancel_ongoing_proposal' }
-        ]);
-      }
-
-      if (!ongoingInvoice && !ongoingProposal) {
-        message += '✅ No ongoing creations found.\n\n';
-        message += 'You can start creating a new invoice or proposal from the main menu.';
-      }
-
-      buttons.push([{ text: '🔙 Back to Dashboard', callback_data: 'business_dashboard' }]);
-
-      await this.bot.sendMessage(chatId, message, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: buttons
-        }
-      });
-    } catch (error) {
-      console.error('Error handling ongoing creations:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to load ongoing creations.');
-    }
-  }
-
-
 
   // Get status emoji
   private getStatusEmoji(status: string): string {
@@ -1103,14 +1023,35 @@ export class BotIntegration {
                data.startsWith('edit_invoice_') || data.startsWith('delete_invoice_') ||
                data.startsWith('edit_client_') || data.startsWith('edit_project_') ||
                data.startsWith('edit_amount_') || data.startsWith('edit_due_date_') ||
-               data.startsWith('confirm_delete_')) {
-        // Get proper userId for cancel operations
-        if (data.startsWith('cancel_invoice_')) {
+               data.startsWith('confirm_delete_') || data.startsWith('continue_invoice_')) {
+        // Get proper userId for cancel and continue operations
+        if (data.startsWith('cancel_invoice_') || data.startsWith('continue_invoice_')) {
           const properUserId = await this.getUserIdByChatId(chatId);
           await this.invoiceModule.handleInvoiceCallback(callbackQuery, properUserId);
         } else {
           await this.invoiceModule.handleInvoiceCallback(callbackQuery);
         }
+        return true;
+      }
+      // Ongoing creation specific callbacks
+      else if (data.startsWith('continue_ongoing_') || data.startsWith('cancel_ongoing_')) {
+        const properUserId = await this.getUserIdByChatId(chatId);
+        
+        if (data.startsWith('continue_ongoing_invoice_')) {
+          const invoiceId = data.replace('continue_ongoing_invoice_', '');
+          await this.handleContinueInvoice(chatId, properUserId, invoiceId);
+        } else if (data.startsWith('cancel_ongoing_invoice_')) {
+          const invoiceId = data.replace('cancel_ongoing_invoice_', '');
+          await this.handleCancelOngoingInvoice(chatId, properUserId, invoiceId);
+        } else if (data.startsWith('continue_ongoing_proposal_')) {
+          const proposalId = data.replace('continue_ongoing_proposal_', '');
+          await this.handleContinueProposal(chatId, properUserId, proposalId);
+        } else if (data.startsWith('cancel_ongoing_proposal_')) {
+          const proposalId = data.replace('cancel_ongoing_proposal_', '');
+          await this.handleCancelOngoingProposal(chatId, properUserId, proposalId);
+        }
+        
+        await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
       // Proposal module callbacks
@@ -1334,5 +1275,66 @@ export class BotIntegration {
 
     // Default to false for short, simple inputs
     return false;
+  }
+
+  // Handler methods for ongoing creation operations
+  private async handleContinueInvoice(chatId: number, userId: string, invoiceId: string) {
+    try {
+      // Get the ongoing invoice state
+      const ongoingInvoice = await this.getOngoingInvoice(userId);
+      if (ongoingInvoice && ongoingInvoice.invoiceId === invoiceId) {
+        // Continue the invoice creation process
+        await this.invoiceModule.continueInvoiceCreation(chatId, userId, '');
+      } else {
+        await this.bot.sendMessage(chatId, '❌ No ongoing invoice found with that ID.');
+      }
+    } catch (error) {
+      console.error('Error continuing invoice:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to continue invoice creation.');
+    }
+  }
+
+  private async handleCancelOngoingInvoice(chatId: number, userId: string, invoiceId: string) {
+    try {
+      // Cancel the ongoing invoice creation
+      await this.invoiceModule.cancelInvoice(chatId, invoiceId, userId);
+      await this.bot.sendMessage(chatId, '❌ Invoice creation cancelled.');
+    } catch (error) {
+      console.error('Error cancelling invoice:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to cancel invoice creation.');
+    }
+  }
+
+  private async handleContinueProposal(chatId: number, userId: string, proposalId: string) {
+    try {
+      // Get the ongoing proposal state
+      const ongoingProposal = await this.getOngoingProposal(userId);
+      if (ongoingProposal && ongoingProposal.proposalId === proposalId) {
+        // Continue the proposal creation process
+        await this.proposalModule.continueProposalCreation(chatId, userId, ongoingProposal, '');
+      } else {
+        await this.bot.sendMessage(chatId, '❌ No ongoing proposal found with that ID.');
+      }
+    } catch (error) {
+      console.error('Error continuing proposal:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to continue proposal creation.');
+    }
+  }
+
+  private async handleCancelOngoingProposal(chatId: number, userId: string, proposalId: string) {
+    try {
+      // Cancel the ongoing proposal creation by calling the cancel method
+      const callbackQuery = {
+        id: 'ongoing_cancel',
+        data: `cancel_proposal_${proposalId}`,
+        message: { chat: { id: chatId } }
+      } as TelegramBot.CallbackQuery;
+      
+      await this.proposalModule.handleProposalCallback(callbackQuery, userId);
+      await this.bot.sendMessage(chatId, '❌ Proposal creation cancelled.');
+    } catch (error) {
+      console.error('Error cancelling proposal:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to cancel proposal creation.');
+    }
   }
 }

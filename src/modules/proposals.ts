@@ -282,7 +282,7 @@ export class ProposalModule {
   }
 
   // Handle callback queries for proposal actions
-  async handleProposalCallback(callbackQuery: TelegramBot.CallbackQuery) {
+  async handleProposalCallback(callbackQuery: TelegramBot.CallbackQuery, userId?: string) {
     const chatId = callbackQuery.message?.chat.id;
     const data = callbackQuery.data;
     
