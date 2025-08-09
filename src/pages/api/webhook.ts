@@ -462,13 +462,69 @@ async function handleCommand(msg: TelegramBot.Message) {
       break;
 
     case '/proposal':
-      const proposalResponse = await processWithAI('create proposal', chatId);
-      await bot.sendMessage(chatId, proposalResponse);
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          
+          if (user) {
+            // Use bot integration for proposal creation
+            const { ProposalModule } = await import('../../modules/proposals');
+            const proposalModule = new ProposalModule(bot);
+            await proposalModule.handleProposalCreation(chatId, user.id);
+          } else {
+            await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+          }
+        } else {
+          // Fallback to processWithAI but handle empty responses
+          const proposalResponse = await processWithAI('create proposal', chatId);
+          if (proposalResponse && proposalResponse.trim() !== '' && proposalResponse !== '__NO_MESSAGE__') {
+            await bot.sendMessage(chatId, proposalResponse);
+          }
+          // If response is empty or __NO_MESSAGE__, don't send anything - the ProposalModule handles the interaction
+        }
+      } catch (error) {
+        console.error('[Webhook] Error in /proposal:', error);
+        await bot.sendMessage(chatId, '❌ Failed to start proposal creation. Please try again later.');
+      }
       break;
 
     case '/invoice':
-      const invoiceResponse = await processWithAI('create invoice', chatId);
-      await bot.sendMessage(chatId, invoiceResponse);
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          
+          if (user) {
+            // Use bot integration for invoice creation
+            const { InvoiceModule } = await import('../../modules/invoices');
+            const invoiceModule = new InvoiceModule(bot);
+            await invoiceModule.handleInvoiceCreation(chatId, user.id);
+          } else {
+            await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+          }
+        } else {
+          // Fallback to processWithAI but handle empty responses
+          const invoiceResponse = await processWithAI('create invoice', chatId);
+          if (invoiceResponse && invoiceResponse.trim() !== '' && invoiceResponse !== '__NO_MESSAGE__') {
+            await bot.sendMessage(chatId, invoiceResponse);
+          }
+          // If response is empty or __NO_MESSAGE__, don't send anything - the InvoiceModule handles the interaction
+        }
+      } catch (error) {
+        console.error('[Webhook] Error in /invoice:', error);
+        await bot.sendMessage(chatId, '❌ Failed to start invoice creation. Please try again later.');
+      }
       break;
 
     case '/earnings_summary':
@@ -697,6 +753,15 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             parse_mode: 'Markdown'
           });
           return ''; // Return empty string since we already sent the message
+        }
+        
+        // Handle empty responses from actions.ts (e.g., from proposal/invoice creation)
+        if (!actionResult.text || actionResult.text.trim() === '') {
+          // For proposal and invoice creation, the modules handle the interaction directly
+          // Return a special marker that command handlers will recognize
+          if (intent === 'create_proposal' || intent === 'create_invoice') {
+            return '__NO_MESSAGE__'; // Special marker to indicate no message should be sent
+          }
         }
         
         return actionResult.text;
