@@ -62,6 +62,8 @@ const getSupabaseClient = () => {
 };
 
 const Proposal = () => {
+  const [deleting, setDeleting] = useState(false);
+  // ... rest of hooks
   const router = useRouter();
   const { id } = router.query;
   // Using toast from sonner
@@ -247,24 +249,39 @@ const Proposal = () => {
     toast.success("Proposal accepted! The freelancer will be notified.");
   };
 
+  const handleDeleteProposal = async () => {
+    if (!window.confirm('Are you sure you want to delete this proposal? This action cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/proposals/${id}/delete`, { method: 'DELETE' });
+      if (response.ok) {
+        toast.success('Proposal deleted successfully');
+        setTimeout(() => {
+          window.location.href = '/proposals';
+        }, 1200);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Failed to delete proposal');
+      }
+    } catch (error) {
+      toast.error('Failed to delete proposal');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading proposal...</p>
-        </div>
+      <div className="flex items-center justify-center h-96">
+        <span className="text-lg text-gray-600">Loading proposal...</span>
       </div>
     );
   }
 
   if (!proposalData) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Proposal Not Found</h1>
-          <p className="text-gray-600">The proposal you're looking for doesn't exist.</p>
-        </div>
+      <div className="flex items-center justify-center h-96">
+        <span className="text-lg text-red-600">Proposal not found.</span>
       </div>
     );
   }

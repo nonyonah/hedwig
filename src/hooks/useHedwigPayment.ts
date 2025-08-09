@@ -65,8 +65,15 @@ export function useHedwigPayment() {
       const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
       // Get token decimals
-      const decimals = await tokenContract.decimals();
-      const amountInWei = ethers.parseUnits(paymentRequest.amount.toString(), decimals);
+      let decimals: number;
+try {
+  decimals = await tokenContract.decimals();
+  if (typeof decimals !== 'number' || isNaN(decimals)) throw new Error('Could not fetch token decimals');
+} catch (e: any) {
+  console.error('Error fetching token decimals:', e);
+  return { success: false, error: 'Could not fetch token decimals for payment token.' };
+}
+const amountInWei = ethers.parseUnits(paymentRequest.amount.toString(), decimals);
 
       // Check if token is whitelisted
       const isWhitelisted = await hedwigContract.isTokenWhitelisted(tokenAddress);
@@ -76,8 +83,17 @@ export function useHedwigPayment() {
 
       // Check user's token balance
       const userAddress = await signer.getAddress();
-      const balance = await tokenContract.balanceOf(userAddress);
-      if (balance < amountInWei) {
+      let balance;
+try {
+  balance = await tokenContract.balanceOf(userAddress);
+  if (!balance || balance.toString() === '0x' || balance.toString() === '0') {
+    balance = 0n;
+  }
+} catch (e: any) {
+  console.error('Error fetching token balance:', e);
+  return { success: false, error: 'Could not fetch token balance.' };
+}
+if (balance < amountInWei) {
         const balanceFormatted = ethers.formatUnits(balance, decimals);
         return { 
           success: false, 
@@ -86,8 +102,17 @@ export function useHedwigPayment() {
       }
 
       // Check and approve token allowance
-      const currentAllowance = await tokenContract.allowance(userAddress, CONTRACT_ADDRESS);
-      if (currentAllowance < amountInWei) {
+      let currentAllowance;
+try {
+  currentAllowance = await tokenContract.allowance(userAddress, CONTRACT_ADDRESS);
+  if (!currentAllowance || currentAllowance.toString() === '0x' || currentAllowance.toString() === '0') {
+    currentAllowance = 0n;
+  }
+} catch (e: any) {
+  console.error('Error fetching token allowance:', e);
+  return { success: false, error: 'Could not fetch token allowance.' };
+}
+if (currentAllowance < amountInWei) {
         toast.info('Approving token spending...');
         const approveTx = await tokenContract.approve(CONTRACT_ADDRESS, amountInWei);
         await approveTx.wait();
@@ -149,13 +174,29 @@ export function useHedwigPayment() {
       const userAddress = await signer.getAddress();
 
       const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, ethersProvider);
-      const balance = await tokenContract.balanceOf(userAddress);
-      const decimals = await tokenContract.decimals();
+let balance;
+try {
+  balance = await tokenContract.balanceOf(userAddress);
+  if (!balance || balance.toString() === '0x' || balance.toString() === '0') {
+    balance = 0n;
+  }
+} catch (e: any) {
+  console.error('Error fetching token balance:', e);
+  return null;
+}
+let decimals: number;
+try {
+  decimals = await tokenContract.decimals();
+  if (typeof decimals !== 'number' || isNaN(decimals)) throw new Error('Could not fetch token decimals');
+} catch (e: any) {
+  console.error('Error fetching token decimals:', e);
+  return null;
+}
 
-      return {
-        balance: ethers.formatUnits(balance, decimals),
-        decimals
-      };
+return {
+  balance: ethers.formatUnits(balance, decimals),
+  decimals
+};
     } catch (error) {
       console.error('Error checking balance:', error);
       return null;

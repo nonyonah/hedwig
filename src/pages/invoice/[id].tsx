@@ -59,6 +59,9 @@ const getSupabaseClient = () => {
 };
 
 export default function InvoicePage() {
+  const [deleting, setDeleting] = useState(false);
+  // ... rest of hooks
+
   const router = useRouter();
   const { id } = router.query;
   const { ready, authenticated, login } = usePrivy();
@@ -248,6 +251,27 @@ export default function InvoicePage() {
 
   const handleBankPayment = () => {
     window.location.href = `/payment/bank/${id}`;
+  };
+
+  const handleDeleteInvoice = async () => {
+    if (!window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/invoices/${id}/delete`, { method: 'DELETE' });
+      if (response.ok) {
+        toast.success('Invoice deleted successfully');
+        setTimeout(() => {
+          window.location.href = '/invoices';
+        }, 1200);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Failed to delete invoice');
+      }
+    } catch (error) {
+      toast.error('Failed to delete invoice');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (loading) {
