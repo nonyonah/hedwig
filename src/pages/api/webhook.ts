@@ -479,6 +479,11 @@ async function handleCommand(msg: TelegramBot.Message) {
       await bot.sendMessage(chatId, dashboardResponse);
       break;
 
+    case '/paymentlink':
+      const paymentLinkResponse = await processWithAI('create payment link', chatId);
+      await bot.sendMessage(chatId, paymentLinkResponse);
+      break;
+
     case '/history':
       // Redirect to earnings summary for better user experience
       const redirectResponse = await processWithAI('show earnings summary', chatId);
@@ -641,6 +646,11 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
       case 'create_payment_link':
       case 'earnings':
       case 'create_wallets':
+      case 'create_proposal':
+      case 'earnings_summary':
+      case 'show_earnings_summary':
+      case 'business_dashboard':
+      case 'show_business_dashboard':
         // Use the existing actions.ts handler for these intents
         const actionResult = await handleAction(intent, params, userId);
         
@@ -654,51 +664,6 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
         }
         
         return actionResult.text;
-      
-      case 'create_proposal':
-        try {
-          // Get user info from database
-          const { supabase } = await import('../../lib/supabase');
-          
-          // Determine if userId is a UUID or username and get the actual user UUID
-          let actualUserId: string;
-          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-          
-          if (isUUID) {
-            actualUserId = userId;
-          } else {
-            // userId is a username, fetch the actual UUID
-            const { data: user, error: userError } = await supabase
-              .from('users')
-              .select('id')
-              .eq('telegram_username', userId)
-              .single();
-            
-            if (userError || !user) {
-              return "❌ User not found. Please make sure you're registered with the bot.";
-            }
-            
-            actualUserId = user.id;
-          }
-
-          // No wallet check needed for proposals - removed the wallet validation
-          
-          const { data: user } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', actualUserId)
-            .single();
-          
-          if (!user) {
-            return "❌ User not found. Please try again.";
-          }
-          
-          const proposalResult = await processProposalInput(userMessage, user);
-          return proposalResult.message;
-        } catch (error) {
-          console.error('[formatResponseForUser] Proposal error:', error);
-          return "❌ Failed to create proposal. Please try again with more details about your service.";
-        }
       
       case 'create_invoice':
         // Use the existing actions.ts handler for invoice functionality
