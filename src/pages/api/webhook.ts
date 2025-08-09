@@ -472,32 +472,46 @@ async function handleCommand(msg: TelegramBot.Message) {
       break;
 
     case '/earnings_summary':
-      if (botIntegration) {
-        // Get user ID from chat ID
-        const { supabase } = await import('../../lib/supabase');
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', chatId)
-          .single();
-        
-        if (user) {
-          await botIntegration.handleEarningsSummary(chatId, user.id);
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          
+          if (user) {
+            await botIntegration.handleEarningsSummary(chatId, user.id);
+          } else {
+            await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+          }
         } else {
-          await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+          console.log('[Webhook] BotIntegration not available, falling back to processWithAI');
+          const earningsResponse = await processWithAI('show earnings summary', chatId);
+          await bot.sendMessage(chatId, earningsResponse);
         }
-      } else {
-        const earningsResponse = await processWithAI('show earnings summary', chatId);
-        await bot.sendMessage(chatId, earningsResponse);
+      } catch (error) {
+        console.error('[Webhook] Error in /earnings_summary:', error);
+        const fallbackResponse = await processWithAI('show earnings summary', chatId);
+        await bot.sendMessage(chatId, fallbackResponse);
       }
       break;
 
     case '/business_dashboard':
-      if (botIntegration) {
-        await botIntegration.handleBusinessDashboard(chatId);
-      } else {
-        const dashboardResponse = await processWithAI('show business dashboard', chatId);
-        await bot.sendMessage(chatId, dashboardResponse);
+      try {
+        if (botIntegration) {
+          await botIntegration.handleBusinessDashboard(chatId);
+        } else {
+          console.log('[Webhook] BotIntegration not available, falling back to processWithAI');
+          const dashboardResponse = await processWithAI('show business dashboard', chatId);
+          await bot.sendMessage(chatId, dashboardResponse);
+        }
+      } catch (error) {
+        console.error('[Webhook] Error in /business_dashboard:', error);
+        const fallbackResponse = await processWithAI('show business dashboard', chatId);
+        await bot.sendMessage(chatId, fallbackResponse);
       }
       break;
 
