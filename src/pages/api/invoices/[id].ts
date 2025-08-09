@@ -65,7 +65,7 @@ export default async function handler(
         tax: tax,
         total: total,
         notes: invoice.additional_notes || 'Thank you for your business!',
-        paymentTerms: invoice.payment_instructions || 'Net 30'
+        paymentTerms: invoice.payment_instructions || ''
       };
 
       res.status(200).json(transformedInvoice);

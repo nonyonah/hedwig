@@ -990,43 +990,35 @@ export class BotIntegration {
           return true;
         }
 
-      case 'cancel invoice':
-        // Handle cancellation of ongoing invoice creation
-        const ongoingInvoice = await this.getOngoingInvoice(userId);
-        if (ongoingInvoice) {
-          const { invoice_id } = ongoingInvoice;
-          await this.invoiceModule.cancelInvoiceCreation(chatId, invoice_id, userId);
-          return true;
-        } else {
-          await this.bot.sendMessage(chatId, 'No ongoing invoice creation found to cancel.');
-          return true;
-        }
-
-      default:
-          // Only check for ongoing flows if the message is not a natural language query
-          // This prevents interference with AI processing
-          const isNaturalLanguage = this.isNaturalLanguageQuery(text);
-          
-          if (!isNaturalLanguage) {
-            // Check if user is in invoice creation flow
-            console.log(`[BotIntegration] Checking for ongoing invoice for user ${userId}`);
-            const ongoingInvoice = await this.getOngoingInvoice(userId);
-            console.log(`[BotIntegration] Ongoing invoice found:`, ongoingInvoice);
-            if (ongoingInvoice && message.text) {
-              console.log(`[BotIntegration] Continuing invoice creation with input: ${message.text}`);
-              await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
-              return true;
-            }
-            
-            // Check if user is in proposal creation flow
-            const ongoingProposal = await this.getOngoingProposal(userId);
-            if (ongoingProposal) {
-              await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
-              return true;
-            }
+        case 'cancel invoice': {
+          // Handle cancellation of ongoing invoice creation
+          const ongoingInvoice = await this.getOngoingInvoice(userId);
+          if (ongoingInvoice) {
+            const { invoice_id } = ongoingInvoice;
+            await this.invoiceModule.cancelInvoiceCreation(chatId, invoice_id, userId);
+            return true;
+          } else {
+            await this.bot.sendMessage(chatId, 'No ongoing invoice creation found to cancel.');
+            return true;
           }
-          
+        }
+        default: {
+          // Always check for ongoing invoice/proposal flows first, regardless of message type
+          const ongoingInvoice = await this.getOngoingInvoice(userId);
+          if (ongoingInvoice && message.text) {
+            console.log(`[BotIntegration] [FLOW] Continuing invoice creation for user ${userId} with input: ${message.text}`);
+            await this.invoiceModule.continueInvoiceCreation(message.chat.id, userId, message.text);
+            return true;
+          }
+          const ongoingProposal = await this.getOngoingProposal(userId);
+          if (ongoingProposal && message.text) {
+            console.log(`[BotIntegration] [FLOW] Continuing proposal creation for user ${userId} with input: ${message.text}`);
+            await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
+            return true;
+          }
+          // If not in a flow, proceed with normal handling or fallback
           return false;
+        }
       }
     } catch (error) {
       console.error('Error handling business message:', error);
