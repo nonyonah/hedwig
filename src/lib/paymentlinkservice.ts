@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { loadServerEnvironment } from '@/lib/serverEnv';
+import { loadServerEnvironment } from './serverEnv';
 import { Resend } from 'resend';
 
 // Load environment variables
@@ -163,7 +163,7 @@ interface SendPaymentLinkEmailParams {
   reason: string;
 }
 
-async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): Promise<void> {
+export async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): Promise<void> {
   const { recipientEmail, amount, token, network, paymentLink, senderName, reason } = params;
 
   if (!process.env.RESEND_API_KEY) {

@@ -572,7 +572,30 @@ export class BotIntegration {
     );
   }
 
-  // Handle payment link creation
+  private async getLastPaymentLink(userId: string) {
+    const { data } = await supabase
+      .from('user_states')
+      .select('state_data')
+      .eq('user_id', userId)
+      .eq('state_type', 'last_payment_link')
+      .maybeSingle();
+    return data?.state_data || null;
+  }
+
+  private async setLastPaymentLink(userId: string, paymentLinkData: any) {
+    // Upsert the last payment link context for the user
+    await supabase
+      .from('user_states')
+      .upsert([
+        {
+          user_id: userId,
+          state_type: 'last_payment_link',
+          state_data: paymentLinkData
+        }
+      ], { onConflict: 'user_id,state_type' });
+  }
+
+  // --- Payment Link Creation Handler ---
   async handlePaymentLink(chatId: number, userId: string) {
     await this.bot.sendMessage(chatId, 
       `🔗 *Create Payment Link*\n\n` +
@@ -584,7 +607,32 @@ export class BotIntegration {
         parse_mode: 'Markdown'
       }
     );
+    // (In the full flow, after payment link is created, call this.proactiveOfferPaymentLinkEmail)
   }
+
+  // Call this after payment link is created (with paymentLinkData)
+  async proactiveOfferPaymentLinkEmail(chatId: number, userId: string, paymentLinkData: any) {
+    // Track last payment link
+    await this.setLastPaymentLink(userId, paymentLinkData);
+    // If recipient email is not present, proactively offer to send by email
+    if (!paymentLinkData.recipientEmail) {
+      await this.bot.sendMessage(chatId,
+        `Would you like me to send this payment link by email to your client?\n\n` +
+        `Reply with their email address or type 'no'.\n\n` +
+        `🔗 ${paymentLinkData.paymentLink}`,
+        { parse_mode: 'Markdown' }
+      );
+    } else {
+      // If already has recipient email, optionally confirm sent
+      await this.bot.sendMessage(chatId,
+        `✅ Payment link created and sent to ${paymentLinkData.recipientEmail} by email.\n\n` +
+        `🔗 ${paymentLinkData.paymentLink}`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  // ...rest of BotIntegration class remains unchanged for now
 
   // Handle earnings summary with creative display
   async handleEarningsSummary(chatId: number, userId: string) {

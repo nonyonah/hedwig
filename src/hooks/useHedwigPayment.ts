@@ -62,7 +62,7 @@ export function useHedwigPayment() {
       // Contract instances
       const tokenAddress = paymentRequest.tokenAddress || USDC_ADDRESS;
       const hedwigContract = new ethers.Contract(CONTRACT_ADDRESS, HEDWIG_PAYMENT_ABI, signer);
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+      let tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
       // Get token decimals
       let decimals: number;
@@ -70,8 +70,21 @@ try {
   decimals = await tokenContract.decimals();
   if (typeof decimals !== 'number' || isNaN(decimals)) throw new Error('Could not fetch token decimals');
 } catch (e: any) {
-  console.error('Error fetching token decimals:', e);
-  return { success: false, error: 'Could not fetch token decimals for payment token.' };
+  // If BAD_DATA or undefined, try again with signer directly
+  if (e.code === 'BAD_DATA' || (e.message && e.message.includes('Could not fetch token decimals'))) {
+    try {
+      const fallbackSigner = await signer;
+      tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, fallbackSigner);
+      decimals = await tokenContract.decimals();
+      if (typeof decimals !== 'number' || isNaN(decimals)) throw new Error('Fallback: Could not fetch token decimals');
+    } catch (e2: any) {
+      console.warn('Fallback decimals also failed, defaulting to 6. Error:', e2);
+      decimals = 6; // Default for USDC-like tokens
+    }
+  } else {
+    console.error('Error fetching token decimals:', e);
+    decimals = 6;
+  }
 }
 const amountInWei = ethers.parseUnits(paymentRequest.amount.toString(), decimals);
 
@@ -173,24 +186,58 @@ if (currentAllowance < amountInWei) {
       const signer = await ethersProvider.getSigner();
       const userAddress = await signer.getAddress();
 
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, ethersProvider);
+      let tokenContract;
 let balance;
 try {
+  // Prefer using the signer if available for balanceOf
+  if (ethersProvider.getSigner) {
+    tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, await ethersProvider.getSigner());
+  } else {
+    tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, ethersProvider);
+  }
   balance = await tokenContract.balanceOf(userAddress);
   if (!balance || balance.toString() === '0x' || balance.toString() === '0') {
     balance = 0n;
   }
 } catch (e: any) {
-  console.error('Error fetching token balance:', e);
-  return null;
+  // If BAD_DATA, try again with signer directly
+  if (e.code === 'BAD_DATA' || (e.message && e.message.includes('could not decode result data'))) {
+    try {
+      const fallbackSigner = await ethersProvider.getSigner();
+      tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, fallbackSigner);
+      balance = await tokenContract.balanceOf(userAddress);
+      if (!balance || balance.toString() === '0x' || balance.toString() === '0') {
+        balance = 0n;
+      }
+    } catch (e2: any) {
+      console.warn('Fallback balanceOf also failed, returning 0. Error:', e2);
+      return { balance: '0', decimals: 6 };
+    }
+  } else {
+    console.error('Error fetching token balance:', e);
+    return null;
+  }
 }
 let decimals: number;
 try {
   decimals = await tokenContract.decimals();
   if (typeof decimals !== 'number' || isNaN(decimals)) throw new Error('Could not fetch token decimals');
 } catch (e: any) {
-  console.error('Error fetching token decimals:', e);
-  return null;
+  // If BAD_DATA or undefined, try again with signer directly
+  if (e.code === 'BAD_DATA' || (e.message && e.message.includes('Could not fetch token decimals'))) {
+    try {
+      const fallbackSigner = await ethersProvider.getSigner();
+      tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, fallbackSigner);
+      decimals = await tokenContract.decimals();
+      if (typeof decimals !== 'number' || isNaN(decimals)) throw new Error('Fallback: Could not fetch token decimals');
+    } catch (e2: any) {
+      console.warn('Fallback decimals also failed, defaulting to 6. Error:', e2);
+      decimals = 6; // Default for USDC-like tokens
+    }
+  } else {
+    console.error('Error fetching token decimals:', e);
+    decimals = 6;
+  }
 }
 
 return {

@@ -62,6 +62,7 @@ Valid intents:
 - get_price: For currency conversion, exchange rates, and crypto prices
 - get_news: For crypto news
 - create_payment_link: For creating payment links or payment requests
+- send_payment_link_email: For sending a payment link by email (e.g., 'send the payment link to X', 'email the payment link', etc.)
 - create_invoice: For creating professional invoices with PDF generation
 - get_earnings: For checking earnings, income, money received, or payment history
 - earnings_summary: For viewing earnings summary, earnings dashboard, or earnings analytics
@@ -84,6 +85,14 @@ IMPORTANT INTENT RECOGNITION RULES:
    - Simple payment requests without detailed billing information
    - NEVER ask for clarification - proceed with creating payment link and prompt for missing details
    - Even simple requests like "create payment link" should use this intent
+
+2. SENDING PAYMENT LINK BY EMAIL: Use "send_payment_link_email" intent for:
+   - "send the payment link to X", "email the payment link to Y"
+   - "send payment link we just created to Z"
+   - "share payment link by email"
+   - If multiple payment links exist, clarify which one by asking for amount, recipient, or date (e.g., "Which payment link should I send? You have 2 recent links: $50 for John, $100 for Jane.")
+   - If only one payment link exists, proceed to send it
+   - After creating a payment link, always offer: "Would you like to send this payment link by email?"
 
 2. INVOICE REQUESTS: Always use "create_invoice" intent for:
    - "invoice", "create invoice", "generate invoice", "send invoice"
@@ -191,6 +200,7 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "proposal for web development", "mobile app proposal", "design proposal"
    - Any request to create or generate a project proposal
    - NEVER ask for clarification - proceed with creating proposal and prompt for missing details
+   - Even simple requests like "create proposal" should use this intent
 
 10. SEND PROPOSAL REQUESTS: Always use "send_proposal" intent for:
      - "send proposal", "email proposal", "send proposal to client"
@@ -405,6 +415,24 @@ Response: {"intent": "get_price", "params": {"original_message": "What's the val
 User: "price of ETH"
 Response: {"intent": "get_price", "params": {"original_message": "price of ETH"}}
 
+User: "create payment link for $50 for John"
+Response: {"intent": "create_payment_link", "params": {"amount": "50", "recipient": "John"}}
+
+User: "send the payment link to john@example.com"
+Response: {"intent": "send_payment_link_email", "params": {"recipient_email": "john@example.com"}}
+
+User: "send the payment link we created to jane@example.com"
+Response: {"intent": "send_payment_link_email", "params": {"recipient_email": "jane@example.com", "link_hint": "most recent"}}
+
+User: "send the $100 payment link to alice@xyz.com"
+Response: {"intent": "send_payment_link_email", "params": {"recipient_email": "alice@xyz.com", "amount": "100"}}
+
+User: "email the payment link"
+Response: {"intent": "send_payment_link_email", "params": {}}
+
+User: "I want to share my payment link by email"
+Response: {"intent": "send_payment_link_email", "params": {}}
+
 AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.
 If the user mentions blockchain, crypto, wallet, tokens, etc., assume they want to perform a blockchain action.
@@ -421,6 +449,12 @@ For unknown requests that are clearly not blockchain-related, use intent "unknow
       })),
     { role: "user", parts: [{ text: message }] }
   ];
+
+// After creating a payment link, always offer to send by email
+if (context.length > 0 && context[context.length - 1]?.intent === 'create_payment_link') {
+  // This is a pseudo-instruction to the bot integration, not the LLM
+  // The bot integration should check for this and prompt the user
+}
 
   // 3. Call Gemini
   console.log(`[LLM] Attempting to generate content with Google Gemini model: ${MODEL}`);

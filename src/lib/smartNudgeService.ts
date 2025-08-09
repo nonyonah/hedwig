@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from './serverEnv';
+import { sendInvoiceEmail } from './invoiceService';
+import { sendPaymentLinkEmail } from './paymentlinkservice';
 
 // Load environment variables
 loadServerEnvironment();
@@ -164,23 +166,32 @@ export class SmartNudgeService {
       // Send email reminder to client
       if (target.clientEmail) {
         try {
-          // Here you would integrate with your email service (SendGrid, Resend, etc.)
-          // For now, we'll just log the email that would be sent
-          console.log(`Sending email reminder to ${target.clientEmail}:`);
-          console.log(`Subject: Payment Reminder - ${target.title}`);
-          console.log(`Message: ${message}`);
-          
-          // TODO: Implement actual email sending
-          // await sendEmail({
-          //   to: target.clientEmail,
-          //   subject: `Payment Reminder - ${target.title}`,
-          //   text: message
-          // });
-          
+          if (target.type === 'invoice') {
+            await sendInvoiceEmail({
+              recipientEmail: target.clientEmail!,
+              amount: target.amount,
+              token: 'USDC', // TODO: fetch real token if needed
+              network: 'base', // TODO: fetch real network if needed
+              invoiceLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/invoice/${target.id}`,
+              freelancerName: 'Hedwig User', // TODO: fetch real sender name if needed
+              description: target.title,
+              invoiceNumber: target.title.replace('Invoice ', ''), // crude fallback
+            });
+          } else if (target.type === 'payment_link') {
+            await sendPaymentLinkEmail({
+              recipientEmail: target.clientEmail!,
+              amount: target.amount,
+              token: 'USDC', // TODO: fetch real token if needed
+              network: 'base', // TODO: fetch real network if needed
+              paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/payment-link/${target.id}`,
+              senderName: 'Hedwig User', // TODO: fetch real sender name if needed
+              reason: target.title,
+            });
+          }
           success = true;
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : 'Email send failed';
-          console.error(`Failed to send email nudge for ${target.type} ${target.id}:`, error);
+          console.error(`Failed to send nudge email for ${target.type} ${target.id}:`, error);
         }
       }
 

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { loadServerEnvironment } from '@/lib/serverEnv';
+import { loadServerEnvironment } from './serverEnv';
 import { Resend } from 'resend';
 
 // Load environment variables
@@ -247,7 +247,7 @@ interface SendInvoiceEmailParams {
   dueDate?: string;
 }
 
-async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<void> {
+export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<void> {
   const { recipientEmail, amount, token, network, invoiceLink, freelancerName, description, invoiceNumber, dueDate } = params;
 
   if (!process.env.RESEND_API_KEY) {
