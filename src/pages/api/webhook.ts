@@ -79,7 +79,8 @@ async function setupTelegramMenu() {
       { command: 'payment', description: '🔗 Create payment link' },
       { command: 'invoice', description: '🧾 Create invoice' },
       { command: 'proposal', description: '📝 Create proposal' },
-      { command: 'history', description: '📊 View transaction history' },
+      { command: 'earnings_summary', description: '📊 View earnings summary' },
+      { command: 'business_dashboard', description: '📈 Business dashboard' },
       { command: 'help', description: '❓ Get help' }
     ]);
     
@@ -470,13 +471,33 @@ async function handleCommand(msg: TelegramBot.Message) {
       break;
 
     case '/earnings_summary':
-      const earningsResponse = await processWithAI('show earnings summary', chatId);
-      await bot.sendMessage(chatId, earningsResponse);
+      if (botIntegration) {
+        // Get user ID from chat ID
+        const { supabase } = await import('../../lib/supabase');
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', chatId)
+          .single();
+        
+        if (user) {
+          await botIntegration.handleEarningsSummary(chatId, user.id);
+        } else {
+          await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+        }
+      } else {
+        const earningsResponse = await processWithAI('show earnings summary', chatId);
+        await bot.sendMessage(chatId, earningsResponse);
+      }
       break;
 
     case '/business_dashboard':
-      const dashboardResponse = await processWithAI('show business dashboard', chatId);
-      await bot.sendMessage(chatId, dashboardResponse);
+      if (botIntegration) {
+        await botIntegration.handleBusinessDashboard(chatId);
+      } else {
+        const dashboardResponse = await processWithAI('show business dashboard', chatId);
+        await bot.sendMessage(chatId, dashboardResponse);
+      }
       break;
 
     case '/paymentlink':
