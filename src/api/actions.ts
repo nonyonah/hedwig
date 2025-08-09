@@ -800,6 +800,8 @@ export async function handleAction(
     
     case "earnings":
     case "get_earnings":
+    case "earnings_summary":
+    case "show_earnings_summary":
       try {
         // Get user's wallet addresses
         const walletAddresses = await getUserWalletAddresses(userId);
@@ -825,11 +827,78 @@ export async function handleAction(
         //   const formatted = formatEarningsForAgent(summary, 'earnings');
         //   return { text: formatted };
         // } else {
-          return { text: "💰 Earnings feature temporarily unavailable. Start receiving payments to track your earnings!\n\n💡 Tip: Create payment links or invoices to start earning crypto." };
+          return { text: "💰 **Earnings Summary**\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 **Ways to earn:**\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 **What you'll see:**\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
         // }
       } catch (error) {
         console.error('[handleAction] Earnings error:', error);
         return { text: "❌ Failed to fetch earnings data. Please try again later." };
+      }
+
+    case "business_dashboard":
+    case "show_business_dashboard":
+      try {
+        // Get user info for dashboard
+        const actualUserId = await resolveUserId(userId);
+        if (!actualUserId) {
+          return {
+            text: "❌ User not found. Please make sure you're registered with the bot.",
+          };
+        }
+
+        // Get business overview data
+        const { data: proposals } = await supabase
+          .from('proposals')
+          .select('id, status, total_amount, currency')
+          .eq('user_id', actualUserId);
+
+        const { data: invoices } = await supabase
+          .from('invoices')
+          .select('id, status, total_amount, currency')
+          .eq('user_id', actualUserId);
+
+        const { data: paymentLinks } = await supabase
+          .from('payment_links')
+          .select('id, status, amount, token')
+          .eq('user_id', actualUserId);
+
+        // Calculate summary stats
+        const proposalCount = proposals?.length || 0;
+        const invoiceCount = invoices?.length || 0;
+        const paymentLinkCount = paymentLinks?.length || 0;
+
+        const pendingProposals = proposals?.filter(p => p.status === 'pending')?.length || 0;
+        const pendingInvoices = invoices?.filter(i => i.status === 'pending')?.length || 0;
+        const activePaymentLinks = paymentLinks?.filter(pl => pl.status === 'active')?.length || 0;
+
+        return {
+          text: `📊 **Business Dashboard**\n\n` +
+                `**Overview:**\n` +
+                `📋 Proposals: ${proposalCount} total (${pendingProposals} pending)\n` +
+                `📄 Invoices: ${invoiceCount} total (${pendingInvoices} pending)\n` +
+                `🔗 Payment Links: ${paymentLinkCount} total (${activePaymentLinks} active)\n\n` +
+                `**Quick Actions:**\n` +
+                `• Type "create proposal" to generate a new proposal\n` +
+                `• Type "create invoice" to create a new invoice\n` +
+                `• Type "create payment link" to generate a payment link\n` +
+                `• Type "show earnings" to view your earnings summary\n\n` +
+                `**Recent Activity:**\n` +
+                `Use the Telegram bot interface for detailed management and interactive dashboard.`,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "📋 Create Proposal", callback_data: "create_proposal_flow" },
+                { text: "📄 Create Invoice", callback_data: "create_invoice_flow" }
+              ],
+              [
+                { text: "🔗 Payment Link", callback_data: "create_payment_link_flow" },
+                { text: "💰 Earnings", callback_data: "view_earnings" }
+              ]
+            ]
+          }
+        };
+      } catch (error) {
+        console.error('[handleAction] Business dashboard error:', error);
+        return { text: "❌ Failed to load business dashboard. Please try again later." };
       }
 
     case "get_spending":

@@ -414,12 +414,11 @@ export async function processProposalInput(message: string, user: any): Promise<
       if (proposalDetails.hasBasicInfo) {
         // Try to create proposal directly if we have enough info
         try {
-          // Get user's wallet address
+          // Get user's wallet address - check across all networks
           const { data: wallets } = await supabase
             .from('wallets')
             .select('address, network')
-            .eq('user_id', user.id)
-            .limit(1);
+            .eq('user_id', user.id);
           
           if (!wallets || wallets.length === 0) {
             return {
@@ -428,7 +427,7 @@ export async function processProposalInput(message: string, user: any): Promise<
             };
           }
           
-          const wallet = wallets[0];
+          const wallet = wallets.find(w => w.network === proposalDetails.network) || wallets[0];
           
           const proposalParams: CreateProposalParams = {
             title: proposalDetails.title || 'Professional Services Proposal',

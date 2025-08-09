@@ -649,7 +649,8 @@ Choose an action below:`;
         { command: 'wallet', description: 'View wallet information' },
         { command: 'balance', description: 'Check wallet balance' },
         { command: 'send', description: 'Send crypto to someone' },
-        { command: 'history', description: 'View transaction history' },
+        { command: 'earnings_summary', description: 'View earnings summary' },
+        { command: 'business_dashboard', description: 'Access business dashboard' },
         { command: 'invoice', description: 'Create an invoice' },
         { command: 'proposal', description: 'Create a proposal' },
         { command: 'paymentlink', description: 'Create a payment link' }

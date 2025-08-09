@@ -34,7 +34,8 @@ export class BotIntegration {
         [{ text: '📊 View History' }, { text: '❓ Help' }]
       ],
       resize_keyboard: true,
-      one_time_keyboard: false
+      one_time_keyboard: false,
+      is_persistent: true
     };
   }
 
@@ -49,7 +50,9 @@ export class BotIntegration {
         [{ text: '❓ Help' }]
       ],
       resize_keyboard: true,
-      one_time_keyboard: false
+      one_time_keyboard: false,
+      is_persistent: true
+
     };
   }
 

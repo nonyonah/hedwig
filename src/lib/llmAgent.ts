@@ -64,7 +64,9 @@ Valid intents:
 - create_payment_link: For creating payment links or payment requests
 - create_invoice: For creating professional invoices with PDF generation
 - get_earnings: For checking earnings, income, money received, or payment history
+- earnings_summary: For viewing earnings summary, earnings dashboard, or earnings analytics
 - get_spending: For checking spending, money sent, or payment history
+- business_dashboard: For accessing business dashboard, business overview, or business management
 - create_proposal: For generating project proposals
 - send_proposal: For sending proposals via email
 - view_proposals: For viewing existing proposals
@@ -173,7 +175,7 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "follow up on payment", "chase payment", "remind about invoice"
    - Any request to manually send reminders to clients
 
-8. SPENDING REQUESTS: Always use "get_spending" intent for:
+8.5. SPENDING REQUESTS: Always use "get_spending" intent for:
    - "spending", "how much have I spent", "money sent", "payments made"
    - "what did I spend", "how much did I pay", "outgoing payments"
    - "spending summary", "spending report", "payment history sent"
@@ -191,19 +193,35 @@ IMPORTANT INTENT RECOGNITION RULES:
    - NEVER ask for clarification - proceed with creating proposal and prompt for missing details
 
 10. SEND PROPOSAL REQUESTS: Always use "send_proposal" intent for:
-    - "send proposal", "email proposal", "send proposal to client"
-    - "deliver proposal", "share proposal", "forward proposal"
-    - Must include proposal ID if specified (e.g., "send proposal 123")
+     - "send proposal", "email proposal", "send proposal to client"
+     - "deliver proposal", "share proposal", "forward proposal"
+     - Must include proposal ID if specified (e.g., "send proposal 123")
 
 11. VIEW PROPOSALS REQUESTS: Always use "view_proposals" intent for:
-    - "view proposals", "show proposals", "list proposals", "my proposals"
-    - "proposal history", "past proposals", "previous proposals"
-    - "proposal status", "check proposals"
+     - "view proposals", "show proposals", "list proposals", "my proposals"
+     - "proposal history", "past proposals", "previous proposals"
+     - "proposal status", "check proposals"
 
 12. EDIT PROPOSAL REQUESTS: Always use "edit_proposal" intent for:
-    - "edit proposal", "modify proposal", "update proposal", "change proposal"
-    - "revise proposal", "proposal changes", "update proposal details"
-    - Must include proposal ID if specified (e.g., "edit proposal 123")
+     - "edit proposal", "modify proposal", "update proposal", "change proposal"
+     - "revise proposal", "proposal changes", "update proposal details"
+     - Must include proposal ID if specified (e.g., "edit proposal 123")
+
+18. EARNINGS SUMMARY REQUESTS: Always use "earnings_summary" intent for:
+    - "earnings summary", "show earnings", "earnings dashboard", "earnings report"
+    - "how much did I earn", "total earnings", "money received summary"
+    - "earnings analytics", "payment analytics", "income analytics"
+    - "show my earnings", "view earnings", "earnings overview"
+    - "earnings breakdown", "payment breakdown", "income breakdown"
+    - Any request for detailed earnings analysis and summaries
+
+19. BUSINESS DASHBOARD REQUESTS: Always use "business_dashboard" intent for:
+    - "business dashboard", "dashboard", "business overview", "business summary"
+    - "business stats", "business analytics", "business management"
+    - "show my business", "business panel", "management dashboard"
+    - "overview of my business", "business metrics", "business performance"
+    - "show all my business activities", "business center"
+    - Any request for overall business management and overview
 
 13. PARAMETER EXTRACTION for "create_proposal" intent:
     - service_type: Extract service type (web development, mobile app, design, consulting)
@@ -317,6 +335,18 @@ Response: {"intent": "get_earnings", "params": {"timeframe": "this month"}}
 
 User: "Show me my USDC earnings on Base"
 Response: {"intent": "get_earnings", "params": {"token": "USDC", "network": "Base"}}
+
+User: "earnings summary"
+Response: {"intent": "earnings_summary", "params": {}}
+
+User: "show my earnings dashboard"
+Response: {"intent": "earnings_summary", "params": {}}
+
+User: "business dashboard"
+Response: {"intent": "business_dashboard", "params": {}}
+
+User: "show business overview"
+Response: {"intent": "business_dashboard", "params": {}}
 
 User: "What did I spend last week?"
 Response: {"intent": "get_spending", "params": {"timeframe": "last week"}}

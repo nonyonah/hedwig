@@ -413,25 +413,28 @@ async function handleCommand(msg: TelegramBot.Message) {
       break;
 
     case '/help':
-      await bot.sendMessage(chatId,
-          `🆘 *Hedwig Bot Help*\n\n` +
-          `*Available Commands:*\n` +
-          `• /balance - Check wallet balances\n` +
-          `• /wallet - View wallet addresses\n` +
-          `• /send - Send crypto to others\n` +
-          `• /payment - Create payment links\n` +
-          `• /proposal - Create service proposals\n` +
-          `• /invoice - Create invoices\n` +
-          `• /history - View transaction history\n\n` +
-          `*Natural Language:*\n` +
-          `You can also chat with me naturally! Try:\n` +
-          `• "Send 10 USDC to 0x123..."\n` +
-          `• "What's my balance?"\n` +
-          `• "Create an invoice for $100"\n` +
-          `• "Show my transaction history"\n\n` +
-          `💡 *Tip:* Use the menu button (☰) for quick access to commands!`,
-          { parse_mode: 'Markdown' }
-        );
+      await bot.sendMessage(chatId, 
+        `🦉 *Welcome to Hedwig!*\n\n` +
+        `I'm your crypto assistant. Here's what I can do:\n\n` +
+        `*Quick Commands:*\n` +
+        `• /start - Get started with Hedwig\n` +
+        `• /balance - Check wallet balances\n` +
+        `• /wallet - View wallet addresses\n` +
+        `• /send - Send crypto to others\n` +
+        `• /payment - Create payment links\n` +
+        `• /proposal - Create service proposals\n` +
+        `• /invoice - Create invoices\n` +
+        `• /earnings_summary - View earnings summary\n` +
+        `• /business_dashboard - Access business dashboard\n\n` +
+        `*Natural Language:*\n` +
+        `You can also chat with me naturally! Try:\n` +
+        `• "Send 10 USDC to 0x123..."\n` +
+        `• "What's my balance?"\n` +
+        `• "Create an invoice for $100"\n` +
+        `• "Show my earnings summary"\n\n` +
+        `💡 *Tip:* Use the menu button (☰) for quick access to commands!`,
+        { parse_mode: 'Markdown' }
+      );
       break;
 
     case '/wallet':
@@ -466,9 +469,20 @@ async function handleCommand(msg: TelegramBot.Message) {
       await bot.sendMessage(chatId, invoiceResponse);
       break;
 
+    case '/earnings_summary':
+      const earningsResponse = await processWithAI('show earnings summary', chatId);
+      await bot.sendMessage(chatId, earningsResponse);
+      break;
+
+    case '/business_dashboard':
+      const dashboardResponse = await processWithAI('show business dashboard', chatId);
+      await bot.sendMessage(chatId, dashboardResponse);
+      break;
+
     case '/history':
-      const historyResponse = await processWithAI('view proposals and invoices', chatId);
-      await bot.sendMessage(chatId, historyResponse);
+      // Redirect to earnings summary for better user experience
+      const redirectResponse = await processWithAI('show earnings summary', chatId);
+      await bot.sendMessage(chatId, `📈 *Redirecting to Earnings Summary*\n\n${redirectResponse}`);
       break;
 
     default:
@@ -667,15 +681,7 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             actualUserId = user.id;
           }
 
-          // Check if user has wallets
-          const { data: wallets } = await supabase
-            .from("wallets")
-            .select("*")
-            .eq("user_id", actualUserId);
-
-          if (!wallets || wallets.length === 0) {
-            return "You need a wallet before creating proposals. Please type 'create wallet' to create your wallet first.";
-          }
+          // No wallet check needed for proposals - removed the wallet validation
           
           const { data: user } = await supabase
             .from('users')

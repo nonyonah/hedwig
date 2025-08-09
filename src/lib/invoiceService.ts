@@ -376,12 +376,11 @@ export async function processInvoiceInput(message: string, user: any): Promise<{
       if (invoiceDetails.hasBasicInfo) {
         // Try to create invoice directly if we have enough info
         try {
-          // Get user's wallet address
+          // Get user's wallet address - check across all networks
           const { data: wallets } = await supabase
             .from('wallets')
-            .select('address, network')
-            .eq('user_id', user.id)
-            .limit(1);
+            .select('address, network, chain')
+            .eq('user_id', user.id);
           
           if (!wallets || wallets.length === 0) {
             return {
@@ -390,7 +389,11 @@ export async function processInvoiceInput(message: string, user: any): Promise<{
             };
           }
           
-          const wallet = wallets[0];
+          // Find EVM wallet first, fallback to any available wallet
+          let wallet = wallets.find(w => w.chain === 'evm' || w.network === 'base');
+          if (!wallet) {
+            wallet = wallets[0]; // Use first available wallet
+          }
           
           const invoiceParams: CreateInvoiceParams = {
             amount: invoiceDetails.amount || 100,
