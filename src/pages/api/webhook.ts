@@ -73,6 +73,7 @@ async function setupTelegramMenu() {
     // Set bot commands
     await bot.setMyCommands([
       { command: 'start', description: '🦉 Start Hedwig Bot' },
+      { command: 'help', description: '❓ Get help' },
       { command: 'balance', description: '💰 Check wallet balance' },
       { command: 'wallet', description: '👛 View wallet address' },
       { command: 'send', description: '💸 Send crypto' },
@@ -81,7 +82,7 @@ async function setupTelegramMenu() {
       { command: 'proposal', description: '📝 Create proposal' },
       { command: 'earnings_summary', description: '📊 View earnings summary' },
       { command: 'business_dashboard', description: '📈 Business dashboard' },
-      { command: 'help', description: '❓ Get help' }
+      { command: 'paymentlink', description: '💳 Create payment link' }
     ]);
     
     console.log('[Webhook] Telegram menu button configured');

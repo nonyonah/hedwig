@@ -414,20 +414,16 @@ export async function processProposalInput(message: string, user: any): Promise<
       if (proposalDetails.hasBasicInfo) {
         // Try to create proposal directly if we have enough info
         try {
-          // Get user's wallet address - check across all networks
+          // Get user's wallet address - check across all networks (optional for proposals)
           const { data: wallets } = await supabase
             .from('wallets')
             .select('address, network')
             .eq('user_id', user.id);
           
-          if (!wallets || wallets.length === 0) {
-            return {
-              success: false,
-              message: "You need a wallet before creating proposals. Please type 'create wallet' to create your wallet first."
-            };
-          }
-          
-          const wallet = wallets.find(w => w.network === proposalDetails.network) || wallets[0];
+          // Use wallet if available, otherwise use default values since proposals don't require crypto wallets
+          const wallet = wallets && wallets.length > 0 
+            ? (wallets.find(w => w.network === proposalDetails.network) || wallets[0])
+            : { address: 'pending', network: 'base' }; // Default values for proposals
           
           const proposalParams: CreateProposalParams = {
             title: proposalDetails.title || 'Professional Services Proposal',
