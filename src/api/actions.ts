@@ -1735,8 +1735,9 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
     
     await invoiceModule.handleInvoiceCreation(user.telegram_chat_id, actualUserId);
     
+    // Return empty text to avoid interrupting the flow
     return {
-      text: "✅ Invoice creation process initiated. Continue in your Telegram bot."
+      text: ""
     };
 
   } catch (error) {
@@ -1773,25 +1774,32 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
       actualUserId = user.id;
     }
 
-    // Get the user data for proposal processing
+    // Import and use the proposal creation service with bot integration
+    const { ProposalModule } = await import('@/modules/proposals');
+    
+    // Get the user's chat ID for Telegram interaction
     const { data: user } = await supabase
       .from('users')
-      .select('*')
+      .select('telegram_chat_id')
       .eq('id', actualUserId)
       .single();
     
-    if (!user) {
+    if (!user?.telegram_chat_id) {
       return {
-        text: "❌ User not found. Please try again."
+        text: "❌ Telegram chat ID not found. Please make sure you're using the Telegram bot."
       };
     }
     
-    // Use the existing proposal service directly
-    const { processProposalInput } = await import('@/lib/proposalservice');
-    const result = await processProposalInput('create proposal', user);
+    // Initialize the bot and start proposal creation
+    const TelegramBot = require('node-telegram-bot-api');
+    const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+    const proposalModule = new ProposalModule(bot);
     
+    await proposalModule.handleProposalCreation(user.telegram_chat_id, actualUserId);
+    
+    // Return empty text to avoid interrupting the flow
     return {
-      text: result.message
+      text: ""
     };
 
   } catch (error) {
