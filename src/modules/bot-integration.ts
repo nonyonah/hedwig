@@ -124,27 +124,43 @@ export class BotIntegration {
 
       for (const invoice of invoices) {
         const status = this.getStatusEmoji(invoice.status);
-        message += `${status} *${invoice.invoice_number}*\n`;
-        message += `   Client: ${invoice.client_name}\n`;
-        message += `   Amount: ${invoice.amount} ${invoice.currency}\n`;
-        message += `   Status: ${invoice.status}\n\n`;
+        const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency || 'USD' }).format(invoice.total_amount);
+        
+        let invoiceMessage = `${status} *${invoice.invoice_number}* - ${amount}\n`;
+        invoiceMessage += `   Client: ${invoice.client_name}\n`;
+        invoiceMessage += `   Created: ${new Date(invoice.created_at).toLocaleDateString()}`;
 
-        keyboard.push([{
-          text: `📄 ${invoice.invoice_number}`,
-          callback_data: `view_invoice_${invoice.id}`
-        }]);
+        // Add buttons for each invoice
+        keyboard.push([
+          {
+            text: `View Details`,
+            callback_data: `view_invoice_${invoice.id}`
+          },
+          {
+            text: `❌ Delete`,
+            callback_data: `delete_invoice_${invoice.id}`
+          }
+        ]);
+
+        message += invoiceMessage + '\n\n';
       }
 
-      keyboard.push([{ text: '🔙 Back', callback_data: 'business_dashboard' }]);
+      // Add a back button
+      keyboard.push([{
+        text: '🔙 Back to Dashboard',
+        callback_data: 'business_dashboard'
+      }]);
 
       await this.bot.sendMessage(chatId, message, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: keyboard }
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
       });
 
     } catch (error) {
-      console.error('Error fetching invoices:', error);
-      await this.bot.sendMessage(chatId, '❌ Error fetching invoices. Please try again.');
+      console.error('Error handling invoice list:', error);
+      await this.bot.sendMessage(chatId, '❌ An error occurred while fetching your invoices. Please try again later.');
     }
   }
 
