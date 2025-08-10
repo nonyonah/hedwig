@@ -1,4 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
+import { trackEvent } from '../lib/posthog';
+import { handleCurrencyConversion } from '../lib/currencyConversionService';
 import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
@@ -883,6 +885,14 @@ export class BotIntegration {
 
   // Handle main callback queries
   async handleCallback(callbackQuery: TelegramBot.CallbackQuery, userId?: string) {
+  // PostHog: Track callback actions
+  if (callbackQuery.data && callbackQuery.message) {
+    trackEvent('bot_callback', {
+      callback_data: callbackQuery.data,
+      userId: userId || callbackQuery.message.chat.id,
+      chatId: callbackQuery.message.chat.id
+    });
+  }
     const data = callbackQuery.data;
     const chatId = callbackQuery.message?.chat.id;
     if (!data || !chatId) return false;
@@ -999,6 +1009,10 @@ export class BotIntegration {
   }
 
   async handleBusinessMessage(message: TelegramBot.Message, userId: string) {
+  // PostHog: Track every message command
+  if (message.text) {
+    trackEvent('bot_command', { command: message.text, userId, chatId: message.chat.id });
+  }
     const chatId = message.chat.id;
     const text = message.text;
 
@@ -1079,6 +1093,34 @@ export class BotIntegration {
             console.log(`[BotIntegration] [FLOW] Continuing proposal creation for user ${userId} with input: ${message.text}`);
             await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
             return true;
+          }
+          // --- LLM agent and currency conversion integration ---
+          if (message.text && this.isNaturalLanguageQuery(message.text)) {
+            try {
+              const { runLLM } = await import('../lib/llmAgent');
+              const { parseIntentAndParams } = await import('../lib/intentParser');
+              const llmResponse = await runLLM({ userId, message: message.text });
+              const { intent, params } = parseIntentAndParams(typeof llmResponse === 'string' ? llmResponse : JSON.stringify(llmResponse));
+              if (intent === 'get_price') {
+                // Only allow USD/NGN/KES (and synonyms)
+                const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'KES'];
+                const input = params.original_message || message.text;
+                const lowerInput = input.toLowerCase();
+                const containsValidPair = (lowerInput.includes('usd') || lowerInput.includes('dollar')) && (lowerInput.includes('ngn') || lowerInput.includes('naira') || lowerInput.includes('kes'));
+                if (containsValidPair) {
+                  const result = await handleCurrencyConversion(input);
+                  await this.bot.sendMessage(message.chat.id, result.text);
+                  return true;
+                } else {
+                  await this.bot.sendMessage(message.chat.id, '❌ Only USD to NGN or KES (and vice versa) conversions are supported.');
+                  return true;
+                }
+              }
+            } catch (err) {
+              console.error('LLM/currency conversion error:', err);
+              await this.bot.sendMessage(message.chat.id, '❌ Sorry, I could not process your request.');
+              return true;
+            }
           }
           // If not in a flow, proceed with normal handling or fallback
           return false;
