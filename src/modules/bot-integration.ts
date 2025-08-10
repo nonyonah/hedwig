@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { trackEvent } from '../lib/posthog';
-import { handleCurrencyConversion } from '../lib/currencyConversionService';
+// Currency conversion temporarily disabled
+// import { handleCurrencyConversion } from '../lib/currencyConversionService';
 import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
@@ -830,37 +831,14 @@ export class BotIntegration {
     );
   }
   
-  // Handle currency rate requests
+  // Currency conversion temporarily disabled
   async handleCurrencyRate(chatId: number, query?: string) {
-    try {
-      if (!query) {
-        // Show help if no query provided
-        await this.bot.sendMessage(chatId, 
-          `💱 *Currency Rate Check*\n\n` +
-          `Check exchange rates between USD, NGN, and KES.\n\n` +
-          `*Examples:*\n` +
-          `• /rate 100 USD to NGN\n` +
-          `• What's 50 USD in NGN?\n` +
-          `• Convert 1000 NGN to USD\n` +
-          `• USD to KES rate`,
-          { parse_mode: 'Markdown' }
-        );
-        return;
-      }
-      
-      // Process the query through the currency conversion service
-      const result = await handleCurrencyConversion(query);
-      await this.bot.sendMessage(chatId, result.text, { parse_mode: 'Markdown' });
-      
-    } catch (error) {
-      console.error('Currency rate error:', error);
-      await this.bot.sendMessage(chatId, 
-        `❌ Couldn't process your request. Please try one of these formats:\n\n` +
-        `• /rate 100 USD to NGN\n` +
-        `• What's 50 USD in KES?\n` +
-        `• Convert 1000 NGN to USD`
-      );
-    }
+    await this.bot.sendMessage(chatId, 
+      '⚠️ *Currency Conversion Disabled*\n\n' +
+      'The currency conversion feature is currently unavailable.\n\n' +
+      'Please check back later or contact support if you need assistance.',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   // Show welcome message with conditional wallet creation for new users
