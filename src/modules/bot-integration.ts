@@ -818,11 +818,49 @@ export class BotIntegration {
       `• Create proposals\n` +
       `• Track payments\n` +
       `• View transaction history\n\n` +
-      `Just type naturally what you want to do, and I'll help you!`,
+      `💱 **Currency Tools**\n` +
+      `• Check USD/NGN/KES rates\n` +
+      `• Convert between currencies\n` +
+      `• Example: \"What's 100 USD in NGN?\"\n\n` +
+      `Just type naturally what you want to do, or use the menu below!`,
       {
-        parse_mode: 'Markdown'
+        parse_mode: 'Markdown',
+        reply_markup: this.getPersistentKeyboard()
       }
     );
+  }
+  
+  // Handle currency rate requests
+  async handleCurrencyRate(chatId: number, query?: string) {
+    try {
+      if (!query) {
+        // Show help if no query provided
+        await this.bot.sendMessage(chatId, 
+          `💱 *Currency Rate Check*\n\n` +
+          `Check exchange rates between USD, NGN, and KES.\n\n` +
+          `*Examples:*\n` +
+          `• /rate 100 USD to NGN\n` +
+          `• What's 50 USD in NGN?\n` +
+          `• Convert 1000 NGN to USD\n` +
+          `• USD to KES rate`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+      
+      // Process the query through the currency conversion service
+      const result = await handleCurrencyConversion(query);
+      await this.bot.sendMessage(chatId, result.text, { parse_mode: 'Markdown' });
+      
+    } catch (error) {
+      console.error('Currency rate error:', error);
+      await this.bot.sendMessage(chatId, 
+        `❌ Couldn't process your request. Please try one of these formats:\n\n` +
+        `• /rate 100 USD to NGN\n` +
+        `• What's 50 USD in KES?\n` +
+        `• Convert 1000 NGN to USD`
+      );
+    }
   }
 
   // Show welcome message with conditional wallet creation for new users
@@ -1056,6 +1094,10 @@ export class BotIntegration {
           await this.handleHelp(chatId);
           return true;
 
+        case '/rate':
+          await this.handleCurrencyRate(chatId, message.text?.split(' ').slice(1).join(' '));
+          return true;
+
         case 'cancel proposal':
         // Handle cancellation of ongoing proposal creation
         const ongoingProposal = await this.getOngoingProposal(userId);
@@ -1184,6 +1226,18 @@ export class BotIntegration {
   // Helper method to detect natural language queries
   private isNaturalLanguageQuery(text: string): boolean {
     const lowerText = text.toLowerCase().trim();
+    
+    // Check for currency conversion patterns first
+    const currencyPatterns = [
+      /(convert|what['']?s|what is|exchange rate|rate of|how much is).*(usd|dollar|ngn|naira|kes|shilling)/i,
+      /(usd|dollar|ngn|naira|kes|shilling).*(to|in|\?).*/i,
+      /\d+\s*(usd|dollar|ngn|naira|kes|shilling).*(to|in|\?|is)/i,
+      /^\/rate\b/i
+    ];
+    
+    if (currencyPatterns.some(pattern => pattern.test(lowerText))) {
+      return true;
+    }
     
     // Simple patterns that indicate natural language
     const naturalLanguagePatterns = [
