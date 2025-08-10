@@ -75,6 +75,8 @@ const nextConfig = {
     NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
+    POSTHOG_PROJECT_HOST: process.env.POSTHOG_PROJECT_HOST,
   },
 
   reactStrictMode: true,
