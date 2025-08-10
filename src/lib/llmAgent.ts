@@ -6,7 +6,7 @@ if (!OPENROUTER_API_KEY) {
   throw new Error('OPENROUTER_API_KEY environment variable is required');
 }
 
-const gemini = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+// const gemini = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -18,7 +18,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const MODEL = "moonshotai/kimi-k2:free";
+const MODEL_NAME = "moonshotai/kimi-k2:free";
 
 export async function getUserContext(userId: string) {
   const { data } = await supabase
@@ -445,40 +445,54 @@ If the user mentions blockchain, crypto, wallet, tokens, etc., assume they want 
 For unknown requests that are clearly not blockchain-related, use intent "unknown".
 `;
   const prompt = [
-    { role: "user", parts: [{ text: systemMessage }] },
+    { role: "system", content: systemMessage },
     ...context
-      .filter((msg: any) => msg.role !== 'system' && msg.content && typeof msg.content === 'string')
-      .map((msg: any) => ({
-        role: msg.role,
-        parts: [{ text: msg.content }]
-      })),
-    { role: "user", parts: [{ text: message }] }
+      .filter((msg: any) => msg.role && msg.content && typeof msg.content === 'string')
+      .map((msg: any) => ({ role: msg.role, content: msg.content })),
+    { role: "user", content: message },
   ];
 
-// After creating a payment link, always offer to send by email
-if (context.length > 0 && context[context.length - 1]?.intent === 'create_payment_link') {
-  // This is a pseudo-instruction to the bot integration, not the LLM
-  // The bot integration should check for this and prompt the user
-}
+  // After creating a payment link, always offer to send by email
+  if (context.length > 0 && context[context.length - 1]?.intent === 'create_payment_link') {
+    // This is a pseudo-instruction to the bot integration, not the LLM
+    // The bot integration should check for this and prompt the user
+  }
 
-  // 3. Call Gemini
-  console.log(`[LLM] Attempting to generate content with Google Gemini model: ${MODEL}`);
-  const model = gemini.getGenerativeModel({ model: MODEL });
-  const result = await model.generateContent({
-    contents: prompt,
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 1024,
-    },
-    safetySettings: [
-      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-    ],
-  });
+  // 3. Call OpenRouter
+  console.log(`[LLM] Attempting to generate content with OpenRouter model: ${MODEL_NAME}`);
+  let llmResponse = "Sorry, I couldn't process your request.";
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://your-app-url.com", // Replace with your actual app URL
+        "X-Title": "Hedwig Telegram Bot" // Replace with your app name
+      },
+      body: JSON.stringify({
+        model: MODEL_NAME,
+        messages: prompt,
+        temperature: 0.2,
+        max_tokens: 1024,
+      }),
+    });
 
-  const llmResponse = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process your request.";
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[LLM] OpenRouter API error:", response.status, errorText);
+      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    llmResponse = data.choices[0]?.message?.content || llmResponse;
+    console.log("[LLM] OpenRouter response received.");
+
+  } catch (error) {
+    console.error("[LLM] OpenRouter call failed:", error);
+    // Gemini fallback is commented out as per request
+    // throw error; // Or handle it gracefully
+  }
 
   // 4. Update context
   const newContext = [

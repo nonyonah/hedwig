@@ -73,6 +73,8 @@ const nextConfig = {
     API_KEY_0X: process.env.API_KEY_0X,  
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
   },
 
   reactStrictMode: true,
