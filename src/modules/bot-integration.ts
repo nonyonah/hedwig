@@ -822,7 +822,7 @@ export class BotIntegration {
       if (isNewUser) {
         // Show welcome message with Create Wallet button for new users
         await this.bot.sendMessage(chatId, 
-          `🦉 Welcome to Hedwig!\n\n` +
+          `🦉 Hi, I'm Hedwig!\n\n` +
           `I'm your freelance assistant that can help you create proposals, invoices, payment links, and send/receive payments in stablecoins.\n\n` +
           `Let's start by creating your crypto wallets:`,
           {
@@ -836,7 +836,7 @@ export class BotIntegration {
       } else {
         // Show main menu for existing users with persistent keyboard
         await this.bot.sendMessage(chatId, 
-          `🦉 *Welcome back to Hedwig!*\n\n` +
+          `🦉 *Welcome back buddy!*\n\n` +
           `I'm your AI assistant for crypto payments and wallet management.\n\n` +
           `Choose an option below or chat with me naturally!`,
           {
@@ -882,6 +882,10 @@ export class BotIntegration {
         await this.handleBusinessDashboard(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data === 'check_balance') {
+        await this.handleCheckBalance(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       } else if (data === 'business_invoices') {
         await this.handleInvoiceList(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -901,10 +905,6 @@ export class BotIntegration {
 
       } else if (data === 'create_wallet') {
         await this.handleCreateWallet(chatId, userId);
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-        return true;
-      } else if (data === 'check_balance') {
-        await this.handleCheckBalance(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'send_crypto') {

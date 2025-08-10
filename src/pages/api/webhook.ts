@@ -82,7 +82,6 @@ async function setupTelegramMenu() {
       { command: 'proposal', description: '📝 Create proposal' },
       { command: 'earnings_summary', description: '📊 View earnings summary' },
       { command: 'business_dashboard', description: '📈 Business dashboard' },
-      { command: 'paymentlink', description: '💳 Create payment link' }
     ]);
     
     console.log('[Webhook] Telegram menu button configured');
@@ -389,8 +388,8 @@ async function handleCommand(msg: TelegramBot.Message) {
         await botIntegration.showWelcomeMessage(chatId);
       } else {
         await bot.sendMessage(chatId, 
-          `🦉 *Welcome to Hedwig Bot!*\n\n` +
-          `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+          `🦉 *Hi, I'm Hedwig!*\n\n` +
+          `I'm your AI assistant for crypto payments, freelance and wallet management.\n\n` +
           `🚀 *What I can help you with:*\n` +
           `• 💰 Check wallet balances\n` +
           `• 💸 Send crypto payments\n` +
@@ -416,8 +415,8 @@ async function handleCommand(msg: TelegramBot.Message) {
 
     case '/help':
       await bot.sendMessage(chatId, 
-        `🦉 *Welcome to Hedwig!*\n\n` +
-        `I'm your crypto assistant. Here's what I can do:\n\n` +
+        `🦉 *Hi, I'm Hedwig!*\n\n` +
+        `I'm your freelance assistant. Here's what I can do:\n\n` +
         `*Quick Commands:*\n` +
         `• /start - Get started with Hedwig\n` +
         `• /balance - Check wallet balances\n` +

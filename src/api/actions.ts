@@ -953,8 +953,8 @@ export async function handleAction(
     
     case "welcome":
       return {
-        text: "🦉 **Welcome to Hedwig!**\n\n" +
-              "I'm your crypto assistant. I can help you:\n\n" +
+        text: "🦉 **Hi, I'm Hedwig!**\n\n" +
+              "I'm your freelance assistant. I can help you:\n\n" +
               "💰 **Check wallet balances** - Just ask \"what's my balance?\"\n" +
               "📍 **Get wallet addresses** - Ask \"show my wallet address\"\n" +
               "💸 **Send crypto** - Say \"send 0.1 ETH to [address]\"\n" +
