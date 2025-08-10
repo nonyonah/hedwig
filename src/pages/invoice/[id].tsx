@@ -297,6 +297,19 @@ export default function InvoicePage() {
     );
   }
 
+  // Filter out any fee-related items from the invoice items
+  const filteredItems = invoiceData.items.filter(
+    item => !item.description.toLowerCase().includes('fee') && 
+            !item.description.toLowerCase().includes('platform') &&
+            !item.description.toLowerCase().includes('transaction')
+  );
+  
+  // Calculate subtotal from filtered items
+  const subtotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
+  const platformFee = subtotal * 0.005; // 0.5% platform fee
+  const total = subtotal + platformFee;
+  const freelancerReceives = subtotal - platformFee;
+
   const statusColor = {
     draft: 'bg-gray-100 text-gray-800',
     sent: 'bg-blue-100 text-blue-800',
@@ -411,7 +424,7 @@ export default function InvoicePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {invoiceData.items.map((item) => (
+                    {filteredItems.map((item) => (
                       <tr key={item.id} className="border-b border-gray-100">
                         <td className="py-4 px-4">
                           <p className="font-medium text-gray-900">{item.description}</p>
@@ -431,16 +444,16 @@ export default function InvoicePage() {
               <div className="w-full max-w-sm space-y-2">
                 <div className="flex justify-between py-2">
                   <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-medium">${invoiceData.subtotal.toFixed(2)}</span>
+                  <span className="font-medium">${subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Transaction Fee (0.5%):</span>
-                  <span className="font-medium">${(invoiceData.subtotal * 0.005).toFixed(2)}</span>
+                  <span className="text-gray-600">Platform Fee (0.5%):</span>
+                  <span className="font-medium">${platformFee.toFixed(2)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between py-3">
                   <span className="text-lg font-semibold">Total:</span>
-                  <span className="text-lg font-bold text-blue-600">${(invoiceData.subtotal + (invoiceData.subtotal * 0.005)).toFixed(2)}</span>
+                  <span className="text-lg font-bold text-blue-600">${total.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -497,19 +510,19 @@ export default function InvoicePage() {
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Invoice Amount:</span>
-                      <span>${invoiceData.total.toFixed(2)}</span>
+                      <span>${subtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Platform Fee (2%):</span>
-                      <span>${(invoiceData.total * 0.02).toFixed(2)}</span>
+                      <span className="text-gray-600">Platform Fee (0.5%):</span>
+                      <span>${platformFee.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between border-t pt-1">
-                      <span className="font-medium">Total to Pay:</span>
-                      <span className="font-bold">{invoiceData.total.toFixed(2)} USDC</span>
+                    <div className="flex justify-between font-medium">
+                      <span>Total to Pay:</span>
+                      <span>${total.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-green-600">
+                    <div className="flex justify-between text-sm text-gray-500 pt-1">
                       <span>Freelancer Receives:</span>
-                      <span>{(invoiceData.total * 0.98).toFixed(2)} USDC</span>
+                      <span>${freelancerReceives.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -521,13 +534,13 @@ export default function InvoicePage() {
                   variant="outline"
                   className="h-20 flex flex-col items-center justify-center transition-colors hover:bg-gray-50"
                   onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
-                  disabled={!ready || processingPayment || isProcessing || (userBalance ? parseFloat(userBalance) < invoiceData.total : false)}
+                  disabled={!ready || processingPayment || isProcessing || (userBalance ? parseFloat(userBalance) < subtotal : false)}
                 >
                   <Wallet className="h-6 w-6 mb-2" />
                   <span>
                     {(processingPayment || isProcessing) ? 'Processing...' : 
-                     (userBalance && parseFloat(userBalance) < invoiceData.total) ? 'Insufficient Balance' :
-                     authenticated && wallets.length > 0 ? `Pay ${invoiceData.total.toFixed(2)} USDC` : 'Connect Wallet'}
+                     (userBalance && parseFloat(userBalance) < subtotal) ? 'Insufficient Balance' :
+                     authenticated && wallets.length > 0 ? `Pay ${subtotal.toFixed(2)} USDC` : 'Connect Wallet'}
                   </span>
                 </Button>
                 <Button

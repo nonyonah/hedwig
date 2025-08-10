@@ -431,6 +431,29 @@ export default function PaymentLinkPage() {
                         </Select>
                       </div>
                     </div>
+                    {authenticated && wallets.length > 0 && paymentData && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
+                        <h4 className="text-sm font-medium text-gray-900">Payment Breakdown</h4>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Amount:</span>
+                            <span>${paymentData.amount.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Platform Fee (0.5%):</span>
+                            <span>${(paymentData.amount * 0.005).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between border-t pt-1">
+                            <span className="font-medium">Total to Pay:</span>
+                            <span className="font-bold">${(paymentData.amount + paymentData.amount * 0.005).toFixed(2)} USDC</span>
+                          </div>
+                          <div className="flex justify-between text-green-600">
+                            <span>Freelancer Receives:</span>
+                            <span>${(paymentData.amount - paymentData.amount * 0.005).toFixed(2)} USDC</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <Button 
                       onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
