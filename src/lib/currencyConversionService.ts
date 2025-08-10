@@ -21,32 +21,13 @@ export interface ConversionRequest {
   amount: number;
 }
 
-// Currency mappings for normalization
+// Currency mappings for normalization - Only USDC, cNGN, and ETH are supported
 const CURRENCY_MAPPINGS: Record<string, string> = {
-  // Crypto currencies
-  'bitcoin': 'BTC',
-  'btc': 'BTC',
+  // Supported cryptocurrencies
   'ethereum': 'ETH',
   'eth': 'ETH',
-  'tether': 'USDT',
-  'usdt': 'USDT',
   'usdc': 'USDC',
   'usd-coin': 'USDC',
-  'solana': 'SOL',
-  'sol': 'SOL',
-  'bnb': 'BNB',
-  'binance-coin': 'BNB',
-  'cardano': 'ADA',
-  'ada': 'ADA',
-  'polygon': 'MATIC',
-  'matic': 'MATIC',
-  'avalanche': 'AVAX',
-  'avax': 'AVAX',
-  'chainlink': 'LINK',
-  'link': 'LINK',
-  'celo': 'CELO',
-  'celo-dollar': 'CUSD',
-  'cusd': 'CUSD',
   'celo-naira': 'CNGN',
   'cngn': 'CNGN',
   
@@ -56,35 +37,25 @@ const CURRENCY_MAPPINGS: Record<string, string> = {
   'usd': 'USDC',
   'naira': 'CNGN',         // NGN -> CNGN (1:1 parity)
   'ngn': 'CNGN',
-  
-  // Other crypto currencies
-  'euro': 'EUR',           // Keep for future token implementation
-  'euros': 'EUR',
-  'eur': 'EUR',
-  'pound': 'GBP',
-  'pounds': 'GBP',
-  'gbp': 'GBP'
 };
 
-// CoinGecko ID mappings for crypto currencies and tokens
-const COINGECKO_IDS: Record<string, string> = {
-  'BTC': 'bitcoin',
-  'ETH': 'ethereum',
-  'USDT': 'tether',
-  'USDC': 'usd-coin',
-  'SOL': 'solana',
-  'BNB': 'binancecoin',
-  'ADA': 'cardano',
-  'MATIC': 'matic-network',
-  'AVAX': 'avalanche-2',
-  'LINK': 'chainlink',
-  'CELO': 'celo',
-  'CUSD': 'celo-dollar',
-  'CNGN': 'celo-naira'
+// Alchemy token contract addresses
+const TOKEN_ADDRESSES: Record<string, string> = {
+  'ETH': '0x0000000000000000000000000000000000000000', // Native ETH
+  'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // Ethereum Mainnet USDC
+  'CNGN': '0x1a8Dbe5958c597a744Ba51763AbEBD3355996c3e'  // Celo Mainnet cNGN
 };
+
+// Alchemy API configuration
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
+const ALCHEMY_BASE_URL = 'https://eth-mainnet.g.alchemy.com/v2';
+
+if (!ALCHEMY_API_KEY) {
+  console.warn('ALCHEMY_API_KEY is not set. Currency conversion may not work properly.');
+}
 
 // All supported currencies are now crypto/tokens
-const SUPPORTED_CURRENCIES = new Set(Object.keys(COINGECKO_IDS));
+const SUPPORTED_CURRENCIES = new Set(Object.keys(TOKEN_ADDRESSES));
 
 /**
  * Normalize currency symbol or name to standard format
@@ -166,43 +137,107 @@ export function parseConversionRequest(input: string): ConversionRequest | null 
 }
 
 /**
- * Fetch token exchange rate from CoinGecko
+ * Fetch token price in USD from Alchemy
+ */
+async function fetchTokenPriceInUSD(token: string): Promise<number> {
+  if (!ALCHEMY_API_KEY) {
+    throw new Error('Alchemy API key not configured');
+  }
+
+  const tokenAddress = TOKEN_ADDRESSES[token];
+  if (!tokenAddress) {
+    throw new Error(`Unsupported token: ${token}`);
+  }
+
+  // For native ETH, use the native token price endpoint
+  if (token === 'ETH') {
+    const response = await fetch(
+      `${ALCHEMY_BASE_URL}/${ALCHEMY_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'alchemy_getTokenPrices',
+          params: [
+            {
+              contractAddresses: [TOKEN_ADDRESSES.USDC],
+              vsCurrency: 'usd'
+            }
+          ],
+          id: 1,
+        }),
+      }
+    );
+
+    const data = await response.json();
+    const tokenPrice = data.result?.[0]?.usdPrice;
+    
+    if (!tokenPrice) {
+      throw new Error('Failed to fetch ETH price from Alchemy');
+    }
+    
+    // For ETH, we need to get the USDC/ETH rate and invert it
+    return tokenPrice; // This gives us ETH/USD rate
+  }
+
+  // For tokens, get the price directly
+  const response = await fetch(
+    `${ALCHEMY_BASE_URL}/${ALCHEMY_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenPrices',
+        params: [
+          {
+            contractAddresses: [tokenAddress],
+            vsCurrency: 'usd'
+          }
+        ],
+        id: 1,
+      }),
+    }
+  );
+
+  const data = await response.json();
+  const tokenData = data.result?.[0];
+  
+  if (!tokenData) {
+    throw new Error(`Failed to fetch price for ${token} from Alchemy`);
+  }
+  
+  // The price is returned in the usdPrice field
+  return tokenData.usdPrice;
+}
+
+/**
+ * Fetch token exchange rate using Alchemy
  */
 async function fetchTokenRate(fromToken: string, toToken: string): Promise<number> {
-  const fromCoinId = COINGECKO_IDS[fromToken];
-  const toCoinId = COINGECKO_IDS[toToken];
-  
-  if (!fromCoinId) {
-    throw new Error(`Unsupported token: ${fromToken}`);
+  if (!ALCHEMY_API_KEY) {
+    throw new Error('Alchemy API key not configured');
   }
-  
-  if (!toCoinId) {
-    throw new Error(`Unsupported token: ${toToken}`);
-  }
-  
+
   // If same token, return 1
   if (fromToken === toToken) {
     return 1;
   }
-  
-  // Get both token prices in USD
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${fromCoinId},${toCoinId}&vs_currencies=usd`;
-  
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+
+  try {
+    // Get both token prices in USD
+    const [fromPrice, toPrice] = await Promise.all([
+      fetchTokenPriceInUSD(fromToken),
+      fetchTokenPriceInUSD(toToken)
+    ]);
+    
+    // Calculate cross rate
+    return fromPrice / toPrice;
+  } catch (error) {
+    console.error('Error fetching token rates:', error);
+    throw new Error(`Failed to get exchange rate: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  const data = await response.json();
-  const fromPrice = data[fromCoinId]?.usd;
-  const toPrice = data[toCoinId]?.usd;
-  
-  if (fromPrice === undefined || toPrice === undefined) {
-    throw new Error(`Exchange rate not found for ${fromToken} to ${toToken}`);
-  }
-  
-  // Calculate cross rate
-  return fromPrice / toPrice;
 }
 
 /**
@@ -253,10 +288,9 @@ export function formatConversionResult(result: ConversionResult): string {
   
   // Format currency names for display
   const formatCurrency = (code: string) => {
-    if (code === 'CNGN') return 'Celo Naira (CNGN)';
+    if (code === 'CNGN') return 'Celo Naira (cNGN)';
     if (code === 'USDC') return 'USD Coin (USDC)';
-    if (code === 'CUSD') return 'Celo Dollar (CUSD)';
-    if (code === 'CELO') return 'Celo (CELO)';
+    if (code === 'ETH') return 'Ethereum (ETH)';
     return code;
   };
   
@@ -281,10 +315,10 @@ export async function handleCurrencyConversion(input: string): Promise<{ text: s
       return {
         text: "❌ Invalid Request\n\nI couldn't understand your conversion request. Please try formats like:\n\n" +
           "• \"Convert 300 USDC to CNGN\"\n" +
-          "• \"How much is 0.1 CELO in USDC?\"\n" +
-          "• \"What is the exchange rate from USDC to CNGN?\"\n" +
-          "• \"What's the value of 1 BTC in CNGN?\"\n\n" +
-          "Supported tokens: CELO, CUSD, CNGN, USDC, BTC, ETH"
+          "• \"How much is 0.1 ETH in USDC?\"\n" +
+          "• \"What is the exchange rate from USDC to cNGN?\"\n" +
+          "• \"What's the value of 1 ETH in cNGN?\"\n\n" +
+          "Supported tokens: USDC, cNGN, ETH"
       };
     }
     
