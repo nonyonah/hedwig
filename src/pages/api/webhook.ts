@@ -181,7 +181,16 @@ function setupBotHandlers() {
       }
 
       // Answer callback query immediately to prevent timeout
-      await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing...' });
+      try {
+        await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing...' });
+      } catch (error) {
+        // Ignore errors for expired callback queries
+        if (error instanceof Error && error.message.includes('query is too old')) {
+          console.log(`[Webhook] Callback query ${callbackQuery.id} expired, skipping...`);
+          return;
+        }
+        throw error; // Re-throw other errors
+      }
 
       // Check if it's a business feature callback (with timeout)
       try {
