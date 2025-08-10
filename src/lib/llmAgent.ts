@@ -1,6 +1,11 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 import { createClient } from "@supabase/supabase-js";
 
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+if (!OPENROUTER_API_KEY) {
+  throw new Error('OPENROUTER_API_KEY environment variable is required');
+}
+
 const gemini = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -13,7 +18,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const MODEL = "gemini-2.0-flash";
+const MODEL = "moonshotai/kimi-k2:free";
 
 export async function getUserContext(userId: string) {
   const { data } = await supabase
@@ -45,7 +50,7 @@ export async function runLLM({
     context = context ? [context] : [];
   }
 
-  // 2. Compose prompt in Gemini API format (no system role)
+  // 2. Compose prompt in OpenRouter API format (system message retained)
   const systemMessage = `
 You are Hedwig, a helpful crypto assistant for Telegram.
 Always respond ONLY with a JSON object in this format:
