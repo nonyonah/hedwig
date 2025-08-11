@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runLLM } from '@/lib/llmAgent';
 import { parseIntentAndParams } from '@/lib/intentParser';
-import { handleAction } from '@/api/actions';
+import { handleAction } from '../../../api/actions';
 
 export async function POST(request: NextRequest) {
   try {
