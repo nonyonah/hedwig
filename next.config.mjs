@@ -77,6 +77,7 @@ const nextConfig = {
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     NEXT_PUBLIC_POSTHOG_API_KEY: process.env.NEXT_PUBLIC_POSTHOG_API_KEY,
     NEXT_PUBLIC_POSTHOG_PROJECT_HOST: process.env.NEXT_PUBLIC_POSTHOG_PROJECT_HOST,
+    PAYCREST_API_KEY:process.env.PAYCREST_API_KEY,
   },
 
   reactStrictMode: true,

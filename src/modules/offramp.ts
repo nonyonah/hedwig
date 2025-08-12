@@ -69,7 +69,7 @@ export class OfframpModule {
   constructor(bot: TelegramBot) {
     this.bot = bot;
     // Initialize API token from environment variables
-    this.apiToken = process.env.PAYCREST_API_TOKEN || null;
+    this.apiToken = process.env.PAYCREST_API_KEY || null;
   }
 
   /**
@@ -176,13 +176,13 @@ export class OfframpModule {
     if (data.startsWith('offramp_')) {
       console.log(`[OfframpModule] Processing offramp callback: ${data}`);
       
-      if (data === 'offramp_confirm') {
+      if (data === 'offramp_confirm' && userId) {
         await this.processOfframpTransaction(chatId, userId);
         return true;
-      } else if (data === 'offramp_cancel') {
+      } else if (data === 'offramp_cancel' && userId) {
         await this.cancelOfframpTransaction(chatId, userId);
         return true;
-      } else if (data === 'offramp_check_kyc') {
+      } else if (data === 'offramp_check_kyc' && userId) {
         const state = await this.getOfframpState(userId);
         if (state) {
           await this.handleKYCStatusCheck(chatId, userId, state);
