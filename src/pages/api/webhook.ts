@@ -77,6 +77,7 @@ async function setupTelegramMenu() {
       { command: 'balance', description: '💰 Check wallet balance' },
       { command: 'wallet', description: '👛 View wallet address' },
       { command: 'send', description: '💸 Send crypto' },
+      { command: 'offramp', description: '🏦 Withdraw to bank account' },
       { command: 'payment', description: '🔗 Create payment link' },
       { command: 'invoice', description: '🧾 Create invoice' },
       { command: 'proposal', description: '📝 Create proposal' },

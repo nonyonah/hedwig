@@ -649,6 +649,7 @@ Choose an action below:`;
         { command: 'wallet', description: 'View wallet information' },
         { command: 'balance', description: 'Check wallet balance' },
         { command: 'send', description: 'Send crypto to someone' },
+        { command: 'offramp', description: 'Withdraw crypto to bank account' },
         { command: 'earnings_summary', description: 'View earnings summary' },
         { command: 'business_dashboard', description: 'Access business dashboard' },
         { command: 'invoice', description: 'Create an invoice' },

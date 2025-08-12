@@ -5,7 +5,9 @@ import { trackEvent } from '../lib/posthog';
 import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
+import { OfframpModule } from './offramp';
 import { createClient } from '@supabase/supabase-js';
+import { handleCurrencyConversion } from '../lib/currencyConversionService';
 // Dynamic import to prevent serverEnv loading during build
 // import { getBusinessStats } from '../lib/earningsService';
 
@@ -19,12 +21,14 @@ export class BotIntegration {
   private invoiceModule: InvoiceModule;
   private proposalModule: ProposalModule;
   private usdcPaymentModule: USDCPaymentModule;
+  private offrampModule: OfframpModule;
 
   constructor(bot: TelegramBot) {
     this.bot = bot;
     this.invoiceModule = new InvoiceModule(bot);
     this.proposalModule = new ProposalModule(bot);
     this.usdcPaymentModule = new USDCPaymentModule(bot);
+    this.offrampModule = new OfframpModule(bot);
   }
 
   // Get persistent keyboard for all messages
@@ -34,7 +38,8 @@ export class BotIntegration {
         [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
         [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
         [{ text: '📝 Proposal' }, { text: '🧾 Invoice' }],
-        [{ text: '📊 View History' }, { text: '❓ Help' }]
+        [{ text: '💱 Offramp' }, { text: '📊 View History' }],
+        [{ text: '❓ Help' }]
       ],
       resize_keyboard: true,
       one_time_keyboard: false,
@@ -49,8 +54,8 @@ export class BotIntegration {
         [{ text: '💰 Balance' }, { text: '👛 Wallet' }],
         [{ text: '💸 Send Crypto' }, { text: '🔗 Payment Link' }],
         [{ text: '📄 Invoice' }, { text: '📋 Proposal' }],
-        [{ text: '📊 Business Dashboard' }, { text: '💰 Earnings Summary' }],
-        [{ text: '❓ Help' }]
+        [{ text: '💱 Offramp' }, { text: '📊 Business Dashboard' }],
+        [{ text: '💰 Earnings Summary' }, { text: '❓ Help' }]
       ],
       resize_keyboard: true,
       one_time_keyboard: false,
@@ -944,6 +949,10 @@ export class BotIntegration {
         await this.handleBusinessSettings(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data.startsWith('offramp_')) {
+        await this.offrampModule.handleOfframpCallback(callbackQuery);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
 
       } else if (data === 'create_wallet') {
         await this.handleCreateWallet(chatId, userId);
@@ -1063,6 +1072,11 @@ export class BotIntegration {
         case '🔗 Payment Link':
           await this.handlePaymentLink(chatId, userId);
           return true;
+          
+        case '💱 Offramp':
+        case '💱 Withdraw':
+          await this.offrampModule.handleOfframpStart(chatId, userId);
+          return true;
 
         case '💰 Earnings Summary':
           await this.handleEarningsSummary(chatId, userId);
@@ -1101,7 +1115,7 @@ export class BotIntegration {
           }
         }
         default: {
-          // Always check for ongoing invoice/proposal flows first, regardless of message type
+          // Always check for ongoing invoice/proposal/offramp flows first, regardless of message type
           const ongoingInvoice = await this.getOngoingInvoice(userId);
           if (ongoingInvoice && message.text) {
             console.log(`[BotIntegration] [FLOW] Continuing invoice creation for user ${userId} with input: ${message.text}`);
@@ -1112,6 +1126,12 @@ export class BotIntegration {
           if (ongoingProposal && message.text) {
             console.log(`[BotIntegration] [FLOW] Continuing proposal creation for user ${userId} with input: ${message.text}`);
             await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
+            return true;
+          }
+          const ongoingOfframp = await this.getOngoingOfframp(userId);
+          if (ongoingOfframp && message.text) {
+            console.log(`[BotIntegration] [FLOW] Continuing offramp flow for user ${userId} with input: ${message.text}`);
+            await this.offrampModule.continueOfframpFlow(message.chat.id, userId, message.text);
             return true;
           }
           // --- LLM agent and currency conversion integration ---
@@ -1164,6 +1184,10 @@ export class BotIntegration {
   getUSDCPaymentModule() {
     return this.usdcPaymentModule;
   }
+  
+  getOfframpModule() {
+    return this.offrampModule;
+  }
 
   private async getOngoingInvoice(userId: string) {
     console.log(`[BotIntegration] Querying user_states for userId: ${userId}`);
@@ -1195,6 +1219,22 @@ export class BotIntegration {
     
     if (error) {
       console.error(`[BotIntegration] Error querying user_states for proposal:`, error);
+      return null;
+    }
+    
+    return data?.state_data || null;
+  }
+  
+  private async getOngoingOfframp(userId: string) {
+    const { data, error } = await supabase
+      .from('user_states')
+      .select('state_data')
+      .eq('user_id', userId)
+      .eq('state_type', 'offramp_flow')
+      .maybeSingle();
+    
+    if (error) {
+      console.error(`[BotIntegration] Error querying user_states for offramp:`, error);
       return null;
     }
     
