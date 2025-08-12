@@ -9,7 +9,7 @@
   },
   "functions": {
     "src/pages/api/webhook.ts": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   }
 }
