@@ -400,19 +400,11 @@ export class BotIntegration {
       await this.bot.sendMessage(chatId, 
         `🎉 *Wallets Created Successfully!*\n\n` +
         `Your crypto wallets have been created and are ready to use:\n\n` +
-        `🔷 *EVM Wallet (Base Network):*\n` +
+        `🔷 *EVM Wallet:*\n` +
         `\`${evmWallet.address}\`\n\n` +
         `🟣 *Solana Wallet:*\n` +
         `\`${solanaWallet.address}\`\n\n` +
         `You can now receive payments, check balances, and send crypto using these wallets!`,
-        { 
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '💰 Check Balance', callback_data: 'check_balance' }]
-            ]
-          }
-        }
       );
 
     } catch (error) {
@@ -1230,7 +1222,7 @@ export class BotIntegration {
       .from('user_states')
       .select('state_data')
       .eq('user_id', userId)
-      .eq('state_type', 'offramp_flow')
+      .eq('state_type', 'offramp')
       .maybeSingle();
     
     if (error) {

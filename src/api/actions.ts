@@ -260,10 +260,8 @@ async function handleCreateWallets(userId: string) {
       text: `🎉 **Wallets Created Successfully!**\n\n` +
             `✅ **EVM Wallet**: ${evmWallet.address}\n` +
             `✅ **Solana Wallet**: ${solanaWallet.address}\n\n` +
-            `Your wallets are now ready to use! You can:\n` +
-            `• Check balances with \`balance\`\n` +
-            `• Send crypto with \`send\`\n` +
-            `• Create payment links with \`create payment link\`\n\n` +
+            `Your wallets are now ready to use!\n\n` +
+            `You can send crypto or create payment links right away.\n\n` +
             `🔒 Your wallets are secured by Coinbase's infrastructure.`
     };
   } catch (error) {
