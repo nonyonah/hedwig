@@ -1,6 +1,7 @@
 // src/lib/telegramBot.ts
 import TelegramBot from 'node-telegram-bot-api';
 import { runLLM } from './llmAgent';
+import { BotIntegration } from '../modules/bot-integration';
 
 export interface TelegramBotConfig {
   token: string;
@@ -13,6 +14,7 @@ export interface TelegramBotConfig {
 
 export class TelegramBotService {
   private bot: TelegramBot;
+  private botIntegration: BotIntegration;
   private isPolling: boolean = false;
 
   constructor(config: TelegramBotConfig) {
@@ -20,6 +22,7 @@ export class TelegramBotService {
     this.bot = new TelegramBot(config.token, { 
       polling: config.polling || false 
     });
+    this.botIntegration = new BotIntegration(this.bot);
 
     this.setupEventHandlers();
     
@@ -245,7 +248,9 @@ export class TelegramBotService {
       // Handle commands
       if (messageText.startsWith('/')) {
         console.log('[TelegramBot] Processing command:', messageText ? messageText.split(' ')[0] : 'unknown');
-        await this.handleCommand(messageText, chatId, msg.from);
+        if (msg.from) {
+          await this.handleCommand(msg);
+        }
         return;
       }
 
@@ -340,14 +345,13 @@ export class TelegramBotService {
   /**
    * Handle bot commands
    */
-  private async handleCommand(
-    command: string, 
-    chatId: number, 
-    from?: TelegramBot.User
-  ): Promise<void> {
-    const userName = from?.first_name || 'User';
-    const commandName = command && typeof command === 'string' ? command.split(' ')[0].toLowerCase() : '';
-    
+  private async handleCommand(msg: TelegramBot.Message): Promise<void> {
+    const command = msg.text || '';
+    const chatId = msg.chat.id;
+    const from = msg.from as TelegramBot.User; // Presence of `from` is checked before calling
+    const userName = from.first_name || 'User';
+    const commandName = command.split(' ')[0].toLowerCase();
+
     switch (commandName) {
       case '/start':
         await this.sendWelcomeMessage(chatId, userName);
@@ -360,6 +364,13 @@ export class TelegramBotService {
         break;
       case '/menu':
         await this.sendMenuMessage(chatId);
+        break;
+      case '/offramp':
+      case '/withdraw':
+      case '/invoice':
+      case '/proposal':
+      case '/support':
+        await this.botIntegration.handleBusinessMessage(msg, from.id.toString());
         break;
       default:
         await this.sendMessage(

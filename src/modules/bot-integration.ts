@@ -1067,6 +1067,8 @@ export class BotIntegration {
           
         case '💱 Offramp':
         case '💱 Withdraw':
+        case '/offramp':
+        case '/withdraw':
           await this.offrampModule.handleOfframpStart(chatId, userId);
           return true;
 
