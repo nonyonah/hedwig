@@ -198,7 +198,8 @@ contract HedwigPayment is Ownable, ReentrancyGuard {
      * @param amount Amount to recover
      */
     function emergencyRecoverToken(address token, uint256 amount) external onlyOwner {
-        IERC20(token).transfer(owner(), amount);
+        bool success = IERC20(token).transfer(owner(), amount);
+        if (!success) revert TransferFailed();
     }
     
     /**

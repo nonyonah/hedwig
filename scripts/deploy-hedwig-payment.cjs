@@ -8,7 +8,7 @@ async function main() {
 
   // Debug: Check environment variables
   console.log("PLATFORM_PRIVATE_KEY exists:", !!process.env.PLATFORM_PRIVATE_KEY);
-  console.log("BASE_SEPOLIA_RPC_URL:", process.env.BASE_SEPOLIA_RPC_URL);
+  console.log("BASE_MAINNET_RPC_URL:", process.env.BASE_MAINNET_RPC_URL);
 
   // Get the deployer account
   const signers = await ethers.getSigners();
@@ -21,12 +21,12 @@ async function main() {
   const [deployer] = signers;
   const deployerAddress = await deployer.getAddress();
   console.log('Deploying with account:', deployerAddress);
-  console.log('Expected deployer address: 0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d');
+  console.log('Expected deployer address: 0x869a1e10ca4d1e1223676c0a4214c6cc10023244');
 
   // Verify deployer address matches expected
-  if (deployerAddress.toLowerCase() !== '0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d'.toLowerCase()) {
+  if (deployerAddress.toLowerCase() !== '0x869a1e10ca4d1e1223676c0a4214c6cc10023244'.toLowerCase()) {
     console.warn('⚠️  Warning: Deployer address does not match expected address!');
-    console.warn(`Expected: 0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d`);
+    console.warn(`Expected: 0x869a1e10ca4d1e1223676c0a4214c6cc10023244`);
     console.warn(`Actual: ${deployerAddress}`);
   }
 

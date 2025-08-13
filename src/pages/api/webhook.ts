@@ -11,7 +11,7 @@ import { processProposalInput } from '../../lib/proposalservice';
 
 // Vercel function configuration - extend timeout for webhook processing
 export const config = {
-  maxDuration: 60, // 30 seconds for Pro plan, 10 seconds for Hobby plan
+  maxDuration: 60,
 };
 
 // Global bot instance for webhook mode
