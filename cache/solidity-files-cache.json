@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "C:\\Users\\nonyo\\Desktop\\hedwig\\src\\contracts\\HedwigPayment.sol": {
-      "lastModificationDate": 1754049887077,
-      "contentHash": "ba5347ffd3eea9ee2b1092d0c0fe367f",
+      "lastModificationDate": 1755096256420,
+      "contentHash": "7356b2c062aae9d15d96efbbc38f182b",
       "sourceName": "src/contracts/HedwigPayment.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -29,16 +29,13 @@
           }
         }
       },
-      "imports": [
-        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
-        "@openzeppelin/contracts/access/Ownable.sol",
-        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
-      ],
+      "imports": [],
       "versionPragmas": [
         "^0.8.20"
       ],
       "artifacts": [
-        "HedwigPayment"
+        "HedwigPayment",
+        "IERC20"
       ]
     },
     "C:\\Users\\nonyo\\Desktop\\hedwig\\node_modules\\@openzeppelin\\contracts\\access\\Ownable.sol": {
@@ -188,8 +185,8 @@
       ]
     },
     "C:\\Users\\nonyo\\Desktop\\hedwig\\src\\contracts\\HedwigPaymentDeployer.sol": {
-      "lastModificationDate": 1754006952130,
-      "contentHash": "cf839fbc0c3285cd0ea444a7c992fc95",
+      "lastModificationDate": 1755096393808,
+      "contentHash": "d6fe642b53366cbe88ac10dcd131313f",
       "sourceName": "src/contracts/HedwigPaymentDeployer.sol",
       "solcConfig": {
         "version": "0.8.20",

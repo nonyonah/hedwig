@@ -30,34 +30,17 @@ async function main() {
     console.warn(`Actual: ${deployerAddress}`);
   }
 
-  // Platform wallet address
+  // Platform wallet address (must be valid, non-zero)
   const platformWallet = process.env.HEDWIG_PLATFORM_WALLET_TESTNET || process.env.HEDWIG_PLATFORM_WALLET || deployerAddress;
-  
-  // Token addresses based on network
-  let initialTokens;
-  if (network === 'base-sepolia') {
-    // Base Sepolia testnet token addresses
-    initialTokens = [
-      '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // USDC on Base Sepolia
-      '0x4A3A6Dd60A34bB2Aba60D73B4C88315E9CeB6A3D'  // Mock USDT on Base Sepolia (if available)
-    ];
-  } else {
-    // Base mainnet token addresses
-    initialTokens = [
-      '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
-      '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA'  // USDbC on Base
-    ];
-  }
 
-  // Deploy the contract
+  // Deploy the contract (constructor now takes only platformWallet)
   const HedwigPayment = await ethers.getContractFactory('HedwigPayment');
-  const hedwigPayment = await HedwigPayment.deploy(platformWallet, initialTokens);
+  const hedwigPayment = await HedwigPayment.deploy(platformWallet);
 
   await hedwigPayment.waitForDeployment();
 
   console.log('HedwigPayment deployed to:', await hedwigPayment.getAddress());
   console.log('Platform wallet:', platformWallet);
-  console.log('Initial whitelisted tokens:', initialTokens);
 
   // Get contract address
   const contractAddress = await hedwigPayment.getAddress();
@@ -70,7 +53,7 @@ async function main() {
     try {
       await hre.run('verify:verify', {
         address: contractAddress,
-        constructorArguments: [platformWallet, initialTokens],
+        constructorArguments: [platformWallet],
       });
       console.log('Contract verified on Basescan');
     } catch (error) {
@@ -82,7 +65,6 @@ async function main() {
   const deploymentInfo = {
     contractAddress: contractAddress,
     platformWallet: platformWallet,
-    whitelistedTokens: initialTokens,
     deploymentTransaction: hedwigPayment.deploymentTransaction().hash,
     deployer: deployerAddress,
     timestamp: new Date().toISOString(),

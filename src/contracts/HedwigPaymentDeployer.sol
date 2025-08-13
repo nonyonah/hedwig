@@ -16,39 +16,26 @@ contract HedwigPaymentDeployer {
      * @return deployedContract Address of the deployed contract
      */
     function deployHedwigPayment(address platformWallet) external returns (address deployedContract) {
-        // Base chain stablecoin addresses
-        address[] memory initialTokens = new address[](2);
-        
-        // USDC on Base
-        initialTokens[0] = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-        
-        // USDbC (USD Base Coin) on Base
-        initialTokens[1] = 0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA;
-        
-        // Deploy the contract
-        HedwigPayment hedwigPayment = new HedwigPayment(platformWallet, initialTokens);
-        
+        // Deploy the contract (USDC-only, constructor takes only platformWallet)
+        HedwigPayment hedwigPayment = new HedwigPayment(platformWallet);
         deployedContract = address(hedwigPayment);
         emit ContractDeployed(deployedContract, platformWallet);
-        
         return deployedContract;
     }
     
     /**
-     * @dev Deploy HedwigPayment contract with custom tokens
+     * @dev Deploy HedwigPayment contract (USDC-only, ignores customTokens)
      * @param platformWallet Address to receive platform fees
-     * @param customTokens Array of custom token addresses to whitelist
      * @return deployedContract Address of the deployed contract
      */
     function deployHedwigPaymentCustom(
         address platformWallet,
-        address[] memory customTokens
+        address[] memory /* customTokens */
     ) external returns (address deployedContract) {
-        HedwigPayment hedwigPayment = new HedwigPayment(platformWallet, customTokens);
-        
+        // Deploy the contract (USDC-only, ignores customTokens)
+        HedwigPayment hedwigPayment = new HedwigPayment(platformWallet);
         deployedContract = address(hedwigPayment);
         emit ContractDeployed(deployedContract, platformWallet);
-        
         return deployedContract;
     }
 }

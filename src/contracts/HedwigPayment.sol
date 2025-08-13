@@ -18,19 +18,12 @@ contract HedwigPayment {
     // --- Constants ---
     address public constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     uint256 public constant MAX_FEE = 500; // 5% max
-
-    // --- Storage ---
     uint256 public platformFee = 150; // Default 1.5%
     address public platformWallet;
     address public owner;
     uint256 private _reentrancyLock;
 
-    // Platform fee in basis points (e.g., 150 = 1.5%)
-    uint256 public platformFee = 150; // Default 1.5%
-    uint256 public constant MAX_FEE = 500; // Maximum 5%
-    
-    // Platform wallet address
-    address public platformWallet;
+    // (removed duplicate variable declarations here, see above for correct storage layout)
     
     // --- Events ---
     event PaymentReceived(
