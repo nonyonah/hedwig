@@ -1015,7 +1015,7 @@ export class BotIntegration {
   }
 
   // Helper function to get user UUID by chat ID
-  private async getUserIdByChatId(chatId: number): Promise<string> {
+  async getUserIdByChatId(chatId: number): Promise<string> {
     const { data } = await supabase
       .from('users')
       .select('id')
@@ -1135,6 +1135,17 @@ export class BotIntegration {
               const { parseIntentAndParams } = await import('../lib/intentParser');
               const llmResponse = await runLLM({ userId, message: message.text });
               const { intent, params } = parseIntentAndParams(typeof llmResponse === 'string' ? llmResponse : JSON.stringify(llmResponse));
+              if (intent === 'offramp' || intent === 'withdraw') {
+                await this.offrampModule.handleOfframpStart(message.chat.id, userId);
+                // If LLM provided amount/token, feed it to the flow to skip a step
+                const amt = params?.amount;
+                const tok = params?.token;
+                if (amt && tok) {
+                  const composed = `${amt} ${tok}`;
+                  await this.offrampModule.continueOfframpFlow(message.chat.id, userId, composed);
+                }
+                return true;
+              }
               if (intent === 'get_price') {
                 // Only allow USD/NGN/KES (and synonyms)
                 const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'KES'];

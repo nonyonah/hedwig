@@ -40,6 +40,23 @@ export class TelegramBotService {
    * Setup event handlers for the bot
    */
   private setupEventHandlers(): void {
+    // Explicitly handle /offramp and /withdraw via onText to ensure routing in all contexts
+    this.bot.onText(/^\s*\/(offramp|withdraw)(?:@\w+)?\b/i, async (msg) => {
+      const chatId = msg.chat.id;
+      console.log('[TelegramBot] onText matched offramp/withdraw');
+      try {
+        const userId = await this.botIntegration.getUserIdByChatId(chatId);
+        if (!userId) {
+          await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
+          return;
+        }
+        await this.botIntegration.getOfframpModule().handleOfframpStart(chatId, userId);
+      } catch (err) {
+        console.error('[TelegramBot] onText offramp error:', err);
+        await this.sendErrorMessage(chatId);
+      }
+    });
+
     // Handle all text messages
     this.bot.on('message', async (msg) => {
       try {
@@ -248,9 +265,7 @@ export class TelegramBotService {
       // Handle commands
       if (messageText.startsWith('/')) {
         console.log('[TelegramBot] Processing command:', messageText ? messageText.split(' ')[0] : 'unknown');
-        if (msg.from) {
-          await this.handleCommand(msg);
-        }
+        await this.handleCommand(msg);
         return;
       }
 
@@ -348,10 +363,13 @@ export class TelegramBotService {
   private async handleCommand(msg: TelegramBot.Message): Promise<void> {
     const command = msg.text || '';
     const chatId = msg.chat.id;
-    const from = msg.from as TelegramBot.User; // Presence of `from` is checked before calling
-    const userName = from.first_name || 'User';
-    const commandName = command.split(' ')[0].toLowerCase();
+    const from = msg.from || undefined;
+    const userName = from?.first_name || from?.username || 'User';
+    // Normalize command name: remove bot username suffix like /offramp@MyBot
+    const baseCmd = command.split(' ')[0].toLowerCase();
+    const commandName = baseCmd.includes('@') ? baseCmd.split('@')[0] : baseCmd;
 
+    console.log('[TelegramBot] Command received:', { raw: command, commandName, chatId, hasFrom: !!from });
     switch (commandName) {
       case '/start':
         await this.sendWelcomeMessage(chatId, userName);
@@ -366,12 +384,27 @@ export class TelegramBotService {
         await this.sendMenuMessage(chatId);
         break;
       case '/offramp':
-      case '/withdraw':
+      case '/withdraw': {
+        console.log('[TelegramBot] Routing to Offramp flow');
+        // Resolve user UUID by chatId using BotIntegration helper
+        const userId = await this.botIntegration.getUserIdByChatId(chatId);
+        if (!userId) {
+          await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
+          break;
+        }
+        // Start the offramp flow directly
+        await this.botIntegration.getOfframpModule().handleOfframpStart(chatId, userId);
+        break;
+      }
       case '/invoice':
       case '/proposal':
-      case '/support':
-        await this.botIntegration.handleBusinessMessage(msg, from.id.toString());
+      case '/support': {
+        // Resolve userId from from.id or fallback via chatId
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
+        console.log('[TelegramBot] Business command user resolution:', { resolvedUserId });
+        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
         break;
+      }
       default:
         await this.sendMessage(
           chatId,
@@ -547,7 +580,18 @@ Choose an action below:`;
       const { intent, params } = parseIntentAndParams(llmResponse);
       
       console.log('[TelegramBot] Parsed intent:', intent, 'Params:', params);
-      
+
+      // Special-case: Offramp intent should trigger the offramp flow module
+      if (intent === 'offramp' || intent === 'withdraw') {
+        try {
+          await this.botIntegration.getOfframpModule().handleOfframpStart(chatId, user.id);
+          return '💱 Starting withdrawal flow...';
+        } catch (e) {
+          console.error('[TelegramBot] Error starting offramp from LLM intent:', e);
+          return '❌ Failed to start withdrawal. Please try again or use /offramp';
+        }
+      }
+
       // Execute the action based on the intent using the user's UUID
       let actionResult: any;
       try {

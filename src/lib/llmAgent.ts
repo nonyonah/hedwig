@@ -77,6 +77,7 @@ Valid intents:
 - send_proposal: For sending proposals via email
 - view_proposals: For viewing existing proposals
 - edit_proposal: For editing existing proposals
+- offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 

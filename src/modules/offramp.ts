@@ -78,30 +78,18 @@ export class OfframpModule {
   async handleOfframpStart(chatId: number, userId: string): Promise<void> {
     try {
       console.log(`[OfframpModule] Starting offramp flow for user ${userId}`);
-      
-      // Check if user has completed KYC
-      const kycStatus = await this.getUserKYCStatus(userId);
-      
-      // Initialize offramp state
-      await this.initializeOfframpState(chatId, userId, kycStatus);
-      
-      if (kycStatus === 'verified') {
-        // User has completed KYC, proceed to amount collection
-        await this.bot.sendMessage(
-          chatId,
-          '💰 *Withdraw Crypto to Bank Account*\n\n' +
-          'You can withdraw your cryptocurrency to your local bank account.\n\n' +
-          'Please enter the amount and token you wish to withdraw:\n' +
-          'Example: `10 USDC` or `25 USDT`',
-          { parse_mode: 'Markdown' }
-        );
-        
-        // Update state to amount collection step
-        await this.updateOfframpState(userId, { step: 'collect_amount' });
-      } else {
-        // User needs to complete KYC first
-        await this.initiateKYC(chatId, userId);
-      }
+      // KYC temporarily disabled: proceed directly to amount collection
+      await this.initializeOfframpState(chatId, userId, 'verified');
+      await this.bot.sendMessage(
+        chatId,
+        '💰 *Withdraw Crypto to Bank Account*\n\n' +
+        'KYC is temporarily not required.\n' +
+        'Supported tokens: USDC, USDT.\n\n' +
+        'Please enter the amount and token you wish to withdraw (e.g., `10 USDC`):',
+        { parse_mode: 'Markdown' }
+      );
+      // Update state to amount collection step
+      await this.updateOfframpState(userId, { step: 'collect_amount' });
     } catch (error) {
       console.error('[OfframpModule] Error starting offramp flow:', error);
       await this.bot.sendMessage(
