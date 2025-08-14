@@ -64,12 +64,28 @@ interface OfframpTransaction {
 
 export class OfframpModule {
   private bot: TelegramBot;
+  // Ephemeral Paycrest API token for this module's requests
   private apiToken: string | null = null;
-  
+
   constructor(bot: TelegramBot) {
     this.bot = bot;
-    // Initialize API token from environment variables
-    this.apiToken = process.env.PAYCREST_API_KEY || null;
+  }
+
+  /**
+   * Build Offramp Mini App URL with context
+   */
+  private buildOfframpUrl(userId: string, chatId: number, chain: string): string {
+    const rawBase = process.env.WEBAPP_BASE_URL
+      ? process.env.WEBAPP_BASE_URL
+      : ('');
+    let base = rawBase;
+    if (base.startsWith('http://')) base = base.replace('http://', 'https://');
+    if (base && !base.startsWith('https://')) base = '';
+    if (!base) {
+      throw new Error('Offramp mini app URL not configured. Set WEBAPP_BASE_URL to an HTTPS domain.');
+    }
+    const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
+    return `${base}/offramp?${params.toString()}`;
   }
 
   /**
@@ -77,65 +93,53 @@ export class OfframpModule {
    */
   async handleOfframpStart(chatId: number, userId: string): Promise<void> {
     try {
-      console.log(`[OfframpModule] Starting offramp flow for user ${userId}`);
-      // KYC temporarily disabled: proceed directly to amount collection
-      await this.initializeOfframpState(chatId, userId, 'verified');
-      await this.bot.sendMessage(
-        chatId,
-        '💰 *Withdraw Crypto to Bank Account*\n\n' +
-        'KYC is temporarily not required.\n' +
-        'Supported tokens: USDC, USDT.\n\n' +
-        'Please enter the amount and token you wish to withdraw (e.g., `10 USDC`):',
-        { parse_mode: 'Markdown' }
-      );
-      // Update state to amount collection step
-      await this.updateOfframpState(userId, { step: 'collect_amount' });
+      console.log(`[OfframpModule] Redirecting to mini app for user ${userId}`);
+      // Clear any lingering legacy offramp state
+      try {
+        const { supabase } = await import('../lib/supabase');
+        await supabase
+          .from('user_states')
+          .delete()
+          .eq('user_id', userId)
+          .eq('state_type', 'offramp');
+      } catch (e) {
+        console.warn('[OfframpModule] Failed clearing legacy offramp state (non-fatal):', e);
+      }
+      const url = this.buildOfframpUrl(userId, chatId, 'Base');
+      await this.bot.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+        reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
+      });
     } catch (error) {
-      console.error('[OfframpModule] Error starting offramp flow:', error);
-      await this.bot.sendMessage(
-        chatId,
-        '❌ Sorry, there was an error starting the withdrawal process. Please try again later.'
-      );
+      console.error('[OfframpModule] Error redirecting to mini app:', error);
+      await this.bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try /offramp again.');
     }
   }
 
   /**
    * Continue the offramp flow based on current state
    */
-  async continueOfframpFlow(chatId: number, userId: string, messageText: string): Promise<boolean> {
+  async continueOfframpFlow(chatId: number, userId: string, _messageText: string): Promise<boolean> {
     try {
-      // Get current state
-      const state = await this.getOfframpState(userId);
-      
-      if (!state) {
-        return false; // No active offramp flow
+      // Always redirect to mini app and clear any legacy state
+      try {
+        const { supabase } = await import('../lib/supabase');
+        await supabase
+          .from('user_states')
+          .delete()
+          .eq('user_id', userId)
+          .eq('state_type', 'offramp');
+      } catch (e) {
+        console.warn('[OfframpModule] Failed clearing legacy offramp state during continue (non-fatal):', e);
       }
-      
-      console.log(`[OfframpModule] Continuing offramp flow for user ${userId}, step: ${state.step}`);
-      
-      switch (state.step) {
-        case 'collect_amount':
-          return await this.handleAmountCollection(chatId, userId, messageText, state);
-          
-        case 'collect_bank_details':
-          return await this.handleBankDetailsCollection(chatId, userId, messageText, state);
-          
-        case 'confirm_transaction':
-          return await this.handleTransactionConfirmation(chatId, userId, messageText, state);
-          
-        case 'kyc_check':
-          return await this.handleKYCStatusCheck(chatId, userId, state);
-          
-        default:
-          return false;
-      }
+      const url = this.buildOfframpUrl(userId, chatId, 'Base');
+      await this.bot.sendMessage(chatId, '↪️ Redirecting to the Offramp mini app:', {
+        reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
+      });
+      return true;
     } catch (error) {
-      console.error('[OfframpModule] Error continuing offramp flow:', error);
-      await this.bot.sendMessage(
-        chatId,
-        '❌ Sorry, there was an error processing your request. Please try again later.'
-      );
-      return true; // We handled the error
+      console.error('[OfframpModule] Error redirecting during continue:', error);
+      await this.bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try /offramp again.');
+      return true;
     }
   }
 
@@ -143,42 +147,29 @@ export class OfframpModule {
    * Handle callback queries for offramp flow
    */
   async handleOfframpCallback(callbackQuery: TelegramBot.CallbackQuery, userId?: string): Promise<boolean> {
-    if (!callbackQuery || !callbackQuery.data) return false;
-    const data = callbackQuery.data;
-    const chatId = callbackQuery.message?.chat.id;
-    
-    if (!data || !chatId) return false;
-    
-    // If userId is not provided, get it from the chat ID
-    if (!userId) {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('id')
-        .eq('telegram_chat_id', chatId)
-        .single();
-      
-      userId = userData?.id || chatId.toString();
-    }
-    
-    // Check if this is an offramp-related callback
+    const chatId = callbackQuery.message?.chat.id || 0;
+    const data = callbackQuery.data || '';
+
+    // Any legacy offramp callbacks should redirect to mini app
     if (data.startsWith('offramp_')) {
-      console.log(`[OfframpModule] Processing offramp callback: ${data}`);
-      
-      if (data === 'offramp_confirm' && userId) {
-        await this.processOfframpTransaction(chatId, userId);
-        return true;
-      } else if (data === 'offramp_cancel' && userId) {
-        await this.cancelOfframpTransaction(chatId, userId);
-        return true;
-      } else if (data === 'offramp_check_kyc' && userId) {
-        const state = await this.getOfframpState(userId);
-        if (state) {
-          await this.handleKYCStatusCheck(chatId, userId, state);
+      try {
+        if (userId) {
+          const { supabase } = await import('../lib/supabase');
+          await supabase
+            .from('user_states')
+            .delete()
+            .eq('user_id', userId)
+            .eq('state_type', 'offramp');
         }
-        return true;
+      } catch (e) {
+        console.warn('[OfframpModule] Failed clearing legacy state on callback (non-fatal):', e);
       }
+      const url = this.buildOfframpUrl(userId || String(chatId), chatId, 'Base');
+      await this.bot.sendMessage(chatId, '↪️ Please use the Offramp mini app:', {
+        reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
+      });
+      return true;
     }
-    
     return false;
   }
 

@@ -8,27 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { ArrowDown, DollarSign, TrendingUp } from "lucide-react";
 
-const BANKS: Record<string, string[]> = {
-  NGN: [
-    "Access Bank",
-    "First Bank",
-    "GTBank",
-    "UBA",
-    "Zenith Bank",
-    "Fidelity Bank",
-    "FCMB",
-    "Sterling Bank",
-  ],
-  KSH: [
-    "KCB Bank",
-    "Equity Bank",
-    "Cooperative Bank",
-    "Standard Chartered",
-    "Absa Bank",
-    "NCBA Bank",
-    "Diamond Trust Bank",
-  ],
-};
+interface Bank {
+  name: string;
+  code: string;
+}
 
 export default function OfframpForm() {
   const router = useRouter();
@@ -37,7 +20,9 @@ export default function OfframpForm() {
   const [amount, setAmount] = useState<string>("");
   const [currency, setCurrency] = useState<string>("");
   const [bank, setBank] = useState<string>("");
+  const [banks, setBanks] = useState<Bank[]>([]);
   const [accountName, setAccountName] = useState<string>("");
+  const [bankCode, setBankCode] = useState<string>("");
   const [accountNumber, setAccountNumber] = useState<string>("");
   const [exchangeRates, setExchangeRates] = useState<{ NGN: number; KSH: number }>({ NGN: 1650, KSH: 150 });
   const [senderAddress, setSenderAddress] = useState<string>("");
@@ -67,6 +52,31 @@ export default function OfframpForm() {
     };
   }, []);
 
+    // Fetch institutions when currency changes
+  useEffect(() => {
+    if (!currency) {
+      setBanks([]);
+      return;
+    }
+    const fetchInstitutions = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/paycrest/institutions?currency=${currency}`);
+        const data = await res.json();
+        if (data.success) {
+          setBanks(data.institutions);
+        } else {
+          setError(data.error || 'Failed to load banks.');
+        }
+      } catch (e: any) {
+        setError(e.message || 'Failed to load banks.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInstitutions();
+  }, [currency]);
+
   // Fetch user wallet address to display sender
   useEffect(() => {
     const fetchWallet = async () => {
@@ -93,7 +103,7 @@ export default function OfframpForm() {
       const res = await fetch("/api/paycrest/verify-account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currency, bank, accountNumber }),
+        body: JSON.stringify({ currency, bankCode, accountNumber }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Verification failed");
@@ -122,6 +132,7 @@ export default function OfframpForm() {
           amountUSD: amount,
           currency,
           bank,
+          bankCode,
           accountName,
           accountNumber,
         }),
@@ -262,14 +273,22 @@ export default function OfframpForm() {
 
             <div className="space-y-2">
               <Label htmlFor="bank">Bank</Label>
-              <Select value={bank} onValueChange={setBank} disabled={!currency}>
+              <Select
+                value={bankCode}
+                onValueChange={(value) => {
+                  const selectedBank = banks.find(b => b.code === value);
+                  setBank(selectedBank?.name || '');
+                  setBankCode(value);
+                }}
+                disabled={!currency || banks.length === 0}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder={currency ? "Select bank" : "Select currency first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {currency && BANKS[currency as keyof typeof BANKS]?.map((bankName) => (
-                    <SelectItem key={bankName} value={bankName}>
-                      {bankName}
+                  {banks.map((b) => (
+                    <SelectItem key={b.code} value={b.code}>
+                      {b.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -277,7 +296,7 @@ export default function OfframpForm() {
             </div>
 
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={handleVerifyAccount} disabled={!currency || !bank || !accountNumber || loading}>
+              <Button type="button" variant="outline" onClick={handleVerifyAccount} disabled={!currency || !bankCode || !accountNumber || loading}>
                 Verify Account
               </Button>
             </div>
@@ -290,7 +309,7 @@ export default function OfframpForm() {
         {/* Submit Button */}
         <Button
           className="w-full bg-gradient-primary hover:opacity-90 py-3 shadow-medium"
-          disabled={!amount || !currency || !bank || !accountName || !accountNumber || loading}
+          disabled={!amount || !currency || !bankCode || !accountName || !accountNumber || loading}
           onClick={handleSubmit}
         >
           {loading ? "Processing..." : "Complete Cash Out"}

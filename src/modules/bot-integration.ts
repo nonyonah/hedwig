@@ -33,11 +33,19 @@ export class BotIntegration {
 
   // Build Offramp Mini App URL with context
   private buildOfframpUrl(userId: string, chatId: number, chain: string): string {
-    const base = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : (process.env.WEBAPP_BASE_URL || 'http://localhost:3000');
+    // Prefer WEBAPP_BASE_URL (e.g., ngrok) else VERCEL_URL
+    const rawBase = process.env.WEBAPP_BASE_URL
+      ? process.env.WEBAPP_BASE_URL
+      : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+    // Enforce HTTPS (Telegram requires https for web_app URLs)
+    let base = rawBase;
+    if (base.startsWith('http://')) base = base.replace('http://', 'https://');
+    if (base && !base.startsWith('https://')) base = '';
+    if (!base) {
+      throw new Error('Offramp mini app URL not configured. Set VERCEL_URL or WEBAPP_BASE_URL to an HTTPS domain.');
+    }
     const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
-    return `${base}/offramp?${params.toString()}`;
+    return `${base.replace(/\/$/, '')}/offramp?${params.toString()}`;
   }
 
   // Get persistent keyboard for all messages
@@ -1138,9 +1146,22 @@ export class BotIntegration {
             return true;
           }
           const ongoingOfframp = await this.getOngoingOfframp(userId);
-          if (ongoingOfframp && message.text) {
-            console.log(`[BotIntegration] [FLOW] Continuing offramp flow for user ${userId} with input: ${message.text}`);
-            await this.offrampModule.continueOfframpFlow(message.chat.id, userId, message.text);
+          if (ongoingOfframp) {
+            console.log(`[BotIntegration] [FLOW] Redirecting legacy offramp state to mini app for user ${userId}`);
+            try {
+              // Clear any lingering legacy state
+              await supabase
+                .from('user_states')
+                .delete()
+                .eq('user_id', userId)
+                .eq('state_type', 'offramp');
+            } catch (e) {
+              console.warn('[BotIntegration] Failed clearing legacy offramp state (non-fatal):', e);
+            }
+            const url = this.buildOfframpUrl(userId, message.chat.id, 'Base');
+            await this.bot.sendMessage(message.chat.id, '↪️ Please use the Offramp mini app:', {
+              reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
+            });
             return true;
           }
           // --- LLM agent and currency conversion integration ---

@@ -40,11 +40,18 @@ export class TelegramBotService {
    * Build Offramp Mini App URL with context
    */
   private buildOfframpUrl(userId: string, chatId: number, chain: string): string {
-    const base = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : (process.env.WEBAPP_BASE_URL || 'http://localhost:3000');
+    // Prefer explicit WEBAPP_BASE_URL for flexibility (ngrok, custom host), else VERCEL_URL
+    const rawBase = process.env.WEBAPP_BASE_URL
+      ? process.env.WEBAPP_BASE_URL
+      : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+    let base = rawBase;
+    if (base.startsWith('http://')) base = base.replace('http://', 'https://');
+    if (base && !base.startsWith('https://')) base = '';
+    if (!base) {
+      throw new Error('Offramp mini app URL not configured. Set WEBAPP_BASE_URL to an HTTPS URL (e.g., your ngrok https URL).');
+    }
     const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
-    return `${base}/offramp?${params.toString()}`;
+    return `${base.replace(/\/$/, '')}/offramp?${params.toString()}`;
   }
 
   /**
