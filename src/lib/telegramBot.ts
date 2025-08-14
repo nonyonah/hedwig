@@ -601,15 +601,15 @@ Choose an action below:`;
       
       console.log('[TelegramBot] Parsed intent:', intent, 'Params:', params);
 
-      // Special-case: Offramp intent should trigger the offramp flow module
+      // Special-case: Offramp intent should open the mini app (not conversational flow)
       if (intent === 'offramp' || intent === 'withdraw') {
-        try {
-          await this.botIntegration.getOfframpModule().handleOfframpStart(chatId, user.id);
-          return '💱 Starting withdrawal flow...';
-        } catch (e) {
-          console.error('[TelegramBot] Error starting offramp from LLM intent:', e);
-          return '❌ Failed to start withdrawal. Please try again or use /offramp';
-        }
+        const url = this.buildOfframpUrl(user.id, chatId, 'Base');
+        await this.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+          }
+        });
+        return 'Opening mini app…';
       }
 
       // Execute the action based on the intent using the user's UUID
