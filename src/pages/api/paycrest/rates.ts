@@ -11,20 +11,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const fetchRate = async (fiat: 'NGN' | 'KSH') => {
       // Using USDC as the default token for off-ramping
-      const token = 'USDC';
-      const amount = 1;
-      const url = `${PAYCREST_API_URL}/rates/${token}/${amount}/${fiat}`;
+      const token = 'usdc';
+      const amount = fiat === 'KSH' ? 2 : 1;
+      // Normalize fiat to Paycrest standard: ngn, kes (map legacy KSH->KES)
+      const fiatNorm = fiat.toLowerCase() === 'ksh' ? 'kes' : fiat.toLowerCase();
+      const url = `${PAYCREST_API_URL}/rates/${token}/${amount}/${fiatNorm}`;
 
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${PAYCREST_API_KEY}`,
         },
+        cache: 'no-store',
       });
 
       if (!response.ok) {
         const errorBody = await response.text();
-        console.error(`[api/paycrest/rates] Paycrest API error for ${fiat}:`, { status: response.status, body: errorBody });
+        console.error(`[api/paycrest/rates] Paycrest API error for ${fiatNorm}:`, { status: response.status, body: errorBody });
         return null;
       }
       const data = await response.json();

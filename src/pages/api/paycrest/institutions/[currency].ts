@@ -9,12 +9,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { currency } = req.query as { currency?: string };
-    if (!currency) {
+    const { currency } = req.query;
+
+    if (!currency || typeof currency !== 'string') {
       return res.status(400).json({ error: 'Missing currency' });
     }
 
-    const url = `${PAYCREST_API_URL}/institutions/${currency}`;
+    // Normalize currency code to Paycrest standard (lowercase)
+    const normalized = currency.toString().toLowerCase();
+    const currencyCode = normalized === 'ksh' ? 'kes' : normalized; // map legacy KSH -> KES
+    if (!['ngn', 'kes'].includes(currencyCode)) {
+      return res.status(400).json({ error: 'Unsupported currency. Use NGN or KES.' });
+    }
+
+    const url = `${PAYCREST_API_URL}/institutions/${currencyCode}`;
 
     const response = await fetch(url,
       {

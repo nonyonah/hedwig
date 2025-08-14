@@ -15,44 +15,41 @@ interface Bank {
 
 export default function OfframpForm() {
   const router = useRouter();
-  const { userId, chatId, chain = "Base" } = router.query as { userId?: string; chatId?: string; chain?: string };
+  const { userId, chatId } = router.query as { userId?: string; chatId?: string };
 
   const [amount, setAmount] = useState<string>("");
   const [currency, setCurrency] = useState<string>("");
   const [bank, setBank] = useState<string>("");
   const [banks, setBanks] = useState<Bank[]>([]);
-  const [accountName, setAccountName] = useState<string>("");
+  const [verifiedAccountName, setVerifiedAccountName] = useState<string>("");
   const [bankCode, setBankCode] = useState<string>("");
   const [accountNumber, setAccountNumber] = useState<string>("");
   const [exchangeRates, setExchangeRates] = useState<{ NGN: number; KSH: number }>({ NGN: 1650, KSH: 150 });
   const [senderAddress, setSenderAddress] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
 
   // Fetch dynamic exchange rates from API every 10s
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
+    const loadRates = async () => {
       try {
         const res = await fetch(`/api/paycrest/rates`);
         const data = await res.json();
-        if (mounted && data?.success && data.rates) {
+        if (data?.success && data.rates) {
           setExchangeRates({ NGN: data.rates.NGN, KSH: data.rates.KSH });
         }
       } catch (e) {
         // ignore; keep previous
       }
     };
-    load();
-    const id = setInterval(load, 10000);
-    return () => {
-      mounted = false;
-      clearInterval(id);
-    };
+    loadRates();
+    const id = setInterval(loadRates, 10000);
+    return () => clearInterval(id);
   }, []);
 
-    // Fetch institutions when currency changes
+  // Fetch institutions when currency changes
   useEffect(() => {
     if (!currency) {
       setBanks([]);
@@ -61,7 +58,7 @@ export default function OfframpForm() {
     const fetchInstitutions = async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/paycrest/institutions?currency=${currency}`);
+        const res = await fetch(`/api/paycrest/institutions/${currency}`);
         const data = await res.json();
         if (data.success) {
           setBanks(data.institutions);
@@ -82,7 +79,7 @@ export default function OfframpForm() {
     const fetchWallet = async () => {
       if (!userId) return;
       try {
-        const res = await fetch(`/api/user-wallet?userId=${encodeURIComponent(userId)}&chain=${encodeURIComponent(chain || "Base")}`);
+        const res = await fetch(`/api/user-wallet?userId=${encodeURIComponent(userId)}`);
         const data = await res.json();
         if (data?.address) setSenderAddress(data.address);
       } catch (e) {
@@ -90,37 +87,47 @@ export default function OfframpForm() {
       }
     };
     fetchWallet();
-  }, [userId, chain]);
+  }, [userId]);
+
+  // Automatic account verification
+  useEffect(() => {
+    if (accountNumber.length >= 10 && bankCode && currency) {
+      const verifyAccount = async () => {
+        setError("");
+        setSuccess("");
+        try {
+          setVerifying(true);
+          const res = await fetch("/api/paycrest/verify-account", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ currency, bankCode, accountNumber }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Verification failed");
+          setVerifiedAccountName(data.accountName);
+          setSuccess("✅ Account verified");
+        } catch (e: any) {
+          setError(e.message || "Verification failed");
+          setVerifiedAccountName("");
+        } finally {
+          setVerifying(false);
+        }
+      };
+      verifyAccount();
+    }
+  }, [accountNumber, bankCode, currency]);
 
   const rate = currency ? exchangeRates[currency as keyof typeof exchangeRates] : null;
   const fiatAmount = amount && rate ? (parseFloat(amount) * rate).toLocaleString() : "";
 
-  const handleVerifyAccount = async () => {
-    setError("");
-    setSuccess("");
-    try {
-      setLoading(true);
-      const res = await fetch("/api/paycrest/verify-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currency, bankCode, accountNumber }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Verification failed");
-      setAccountName(data.accountName || accountName);
-      setSuccess("✅ Account verified");
-    } catch (e: any) {
-      setError(e.message || "Verification failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async () => {
     setError("");
     setSuccess("");
+    if (!userId || !chatId) {
+      setError("Missing user or chat information.");
+      return;
+    }
     try {
-      if (!userId || !chatId) throw new Error("Missing context (user/chat)");
       setLoading(true);
       const res = await fetch("/api/paycrest/create-payout", {
         method: "POST",
@@ -128,28 +135,19 @@ export default function OfframpForm() {
         body: JSON.stringify({
           userId,
           chatId,
-          chain,
-          amountUSD: amount,
+          amount,
           currency,
-          bank,
-          bankCode,
-          accountName,
+          accountName: verifiedAccountName,
           accountNumber,
+          bankCode,
+          bankName: bank,
         }),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to create payout");
-      setSuccess("✅ Offramp order submitted. You will receive updates here and in Telegram.");
-      // If running inside Telegram WebApp, optionally close
-      try {
-        // @ts-ignore
-        if (window?.Telegram?.WebApp) {
-          // @ts-ignore
-          window.Telegram.WebApp.close();
-        }
-      } catch {}
+      if (!data.success) throw new Error(data.error || "Payout creation failed");
+      setSuccess("Payout initiated successfully!");
     } catch (e: any) {
-      setError(e.message || "Submission failed");
+      setError(e.message || "Payout creation failed");
     } finally {
       setLoading(false);
     }
@@ -158,8 +156,7 @@ export default function OfframpForm() {
   return (
     <div className="min-h-screen bg-gradient-subtle p-4">
       <Head>
-        <title>Offramp | Hedwig</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <title>Hedwig - Offramp</title>
       </Head>
       <div className="mx-auto max-w-md space-y-6">
         {/* Header */}
@@ -171,16 +168,9 @@ export default function OfframpForm() {
         {/* Amount Section */}
         <Card className="shadow-medium">
           <CardHeader className="pb-4">
-            <CardTitle className="flex items-center justify-between gap-2 text-lg">
-              <span className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-primary" />
-                Amount to Convert
-              </span>
-              {senderAddress && (
-                <span className="text-xs text-muted-foreground">
-                  sender address: {senderAddress.slice(0, 6)}...{senderAddress.slice(-4)} · {chain}
-                </span>
-              )}
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <DollarSign className="h-5 w-5 text-primary" />
+              Amount to Convert
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -202,13 +192,10 @@ export default function OfframpForm() {
 
             <div className="space-y-2">
               <Label htmlFor="currency">Currency</Label>
-              <Select
-                value={currency}
-                onValueChange={(value) => {
-                  setCurrency(value);
-                  setBank(""); // Reset bank when currency changes
-                }}
-              >
+              <Select value={currency} onValueChange={(value) => {
+                setCurrency(value);
+                setBank(""); // Reset bank when currency changes
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
@@ -230,6 +217,21 @@ export default function OfframpForm() {
           </CardContent>
         </Card>
 
+        {/* Sender Details */}
+        <Card className="shadow-medium">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg">Sender Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Sender Address</Label>
+              <div className="rounded-lg bg-secondary/20 p-3 border border-secondary/30">
+                <div className="font-mono text-sm text-foreground break-all">{senderAddress || 'Loading wallet...'}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Exchange Rate */}
         {rate && (
           <Card className="shadow-soft">
@@ -239,7 +241,9 @@ export default function OfframpForm() {
                   <TrendingUp className="h-4 w-4 text-secondary" />
                   <span className="text-sm font-medium">Exchange Rate</span>
                 </div>
-                <span className="font-semibold">1 USD = {rate.toLocaleString()} {currency}</span>
+                <span className="font-semibold">
+                  1 USD = {rate.toLocaleString()} {currency}
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -252,16 +256,6 @@ export default function OfframpForm() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="accountName">Account Name</Label>
-              <Input
-                id="accountName"
-                placeholder="Enter full name as on bank account"
-                value={accountName}
-                onChange={(e) => setAccountName(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="accountNumber">Account Number</Label>
               <Input
                 id="accountNumber"
@@ -273,47 +267,47 @@ export default function OfframpForm() {
 
             <div className="space-y-2">
               <Label htmlFor="bank">Bank</Label>
-              <Select
-                value={bankCode}
-                onValueChange={(value) => {
+              <Select value={bankCode} onValueChange={(value) => {
                   const selectedBank = banks.find(b => b.code === value);
                   setBank(selectedBank?.name || '');
                   setBankCode(value);
-                }}
-                disabled={!currency || banks.length === 0}
-              >
+                }} disabled={!currency || banks.length === 0}>
                 <SelectTrigger>
                   <SelectValue placeholder={currency ? "Select bank" : "Select currency first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {banks.map((b) => (
-                    <SelectItem key={b.code} value={b.code}>
-                      {b.name}
+                  {banks.map((bank) => (
+                    <SelectItem key={bank.code} value={bank.code}>
+                      {bank.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={handleVerifyAccount} disabled={!currency || !bankCode || !accountNumber || loading}>
-                Verify Account
-              </Button>
-            </div>
+            {/* Show verified account name after entering bank and account number */}
+            {verifying && <div className="text-sm text-muted-foreground">Verifying...</div>}
+            {verifiedAccountName && (
+              <div className="rounded-lg bg-green-100 dark:bg-green-900/30 p-3 border border-green-400/50">
+                <div className="text-xs text-green-800 dark:text-green-300">Verified Account Name</div>
+                <div className="font-semibold text-green-900 dark:text-green-200">{verifiedAccountName}</div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {error && <div className="text-red-500 text-sm">{error}</div>}
-        {success && <div className="text-green-600 text-sm">{success}</div>}
+        {error && <div className="text-red-500 text-sm p-2 bg-red-100 dark:bg-red-900/30 rounded-md">{error}</div>}
+        {success && !error && <div className="text-green-600 text-sm p-2 bg-green-100 dark:bg-green-900/30 rounded-md">{success}</div>}
 
         {/* Submit Button */}
         <Button
           className="w-full bg-gradient-primary hover:opacity-90 py-3 shadow-medium"
-          disabled={!amount || !currency || !bankCode || !accountName || !accountNumber || loading}
+          disabled={!amount || !currency || !bankCode || !verifiedAccountName || !accountNumber || loading}
           onClick={handleSubmit}
         >
           {loading ? "Processing..." : "Complete Cash Out"}
         </Button>
+
       </div>
     </div>
   );

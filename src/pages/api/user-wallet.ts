@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('id')
-      .eq('telegram_id', userId)
+      .eq('id', userId)
       .single();
 
     if (userError || !userData) {
@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 2. Use the internal user ID to fetch wallets
     const { data: wallets, error: walletError } = await supabase
       .from('wallets')
-      .select('address, chain, network')
+      .select('address, chain')
       .eq('user_id', userData.id);
 
     if (walletError) throw walletError;
