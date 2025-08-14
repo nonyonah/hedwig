@@ -37,6 +37,17 @@ export class TelegramBotService {
   }
 
   /**
+   * Build Offramp Mini App URL with context
+   */
+  private buildOfframpUrl(userId: string, chatId: number, chain: string): string {
+    const base = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : (process.env.WEBAPP_BASE_URL || 'http://localhost:3000');
+    const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
+    return `${base}/offramp?${params.toString()}`;
+  }
+
+  /**
    * Setup event handlers for the bot
    */
   private setupEventHandlers(): void {
@@ -50,7 +61,12 @@ export class TelegramBotService {
           await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
           return;
         }
-        await this.botIntegration.getOfframpModule().handleOfframpStart(chatId, userId);
+        const url = this.buildOfframpUrl(userId, chatId, 'Base');
+        await this.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+          }
+        });
       } catch (err) {
         console.error('[TelegramBot] onText offramp error:', err);
         await this.sendErrorMessage(chatId);
@@ -385,15 +401,19 @@ export class TelegramBotService {
         break;
       case '/offramp':
       case '/withdraw': {
-        console.log('[TelegramBot] Routing to Offramp flow');
+        console.log('[TelegramBot] Routing to Offramp mini app');
         // Resolve user UUID by chatId using BotIntegration helper
         const userId = await this.botIntegration.getUserIdByChatId(chatId);
         if (!userId) {
           await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
           break;
         }
-        // Start the offramp flow directly
-        await this.botIntegration.getOfframpModule().handleOfframpStart(chatId, userId);
+        const url = this.buildOfframpUrl(userId, chatId, 'Base');
+        await this.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+          }
+        });
         break;
       }
       case '/invoice':

@@ -31,6 +31,15 @@ export class BotIntegration {
     this.offrampModule = new OfframpModule(bot);
   }
 
+  // Build Offramp Mini App URL with context
+  private buildOfframpUrl(userId: string, chatId: number, chain: string): string {
+    const base = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : (process.env.WEBAPP_BASE_URL || 'http://localhost:3000');
+    const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
+    return `${base}/offramp?${params.toString()}`;
+  }
+
   // Get persistent keyboard for all messages
   getPersistentKeyboard() {
     return {
@@ -1068,9 +1077,15 @@ export class BotIntegration {
         case '💱 Offramp':
         case '💱 Withdraw':
         case '/offramp':
-        case '/withdraw':
-          await this.offrampModule.handleOfframpStart(chatId, userId);
+        case '/withdraw': {
+          const url = this.buildOfframpUrl(userId, chatId, 'Base');
+          await this.bot.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+            reply_markup: {
+              inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+            }
+          });
           return true;
+        }
 
         case '💰 Earnings Summary':
           await this.handleEarningsSummary(chatId, userId);
@@ -1136,14 +1151,12 @@ export class BotIntegration {
               const llmResponse = await runLLM({ userId, message: message.text });
               const { intent, params } = parseIntentAndParams(typeof llmResponse === 'string' ? llmResponse : JSON.stringify(llmResponse));
               if (intent === 'offramp' || intent === 'withdraw') {
-                await this.offrampModule.handleOfframpStart(message.chat.id, userId);
-                // If LLM provided amount/token, feed it to the flow to skip a step
-                const amt = params?.amount;
-                const tok = params?.token;
-                if (amt && tok) {
-                  const composed = `${amt} ${tok}`;
-                  await this.offrampModule.continueOfframpFlow(message.chat.id, userId, composed);
-                }
+                const url = this.buildOfframpUrl(userId, message.chat.id, 'Base');
+                await this.bot.sendMessage(message.chat.id, '💱 Start your cash-out with our secure mini app:', {
+                  reply_markup: {
+                    inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+                  }
+                });
                 return true;
               }
               if (intent === 'get_price') {
