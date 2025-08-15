@@ -26,9 +26,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        console.error(`[api/paycrest/rates] Paycrest API error for ${fiatNorm}:`, { status: response.status, body: errorBody });
-        return null;
+        if (response.status === 400) {
+          const errorData = await response.json().catch(() => ({} as any));
+          const msg = errorData?.message || 'Rate validation failed';
+          throw new Error(`Rate validation failed (${fiatNorm}): ${msg}`);
+        } else if (response.status === 404) {
+          throw new Error(`No provider available for token/usd/${fiatNorm}`);
+        } else {
+          throw new Error(`Rate fetch failed (${fiatNorm}): ${response.status} ${response.statusText}`);
+        }
       }
       const data = await response.json();
       return data.data?.amount;
@@ -45,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     res.status(200).json({ success: true, rates: { NGN: ngnRate, KSH: kshRate } });
   } catch (error: any) {
-    console.error('[api/paycrest/rates] Error:', error.message);
-    res.status(500).json({ success: false, error: 'Failed to fetch rates' });
+    console.error('[api/paycrest/rates] Error:', error?.message || error);
+    res.status(500).json({ success: false, error: error?.message || 'Failed to fetch rates' });
   }
 }

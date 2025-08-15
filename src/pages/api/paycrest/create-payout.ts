@@ -60,6 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       meta: {
         internalUserId: userData.id,
         telegramUserId: userId,
+        telegramChatId: chatId,
         chain,
         onchainTxHash: txHash,
         senderOrderId,

@@ -75,9 +75,11 @@ export class OfframpModule {
    * Build Offramp Mini App URL with context
    */
   private buildOfframpUrl(userId: string, chatId: number, chain: string): string {
-    const rawBase = process.env.WEBAPP_BASE_URL
-      ? process.env.WEBAPP_BASE_URL
-      : ('');
+    const rawBase =
+      process.env.WEBAPP_BASE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      '';
     let base = rawBase;
     if (base.startsWith('http://')) base = base.replace('http://', 'https://');
     if (base && !base.startsWith('https://')) base = '';
