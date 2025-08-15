@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-const PAYCREST_API_KEY = process.env.PAYCREST_API_KEY;
-const PAYCREST_API_URL = 'https://api.paycrest.io/v1';
+const PAYCREST_API_TOKEN = process.env.PAYCREST_API_TOKEN;
+const PAYCREST_API_BASE_URL = 'https://api.paycrest.com/v1/sender';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -19,8 +19,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    if (!PAYCREST_API_KEY) {
-      return res.status(500).json({ error: 'Paycrest API key not configured' });
+    if (!PAYCREST_API_TOKEN) {
+      return res.status(500).json({ error: 'Paycrest API token not configured' });
     }
 
     const { token, amount, fiat, network, provider_id } = req.query as Record<string, string>;
@@ -40,13 +40,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fiatLower = fiat.toLowerCase();
     const normFiat = fiatLower === 'ksh' ? 'kes' : fiatLower;
 
-    const url = new URL(`${PAYCREST_API_URL}/rates/${normToken}/${parsedAmount}/${normFiat}`);
+    const url = new URL(`${PAYCREST_API_BASE_URL}/rates/${normToken}/${parsedAmount}/${normFiat}`);
     if (network) url.searchParams.append('network', network);
     if (provider_id) url.searchParams.append('provider_id', provider_id);
 
     const upstream = await fetch(url.toString(), {
       method: 'GET',
-      headers: { 'Authorization': `Bearer ${PAYCREST_API_KEY}` },
+      headers: { 'Authorization': `Bearer ${PAYCREST_API_TOKEN}` },
       cache: 'no-store',
     });
 

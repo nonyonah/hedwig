@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-const PAYCREST_API_KEY = process.env.PAYCREST_API_KEY;
-const PAYCREST_API_URL = 'https://api.paycrest.io/v1';
+// Public Paycrest base URL per requested pattern
+const PAYCREST_API_BASE_URL = 'https://api.paycrest.io/v1';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Basic CORS handling
@@ -19,33 +19,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { institution, accountIdentifier } = req.body;
+    // Accept either direct fields (institution, accountIdentifier) or FE convenience fields (bankCode, accountNumber)
+    const {
+      institution: directInstitution,
+      accountIdentifier: directAccountIdentifier,
+      bankCode,
+      accountNumber,
+    } = req.body || {};
+
+    // Map to the exact fields expected by the public API
+    const institution: string | undefined = typeof directInstitution === 'string'
+      ? directInstitution
+      : (typeof bankCode === 'string' ? bankCode : undefined);
+    const accountIdentifier: string | undefined = typeof directAccountIdentifier === 'string'
+      ? directAccountIdentifier
+      : (typeof accountNumber === 'string' ? accountNumber : undefined);
+
     if (!institution || !accountIdentifier) {
-      return res.status(400).json({ error: 'Missing required fields: institution, accountIdentifier' });
+      return res.status(400).json({
+        error: 'Missing required fields: institution, accountIdentifier',
+        hint: 'Send { institution, accountIdentifier } or { bankCode, accountNumber }'
+      });
     }
 
-    if (!PAYCREST_API_KEY) {
-      return res.status(500).json({ error: 'Paycrest API key not configured' });
-    }
+    const payload = { institution, accountIdentifier };
 
-    const response = await fetch(`${PAYCREST_API_URL}/verify-account`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${PAYCREST_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          institution: institution,
-          accountIdentifier: accountIdentifier,
-        }),
-      }
-    );
+    const response = await fetch(`${PAYCREST_API_BASE_URL}/verify-account`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
     const data = await response.json().catch(() => ({} as any));
 
     if (!response.ok) {
-      console.error('[api/paycrest/verify-account] Paycrest API error:', data);
+      console.error('[api/paycrest/verify-account] Paycrest API error:', { status: response.status, data });
       // Surface validation errors clearly
       if (response.status === 400) {
         return res.status(400).json({ error: data?.message || 'Verification validation failed' });
