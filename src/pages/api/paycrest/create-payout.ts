@@ -29,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { userId, chatId, chain, amountUSD, currency, bank, bankCode, accountName, accountNumber } = req.body;
+    const { userId, chatId, chain, amountUSD, currency, bank, bankCode, accountName, accountNumber, txHash, senderOrderId } = req.body;
     if (!userId || !chatId || !amountUSD || !currency || !bankCode || !accountNumber || !accountName) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -57,7 +57,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       institution_code: bankCode,
       account_number: accountNumber,
       customer: { full_name: accountName },
-      meta: { internalUserId: userData.id, telegramUserId: userId, chain },
+      meta: {
+        internalUserId: userData.id,
+        telegramUserId: userId,
+        chain,
+        onchainTxHash: txHash,
+        senderOrderId,
+        bankName: bank,
+      },
     };
 
     const response = await fetch(`${PAYCREST_API_URL}/payouts`, {

@@ -129,18 +129,43 @@ export default function OfframpForm() {
     }
     try {
       setLoading(true);
+      // 1) Create Paycrest sender order to get a receive address
+      const orderRes = await fetch("/api/paycrest/create-sender-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountUSD: Number(amount), currency }),
+      });
+      const orderData = await orderRes.json();
+      if (!orderData.success) throw new Error(orderData.error || "Failed to create sender order");
+
+      const receiveAddress: string = orderData.receiveAddress;
+      const senderOrderId: string | undefined = orderData.orderId;
+
+      // 2) Send USDC on Base from treasury to receiveAddress
+      const sendRes = await fetch("/api/onchain/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: "USDC", amount: String(amount), receiveAddress }),
+      });
+      const sendData = await sendRes.json();
+      if (!sendRes.ok || !sendData?.success) throw new Error(sendData.error || "On-chain transfer failed");
+      const txHash: string = sendData.txHash;
+
+      // 3) Create payout and include txHash for linkage
       const res = await fetch("/api/paycrest/create-payout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId,
           chatId,
-          amount,
+          amountUSD: Number(amount),
           currency,
           accountName: verifiedAccountName,
           accountNumber,
           bankCode,
-          bankName: bank,
+          bank: bank,
+          txHash,
+          senderOrderId,
         }),
       });
       const data = await res.json();
