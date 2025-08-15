@@ -31,22 +31,6 @@ export class BotIntegration {
     this.offrampModule = new OfframpModule(bot);
   }
 
-  // Build Offramp Mini App URL with context
-  private buildOfframpUrl(userId: string, chatId: number, chain: string): string {
-    // Prefer WEBAPP_BASE_URL (e.g., ngrok) else VERCEL_URL
-    const rawBase = process.env.WEBAPP_BASE_URL
-      ? process.env.WEBAPP_BASE_URL
-      : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
-    // Enforce HTTPS (Telegram requires https for web_app URLs)
-    let base = rawBase;
-    if (base.startsWith('http://')) base = base.replace('http://', 'https://');
-    if (base && !base.startsWith('https://')) base = '';
-    if (!base) {
-      throw new Error('Offramp mini app URL not configured. Set VERCEL_URL or WEBAPP_BASE_URL to an HTTPS domain.');
-    }
-    const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
-    return `${base.replace(/\/$/, '')}/offramp?${params.toString()}`;
-  }
 
   // Get persistent keyboard for all messages
   getPersistentKeyboard() {
@@ -327,6 +311,17 @@ export class BotIntegration {
       default:
         return '📄';
     }
+  }
+
+  // Handle Offramp command
+  async handleOfframp(msg: TelegramBot.Message) {
+    if (!msg.from) {
+      console.error('[BotIntegration] Received /offramp command without a user context.');
+      await this.bot.sendMessage(msg.chat.id, '❌ Something went wrong, user not identified.');
+      return;
+    }
+    // Delegate to the OfframpModule to handle the entire flow
+    await this.offrampModule.handleOfframpStart(msg.chat.id, msg.from.id.toString());
   }
 
   // Handle business settings
@@ -1086,12 +1081,7 @@ export class BotIntegration {
         case '💱 Withdraw':
         case '/offramp':
         case '/withdraw': {
-          const url = this.buildOfframpUrl(userId, chatId, 'Base');
-          await this.bot.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
-            reply_markup: {
-              inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
-            }
-          });
+          await this.offrampModule.handleOfframpStart(chatId, userId);
           return true;
         }
 
@@ -1158,10 +1148,7 @@ export class BotIntegration {
             } catch (e) {
               console.warn('[BotIntegration] Failed clearing legacy offramp state (non-fatal):', e);
             }
-            const url = this.buildOfframpUrl(userId, message.chat.id, 'Base');
-            await this.bot.sendMessage(message.chat.id, '↪️ Please use the Offramp mini app:', {
-              reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
-            });
+            await this.offrampModule.handleOfframpStart(message.chat.id, userId);
             return true;
           }
           // --- LLM agent and currency conversion integration ---
@@ -1172,14 +1159,9 @@ export class BotIntegration {
               const llmResponse = await runLLM({ userId, message: message.text });
               const { intent, params } = parseIntentAndParams(typeof llmResponse === 'string' ? llmResponse : JSON.stringify(llmResponse));
               if (intent === 'offramp' || intent === 'withdraw') {
-                const url = this.buildOfframpUrl(userId, message.chat.id, 'Base');
-                await this.bot.sendMessage(message.chat.id, '💱 Start your cash-out with our secure mini app:', {
-                  reply_markup: {
-                    inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
-                  }
-                });
-                return true;
-              }
+                // Delegate to the centralized offramp handler
+                await this.handleOfframp(message);
+              } else if (intent === 'create_payment_link') {             }
               if (intent === 'get_price') {
                 // Only allow USD/NGN/KES (and synonyms)
                 const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'KES'];

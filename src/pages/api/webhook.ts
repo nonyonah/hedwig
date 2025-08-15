@@ -19,20 +19,6 @@ let bot: TelegramBot | null = null;
 let botInitialized = false;
 let botIntegration: BotIntegration | null = null;
 
-// Build Offramp Mini App URL with context
-function buildOfframpUrl(userId: string, chatId: number, chain: string): string {
-  const rawBase = process.env.WEBAPP_BASE_URL
-    ? process.env.WEBAPP_BASE_URL
-    : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
-  let base = rawBase;
-  if (base.startsWith('http://')) base = base.replace('http://', 'https://');
-  if (base && !base.startsWith('https://')) base = '';
-  if (!base) {
-    throw new Error('Offramp mini app URL not configured. Set VERCEL_URL or WEBAPP_BASE_URL to an HTTPS domain.');
-  }
-  const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
-  return `${base.replace(/\/$/, '')}/offramp?${params.toString()}`;
-}
 
 // Initialize bot for webhook mode
 function initializeBot() {
@@ -488,29 +474,13 @@ async function handleCommand(msg: TelegramBot.Message) {
     case '/offramp':
     case '/withdraw': {
       try {
-        // Resolve userId via BotIntegration helper if available
-        let userId: string | undefined;
         if (botIntegration) {
-          userId = await botIntegration.getUserIdByChatId(chatId);
+          await botIntegration.handleOfframp(msg);
         } else {
-          const { supabase } = await import('../../lib/supabase');
-          const { data: user } = await supabase
-            .from('users')
-            .select('id')
-            .eq('telegram_chat_id', chatId)
-            .single();
-          userId = user?.id;
+          await bot.sendMessage(chatId, '❌ Offramp feature is not available at the moment.');
         }
-        if (!userId) {
-          await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
-          break;
-        }
-        const url = buildOfframpUrl(userId, chatId, 'Base');
-        await bot.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
-          reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
-        });
       } catch (e) {
-        console.error('[Webhook] Error sending Offramp mini app link:', e);
+        console.error('[Webhook] Error handling /offramp command:', e);
         await bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try again.');
       }
       break;
