@@ -14,7 +14,8 @@ interface Bank {
 
 export default function OfframpNew() {
   const router = useRouter();
-  const { userId, chatId } = router.query as { userId?: string; chatId?: string };
+  const { userId, chatId, chain: chainQuery } = router.query as { userId?: string; chatId?: string; chain?: string };
+  const chain = (chainQuery as string) || 'Base';
 
   // Form State
   const [amount, setAmount] = useState<string>('');
@@ -52,24 +53,34 @@ export default function OfframpNew() {
     return () => clearInterval(id);
   }, []);
 
-  // Load user wallet (display only) using chatId if available
+  // Load user wallet via API endpoint using userId and chain
   useEffect(() => {
     const loadWallet = async () => {
+      if (!userId && !chatId) {
+        console.log('Wallet fetch skipped: missing userId and chatId');
+        return;
+      }
       try {
-        if (!chatId) return;
-        const { supabase } = await import('@/lib/supabase');
-        const { data: user } = await supabase
-          .from('users')
-          .select('id, name, base_address')
-          .eq('telegram_chat_id', chatId)
-          .single();
-        if (user?.base_address) setWalletAddress(user.base_address);
-      } catch {
-        // non-blocking UI element
+        const qs = new URLSearchParams();
+        if (userId) qs.set('userId', String(userId));
+        if (chatId) qs.set('chatId', String(chatId));
+        if (chain) qs.set('chain', String(chain));
+        console.log(`Fetching wallet with: /api/user-wallet?${qs.toString()}`);
+        const res = await fetch(`/api/user-wallet?${qs.toString()}`);
+        const data = await res.json();
+        if (!res.ok) {
+          console.error(`user-wallet API error (${res.status}):`, data);
+          setWalletAddress('');
+          return;
+        }
+        console.log('user-wallet API success, data:', data);
+        setWalletAddress(data?.address || '');
+      } catch (e) {
+        console.error('user-wallet fetch failed with exception:', e);
       }
     };
     loadWallet();
-  }, [chatId]);
+  }, [userId, chatId, chain]);
 
   // Fetch institutions when currency changes
   useEffect(() => {
@@ -207,7 +218,7 @@ export default function OfframpNew() {
         <title>Hedwig - Offramp</title>
       </Head>
 
-      <div className="w-full max-w-sm mx-auto relative pt-6 pb-28">
+      <div className="w-full max-w-[430px] mx-auto relative pt-6 pb-28">
         {/* Currency selector top-right */}
         <div className="absolute right-0 top-2">
           <Select value={currency} onValueChange={setCurrency}>
@@ -223,7 +234,7 @@ export default function OfframpNew() {
 
         {/* Amount display (editable) */}
         <div className="mt-20 text-center" onClick={() => amountInputRef.current?.focus()}>
-          <div className="text-5xl font-bold flex items-baseline justify-center gap-1">
+          <div className="text-5xl font-bold inline-flex items-baseline">
             <span>$</span>
             <input
               ref={amountInputRef}
@@ -233,7 +244,7 @@ export default function OfframpNew() {
               type="text"
               placeholder="0.00"
               autoFocus
-              className="w-[220px] text-5xl font-bold bg-transparent outline-none border-0 text-center"
+              className="max-w-[220px] text-5xl font-bold bg-transparent outline-none border-0 p-0 text-center"
             />
           </div>
           <div className="mt-2 text-gray-500 flex items-center justify-center gap-1">
@@ -248,7 +259,7 @@ export default function OfframpNew() {
         </div>
 
         {/* Wallet card */}
-        <div className="mt-8 w-[367px] rounded-[12px] bg-[#EDEDED] py-[14px] px-[33px] flex flex-col items-start gap-[10px]">
+        <div className="mt-8 w-full max-w-[367px] h-[76px] rounded-[12px] bg-[#EDEDED] py-[14px] px-[33px] flex flex-col items-start gap-[10px] mx-auto">
           <div className="flex items-center gap-[111px] w-full">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
@@ -256,7 +267,7 @@ export default function OfframpNew() {
                 <span className="text-gray-700">◆</span>
               </div>
               <div>
-                <div className="font-semibold">Base</div>
+                <div className="font-semibold">{chain || 'Base'}</div>
                 <div className="text-xs text-gray-600">{shortAddress}</div>
               </div>
             </div>
@@ -279,7 +290,7 @@ export default function OfframpNew() {
             placeholder="Minimum 10 digits"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-            className="bg-[#EDEDED] rounded-[12px] pt-[16px] pr-[211px] pb-[17px] pl-[22px]"
+            className="bg-[#EDEDED] rounded-[12px] w-full max-w-[367px] h-[52px] px-[22px] flex items-center mx-auto"
           />
         </div>
 
@@ -291,7 +302,7 @@ export default function OfframpNew() {
             setBank(selectedBank?.name || '');
             setBankCode(value);
           }} disabled={!currency || banks.length === 0 || loading}>
-            <SelectTrigger className="bg-[#EDEDED] rounded-[12px] pt-[16px] pr-[211px] pb-[17px] pl-[22px]">
+            <SelectTrigger className="bg-[#EDEDED] rounded-[12px] w-full max-w-[367px] h-[52px] px-[22px] flex items-center justify-between mx-auto">
               <SelectValue placeholder={loading ? 'Loading banks…' : (bank || 'Select bank')} />
             </SelectTrigger>
             <SelectContent>
@@ -314,7 +325,7 @@ export default function OfframpNew() {
         <div className="fixed left-0 right-0 bottom-4 px-4">
           <Button
             onClick={handleSubmit}
-            className="w-[359px] text-white font-bold text-lg rounded-[12px] py-[15px] px-[118px] mx-auto flex justify-center items-center gap-[10px]"
+            className="w-full max-w-[359px] h-[52px] text-white font-bold text-lg rounded-[12px] mx-auto flex justify-center items-center gap-[10px]"
             style={{ backgroundColor: '#0466c8' }}
             disabled={loading || verifying}
           >
