@@ -234,8 +234,8 @@ export default function OfframpNew() {
 
         {/* Amount display (editable) */}
         <div className="mt-20 text-center" onClick={() => amountInputRef.current?.focus()}>
-          <div className="text-5xl font-bold inline-flex items-baseline">
-            <span>$</span>
+          <div className="inline-flex items-center justify-center gap-0">
+            <span className="text-5xl font-bold">$</span>
             <input
               ref={amountInputRef}
               value={amount}
@@ -244,7 +244,7 @@ export default function OfframpNew() {
               type="text"
               placeholder="0.00"
               autoFocus
-              className="max-w-[220px] text-5xl font-bold bg-transparent outline-none border-0 p-0 text-center"
+              className="text-5xl font-bold bg-transparent outline-none border-0 p-0 text-center w-[180px] max-w-[180px]"
             />
           </div>
           <div className="mt-2 text-gray-500 flex items-center justify-center gap-1">
@@ -283,26 +283,26 @@ export default function OfframpNew() {
         </div>
 
         {/* Account Number */}
-        <div className="mt-6">
+        <div className="w-full max-w-[367px] mx-auto mt-6">
           <Label className="block mb-2 font-semibold">Account Number</Label>
           <Input
             inputMode="numeric"
             placeholder="Minimum 10 digits"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-            className="bg-[#EDEDED] rounded-[12px] w-full max-w-[367px] h-[52px] px-[22px] flex items-center mx-auto"
+            className="bg-[#EDEDED] rounded-[12px] w-full h-[52px] px-[22px]"
           />
         </div>
 
         {/* Bank */}
-        <div className="mt-4">
+        <div className="w-full max-w-[367px] mx-auto mt-4">
           <Label className="block mb-2 font-semibold">Bank</Label>
           <Select value={bankCode} onValueChange={(value) => {
             const selectedBank = banks.find(b => b.code === value);
             setBank(selectedBank?.name || '');
             setBankCode(value);
           }} disabled={!currency || banks.length === 0 || loading}>
-            <SelectTrigger className="bg-[#EDEDED] rounded-[12px] w-full max-w-[367px] h-[52px] px-[22px] flex items-center justify-between mx-auto">
+            <SelectTrigger className="bg-[#EDEDED] rounded-[12px] w-full h-[52px] px-[22px] flex items-center justify-between">
               <SelectValue placeholder={loading ? 'Loading banks…' : (bank || 'Select bank')} />
             </SelectTrigger>
             <SelectContent>
