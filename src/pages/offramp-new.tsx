@@ -1,14 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
-
-// Define the steps in the offramp flow
-type OfframpStep = 'amount' | 'bankDetails' | 'confirm' | 'success' | 'error';
+import { Copy } from 'lucide-react';
 
 interface Bank {
   name: string;
@@ -19,21 +16,23 @@ export default function OfframpNew() {
   const router = useRouter();
   const { userId, chatId } = router.query as { userId?: string; chatId?: string };
 
-  const [step, setStep] = useState<OfframpStep>('amount');
+  // Form State
   const [amount, setAmount] = useState<string>('');
   const [currency, setCurrency] = useState<string>('NGN'); // Default to NGN
   const [exchangeRates, setExchangeRates] = useState<{ NGN: number; KSH: number }>({ NGN: 1650, KSH: 150 });
   const [error, setError] = useState<string>('');
-
-  // Bank Details State
-  const [bank, setBank] = useState<string>("");
-  const [banks, setBanks] = useState<Bank[]>([]);
-  const [verifiedAccountName, setVerifiedAccountName] = useState<string>("");
-  const [bankCode, setBankCode] = useState<string>("");
-  const [accountNumber, setAccountNumber] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  
+
+  // Bank Details
+  const [bank, setBank] = useState<string>('');
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [verifiedAccountName, setVerifiedAccountName] = useState<string>('');
+  const [bankCode, setBankCode] = useState<string>('');
+  const [accountNumber, setAccountNumber] = useState<string>('');
+
+  // Wallet display
+  const [walletAddress, setWalletAddress] = useState<string>('');
 
   // Fetch dynamic exchange rates from API every 10s
   useEffect(() => {
@@ -52,6 +51,25 @@ export default function OfframpNew() {
     const id = setInterval(loadRates, 10000);
     return () => clearInterval(id);
   }, []);
+
+  // Load user wallet (display only) using chatId if available
+  useEffect(() => {
+    const loadWallet = async () => {
+      try {
+        if (!chatId) return;
+        const { supabase } = await import('@/lib/supabase');
+        const { data: user } = await supabase
+          .from('users')
+          .select('id, name, base_address')
+          .eq('telegram_chat_id', chatId)
+          .single();
+        if (user?.base_address) setWalletAddress(user.base_address);
+      } catch {
+        // non-blocking UI element
+      }
+    };
+    loadWallet();
+  }, [chatId]);
 
   // Fetch institutions when currency changes
   useEffect(() => {
@@ -105,24 +123,20 @@ export default function OfframpNew() {
   }, [accountNumber, bankCode, currency]);
 
   const rate = currency ? exchangeRates[currency as keyof typeof exchangeRates] : null;
+  const currencySymbol = currency === 'NGN' ? '₦' : (currency === 'KSH' ? 'KSh' : '');
   const fiatAmount = amount && rate ? (parseFloat(amount) * rate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
 
-  const handleAmountSubmit = () => {
+  const validateForm = () => {
     if (!amount || parseFloat(amount) <= 0) {
-      setError('Please enter a valid amount.');
-      return;
+      setError('Enter a valid amount in USD.');
+      return false;
+    }
+    if (!verifiedAccountName || !bankCode || accountNumber.length < 10) {
+      setError('Please provide valid bank details.');
+      return false;
     }
     setError('');
-    setStep('bankDetails');
-  };
-
-  const handleBankDetailsSubmit = () => {
-    if (!verifiedAccountName) {
-        setError('Please verify your account details.');
-        return;
-    }
-    setError('');
-    setStep('confirm');
+    return true;
   };
 
   const handleSubmit = async () => {
@@ -131,6 +145,7 @@ export default function OfframpNew() {
       setError("Missing user or chat information.");
       return;
     }
+    if (!validateForm()) return;
     try {
       setLoading(true);
       // 1) Create Paycrest sender order to get a receive address
@@ -174,247 +189,139 @@ export default function OfframpNew() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Payout creation failed");
-      setStep('success');
+      // Navigate away or show toast in future; for now, simple confirm
+      alert('Your cash out is being processed. You will receive a notification shortly.');
     } catch (e: any) {
       setError(e.message || "Payout creation failed");
-      setStep('error');
     } finally {
       setLoading(false);
     }
   };
+  const shortAddress = walletAddress ? `${walletAddress.slice(0,4)}...${walletAddress.slice(-5)}` : '0x…';
 
-  const renderStep = () => {
-    switch (step) {
-      case 'amount':
-        return (
-          <div className="w-full max-w-sm mx-auto flex flex-col items-center">
-            <h1 className="text-2xl font-bold mb-2">Cash Out</h1>
-            <p className="text-gray-500 mb-8">Enter the amount you want to convert.</p>
-
-            <div className="w-full mb-4">
-              <Label htmlFor="amount" className="mb-2 block text-left">You send</Label>
-              <div className="relative">
-                <Input
-                  id="amount"
-                  type="number"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="h-[52px] w-full pl-12 text-lg"
-                  style={{ width: '367px' }}
-                />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-semibold">USD</span>
-              </div>
-            </div>
-
-            <div className="w-full mb-4">
-              <Label htmlFor="currency" className="mb-2 block text-left">You get</Label>
-              <div className="flex items-center gap-2">
-                 <div className="relative w-full">
-                    <Input
-                        id="fiatAmount"
-                        type="text"
-                        readOnly
-                        value={fiatAmount}
-                        className="h-[52px] w-full bg-gray-100 dark:bg-gray-800 text-lg"
-                        style={{ width: '367px' }}
-                    />
-                 </div>
-                 <div className="relative">
-                    <Select value={currency} onValueChange={setCurrency}>
-                        <SelectTrigger className="h-[31px] w-[83px] bg-gray-200 dark:bg-gray-700">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="NGN">NGN</SelectItem>
-                            <SelectItem value="KSH">KSH</SelectItem>
-                        </SelectContent>
-                    </Select>
-                 </div>
-              </div>
-            </div>
-
-            {rate && (
-              <div className="h-[31px] w-[133px] bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-sm font-medium mb-8">
-                1 USD = {rate.toLocaleString()} {currency}
-              </div>
-            )}
-
-            {error && <p className="text-red-500 mb-4">{error}</p>}
-
-            <Button
-              onClick={handleAmountSubmit}
-              className="w-[359px] h-[52px] text-white font-bold text-lg rounded-full flex items-center justify-center gap-2"
-              style={{ backgroundColor: '#0466c8' }}
-            >
-              Continue <ArrowRight size={20} />
-            </Button>
-          </div>
-        );
-      case 'bankDetails':
-        return (
-            <div className="w-full max-w-sm mx-auto flex flex-col items-center">
-                <h1 className="text-2xl font-bold mb-2">Bank Details</h1>
-                <p className="text-gray-500 mb-8">Enter your bank account information.</p>
-
-                <div className="w-full mb-4">
-                    <Label htmlFor="bank" className="mb-2 block text-left">Bank</Label>
-                     <Select value={bankCode} onValueChange={(value) => {
-                        const selectedBank = banks.find(b => b.code === value);
-                        setBank(selectedBank?.name || '');
-                        setBankCode(value);
-                        }} disabled={!currency || banks.length === 0 || loading}>
-                        <SelectTrigger className="h-[52px] w-full" style={{ width: '367px' }}>
-                            <SelectValue placeholder={loading ? "Loading banks..." : (currency ? "Select bank" : "Select currency first")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                        {banks.map((bank) => (
-                            <SelectItem key={bank.code} value={bank.code}>
-                            {bank.name}
-                            </SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="w-full mb-4">
-                    <Label htmlFor="accountNumber" className="mb-2 block text-left">Account Number</Label>
-                    <Input
-                        id="accountNumber"
-                        placeholder="Enter account number"
-                        value={accountNumber}
-                        onChange={(e) => setAccountNumber(e.target.value)}
-                        className="h-[52px] w-full text-lg"
-                        style={{ width: '367px' }}
-                    />
-                </div>
-
-                {verifying && <p className="text-gray-500 mb-4">Verifying account...</p>}
-                
-                {verifiedAccountName && (
-                    <div className="w-full p-4 rounded-lg bg-gray-100 dark:bg-gray-800 mb-8" style={{ width: '367px', height: '76px' }}>
-                        <p className="text-sm text-gray-500">Account Name</p>
-                        <p className="text-lg font-semibold">{verifiedAccountName}</p>
-                    </div>
-                )}
-
-                {error && <p className="text-red-500 mb-4">{error}</p>}
-
-                <div className="w-full flex gap-4">
-                    <Button
-                        onClick={() => setStep('amount')}
-                        variant="outline"
-                        className="w-full h-[52px] text-lg rounded-full flex items-center justify-center gap-2"
-                    >
-                        <ArrowLeft size={20} /> Back
-                    </Button>
-                    <Button
-                        onClick={handleBankDetailsSubmit}
-                        className="w-full h-[52px] text-white font-bold text-lg rounded-full flex items-center justify-center gap-2"
-                        style={{ backgroundColor: '#0466c8' }}
-                        disabled={!verifiedAccountName || verifying}
-                    >
-                        Continue <ArrowRight size={20} />
-                    </Button>
-                </div>
-            </div>
-        );
-      case 'confirm':
-        return (
-            <div className="w-full max-w-sm mx-auto flex flex-col items-center">
-                <h1 className="text-2xl font-bold mb-2">Confirm Details</h1>
-                <p className="text-gray-500 mb-8">Please review the details before confirming.</p>
-
-                <div className="w-full space-y-4 text-left p-4 border rounded-lg mb-8" style={{ width: '367px' }}>
-                    <div>
-                        <p className="text-sm text-gray-500">You Send</p>
-                        <p className="text-lg font-semibold">{amount} USD</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500">You Get</p>
-                        <p className="text-lg font-semibold">{fiatAmount} {currency}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500">Exchange Rate</p>
-                        <p className="text-lg font-semibold">1 USD = {rate?.toLocaleString()} {currency}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500">Receiving Account</p>
-                        <p className="text-lg font-semibold">{verifiedAccountName}</p>
-                        <p className="text-sm text-gray-500">{bank} - {accountNumber}</p>
-                    </div>
-                </div>
-
-                {error && <p className="text-red-500 mb-4">{error}</p>}
-
-                <div className="w-full flex gap-4">
-                    <Button
-                        onClick={() => setStep('bankDetails')}
-                        variant="outline"
-                        className="w-full h-[52px] text-lg rounded-full flex items-center justify-center gap-2"
-                        disabled={loading}
-                    >
-                        <ArrowLeft size={20} /> Back
-                    </Button>
-                    <Button
-                        onClick={handleSubmit}
-                        className="w-full h-[52px] text-white font-bold text-lg rounded-full flex items-center justify-center gap-2"
-                        style={{ backgroundColor: '#0466c8' }}
-                        disabled={loading}
-                    >
-                        {loading ? "Processing..." : "Cash Out"}
-                    </Button>
-                </div>
-            </div>
-        );
-    case 'success':
-        return (
-            <div className="w-full max-w-sm mx-auto flex flex-col items-center text-center">
-                <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-                <h1 className="text-2xl font-bold mb-2">Success!</h1>
-                <p className="text-gray-500 mb-8">Your cash out is being processed. You will receive a notification shortly.</p>
-                <Button
-                    onClick={() => router.push('/close') } // Or some other final destination
-                    className="w-[359px] h-[52px] text-white font-bold text-lg rounded-full"
-                    style={{ backgroundColor: '#0466c8' }}
-                >
-                    Done
-                </Button>
-            </div>
-        );
-    case 'error':
-        return (
-            <div className="w-full max-w-sm mx-auto flex flex-col items-center text-center">
-                <h1 className="text-2xl font-bold mb-2 text-red-500">Error</h1>
-                <p className="text-gray-500 mb-8">{error || 'An unexpected error occurred.'}</p>
-                <div className="w-full flex gap-4">
-                     <Button
-                        onClick={() => { setError(''); setStep('confirm'); }}
-                        variant="outline"
-                        className="w-full h-[52px] text-lg rounded-full"
-                    >
-                        Try Again
-                    </Button>
-                    <Button
-                        onClick={() => router.push('/close')}
-                        className="w-full h-[52px] text-lg rounded-full"
-                    >
-                        Close
-                    </Button>
-                </div>
-            </div>
-        );
-      default:
-        return <div>Loading...</div>;
-    }
-  };
+  const amountInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-white dark:bg-black flex items-start justify-center p-4">
       <Head>
         <title>Hedwig - Offramp</title>
       </Head>
-      {renderStep()}
+
+      <div className="w-full max-w-sm mx-auto relative pt-6 pb-28">
+        {/* Currency selector top-right */}
+        <div className="absolute right-0 top-2">
+          <Select value={currency} onValueChange={setCurrency}>
+            <SelectTrigger className="h-8 w-24 rounded-full bg-[#EDEDED] text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="NGN">NGN</SelectItem>
+              <SelectItem value="KSH">KSH</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Amount display (editable) */}
+        <div className="mt-20 text-center" onClick={() => amountInputRef.current?.focus()}>
+          <div className="text-5xl font-bold flex items-baseline justify-center gap-1">
+            <span>$</span>
+            <input
+              ref={amountInputRef}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+              inputMode="decimal"
+              type="text"
+              placeholder="0.00"
+              autoFocus
+              className="w-[220px] text-5xl font-bold bg-transparent outline-none border-0 text-center"
+            />
+          </div>
+          <div className="mt-2 text-gray-500 flex items-center justify-center gap-1">
+            <span className="inline-block w-4 h-4 rounded-full border border-gray-400 text-[10px] flex items-center justify-center">₮</span>
+            <span>{currencySymbol}{fiatAmount}</span>
+          </div>
+          {rate && (
+            <div className="mt-3 inline-flex px-3 h-8 items-center rounded-full bg-[#EDEDED] text-sm">
+              Rate: {currencySymbol}{rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          )}
+        </div>
+
+        {/* Wallet card */}
+        <div className="mt-8 w-[367px] rounded-[12px] bg-[#EDEDED] py-[14px] px-[33px] flex flex-col items-start gap-[10px]">
+          <div className="flex items-center gap-[111px] w-full">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
+                {/* Simple ETH/Base glyph */}
+                <span className="text-gray-700">◆</span>
+              </div>
+              <div>
+                <div className="font-semibold">Base</div>
+                <div className="text-xs text-gray-600">{shortAddress}</div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="rounded-[12px] h-8 px-3 text-sm"
+              onClick={() => { if (walletAddress) navigator.clipboard.writeText(walletAddress); }}
+            >
+              <Copy className="w-4 h-4 mr-1" /> Copy
+            </Button>
+          </div>
+        </div>
+
+        {/* Account Number */}
+        <div className="mt-6">
+          <Label className="block mb-2 font-semibold">Account Number</Label>
+          <Input
+            inputMode="numeric"
+            placeholder="Minimum 10 digits"
+            value={accountNumber}
+            onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+            className="bg-[#EDEDED] rounded-[12px] pt-[16px] pr-[211px] pb-[17px] pl-[22px]"
+          />
+        </div>
+
+        {/* Bank */}
+        <div className="mt-4">
+          <Label className="block mb-2 font-semibold">Bank</Label>
+          <Select value={bankCode} onValueChange={(value) => {
+            const selectedBank = banks.find(b => b.code === value);
+            setBank(selectedBank?.name || '');
+            setBankCode(value);
+          }} disabled={!currency || banks.length === 0 || loading}>
+            <SelectTrigger className="bg-[#EDEDED] rounded-[12px] pt-[16px] pr-[211px] pb-[17px] pl-[22px]">
+              <SelectValue placeholder={loading ? 'Loading banks…' : (bank || 'Select bank')} />
+            </SelectTrigger>
+            <SelectContent>
+              {banks.map((b) => (
+                <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Resolved Account Name */}
+        {verifiedAccountName && (
+          <div className="mt-4 text-black dark:text-white font-semibold">{verifiedAccountName}</div>
+        )}
+
+        {verifying && <div className="mt-2 text-sm text-gray-500">Verifying account…</div>}
+        {error && <div className="mt-2 text-sm text-red-500">{error}</div>}
+
+        {/* Bottom fixed Continue button */}
+        <div className="fixed left-0 right-0 bottom-4 px-4">
+          <Button
+            onClick={handleSubmit}
+            className="w-[359px] text-white font-bold text-lg rounded-[12px] py-[15px] px-[118px] mx-auto flex justify-center items-center gap-[10px]"
+            style={{ backgroundColor: '#0466c8' }}
+            disabled={loading || verifying}
+          >
+            {loading ? 'Processing…' : 'Continue'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

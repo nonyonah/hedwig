@@ -51,7 +51,7 @@ export class TelegramBotService {
       throw new Error('Offramp mini app URL not configured. Set WEBAPP_BASE_URL to an HTTPS URL (e.g., your ngrok https URL).');
     }
     const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
-    return `${base.replace(/\/$/, '')}/offramp?${params.toString()}`;
+    return `${base.replace(/\/$/, '')}/offramp-new?${params.toString()}`;
   }
 
   /**
@@ -318,17 +318,48 @@ export class TelegramBotService {
   private async handleCallbackQuery(callbackQuery: TelegramBot.CallbackQuery): Promise<void> {
     const chatId = callbackQuery.message?.chat.id;
     const data = callbackQuery.data;
-    
-    if (!chatId) return;
+    const from = callbackQuery.from;
 
-    console.log('[TelegramBot] Handling callback query:', { chatId, data });
+    if (!chatId || !data) {
+      console.error('[TelegramBot] Invalid callback query received.');
+      return;
+    }
+
+    console.log('[TelegramBot] Handling callback query:', { chatId, data, fromId: from.id });
 
     try {
       // Answer the callback query to remove loading state
       await this.bot.answerCallbackQuery(callbackQuery.id);
 
-      // Handle different callback data
+      // Ensure we have a user context to pass to handlers
+      const userId = from.id.toString();
+
+      // Route callback data to the appropriate handler in BotIntegration
       switch (data) {
+        case 'business_dashboard':
+          await this.botIntegration.handleBusinessDashboard(chatId);
+          break;
+        case 'business_invoices':
+          await this.botIntegration.handleInvoiceList(chatId, userId);
+          break;
+        case 'business_proposals':
+          await this.botIntegration.handleProposalList(chatId, userId);
+          break;
+        case 'business_stats':
+          await this.botIntegration.handlePaymentStats(chatId, userId);
+          break;
+        case 'create_wallet':
+          await this.botIntegration.handleCreateWallet(chatId, userId);
+          break;
+        case 'check_balance':
+          await this.botIntegration.handleCheckBalance(chatId, userId);
+          break;
+        case 'send_crypto':
+          await this.botIntegration.handleSendCrypto(chatId, userId);
+          break;
+        case 'create_payment_link':
+          await this.botIntegration.handlePaymentLink(chatId, userId);
+          break;
         case 'help':
           await this.sendHelpMessage(chatId);
           break;
@@ -336,10 +367,19 @@ export class TelegramBotService {
           await this.sendAboutMessage(chatId);
           break;
         default:
-          await this.sendMessage(chatId, `You clicked: ${data}`);
+          // Handle dynamic callbacks like 'view_invoice_ID' or 'delete_invoice_ID'
+          if (data.startsWith('view_invoice_') || data.startsWith('delete_invoice_')) {
+            // Delegate to a specific handler in BotIntegration if it exists
+            // This part is not implemented in the provided bot-integration.ts, but this is where it would go.
+            console.log(`[TelegramBot] Received dynamic invoice action: ${data}`)
+            await this.sendMessage(chatId, `Action for ${data} is not yet implemented.`);
+          } else {
+            await this.sendMessage(chatId, `Action for '${data}' is not yet implemented.`);
+          }
       }
     } catch (error) {
-      console.error('[TelegramBot] Error handling callback query:', error);
+      console.error(`[TelegramBot] Error handling callback query '${data}':`, error);
+      await this.sendErrorMessage(chatId);
     }
   }
 
@@ -430,6 +470,13 @@ export class TelegramBotService {
         const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
         console.log('[TelegramBot] Business command user resolution:', { resolvedUserId });
         await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
+        break;
+      }
+      case '/earnings_summary': {
+        console.log('[TelegramBot] Routing /earnings_summary to AI processor');
+        // Use the full command text as the prompt for the AI
+        const response = await this.processWithAI(command, chatId);
+        await this.sendMessage(chatId, response);
         break;
       }
       default:

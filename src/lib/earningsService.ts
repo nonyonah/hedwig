@@ -545,13 +545,13 @@ export async function getBusinessStats(userId: string) {
     const { data: invoices, error: invoiceError } = await supabase
       .from('invoices')
       .select('status, amount, currency')
-      .eq('user_identifier', userId);
+      .eq('user_id', userId);
 
     // Get all proposals for the user
     const { data: proposals, error: proposalError } = await supabase
       .from('proposals')
       .select('status, amount, currency')
-      .eq('user_identifier', userId);
+      .eq('user_id', userId);
 
     if (invoiceError) {
       console.error('[getBusinessStats] Invoice error:', invoiceError);

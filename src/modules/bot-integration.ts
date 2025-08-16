@@ -1,15 +1,12 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { trackEvent } from '../lib/posthog';
-// Currency conversion temporarily disabled
-// import { handleCurrencyConversion } from '../lib/currencyConversionService';
+import { handleAction } from '../api/actions';
+import { createClient } from '@supabase/supabase-js';
+import { handleCurrencyConversion } from '../lib/currencyConversionService';
 import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
 import { OfframpModule } from './offramp';
-import { createClient } from '@supabase/supabase-js';
-import { handleCurrencyConversion } from '../lib/currencyConversionService';
-// Dynamic import to prevent serverEnv loading during build
-// import { getBusinessStats } from '../lib/earningsService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,6 +28,28 @@ export class BotIntegration {
     this.offrampModule = new OfframpModule(bot);
   }
 
+  async processWithAI(message: any, intent?: string) {
+    const chatId = message.chat.id;
+    const userId = message.from.id.toString();
+    const text = message.text;
+
+    try {
+      // Fallback to 'unknown' when no explicit intent is provided.
+      // handleAction includes text-based matching for common intents.
+      const intentStr = intent ?? 'unknown';
+      const result = await handleAction(intentStr, { text }, userId);
+
+      if (result) {
+        await this.bot.sendMessage(chatId, result.text, {
+          reply_markup: result.reply_markup as any,
+          parse_mode: 'Markdown',
+        });
+      }
+    } catch (error) {
+      console.error('Error processing with AI:', error);
+      await this.bot.sendMessage(chatId, 'An error occurred while processing your request.');
+    }
+  }
 
   // Get persistent keyboard for all messages
   getPersistentKeyboard() {
@@ -662,154 +681,6 @@ export class BotIntegration {
 
   // ...rest of BotIntegration class remains unchanged for now
 
-  // Handle earnings summary with creative display
-  async handleEarningsSummary(chatId: number, userId: string) {
-    try {
-      // Get the actual user UUID if userId is a chatId
-      let actualUserId = userId;
-      if (/^\d+$/.test(userId)) {
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', parseInt(userId))
-          .single();
-        
-        if (user) {
-          actualUserId = user.id;
-        }
-      }
-
-      // Get earnings data from invoices and payment links
-      const [invoicesResult, paymentLinksResult, proposalsResult] = await Promise.all([
-        supabase
-          .from('invoices')
-          .select('amount, currency, status, created_at, client_name')
-          .eq('user_id', actualUserId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('payment_links')
-          .select('amount, currency, status, created_at, title')
-          .eq('user_id', actualUserId)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('proposals')
-          .select('amount, currency, status, created_at, client_name')
-          .eq('user_id', actualUserId)
-          .order('created_at', { ascending: false })
-      ]);
-
-      // Calculate earnings statistics
-      const invoices = invoicesResult.data || [];
-      const paymentLinks = paymentLinksResult.data || [];
-      const proposals = proposalsResult.data || [];
-
-      // Calculate totals
-      let totalEarned = 0;
-      let totalPending = 0;
-      let totalProposed = 0;
-      let paidInvoices = 0;
-      let paidPaymentLinks = 0;
-      let acceptedProposals = 0;
-
-      // Process invoices
-      invoices.forEach(invoice => {
-        const amount = parseFloat(invoice.amount) || 0;
-        if (invoice.status === 'paid') {
-          totalEarned += amount;
-          paidInvoices++;
-        } else if (invoice.status === 'sent' || invoice.status === 'pending') {
-          totalPending += amount;
-        }
-      });
-
-      // Process payment links
-      paymentLinks.forEach(link => {
-        const amount = parseFloat(link.amount) || 0;
-        if (link.status === 'paid') {
-          totalEarned += amount;
-          paidPaymentLinks++;
-        } else if (link.status === 'active') {
-          totalPending += amount;
-        }
-      });
-
-      // Process proposals
-      proposals.forEach(proposal => {
-        const amount = parseFloat(proposal.amount) || 0;
-        if (proposal.status === 'accepted') {
-          acceptedProposals++;
-        }
-        totalProposed += amount;
-      });
-
-      // Create creative earnings message
-      let message = '💰 *Your Earnings Dashboard* 🚀\n\n';
-      
-      // Earnings overview with emojis
-      message += '┌─────────────────────────┐\n';
-      message += '│  💎 *EARNINGS OVERVIEW*  │\n';
-      message += '└─────────────────────────┘\n\n';
-
-      if (totalEarned > 0) {
-        message += `🎉 *Total Earned:* $${totalEarned.toFixed(2)} USDC\n`;
-        message += `📈 *Success Rate:* ${Math.round(((paidInvoices + paidPaymentLinks) / Math.max(invoices.length + paymentLinks.length, 1)) * 100)}%\n\n`;
-      } else {
-        message += `🌱 *Getting Started:* $0.00 USDC\n`;
-        message += `💡 *Ready to earn your first payment!*\n\n`;
-      }
-
-      // Breakdown section
-      message += '📊 *BREAKDOWN*\n';
-      message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-      message += `💳 Paid Invoices: ${paidInvoices} ($${invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0).toFixed(2)})\n`;
-      message += `🔗 Paid Links: ${paidPaymentLinks} ($${paymentLinks.filter(l => l.status === 'paid').reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0).toFixed(2)})\n`;
-      message += `📋 Accepted Proposals: ${acceptedProposals}\n\n`;
-
-      // Pending section
-      if (totalPending > 0) {
-        message += '⏳ *PENDING PAYMENTS*\n';
-        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-        message += `💰 Awaiting: $${totalPending.toFixed(2)} USDC\n`;
-        message += `📝 Items: ${invoices.filter(i => i.status === 'sent' || i.status === 'pending').length + paymentLinks.filter(l => l.status === 'active').length}\n\n`;
-      }
-
-      // Motivational section
-      if (totalEarned === 0) {
-        message += '🎯 *GET STARTED*\n';
-        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-        message += '• Create your first invoice 📄\n';
-        message += '• Generate a payment link 🔗\n';
-        message += '• Send a proposal 📋\n';
-        message += '• Start earning crypto! 💎\n';
-      } else {
-        message += '🔥 *KEEP GROWING*\n';
-        message += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
-        message += `• You're earning an average of $${(totalEarned / Math.max(paidInvoices + paidPaymentLinks, 1)).toFixed(2)} per payment\n`;
-        message += '• Create more payment links for passive income\n';
-        message += '• Follow up on pending payments\n';
-      }
-
-      await this.bot.sendMessage(chatId, message, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '📄 My Invoices', callback_data: 'business_invoices' },
-              { text: '🔗 Payment Links', callback_data: 'view_payment_links' }
-            ],
-            [
-              { text: '📋 My Proposals', callback_data: 'business_proposals' },
-              { text: '💰 Create Payment Link', callback_data: 'create_payment_link' }
-            ]
-          ]
-        }
-      });
-
-    } catch (error) {
-      console.error('Error fetching earnings summary:', error);
-      await this.bot.sendMessage(chatId, '❌ Error fetching earnings data. Please try again.');
-    }
-  }
 
   // Handle help
   async handleHelp(chatId: number) {
@@ -971,7 +842,13 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'view_history') {
-        await this.handleEarningsSummary(chatId, userId);
+        // Simulate a message object to pass to the AI processor
+        const fakeMessage = {
+          chat: { id: chatId },
+          from: { id: userId },
+          text: '/earnings_summary',
+        } as any;
+        await this.processWithAI(fakeMessage, 'earnings_summary');
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'help') {
@@ -1086,7 +963,13 @@ export class BotIntegration {
         }
 
         case '💰 Earnings Summary':
-          await this.handleEarningsSummary(chatId, userId);
+          // Simulate a message object to pass to the AI processor
+        const fakeMessage = {
+          chat: { id: chatId },
+          from: { id: userId },
+          text: '/earnings_summary',
+        } as any;
+        await this.processWithAI(fakeMessage, 'earnings_summary');
           return true;
 
         case '❓ Help':

@@ -554,29 +554,14 @@ async function handleCommand(msg: TelegramBot.Message) {
 
     case '/earnings_summary':
       try {
-        if (botIntegration) {
-          // Get user ID from chat ID
-          const { supabase } = await import('../../lib/supabase');
-          const { data: user } = await supabase
-            .from('users')
-            .select('id')
-            .eq('telegram_chat_id', chatId)
-            .single();
-          
-          if (user) {
-            await botIntegration.handleEarningsSummary(chatId, user.id);
-          } else {
-            await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
-          }
-        } else {
-          console.log('[Webhook] BotIntegration not available, falling back to processWithAI');
-          const earningsResponse = await processWithAI('show earnings summary', chatId);
+        console.log('[Webhook] Routing /earnings_summary to AI processor');
+        const earningsResponse = await processWithAI(msg.text, chatId);
+        if (earningsResponse && earningsResponse.trim() !== '' && earningsResponse !== '__NO_MESSAGE__') {
           await bot.sendMessage(chatId, earningsResponse);
         }
       } catch (error) {
         console.error('[Webhook] Error in /earnings_summary:', error);
-        const fallbackResponse = await processWithAI('show earnings summary', chatId);
-        await bot.sendMessage(chatId, fallbackResponse);
+        await bot.sendMessage(chatId, 'Sorry, I encountered an error while fetching your earnings summary.');
       }
       break;
 
