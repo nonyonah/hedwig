@@ -87,7 +87,7 @@ export class OfframpModule {
       throw new Error('Offramp mini app URL not configured. Set WEBAPP_BASE_URL to an HTTPS domain.');
     }
     const params = new URLSearchParams({ userId, chatId: String(chatId), chain });
-    return `${base}/offramp?${params.toString()}`;
+    return `${base}/offramp-new?${params.toString()}`;
   }
 
   /**
