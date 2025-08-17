@@ -176,7 +176,7 @@ export default function InvoicePage() {
     try {
       // Process payment through smart contract
       const result = await processPayment({
-        amount: invoiceData.total,
+        amount: total,
         freelancerAddress: invoiceData.fromCompany.walletAddress || '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6', // Default for demo
         invoiceId: invoiceData.id
       });
@@ -249,9 +249,6 @@ export default function InvoicePage() {
     }
   };
 
-  const handleBankPayment = () => {
-    window.location.href = `/payment/bank/${id}`;
-  };
 
   const handleDeleteInvoice = async () => {
     if (!window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) return;
@@ -306,9 +303,7 @@ export default function InvoicePage() {
   
   // Calculate subtotal from filtered items
   const subtotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
-  const platformFee = subtotal * 0.005; // 0.5% platform fee
-  const total = subtotal + platformFee;
-  const freelancerReceives = subtotal - platformFee;
+  const total = subtotal; // Fees are temporarily disabled
 
   const statusColor = {
     draft: 'bg-gray-100 text-gray-800',
@@ -446,10 +441,6 @@ export default function InvoicePage() {
                   <span className="text-gray-600">Subtotal:</span>
                   <span className="font-medium">${subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Platform Fee (0.5%):</span>
-                  <span className="font-medium">${platformFee.toFixed(2)}</span>
-                </div>
                 <Separator />
                 <div className="flex justify-between py-3">
                   <span className="text-lg font-semibold">Total:</span>
@@ -503,33 +494,9 @@ export default function InvoicePage() {
                 </div>
               )}
 
-              {/* Fee Breakdown */}
-              {authenticated && wallets.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
-                  <h4 className="text-sm font-medium text-gray-900">Payment Breakdown</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Invoice Amount:</span>
-                      <span>${subtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Platform Fee (0.5%):</span>
-                      <span>${platformFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-medium">
-                      <span>Total to Pay:</span>
-                      <span>${total.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-gray-500 pt-1">
-                      <span>Freelancer Receives:</span>
-                      <span>${freelancerReceives.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Payment Methods */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <Button
                   variant="outline"
                   className="h-20 flex flex-col items-center justify-center transition-colors hover:bg-gray-50"
@@ -539,22 +506,14 @@ export default function InvoicePage() {
                   <Wallet className="h-6 w-6 mb-2" />
                   <span>
                     {(processingPayment || isProcessing) ? 'Processing...' : 
-                     (userBalance && parseFloat(userBalance) < subtotal) ? 'Insufficient Balance' :
-                     authenticated && wallets.length > 0 ? `Pay ${subtotal.toFixed(2)} USDC` : 'Connect Wallet'}
+                     (userBalance && parseFloat(userBalance) < total) ? 'Insufficient Balance' :
+                     authenticated && wallets.length > 0 ? `Pay ${total.toFixed(2)} USDC` : 'Connect Wallet'}
                   </span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-20 flex flex-col items-center justify-center transition-colors hover:bg-gray-50"
-                  onClick={handleBankPayment}
-                >
-                  <CreditCard className="h-6 w-6 mb-2" />
-                  <span>Bank Transfer</span>
                 </Button>
               </div>
 
               <div className="text-center text-sm text-gray-600">
-                Secure payment processing via smart contract • Base Sepolia Testnet
+                Secure payment processing via smart contract
               </div>
             </CardContent>
           </Card>

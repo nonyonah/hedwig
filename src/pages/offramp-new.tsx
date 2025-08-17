@@ -3,9 +3,9 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Copy } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ChevronRight, ArrowLeftRight } from 'lucide-react';
 
 interface Bank {
   name: string;
@@ -31,6 +31,9 @@ export default function OfframpNew() {
   const [verifiedAccountName, setVerifiedAccountName] = useState<string>('');
   const [bankCode, setBankCode] = useState<string>('');
   const [accountNumber, setAccountNumber] = useState<string>('');
+  const [showBankDropdown, setShowBankDropdown] = useState<boolean>(false);
+  const [showCurrencyDropdown, setShowCurrencyDropdown] = useState<boolean>(false);
+  const [bankSearch, setBankSearch] = useState<string>('');
 
   // Wallet display
   const [walletAddress, setWalletAddress] = useState<string>('');
@@ -157,60 +160,44 @@ export default function OfframpNew() {
       return;
     }
     if (!validateForm()) return;
-    try {
-      setLoading(true);
-      // 1) Create Paycrest sender order to get a receive address
-      const orderRes = await fetch("/api/paycrest/create-sender-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUSD: Number(amount), currency }),
-      });
-      const orderData = await orderRes.json();
-      if (!orderData.success) throw new Error(orderData.error || "Failed to create sender order");
-
-      const receiveAddress: string = orderData.receiveAddress;
-      const senderOrderId: string | undefined = orderData.orderId;
-
-      // 2) Send USDC on Base from treasury to receiveAddress
-      const sendRes = await fetch("/api/onchain/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: "USDC", amount: String(amount), receiveAddress }),
-      });
-      const sendData = await sendRes.json();
-      if (!sendRes.ok || !sendData?.success) throw new Error(sendData.error || "On-chain transfer failed");
-      const txHash: string = sendData.txHash;
-
-      // 3) Create payout and include txHash for linkage
-      const res = await fetch("/api/paycrest/create-payout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          chatId,
-          amountUSD: Number(amount),
-          currency,
-          accountName: verifiedAccountName,
-          accountNumber,
-          bankCode,
-          bank: bank,
-          txHash,
-          senderOrderId,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Payout creation failed");
-      // Navigate away or show toast in future; for now, simple confirm
-      alert('Your cash out is being processed. You will receive a notification shortly.');
-    } catch (e: any) {
-      setError(e.message || "Payout creation failed");
-    } finally {
-      setLoading(false);
-    }
+    const amountUSD = Number(amount) || 0;
+    // Navigate to confirmation page with the form data
+    router.push({
+      pathname: "/withdrawal-confirmation",
+      query: {
+        amountUSD: String(amountUSD),
+        currency,
+        bank,
+        bankCode,
+        accountNumber,
+        accountName: verifiedAccountName,
+        userId: String(userId),
+        chatId: String(chatId),
+      },
+    });
   };
   const shortAddress = walletAddress ? `${walletAddress.slice(0,4)}...${walletAddress.slice(-5)}` : '0x…';
 
   const amountInputRef = useRef<HTMLInputElement | null>(null);
+  const bankDropdownRef = useRef<HTMLDivElement | null>(null);
+  const currencyDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const bankEl = bankDropdownRef.current;
+      const currEl = currencyDropdownRef.current;
+      if (bankEl && !bankEl.contains(target)) {
+        setShowBankDropdown(false);
+      }
+      if (currEl && !currEl.contains(target)) {
+        setShowCurrencyDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
 
   return (
     <div className="min-h-screen bg-white dark:bg-black flex items-start justify-center p-4">
@@ -219,24 +206,12 @@ export default function OfframpNew() {
       </Head>
 
       <div className="w-full max-w-[430px] mx-auto relative pt-6 pb-28">
-        {/* Currency selector top-right */}
-        <div className="absolute right-0 top-2">
-          <Select value={currency} onValueChange={setCurrency}>
-            <SelectTrigger className="h-8 w-24 rounded-full bg-[#EDEDED] text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="NGN">NGN</SelectItem>
-              <SelectItem value="KSH">KSH</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
 
         {/* Amount display (editable) */}
         <div className="mt-20 text-center" onClick={() => amountInputRef.current?.focus()}>
           <div className="inline-flex items-center justify-center gap-0">
             <span className="text-5xl font-bold">$</span>
-            <input
+            <Input
               ref={amountInputRef}
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
@@ -244,11 +219,14 @@ export default function OfframpNew() {
               type="text"
               placeholder="0.00"
               autoFocus
-              className="text-5xl font-bold bg-transparent outline-none border-0 p-0 text-center w-[180px] max-w-[180px]"
+              className="text-5xl font-bold bg-transparent outline-none border-0 p-0 text-center inline-block min-w-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+              style={{ width: `${Math.max((amount || '').length, 4)}ch` }}
             />
           </div>
-          <div className="mt-2 text-gray-500 flex items-center justify-center gap-1">
-            <span className="inline-block w-4 h-4 rounded-full border border-gray-400 text-[10px] flex items-center justify-center">₮</span>
+          <div className="mt-2 text-gray-500 flex items-center justify-center gap-2">
+            <Badge className="rounded-full px-2 py-0.5 bg-[#EDEDED] text-[#121212] flex items-center justify-center">
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+            </Badge>
             <span>{currencySymbol}{fiatAmount}</span>
           </div>
           {rate && (
@@ -258,28 +236,32 @@ export default function OfframpNew() {
           )}
         </div>
 
-        {/* Wallet card */}
-        <div className="mt-8 w-full max-w-[367px] h-[76px] rounded-[12px] bg-[#EDEDED] py-[14px] px-[33px] flex flex-col items-start gap-[10px] mx-auto">
-          <div className="flex items-center gap-[111px] w-full">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
-                {/* Simple ETH/Base glyph */}
-                <span className="text-gray-700">◆</span>
-              </div>
-              <div>
-                <div className="font-semibold">{chain || 'Base'}</div>
-                <div className="text-xs text-gray-600">{shortAddress}</div>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              className="rounded-[12px] h-8 px-3 text-sm"
-              onClick={() => { if (walletAddress) navigator.clipboard.writeText(walletAddress); }}
-            >
-              <Copy className="w-4 h-4 mr-1" /> Copy
-            </Button>
+        {/* Currency (custom dropdown) */}
+        <div className="w-full max-w-[367px] mx-auto mt-8 relative" ref={currencyDropdownRef}>
+          <Label className="block mb-2 font-semibold">Currency</Label>
+          <div
+            className="bg-[#EDEDED] rounded-[12px] h-[52px] px-[22px] flex items-center justify-between cursor-pointer"
+            onClick={() => setShowCurrencyDropdown(!showCurrencyDropdown)}
+          >
+            <span className="text-[#121212] text-base">{currency || 'Select currency'}</span>
+            <ChevronRight className="w-5 h-5 text-[#121212]" />
           </div>
+          {showCurrencyDropdown && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-60 overflow-y-auto">
+              {['NGN','KSH'].map((c) => (
+                <div
+                  key={c}
+                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 text-[#121212]"
+                  onClick={() => {
+                    setCurrency(c);
+                    setShowCurrencyDropdown(false);
+                  }}
+                >
+                  {c}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Account Number */}
@@ -294,38 +276,60 @@ export default function OfframpNew() {
           />
         </div>
 
-        {/* Bank */}
-        <div className="w-full max-w-[367px] mx-auto mt-4">
+        {/* Bank (custom dropdown) */}
+        <div className="w-full max-w-[367px] mx-auto mt-4 relative" ref={bankDropdownRef}>
           <Label className="block mb-2 font-semibold">Bank</Label>
-          <Select value={bankCode} onValueChange={(value) => {
-            const selectedBank = banks.find(b => b.code === value);
-            setBank(selectedBank?.name || '');
-            setBankCode(value);
-          }} disabled={!currency || banks.length === 0 || loading}>
-            <SelectTrigger className="bg-[#EDEDED] rounded-[12px] w-full h-[52px] px-[22px] flex items-center justify-between">
-              <SelectValue placeholder={loading ? 'Loading banks…' : (bank || 'Select bank')} />
-            </SelectTrigger>
-            <SelectContent>
-              {banks.map((b) => (
-                <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
+          <div
+            className={`bg-[#EDEDED] rounded-[12px] h-[52px] px-[22px] flex items-center justify-between cursor-pointer ${(!currency || banks.length === 0 || loading) ? 'opacity-60 pointer-events-none' : ''}`}
+            onClick={() => setShowBankDropdown(!showBankDropdown)}
+          >
+            <span className="text-[#121212] text-base">{bank || (loading ? 'Loading banks…' : 'Select bank')}</span>
+            <ChevronRight className="w-5 h-5 text-[#121212]" />
+          </div>
+          {showBankDropdown && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-60 overflow-y-auto">
+              <div className="p-2 border-b border-gray-100 bg-white sticky top-0">
+                <Input
+                  placeholder="Search bank"
+                  value={bankSearch}
+                  onChange={(e) => setBankSearch(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              {(bankSearch ? banks.filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase())) : banks).map((b) => (
+                <div
+                  key={b.code}
+                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 text-[#121212]"
+                  onClick={() => {
+                    setBank(b.name);
+                    setBankCode(b.code);
+                    setShowBankDropdown(false);
+                  }}
+                >
+                  {b.name}
+                </div>
               ))}
-            </SelectContent>
-          </Select>
+            </div>
+          )}
         </div>
 
         {/* Resolved Account Name */}
         {verifiedAccountName && (
-          <div className="mt-4 text-black dark:text-white font-semibold">{verifiedAccountName}</div>
+          <div className="w-full max-w-[367px] mx-auto mt-2">
+            <div className="px-[22px] text-black dark:text-white font-semibold">
+              {verifiedAccountName}
+            </div>
+          </div>
         )}
 
         {verifying && <div className="mt-2 text-sm text-gray-500">Verifying account…</div>}
         {error && <div className="mt-2 text-sm text-red-500">{error}</div>}
 
         {/* Bottom fixed Continue button */}
-        <div className="fixed left-0 right-0 bottom-4 px-4">
+        <div className="fixed left-0 right-0 bottom-8 px-4">
           <Button
             onClick={handleSubmit}
-            className="w-full max-w-[359px] h-[52px] text-white font-bold text-lg rounded-[12px] mx-auto flex justify-center items-center gap-[10px]"
+            className="w-full max-w-[359px] h-[52px] text-white font-bold text-lg rounded-[16px] mx-auto flex justify-center items-center gap-[10px]"
             style={{ backgroundColor: '#0466c8' }}
             disabled={loading || verifying}
           >

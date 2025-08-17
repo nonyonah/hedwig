@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth';
 import { createClient } from '@supabase/supabase-js';
-import { flutterwaveService } from '@/lib/flutterwaveService';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 
 interface PaymentData {
@@ -174,47 +173,6 @@ export default function PaymentLinkPage() {
     }
   }
 
-  const handleBankPayment = async () => {
-    if (!paymentData) return
-    
-    setProcessingPayment(true)
-    try {
-      const bankPaymentData = await flutterwaveService.createBankPaymentForCrypto({
-        id: id as string,
-        amount: paymentData.amount.toString(),
-        currency: paymentData.currency,
-        recipientName: paymentData.recipient.name,
-        reason: paymentData.payment_reason
-      }, {
-        email: paymentData.recipient.email,
-        firstname: paymentData.recipient.name ? paymentData.recipient.name.split(' ')[0] || 'Customer' : 'Customer',
-        lastname: paymentData.recipient.name ? paymentData.recipient.name.split(' ')[1] || '' : '',
-        phonenumber: '+2348000000000' // Default phone number
-      })
-
-      if (bankPaymentData.accountNumber) {
-        // Update payment data with bank details
-        setPaymentData(prev => prev ? {
-          ...prev,
-          bankDetails: {
-            accountName: bankPaymentData.accountName,
-            bankName: bankPaymentData.bankName,
-            accountNumber: bankPaymentData.accountNumber,
-            routingNumber: bankPaymentData.reference
-          }
-        } : null)
-        
-        toast.success('Bank payment details generated!')
-      } else {
-        toast.error('Failed to generate bank payment details')
-      }
-    } catch (error) {
-      console.error('Error creating bank payment:', error)
-      toast.error('Failed to process bank payment')
-    } finally {
-      setProcessingPayment(false)
-    }
-  }
 
   const handleCryptoPayment = async () => {
     if (!wallets.length || !paymentData) return;
@@ -406,11 +364,6 @@ export default function PaymentLinkPage() {
                         <div className="text-blue-700">• Other cryptocurrencies are not supported</div>
                         <div className="text-blue-700">• Payment processed through secure smart contract</div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-2 p-2 bg-gray-50 rounded">
-                        <div className="font-medium mb-1">Fee Information:</div>
-                        <div>• Platform fee will be automatically deducted</div>
-                        <div>• Freelancer receives the net amount after fees</div>
-                      </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Description:</span>
                         <span className="text-right max-w-xs">{paymentData.description}</span>
@@ -431,29 +384,6 @@ export default function PaymentLinkPage() {
                         </Select>
                       </div>
                     </div>
-                    {authenticated && wallets.length > 0 && paymentData && (
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2">
-                        <h4 className="text-sm font-medium text-gray-900">Payment Breakdown</h4>
-                        <div className="space-y-1 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Amount:</span>
-                            <span>${paymentData.amount.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Platform Fee (0.5%):</span>
-                            <span>${(paymentData.amount * 0.005).toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between border-t pt-1">
-                            <span className="font-medium">Total to Pay:</span>
-                            <span className="font-bold">${(paymentData.amount + paymentData.amount * 0.005).toFixed(2)} USDC</span>
-                          </div>
-                          <div className="flex justify-between text-green-600">
-                            <span>Freelancer Receives:</span>
-                            <span>${(paymentData.amount - paymentData.amount * 0.005).toFixed(2)} USDC</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                     <Button 
                       onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -469,62 +399,6 @@ export default function PaymentLinkPage() {
                 )}
               </div>
 
-              {/* Bank Transfer */}
-              <div className="border rounded-lg p-4">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-between p-0 h-auto hover:bg-gray-50"
-                  onClick={() => setPaymentMethod(paymentMethod === 'bank' ? null : 'bank')}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-gray-100 rounded-lg">
-                      <Building className="h-5 w-5 text-gray-600" />
-                    </div>
-                    <div className="text-left">
-                      <div className="font-medium">Bank Transfer</div>
-                      <div className="text-sm text-gray-600">Traditional wire transfer or ACH</div>
-                    </div>
-                  </div>
-                  <div className="text-gray-400">
-                    {paymentMethod === 'bank' ? '−' : '+'}
-                  </div>
-                </Button>
-                
-                {paymentMethod === 'bank' && (
-                  <div className="mt-4 pt-4 border-t space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Account Name:</span>
-                        <span className="font-medium">{paymentData.bankDetails.accountName}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Bank Name:</span>
-                        <span className="font-medium">{paymentData.bankDetails.bankName}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Account Number:</span>
-                        <span className="font-mono">{paymentData.bankDetails.accountNumber}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Routing Number:</span>
-                        <span className="font-mono">{paymentData.bankDetails.routingNumber}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Amount:</span>
-                        <span className="font-medium">${paymentData.amount.toLocaleString()} {paymentData.currency}</span>
-                      </div>
-                    </div>
-                    <Button 
-                      onClick={handleBankPayment} 
-                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                      disabled={processingPayment}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      {processingPayment ? 'Processing...' : 'Proceed with Bank Transfer'}
-                    </Button>
-                  </div>
-                )}
-              </div>
             </CardContent>
           </Card>
         )}

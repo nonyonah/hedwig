@@ -98,7 +98,7 @@ contract HedwigPayment {
 
         // --- Fee Calculation with Overflow Protection ---
         // Prevent overflow and ensure fee cannot exceed amount
-        uint256 fee = (amount * platformFee) / 10000;
+        uint256 fee = 0; // Fees temporarily disabled
         if (fee > amount) revert InvalidFee();
         uint256 freelancerPayout = amount - fee;
 
