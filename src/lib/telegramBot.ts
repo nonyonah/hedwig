@@ -348,6 +348,27 @@ export class TelegramBotService {
         case 'business_stats':
           await this.botIntegration.handlePaymentStats(chatId, userId);
           break;
+        case 'check_earnings': {
+          // Deterministic earnings summary via BotIntegration
+          await this.botIntegration.handleEarningsSummary(chatId, userId, 'lastMonth');
+          break;
+        }
+        case 'earnings_tf_last7days': {
+          await this.botIntegration.handleEarningsSummary(chatId, userId, 'last7days');
+          break;
+        }
+        case 'earnings_tf_lastMonth': {
+          await this.botIntegration.handleEarningsSummary(chatId, userId, 'lastMonth');
+          break;
+        }
+        case 'earnings_tf_last3months': {
+          await this.botIntegration.handleEarningsSummary(chatId, userId, 'last3months');
+          break;
+        }
+        case 'earnings_tf_allTime': {
+          await this.botIntegration.handleEarningsSummary(chatId, userId, 'allTime');
+          break;
+        }
         case 'create_wallet':
           await this.botIntegration.handleCreateWallet(chatId, userId);
           break;
@@ -472,11 +493,12 @@ export class TelegramBotService {
         await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
         break;
       }
+      case '/earnings':
+      case '/summary':
       case '/earnings_summary': {
-        console.log('[TelegramBot] Routing /earnings_summary to AI processor');
-        // Use the full command text as the prompt for the AI
-        const response = await this.processWithAI(command, chatId);
-        await this.sendMessage(chatId, response);
+        // Deterministic earnings summary using earningsService via BotIntegration
+        const resolvedUserId = msg.from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
+        await this.botIntegration.handleEarningsSummary(chatId, resolvedUserId, 'lastMonth');
         break;
       }
       default:
@@ -779,6 +801,8 @@ Choose an action below:`;
         { command: 'balance', description: 'Check wallet balance' },
         { command: 'send', description: 'Send crypto to someone' },
         { command: 'offramp', description: 'Withdraw crypto to bank account' },
+        { command: 'earnings', description: 'View earnings summary' },
+        { command: 'summary', description: 'View earnings summary' },
         { command: 'earnings_summary', description: 'View earnings summary' },
         { command: 'business_dashboard', description: 'Access business dashboard' },
         { command: 'invoice', description: 'Create an invoice' },

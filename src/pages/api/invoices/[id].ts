@@ -14,6 +14,7 @@ export default async function handler(
 
   if (req.method === 'GET') {
     try {
+      // Fetch the invoice first without joins to avoid relationship errors
       const { data: invoice, error } = await supabase
         .from('invoices')
         .select('*')
@@ -23,6 +24,9 @@ export default async function handler(
       if (error) {
         return res.status(404).json({ error: 'Invoice not found' });
       }
+
+      // Get wallet address directly from invoice table (like payment links do)
+      const walletAddress = (invoice as any).wallet_address || '';
 
       // Calculate subtotal, tax, and total
       const quantity = invoice.quantity || 1;
@@ -52,7 +56,8 @@ export default async function handler(
           name: invoice.freelancer_name || 'Freelancer',
           address: invoice.freelancer_address || '',
           email: invoice.freelancer_email || '',
-          phone: invoice.freelancer_phone || ''
+          phone: invoice.freelancer_phone || '',
+          walletAddress: walletAddress || ''
         },
         toCompany: {
           name: invoice.client_name || 'Client',

@@ -1,14 +1,25 @@
 import { useRouter } from 'next/router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign } from 'lucide-react';
+import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { parseUnits, formatUnits } from 'viem';
+import dynamic from 'next/dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
+
+const ERC20_ABI = [
+  { "constant": true, "inputs": [{ "name": "_owner", "type": "address" }], "name": "balanceOf", "outputs": [{ "name": "balance", "type": "uint256" }], "type": "function" },
+  { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" },
+  { "constant": true, "inputs": [{ "name": "_owner", "type": "address" }, { "name": "_spender", "type": "address" }], "name": "allowance", "outputs": [{ "name": "", "type": "uint256" }], "type": "function" },
+  { "constant": false, "inputs": [{ "name": "_spender", "type": "address" }, { "name": "_value", "type": "uint256" }], "name": "approve", "outputs": [{ "name": "", "type": "bool" }], "type": "function" },
+];
+
+const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913'; // Base Mainnet USDC
 
 interface InvoiceItem {
   id: string;
@@ -58,42 +69,150 @@ const getSupabaseClient = () => {
   return createClient(supabaseUrl, supabaseAnonKey);
 };
 
+function PaymentFlow({ invoiceData, total }: { invoiceData: InvoiceData; total: number }) {
+  const { address: accountAddress, isConnected } = useAccount();
+  const { usdcAddress } = useHedwigPayment();
+
+  const amountToPay = useMemo(() => parseUnits(total.toString(), 6), [total]);
+
+  const { data: balanceData, isLoading: isBalanceLoading } = useReadContract({
+    address: usdcAddress as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [accountAddress!],
+    query: { enabled: !!accountAddress },
+  });
+  const balance = balanceData as bigint | undefined;
+
+  const { processPayment, isConfirming, hash: paymentHash, receipt: paymentReceipt } = useHedwigPayment();
+
+  // If balance hasn't loaded yet, don't block the user from opening their wallet.
+  const hasSufficientBalance = balance === undefined ? true : balance >= amountToPay;
+
+  const handlePay = () => {
+    if (!invoiceData.fromCompany.walletAddress) {
+      toast.error('Freelancer wallet address is not configured for this invoice.');
+      return;
+    }
+    if (!total || Number.isNaN(total) || total <= 0) {
+      toast.error('Invalid payment amount.');
+      return;
+    }
+    processPayment({
+      amount: total,
+      freelancerAddress: invoiceData.fromCompany.walletAddress as `0x${string}`,
+      invoiceId: invoiceData.id,
+      tokenAddress: usdcAddress,
+    });
+  };
+
+  const ConnectWallet = dynamic(() => import('@coinbase/onchainkit/wallet').then(m => m.ConnectWallet), { ssr: false });
+
+  if (!isConnected) {
+    return <ConnectWallet className="w-full" />;
+  }
+
+  if (isBalanceLoading) {
+    return <Button disabled className="w-full"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading wallet data...</Button>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {balance !== undefined && (
+         <div className="flex justify-between text-sm">
+           <span className="text-gray-600">Your Balance:</span>
+           <span className={`font-medium ${hasSufficientBalance ? 'text-green-600' : 'text-red-600'}`}>
+             {formatUnits(balance, 6)} USDC
+           </span>
+         </div>
+      )}
+
+      {!hasSufficientBalance && (
+        <div className="flex items-center text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-sm">
+          <AlertTriangle className="h-4 w-4 mr-2" /> Your balance may be insufficient. You can still try to pay.
+        </div>
+      )}
+
+      <Button onClick={handlePay} disabled={isConfirming} className="w-full">
+        {isConfirming ? (
+          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+        ) : paymentReceipt ? (
+          <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
+        ) : (
+          <><Wallet className="h-4 w-4 mr-2" /> Pay ${total.toLocaleString()} USDC</>
+        )}
+      </Button>
+    </div>
+  );
+}
+
 export default function InvoicePage() {
   const [deleting, setDeleting] = useState(false);
-  // ... rest of hooks
-
   const router = useRouter();
   const { id } = router.query;
-  const { ready, authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const { connectWallet } = useConnectWallet();
-  const { processPayment, checkTokenBalance, isProcessing } = useHedwigPayment();
-  
+  const { receipt: paymentReceipt } = useHedwigPayment();
+  const { address: accountAddress } = useAccount();
+
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processingPayment, setProcessingPayment] = useState(false);
-  const [userBalance, setUserBalance] = useState<string | null>(null);
 
-  // Fetch invoice data from API
   useEffect(() => {
     if (id) {
       fetchInvoiceData();
     }
   }, [id]);
 
-  // Check user balance when wallet is connected
+  // When payment is successful, update the invoice status in the DB
   useEffect(() => {
-    const checkBalance = async () => {
-      if (authenticated && wallets.length > 0) {
-        const balance = await checkTokenBalance();
-        if (balance) {
-          setUserBalance(balance.balance);
+    if (paymentReceipt && paymentReceipt.status === 'success' && invoiceData?.status !== 'paid') {
+      const updateInvoiceStatus = async () => {
+        // Optimistically update local UI
+        setInvoiceData(prev => (prev ? { ...prev, status: 'paid' } : prev));
+        toast.info('Updating invoice status...');
+
+        // Compute amountPaid mirroring the UI total (exclude fee/platform/transaction items)
+        let amountPaid = 0;
+        try {
+          const filtered = (invoiceData?.items || []).filter(
+            (item) => !item.description.toLowerCase().includes('fee') &&
+                      !item.description.toLowerCase().includes('platform') &&
+                      !item.description.toLowerCase().includes('transaction')
+          );
+          amountPaid = filtered.reduce((sum, item) => sum + (item.amount || 0), 0);
+        } catch {}
+
+        try {
+          const response = await fetch('/api/update-invoice-status', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              invoiceId: id,
+              status: 'completed',
+              transactionHash: paymentReceipt.transactionHash,
+              amountPaid,
+              payerWallet: accountAddress,
+              freelancerAddress: invoiceData?.fromCompany?.walletAddress,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok || result.error) {
+            throw new Error(result.error || 'API request failed');
+          }
+
+          toast.success('Invoice status updated successfully!');
+
+        } catch (error) {
+          console.error('Error updating invoice status:', error);
+          toast.warning('Payment succeeded, but syncing status to the server failed.');
         }
-      }
-    };
-    
-    checkBalance();
-  }, [authenticated, wallets, checkTokenBalance]);
+      };
+      updateInvoiceStatus();
+    }
+  }, [paymentReceipt, id, invoiceData?.status, accountAddress, invoiceData?.items, invoiceData?.fromCompany?.walletAddress]);
 
   const fetchInvoiceData = async () => {
     try {
@@ -103,6 +222,22 @@ export default function InvoicePage() {
         // Generate AI notes if not present
         if (!data.notes) {
           data.notes = await generateAINotes(data);
+        }
+        // Fallback: if wallet address is missing on the invoice, try resolving via user-wallet API
+        try {
+          const currentWallet = data?.fromCompany?.walletAddress;
+          const invoiceId = Array.isArray(id) ? id[0] : id;
+          if ((!currentWallet || currentWallet === '') && invoiceId) {
+            const walletRes = await fetch(`/api/user-wallet?invoiceId=${invoiceId}&chain=base`);
+            if (walletRes.ok) {
+              const { address } = await walletRes.json();
+              if (address) {
+                data.fromCompany = { ...(data.fromCompany || {}), walletAddress: address };
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Wallet fallback lookup failed:', e);
         }
         setInvoiceData(data);
       } else {
@@ -146,74 +281,8 @@ export default function InvoicePage() {
     toast.success('Invoice link copied to clipboard');
   };
 
-  const handleConnectWallet = async () => {
-    if (!ready) {
-      toast.error('Wallet not ready');
-      return;
-    }
+  
 
-    try {
-      if (!authenticated) {
-        await login();
-      } else {
-        await connectWallet();
-      }
-      toast.success('Wallet connected successfully!');
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      toast.error('Failed to connect wallet');
-    }
-  };
-
-  const handleCryptoPayment = async () => {
-    if (!invoiceData || !wallets.length) {
-      toast.error('No wallet connected');
-      return;
-    }
-
-    setProcessingPayment(true);
-    
-    try {
-      // Process payment through smart contract
-      const result = await processPayment({
-        amount: total,
-        freelancerAddress: invoiceData.fromCompany.walletAddress || '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6', // Default for demo
-        invoiceId: invoiceData.id
-      });
-      
-      if (result.success) {
-        toast.success('Payment sent successfully!');
-        
-        // Update invoice status to paid
-        const response = await fetch(`/api/invoices/${id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            status: 'paid',
-            transaction_hash: result.transactionHash,
-            paid_at: new Date().toISOString()
-          })
-        });
-        
-        if (response.ok) {
-          setInvoiceData(prev => prev ? { ...prev, status: 'paid' } : null);
-          toast.success('Payment completed successfully!');
-        } else {
-          console.error('Error updating invoice status');
-        }
-      } else {
-        toast.error(result.error || 'Payment failed. Please try again.');
-      }
-      
-    } catch (error: any) {
-      console.error('Payment error:', error);
-      toast.error('Payment failed. Please try again.');
-    } finally {
-      setProcessingPayment(false);
-    }
-  };
 
   const handleDownloadPDF = async () => {
     try {
@@ -484,33 +553,25 @@ export default function InvoicePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* User Balance Display */}
-              {authenticated && wallets.length > 0 && userBalance && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-blue-900">Your USDC Balance:</span>
-                    <span className="text-lg font-bold text-blue-600">{userBalance} USDC</span>
-                  </div>
+              {/* Recipient and wallet info (mirrors payment link UI) */}
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Recipient:</span>
+                  <span className="font-medium">{invoiceData.fromCompany.name}</span>
                 </div>
-              )}
-
-
-              {/* Payment Methods */}
-              <div className="grid grid-cols-1 gap-4">
-                <Button
-                  variant="outline"
-                  className="h-20 flex flex-col items-center justify-center transition-colors hover:bg-gray-50"
-                  onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
-                  disabled={!ready || processingPayment || isProcessing || (userBalance ? parseFloat(userBalance) < subtotal : false)}
-                >
-                  <Wallet className="h-6 w-6 mb-2" />
-                  <span>
-                    {(processingPayment || isProcessing) ? 'Processing...' : 
-                     (userBalance && parseFloat(userBalance) < total) ? 'Insufficient Balance' :
-                     authenticated && wallets.length > 0 ? `Pay ${total.toFixed(2)} USDC` : 'Connect Wallet'}
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Wallet Address:</span>
+                  <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+                    {invoiceData.fromCompany.walletAddress || '—'}
                   </span>
-                </Button>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Amount:</span>
+                  <span className="font-medium">${total.toLocaleString()} USDC</span>
+                </div>
               </div>
+
+              <PaymentFlow invoiceData={invoiceData} total={total} />
 
               <div className="text-center text-sm text-gray-600">
                 Secure payment processing via smart contract

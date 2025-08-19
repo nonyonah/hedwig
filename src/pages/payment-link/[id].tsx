@@ -1,15 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Copy, ExternalLink, Wallet, CreditCard, Clock, Shield, Building, CheckCircle, AlertCircle, Download, Send, ChevronDown } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { usePrivy, useWallets, useConnectWallet } from '@privy-io/react-auth';
+import { useAccount, useReadContract } from 'wagmi';
+import { parseUnits, formatUnits } from 'viem';
+import dynamic from 'next/dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
+import { ERC20_ABI } from '@/lib/abi/erc20';
+
+// ERC20_ABI is now shared from '@/lib/abi/erc20'
 
 interface PaymentData {
   id: string;
@@ -52,175 +55,210 @@ const getSupabaseClient = () => {
 
 // flutterwaveService is imported from the service file
 
+function PaymentFlow({ paymentData }: { paymentData: PaymentData }) {
+  const { address: accountAddress, isConnected } = useAccount();
+  const { usdcAddress } = useHedwigPayment();
+  const total = paymentData.amount;
+
+  const amountToPay = useMemo(() => parseUnits(total.toString(), 6), [total]);
+
+  const { data: balanceData, isLoading: isBalanceLoading } = useReadContract({
+    address: usdcAddress as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [accountAddress!],
+    query: { enabled: !!accountAddress },
+  });
+  const balance = balanceData as bigint | undefined;
+
+  const { processPayment, isConfirming, hash: paymentHash, receipt: paymentReceipt } = useHedwigPayment();
+
+  const hasSufficientBalance = balance !== undefined && balance >= amountToPay;
+
+  const handlePay = () => {
+    processPayment({
+      amount: total,
+      freelancerAddress: paymentData.walletAddress as `0x${string}`,
+      invoiceId: paymentData.id,
+      tokenAddress: usdcAddress,
+    });
+  };
+
+  const ConnectWallet = dynamic(() => import('@coinbase/onchainkit/wallet').then(m => m.ConnectWallet), { ssr: false });
+
+  if (!isConnected) {
+    return <ConnectWallet className="w-full" />;
+  }
+
+  if (isBalanceLoading) {
+    return <Button disabled className="w-full"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading wallet data...</Button>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {balance !== undefined && (
+         <div className="flex justify-between text-sm">
+           <span className="text-gray-600">Your Balance:</span>
+           <span className={`font-medium ${hasSufficientBalance ? 'text-green-600' : 'text-red-600'}`}>
+             {formatUnits(balance, 6)} USDC
+           </span>
+         </div>
+      )}
+
+      {!hasSufficientBalance ? (
+        <Button disabled variant="destructive" className="w-full">
+          <AlertTriangle className="h-4 w-4 mr-2" /> Insufficient Balance
+        </Button>
+      ) : (
+        <Button onClick={handlePay} disabled={isConfirming || !!paymentReceipt} className="w-full">
+          {isConfirming ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+          ) : paymentReceipt ? (
+            <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
+          ) : (
+            <><Wallet className="h-4 w-4 mr-2" /> Pay {total.toLocaleString()} USDC</>
+          )}
+        </Button>
+      )}
+
+      {/* Transaction status and explorer link */}
+      {/* Show when tx submitted */}
+      {paymentHash && !paymentReceipt && (
+        <div className="text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-800 p-3">
+          <div className="font-medium mb-1">Transaction submitted</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono break-all">{paymentHash}</span>
+            <a
+              href={`https://sepolia.basescan.org/tx/${paymentHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center text-blue-700 hover:underline"
+            >
+              View on BaseScan <ExternalLink className="ml-1 h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Show when confirmed */}
+      {paymentReceipt && (
+        <div className="text-xs rounded-md border border-green-200 bg-green-50 text-green-800 p-3">
+          <div className="font-medium mb-1">Transaction confirmed</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono break-all">{paymentReceipt.transactionHash}</span>
+            <a
+              href={`https://sepolia.basescan.org/tx/${paymentReceipt.transactionHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center text-green-700 hover:underline"
+            >
+              View on BaseScan <ExternalLink className="ml-1 h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PaymentLinkPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { ready, authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const { connectWallet } = useConnectWallet();
-  const { processPayment, checkTokenBalance, isProcessing } = useHedwigPayment();
+  const { receipt: paymentReceipt } = useHedwigPayment();
   
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | 'bank' | null>(null);
-  const [selectedChain, setSelectedChain] = useState('base');
-  const [processingPayment, setProcessingPayment] = useState(false);
-  const [userBalance, setUserBalance] = useState<string | null>(null);
-
-  // Supported chains (testnet for now)
-  const supportedChains = [
-    { id: 'base-sepolia', name: 'Base Sepolia (Testnet)', symbol: 'ETH' }
-  ];
+  const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | null>(null);
+  // Note: Only Base Sepolia USDC is supported for now
 
   useEffect(() => {
     const fetchPaymentData = async () => {
-      if (!id) return
-      
+      if (!id) return;
       const supabase = getSupabaseClient();
-      if (!supabase) {
-        console.error('Supabase client not available');
-        setLoading(false);
-        return;
-      }
+      if (!supabase) return setLoading(false);
       
       try {
-        const { data, error } = await supabase
-          .from('payment_links')
-          .select('*')
-          .eq('id', id)
-          .single()
-
-        if (error) {
-          console.error('Error fetching payment data:', error)
-          toast.error('Failed to load payment data')
-          return
-        }
-
+        const { data, error } = await supabase.from('payment_links').select('*').eq('id', id).single();
+        if (error) throw error;
         if (data) {
+          // Normalize backend status to UI status values
+          const normalizedStatus = data.status === 'completed' ? 'paid' : data.status;
           setPaymentData({
             id: data.id,
             title: data.payment_reason || 'Payment Request',
             description: data.payment_reason || 'Payment for services',
             amount: parseFloat(data.amount),
             currency: data.token,
-            status: data.status,
-            recipient: {
-              name: data.user_name,
-              email: data.recipient_email || ''
-            },
+            status: normalizedStatus,
+            recipient: { name: data.user_name, email: data.recipient_email || '' },
             walletAddress: data.wallet_address,
             expiresAt: data.expires_at,
-            bankDetails: {
-              accountName: data.user_name,
-              bankName: 'Flutterwave Virtual Account',
-              accountNumber: 'Generated on payment',
-              routingNumber: 'N/A'
-            },
+            bankDetails: { accountName: data.user_name, bankName: 'Flutterwave Virtual Account', accountNumber: 'Generated on payment', routingNumber: 'N/A' },
             network: data.network,
             token: data.token,
             payment_reason: data.payment_reason,
             created_at: data.created_at,
             updated_at: data.updated_at
-          })
+          });
         }
       } catch (error) {
-        console.error('Error fetching payment data:', error)
-        toast.error('Failed to load payment data')
+        console.error('Error fetching payment data:', error);
+        toast.error('Failed to load payment data');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
+    fetchPaymentData();
+  }, [id]);
 
-    fetchPaymentData()
-  }, [id])
-
-  // Check user balance when wallet is connected
   useEffect(() => {
-    const checkBalance = async () => {
-      if (authenticated && wallets.length > 0) {
-        const balance = await checkTokenBalance();
-        if (balance) {
-          setUserBalance(balance.balance);
+    if (paymentReceipt && paymentReceipt.status === 'success' && paymentData?.status !== 'paid') {
+      const updatePaymentStatus = async () => {
+        // Optimistically update local UI so the badge switches immediately
+        setPaymentData(prev => (prev ? { ...prev, status: 'paid' } : prev));
+
+        toast.info('Updating payment status...');
+        
+        try {
+          const response = await fetch('/api/update-payment-status', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              paymentId: id,
+              status: 'completed', // Use 'completed' to match db
+              transactionHash: paymentReceipt.transactionHash,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok || result.error) {
+            // Use a more specific error from the API if available
+            throw new Error(result.error || 'API request failed');
+          }
+          
+          toast.success('Payment status updated successfully!');
+
+        } catch (error) {
+          console.error('Error updating payment status:', error);
+          // Keep local status as paid but notify about backend sync issue
+          toast.warning('Payment succeeded, but syncing status to the server failed.');
         }
-      }
-    };
-    
-    checkBalance();
-  }, [authenticated, wallets, checkTokenBalance]);
+      };
+      updatePaymentStatus();
+    }
+  }, [paymentReceipt, id, paymentData?.status]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href)
     toast.success('Payment link copied to clipboard!')
   }
 
-  const handleConnectWallet = async () => {
-    if (!ready) {
-      toast.error('Wallet not ready')
-      return
-    }
-
-    try {
-      if (!authenticated) {
-        await login()
-      } else {
-        await connectWallet()
-      }
-      toast.success('Wallet connected successfully!')
-    } catch (error) {
-      console.error('Error connecting wallet:', error)
-      toast.error('Failed to connect wallet')
-    }
-  }
+  
 
 
-  const handleCryptoPayment = async () => {
-    if (!wallets.length || !paymentData) return;
-    
-    setProcessingPayment(true);
-    
-    try {
-      // Process payment through smart contract
-      const result = await processPayment({
-        amount: paymentData.amount,
-        freelancerAddress: paymentData.walletAddress,
-        invoiceId: paymentData.id
-      });
-      
-      if (result.success) {
-        toast.success('Payment sent successfully!');
-        
-        // Update payment status in database
-        const supabase = getSupabaseClient();
-        if (supabase) {
-          const { error: updateError } = await supabase
-            .from('payment_links')
-            .update({ 
-              status: 'completed',
-              transaction_hash: result.transactionHash,
-              paid_at: new Date().toISOString()
-            })
-            .eq('id', id);
-          
-          if (updateError) {
-            console.error('Error updating payment status:', updateError);
-          }
-        }
-        
-        // Update local state
-        setPaymentData(prev => prev ? { ...prev, status: 'paid' } : null);
-        
-      } else {
-        toast.error(result.error || 'Payment failed. Please try again.');
-      }
-      
-    } catch (error: any) {
-      console.error('Payment error:', error);
-      toast.error('Payment failed. Please try again.');
-    } finally {
-      setProcessingPayment(false);
-    }
-  }
 
 
 
@@ -261,7 +299,15 @@ export default function PaymentLinkPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">USDC Payment Request</h1>
-          <p className="text-gray-600">Complete your USDC stablecoin payment securely</p>
+          <p className="text-gray-600">
+            Complete your USDC stablecoin payment securely
+            <span
+              className="ml-2 text-xs text-gray-500 underline decoration-dotted"
+              title="This payment runs on Base Sepolia (testnet)"
+            >
+              Base Sepolia (testnet)
+            </span>
+          </p>
         </div>
 
         {/* Payment Details Card */}
@@ -308,8 +354,16 @@ export default function PaymentLinkPage() {
         {!isExpired && paymentData.status === 'pending' && (
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Choose Payment Method</CardTitle>
-              <CardDescription>Select your preferred payment option</CardDescription>
+              <CardTitle>Pay with USDC</CardTitle>
+              <CardDescription>
+                Complete this payment using USDC on Base network
+                <span
+                  className="ml-2 text-xs text-gray-500 underline decoration-dotted"
+                  title="This payment runs on Base Sepolia (testnet)"
+                >
+                  Base Sepolia (testnet)
+                </span>
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Stablecoin Payment */}
@@ -350,51 +404,17 @@ export default function PaymentLinkPage() {
                         <span className="text-gray-600">Amount:</span>
                         <span className="font-medium">${paymentData.amount.toLocaleString()} USDC</span>
                       </div>
-                      {userBalance && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Your Balance:</span>
-                          <span className={`font-medium ${parseFloat(userBalance) >= paymentData.amount ? 'text-green-600' : 'text-red-600'}`}>
-                            {parseFloat(userBalance).toFixed(2)} USDC
-                          </span>
-                        </div>
-                      )}
                       <div className="text-xs text-gray-500 mt-2 p-2 bg-blue-50 rounded border border-blue-200">
                         <div className="font-medium mb-1 text-blue-800">💰 USDC Stablecoin Only:</div>
-                        <div className="text-blue-700">• This payment link only accepts USDC stablecoin</div>
-                        <div className="text-blue-700">• Other cryptocurrencies are not supported</div>
-                        <div className="text-blue-700">• Payment processed through secure smart contract</div>
+                        <div className="text-blue-700">• This payment link only accepts USDC stablecoin on the Base network.</div>
+                        <div className="text-blue-700">• Payment processed through a secure smart contract.</div>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Description:</span>
                         <span className="text-right max-w-xs">{paymentData.description}</span>
                       </div>
-                      <div className="flex justify-between text-sm items-center">
-                        <span className="text-gray-600">Chain:</span>
-                        <Select value={selectedChain} onValueChange={setSelectedChain}>
-                          <SelectTrigger className="w-48 h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {supportedChains.map((chain) => (
-                              <SelectItem key={chain.id} value={chain.id}>
-                                {chain.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
                     </div>
-                    <Button 
-                      onClick={authenticated && wallets.length > 0 ? handleCryptoPayment : handleConnectWallet}
-                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                      disabled={!ready || isProcessing || processingPayment || (userBalance ? parseFloat(userBalance) < paymentData.amount : false)}
-                    >
-                      <Wallet className="h-4 w-4 mr-2" />
-                      {(isProcessing || processingPayment) ? 'Processing...' : 
-                       authenticated && wallets.length > 0 ? 
-                         (userBalance && parseFloat(userBalance) < paymentData.amount ? 'Insufficient Balance' : `Pay $${paymentData.amount.toLocaleString()} USDC`) : 
-                         'Connect Wallet'}
-                    </Button>
+                    <PaymentFlow paymentData={paymentData} />
                   </div>
                 )}
               </div>

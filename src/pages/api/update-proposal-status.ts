@@ -1,5 +1,5 @@
-import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,39 +12,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { paymentId, status, transactionHash } = req.body;
+    const { proposalId, status, transactionHash } = req.body;
 
-    if (!paymentId || !status) {
+    if (!proposalId || !status) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Update payment status
     const { data, error } = await supabase
-      .from('payment_links')
+      .from('proposals')
       .update({
         status,
         transaction_hash: transactionHash,
         paid_at: status === 'completed' ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', paymentId)
+      .eq('id', proposalId)
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating payment status:', error);
-      return res.status(500).json({ error: 'Failed to update payment status' });
-    }
-
-    // If payment is completed and there's a recipient email, send notification
-    if (status === 'completed' && data.recipient_email) {
-      // TODO: Implement email notification using Resend
-      console.log('Payment completed, should send email to:', data.recipient_email);
+      console.error('Error updating proposal status:', error);
+      return res.status(500).json({ error: 'Failed to update proposal status' });
     }
 
     return res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error('Error in update-payment-status:', error);
+    console.error('Error in update-proposal-status:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

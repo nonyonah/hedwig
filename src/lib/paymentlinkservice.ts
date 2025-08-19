@@ -20,6 +20,7 @@ export interface CreatePaymentLinkParams {
   userName: string;
   paymentReason: string;
   recipientEmail?: string;
+  userId: string; // Add userId to associate with the creator
 }
 
 export interface CreatePaymentLinkResult {
@@ -37,15 +38,16 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     walletAddress,
     userName,
     paymentReason,
-    recipientEmail
+    recipientEmail,
+    userId // Destructure userId
   } = params;
 
   try {
     // Validate required fields
-    if (!amount || !token || !network || !walletAddress || !userName || !paymentReason) {
+    if (!amount || !token || !network || !walletAddress || !userName || !paymentReason || !userId) {
       return {
         success: false,
-        error: 'Missing required fields: amount, token, network, walletAddress, userName, paymentReason'
+        error: 'Missing required fields: amount, token, network, walletAddress, userName, paymentReason, userId'
       };
     }
 
@@ -102,6 +104,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
         wallet_address: walletAddress.toLowerCase(),
         user_name: userName,
         payment_reason: paymentReason,
+        created_by: userId, // Add the user ID
         recipient_email: recipientEmail || null,
         status: 'pending'
       })

@@ -1,5 +1,5 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { base, mainnet, optimismSepolia, bsc, bscTestnet } from 'wagmi/chains';
+import { base, baseSepolia, mainnet, optimismSepolia, bsc, bscTestnet } from 'wagmi/chains';
 import { defineChain } from 'viem';
 
 // Define Celo Alfajores testnet configuration
@@ -77,6 +77,7 @@ const assetChainTestnet = defineChain({
 export const config = getDefaultConfig({
   appName: 'Hedwig Payment',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
-  chains: [base, mainnet, optimismSepolia, celoAlfajores], // BEP20 and Asset Chain are DISABLED
+  // Prefer Base Sepolia first to ensure testnet is the default chain for connections
+  chains: [baseSepolia, base, mainnet, optimismSepolia, celoAlfajores], // BEP20 and Asset Chain are DISABLED
   ssr: true,
 });

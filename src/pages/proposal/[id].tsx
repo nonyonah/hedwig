@@ -4,9 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Copy, Download, Send, Calendar, DollarSign, Clock, CheckCircle, Mail } from "lucide-react";
+import { Copy, Download, Send, Calendar, DollarSign, Clock, CheckCircle, Mail, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from '@supabase/supabase-js';
+import { useHedwigPayment } from '@/hooks/useHedwigPayment';
+import { ConnectButton } from '@coinbase/onchainkit/wallet';
+import { useAccount } from 'wagmi';
+import { HedwigContractAddress, usdcAddress } from '@/lib/contracts';
 
 interface ProposalSection {
   title: string;
@@ -20,16 +24,18 @@ interface ProjectPhase {
 }
 
 interface ProposalData {
+  id: string;
   proposalNumber: string;
   date: string;
   validUntil: string;
-  status: "draft" | "sent" | "pending" | "accepted" | "rejected";
+  status: "draft" | "sent" | "pending" | "accepted" | "rejected" | "paid";
   freelancer: {
     name: string;
     title: string;
     email: string;
     phone: string;
     website?: string;
+    walletAddress?: string;
   };
   client: {
     name: string;
@@ -71,12 +77,67 @@ const Proposal = () => {
   const [loading, setLoading] = useState(true);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const { address, isConnected } = useAccount();
+  const { 
+    processPayment, 
+    paymentStatus, 
+    paymentReceipt, 
+    error: paymentError,
+    resetPayment
+  } = useHedwigPayment();
 
   useEffect(() => {
     if (id) {
       fetchProposalData();
     }
   }, [id]);
+
+  // When payment is successful, update the proposal status in the DB
+  useEffect(() => {
+    if (paymentReceipt && paymentReceipt.status === 'success' && proposalData?.status !== 'paid') {
+      const updateProposalStatus = async () => {
+        // Optimistically update local UI
+        setProposalData(prev => (prev ? { ...prev, status: 'paid' } : prev));
+        toast.info('Updating proposal status...');
+        
+        try {
+          const response = await fetch('/api/update-proposal-status', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              proposalId: id,
+              status: 'completed',
+              transactionHash: paymentReceipt.transactionHash,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (!response.ok || result.error) {
+            throw new Error(result.error || 'API request failed');
+          }
+          
+          toast.success('Proposal status updated successfully!');
+
+        } catch (error) {
+          console.error('Error updating proposal status:', error);
+          toast.warning('Payment succeeded, but syncing status to the server failed.');
+        }
+      };
+      updateProposalStatus();
+    }
+  }, [paymentReceipt, id, proposalData?.status]);
+
+  // Effect to show toast messages for payment status
+  useEffect(() => {
+    if (paymentStatus === 'error' && paymentError) {
+      toast.error(paymentError);
+    } else if (paymentStatus === 'pending') {
+      toast.info('Processing payment...');
+    }
+  }, [paymentStatus, paymentError]);
 
   const fetchProposalData = async () => {
     const supabase = getSupabaseClient();
@@ -101,16 +162,18 @@ const Proposal = () => {
       if (data) {
         // Transform the data to match our interface
         const transformedData: ProposalData = {
+          id: data.id,
           proposalNumber: data.proposal_number || `PROP-${data.id}`,
           date: new Date(data.created_at).toLocaleDateString(),
           validUntil: data.updated_at ? new Date(new Date(data.updated_at).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString() : '',
           status: data.status || 'draft',
           freelancer: {
-            name: 'Freelancer Name',
+            name: data.freelancer_name || 'Freelancer Name',
             title: 'Professional Developer',
-            email: 'freelancer@hedwigbot.xyz',
+            email: data.freelancer_email || 'freelancer@hedwigbot.xyz',
             phone: '+1 (555) 123-4567',
-            website: 'https://hedwigbot.xyz'
+            website: 'https://hedwigbot.xyz',
+            walletAddress: data.payment_methods?.usdc_base
           },
           client: {
             name: data.client_name || 'Client Name',
@@ -245,8 +308,18 @@ const Proposal = () => {
     }
   };
 
-  const handleAcceptProposal = () => {
-    toast.success("Proposal accepted! The freelancer will be notified.");
+  const handlePayWithCrypto = () => {
+    if (!proposalData || !proposalData.freelancer.walletAddress) {
+      toast.error('Freelancer wallet address is not configured for this proposal.');
+      return;
+    }
+
+    processPayment({
+      amount: proposalData.project.totalCost,
+      freelancerAddress: proposalData.freelancer.walletAddress as `0x${string}`,
+      invoiceId: proposalData.id, // Using proposal id as invoiceId for tracking
+      tokenAddress: usdcAddress,
+    });
   };
 
   const handleDeleteProposal = async () => {
@@ -444,19 +517,43 @@ const Proposal = () => {
             </div>
 
             {/* Call to Action */}
+            {/* Call to Action */}
             <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-6">
               <h3 className="font-semibold text-gray-900 mb-2">Ready to Get Started?</h3>
               <p className="text-gray-600 mb-4">
-                I'm excited to work with you on this project. Click below to accept this proposal and we can begin immediately.
+                To accept this proposal, please connect your wallet and complete the payment.
               </p>
-              <div className="flex gap-3">
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleAcceptProposal}>
-                  Accept Proposal
-                </Button>
-                <Button variant="outline">
-                  Request Changes
-                </Button>
-              </div>
+              
+              {proposalData.status === 'paid' ? (
+                <div className="flex items-center gap-3 text-green-600">
+                  <CheckCircle className="w-8 h-8" />
+                  <div>
+                    <p className="font-semibold text-lg">Proposal Paid</p>
+                    <a 
+                      href={`https://sepolia.basescan.org/tx/${paymentReceipt?.transactionHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      View Transaction <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <ConnectButton />
+                  {isConnected && (
+                    <Button 
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handlePayWithCrypto}
+                      disabled={paymentStatus === 'pending' || paymentStatus === 'success'}
+                    >
+                      {paymentStatus === 'pending' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {paymentStatus === 'pending' ? 'Processing...' : `Pay ${proposalData.project.totalCost} USDC`}
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

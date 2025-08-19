@@ -24,7 +24,7 @@
     "@ai-sdk/google": "^1.2.18",
     "@base-org/account": "^1.1.1",
     "@coinbase/cdp-sdk": "^1.15.0",
-    "@coinbase/onchainkit": "^0.38.17",
+    "@coinbase/onchainkit": "^0.38.18",
     "@coinbase/wallet-sdk": "^4.3.4",
     "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.4",

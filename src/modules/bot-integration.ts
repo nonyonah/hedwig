@@ -28,6 +28,79 @@ export class BotIntegration {
     this.offrampModule = new OfframpModule(bot);
   }
 
+  // Handle earnings summary (deterministic path via earningsService)
+  async handleEarningsSummary(chatId: number, userId: string, timeframe: 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime' = 'lastMonth') {
+    try {
+      // Resolve to actual user UUID if we received a numeric chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      // Find user's wallets
+      const { data: wallets, error: walletsError } = await supabase
+        .from('wallets')
+        .select('address, chain')
+        .eq('user_id', actualUserId);
+
+      if (walletsError) {
+        console.error('[BotIntegration] Error fetching wallets for earnings:', walletsError);
+        await this.bot.sendMessage(chatId, '❌ Failed to fetch your wallets. Please try again later.');
+        return;
+      }
+
+      if (!wallets || wallets.length === 0) {
+        await this.bot.sendMessage(chatId,
+          '💡 You don\'t have a wallet yet. Create one to start tracking your earnings.',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: [[{ text: '🔐 Create Wallet', callback_data: 'create_wallet' }]] }
+          }
+        );
+        return;
+      }
+
+      // Prefer EVM wallet if present, else use the first wallet
+      const evm = wallets.find(w => w.chain === 'evm');
+      const walletAddress = (evm || wallets[0]).address;
+
+      // Import earnings service dynamically
+      const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
+
+      // Build filter and fetch summary with insights
+      const filter = { walletAddress, timeframe } as const;
+      const summary = await getEarningsSummary(filter, true);
+
+      // Format message
+      const message = formatEarningsForAgent(summary, 'earnings');
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🗓️ 7d', callback_data: 'earnings_tf_last7days' },
+              { text: '📅 30d', callback_data: 'earnings_tf_lastMonth' },
+              { text: '🗂️ 3m', callback_data: 'earnings_tf_last3months' },
+              { text: '🕰️ All', callback_data: 'earnings_tf_allTime' }
+            ],
+            [{ text: '🔙 Back', callback_data: 'business_dashboard' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('[BotIntegration] Error in handleEarningsSummary:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to fetch earnings summary. Please try again later.');
+    }
+  }
+
   async processWithAI(message: any, intent?: string) {
     const chatId = message.chat.id;
     const userId = message.from.id.toString();

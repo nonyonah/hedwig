@@ -1362,7 +1362,8 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
         walletAddress: evmWallet.address,
         userName: userName,
         paymentReason: finalPaymentReason,
-        recipientEmail: recipient_email
+        recipientEmail: recipient_email,
+        userId: actualUserId // Pass the user ID
       });
 
       if (!result.success) {
