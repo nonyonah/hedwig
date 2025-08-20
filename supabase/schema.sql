@@ -5,20 +5,20 @@ DROP TABLE IF EXISTS invoices CASCADE;
 -- Invoices Table
 create table invoices (
   id uuid primary key default gen_random_uuid(),
-  freelancer_name text not null,
-  freelancer_email text not null,
-  client_name text not null,
-  client_email text not null,
+  freelancer_name text,
+  freelancer_email text,
+  client_name text,
+  client_email text,
   date_created timestamp with time zone default now(),
-  project_description text not null,
-  deliverables text not null,
-  price numeric not null,
-  amount numeric not null,
+  project_description text,
+  deliverables text,
+  price numeric,
+  amount numeric,
   is_split_payment boolean default false,
   split_details jsonb,
   milestones jsonb,
-  wallet_address text not null,
-  blockchain text check (blockchain in ('base','optimism','bnb','celo')) not null,
+  wallet_address text,
+  blockchain text check (blockchain in ('base','optimism','bnb','celo')),
   -- DISABLED BLOCKCHAINS: BEP20 and Asset Chain are defined but not active
   -- Future blockchain options: 'bsc','bsc-testnet','asset-chain','asset-chain-testnet'
   status text default 'draft' check (status in ('draft','sent','paid','partial','overdue')),
@@ -26,8 +26,35 @@ create table invoices (
   due_date text,
   payment_instructions text,
   additional_notes text,
-  created_by uuid references auth.users(id),
-  currency text default 'USD' check (currency in ('USD', 'NGN', 'USDC', 'CNGN')) not null
+  created_by uuid,
+  currency text default 'USD' check (currency in ('USD', 'NGN', 'USDC', 'CNGN')) not null,
+  payment_methods jsonb default '[]',
+  quantity integer default 1,
+  rate numeric,
+  user_id text,
+  viewed_at timestamp with time zone,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  paid_at timestamp with time zone,
+  payment_transaction text,
+  nudge_count integer default 0,
+  last_nudge_at timestamp with time zone,
+  nudge_disabled boolean default false,
+  -- Check constraint to ensure required fields are filled for non-draft invoices
+  CONSTRAINT check_required_fields_for_sent_invoices CHECK (
+    status = 'draft' OR (
+      freelancer_name IS NOT NULL AND
+      freelancer_email IS NOT NULL AND
+      client_name IS NOT NULL AND
+      client_email IS NOT NULL AND
+      project_description IS NOT NULL AND
+      deliverables IS NOT NULL AND
+      price IS NOT NULL AND
+      amount IS NOT NULL AND
+      wallet_address IS NOT NULL AND
+      blockchain IS NOT NULL
+    )
+  )
 );
 
 -- Payments Table
@@ -45,6 +72,12 @@ create table payments (
 create index idx_invoice_client on invoices(client_email);
 create index idx_invoice_created_by on invoices(created_by);
 create index idx_payment_invoice on payments(invoice_id);
+create index idx_invoices_user_id on invoices(user_id);
+create index idx_invoices_viewed_at on invoices(viewed_at);
+create index idx_invoices_paid_at on invoices(paid_at);
+create index idx_invoices_payment_transaction on invoices(payment_transaction);
+create index idx_invoices_last_nudge_at on invoices(last_nudge_at);
+create index idx_invoices_status on invoices(status);
 
 -- Sessions table for user context and pending actions
 create table if not exists public.sessions (
