@@ -8,7 +8,6 @@ import { toast } from 'sonner';
 import { useAccount, useReadContract } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import dynamic from 'next/dynamic';
-import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 import { ERC20_ABI } from '@/lib/abi/erc20';
 
@@ -40,18 +39,7 @@ interface PaymentData {
   updated_at: string;
 }
 
-// Initialize Supabase client with environment variable checks
-const getSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn('Supabase environment variables not found');
-    return null;
-  }
-  
-  return createClient(supabaseUrl, supabaseAnonKey);
-};
+// Fetch via server-side API to avoid RLS issues and ensure service role usage
 
 // flutterwaveService is imported from the service file
 
@@ -174,40 +162,36 @@ export default function PaymentLinkPage() {
   useEffect(() => {
     const fetchPaymentData = async () => {
       if (!id) return;
-      const supabase = getSupabaseClient();
-      if (!supabase) return setLoading(false);
-      
       try {
-        const { data, error } = await supabase.from('payment_links').select('*').eq('id', id).single();
-        if (error) throw error;
-        if (data) {
-          // Normalize backend status to UI status values
-          const normalizedStatus = data.status === 'completed' ? 'paid' : data.status;
-          setPaymentData({
-            id: data.id,
-            title: data.payment_reason || 'Payment Request',
-            description: data.payment_reason || 'Payment for services',
-            amount: parseFloat(data.amount),
-            currency: data.token,
-            status: normalizedStatus,
-            recipient: { name: data.user_name, email: data.recipient_email || '' },
-            walletAddress: data.wallet_address,
-            expiresAt: data.expires_at,
-            bankDetails: { accountName: data.user_name, bankName: 'Flutterwave Virtual Account', accountNumber: 'Generated on payment', routingNumber: 'N/A' },
-            network: data.network,
-            token: data.token,
-            payment_reason: data.payment_reason,
-            created_at: data.created_at,
-            updated_at: data.updated_at
-          });
-        }
+        const paymentId = Array.isArray(id) ? id[0] : id;
+        const res = await fetch(`/api/payment-links/${paymentId}`);
+        if (!res.ok) throw new Error('Failed to fetch payment link');
+        const data = await res.json();
+        const normalizedStatus = data.status === 'completed' ? 'paid' : data.status;
+        setPaymentData({
+          id: data.id,
+          title: data.payment_reason || 'Payment Request',
+          description: data.payment_reason || 'Payment for services',
+          amount: parseFloat(data.amount),
+          currency: data.token,
+          status: normalizedStatus,
+          recipient: { name: data.user_name, email: data.recipient_email || '' },
+          walletAddress: data.wallet_address,
+          expiresAt: data.expires_at,
+          bankDetails: { accountName: data.user_name, bankName: 'Flutterwave Virtual Account', accountNumber: 'Generated on payment', routingNumber: 'N/A' },
+          network: data.network,
+          token: data.token,
+          payment_reason: data.payment_reason,
+          created_at: data.created_at,
+          updated_at: data.updated_at
+        });
       } catch (error) {
         console.error('Error fetching payment data:', error);
         toast.error('Failed to load payment data');
       } finally {
         setLoading(false);
       }
-    }
+    };
     fetchPaymentData();
   }, [id]);
 
@@ -220,13 +204,14 @@ export default function PaymentLinkPage() {
         toast.info('Updating payment status...');
         
         try {
+          const paymentId = Array.isArray(id) ? id[0] : id;
           const response = await fetch('/api/update-payment-status', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              paymentId: id,
+              paymentId,
               status: 'completed', // Use 'completed' to match db
               transactionHash: paymentReceipt.transactionHash,
             }),

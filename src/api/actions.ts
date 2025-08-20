@@ -174,22 +174,44 @@ async function resolveUserId(userId: string): Promise<string | null> {
       return user.id;
     }
 
-    // If user not found by any method, create a new user
-    console.log(`[resolveUserId] User ${userId} not found, creating new user...`);
+    // If user not found by any method, create a new user in auth.users
+    console.log(`[resolveUserId] User ${userId} not found, creating new user in auth.users...`);
     
-    // Use the get_or_create_user function to create the user
-    const { data: newUserId, error: createError } = await supabase
-      .rpc('get_or_create_user', {
-        p_phone: userId,
-        p_name: userId // Use the identifier as the name for now
-      });
+    // Create user in auth.users table first
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email: `${userId}@hedwig.local`,
+      password: crypto.randomBytes(32).toString('hex'),
+      email_confirm: true,
+      user_metadata: {
+        name: userId,
+        phone: userId
+      }
+    });
     
-    if (createError) {
-      console.error(`[resolveUserId] Failed to create user ${userId}:`, createError);
+    if (authError) {
+      console.error(`[resolveUserId] Failed to create auth user ${userId}:`, authError);
       return null;
     }
     
-    console.log(`[resolveUserId] Successfully created user ${userId} with ID: ${newUserId}`);
+    const newUserId = authUser.user.id;
+    console.log(`[resolveUserId] Successfully created auth user ${userId} with ID: ${newUserId}`);
+    
+    // Also create entry in users table for compatibility
+    try {
+      await supabase
+        .from('users')
+        .insert({
+          id: newUserId,
+          email: `${userId}@hedwig.local`,
+          name: userId,
+          phone_number: userId,
+          username: userId
+        });
+      console.log(`[resolveUserId] Created users table entry for ${userId}`);
+    } catch (userTableError) {
+      console.error(`[resolveUserId] Failed to create users table entry:`, userTableError);
+      // Continue anyway since auth.users entry exists
+    }
     
     // Automatically create wallets for the new user
     try {

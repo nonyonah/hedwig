@@ -26,6 +26,7 @@ export interface CreateInvoiceParams {
     quantity: number;
     unitPrice: number;
   }>;
+  userId?: string; // Optional creator user ID for FK created_by
 }
 
 export interface CreateInvoiceResult {
@@ -108,7 +109,8 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
     description,
     recipientEmail,
     dueDate,
-    items
+    items,
+    userId
   } = params;
 
   try {
@@ -177,13 +179,15 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
         client_email: recipientEmail || 'noreply@hedwigbot.xyz',
         project_description: description,
         deliverables: description,
+        quantity: 1,
+        rate: amount,
         price: amount,
         amount: amount,
-        wallet_address: walletAddress.toLowerCase(),
-        blockchain: network.toLowerCase(),
+        wallet_address: walletAddress,
         status: 'draft',
         due_date: dueDate || null,
-        additional_notes: items ? JSON.stringify(items) : null
+        additional_notes: items ? JSON.stringify(items) : null,
+        created_by: userId || null
       })
       .select('id')
       .single();
@@ -196,8 +200,12 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
       };
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const invoiceLink = `${baseUrl}/invoice/${data.id}`;
+    // Build robust base URL for prod/dev
+    const vercelUrl = process.env.VERCEL_URL;
+    const resolvedBaseUrl = vercelUrl
+      ? (vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`)
+      : (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz');
+    const invoiceLink = `${resolvedBaseUrl}/invoice/${data.id}`;
 
     // Send email if recipientEmail is provided
     if (recipientEmail) {
@@ -403,7 +411,8 @@ export async function processInvoiceInput(message: string, user: any): Promise<{
             userName: user.name,
             description: invoiceDetails.description || 'Professional services',
             recipientEmail: invoiceDetails.email,
-            dueDate: invoiceDetails.dueDate
+            dueDate: invoiceDetails.dueDate,
+            userId: user.id
           };
           
           const result = await createInvoice(invoiceParams);

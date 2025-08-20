@@ -25,7 +25,9 @@ create table invoices (
   invoice_number text,
   due_date text,
   payment_instructions text,
-  additional_notes text
+  additional_notes text,
+  created_by uuid references auth.users(id),
+  currency text default 'USD' check (currency in ('USD', 'NGN', 'USDC', 'CNGN')) not null
 );
 
 -- Payments Table
@@ -41,6 +43,7 @@ create table payments (
 
 -- Create indexes after tables are created
 create index idx_invoice_client on invoices(client_email);
+create index idx_invoice_created_by on invoices(created_by);
 create index idx_payment_invoice on payments(invoice_id);
 
 -- Sessions table for user context and pending actions
@@ -51,6 +54,9 @@ create table if not exists public.sessions (
 );
 
 alter table public.sessions enable row level security;
+
+-- Drop existing policy if it exists to avoid conflicts
+drop policy if exists "Allow service role" on public.sessions;
 
 create policy "Allow service role" on public.sessions
   for all

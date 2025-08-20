@@ -12,19 +12,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { paymentId, status, transactionHash } = req.body;
+    const { paymentId, status, transactionHash } = req.body as {
+      paymentId?: string;
+      status?: string; // UI sends 'completed' on success
+      transactionHash?: string;
+    };
 
     if (!paymentId || !status) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Map external status to DB enum: ('pending','paid','expired','cancelled')
+    const dbStatus = status === 'completed' ? 'paid' : status;
+
     // Update payment status
     const { data, error } = await supabase
       .from('payment_links')
       .update({
-        status,
+        status: dbStatus,
         transaction_hash: transactionHash,
-        paid_at: status === 'completed' ? new Date().toISOString() : null,
+        paid_at: dbStatus === 'paid' ? new Date().toISOString() : null,
         updated_at: new Date().toISOString()
       })
       .eq('id', paymentId)
@@ -37,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // If payment is completed and there's a recipient email, send notification
-    if (status === 'completed' && data.recipient_email) {
+    if (dbStatus === 'paid' && data.recipient_email) {
       // TODO: Implement email notification using Resend
       console.log('Payment completed, should send email to:', data.recipient_email);
     }

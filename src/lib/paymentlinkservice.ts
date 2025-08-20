@@ -119,8 +119,12 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
       };
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const paymentLink = `${baseUrl}/payment-link/${data.id}`;
+    // Build a robust base URL that works in Vercel, other prod, and local dev
+    const vercelUrl = process.env.VERCEL_URL;
+    const resolvedBaseUrl = vercelUrl
+      ? (vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`)
+      : (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz');
+    const paymentLink = `${resolvedBaseUrl}/payment-link/${data.id}`;
 
     // Send email if recipientEmail is provided
     if (recipientEmail) {

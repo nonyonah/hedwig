@@ -182,13 +182,14 @@ export default function InvoicePage() {
         } catch {}
 
         try {
+          const invoiceId = Array.isArray(id) ? id[0] : id;
           const response = await fetch('/api/update-invoice-status', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              invoiceId: id,
+              invoiceId,
               status: 'completed',
               transactionHash: paymentReceipt.transactionHash,
               amountPaid,
@@ -233,6 +234,16 @@ export default function InvoicePage() {
               const { address } = await walletRes.json();
               if (address) {
                 data.fromCompany = { ...(data.fromCompany || {}), walletAddress: address };
+                // Persist wallet to invoice on the server (service role)
+                try {
+                  await fetch(`/api/invoices/${invoiceId}/wallet`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ walletAddress: address }),
+                  });
+                } catch (persistErr) {
+                  console.warn('Failed to persist wallet on invoice:', persistErr);
+                }
               }
             }
           }

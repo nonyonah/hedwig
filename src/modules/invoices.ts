@@ -50,18 +50,38 @@ export class InvoiceModule {
       // Generate invoice number
       const invoiceNumber = `INV-${Date.now()}`;
       
-      // Create new invoice record
+      // Get user info and wallet for required fields
+      const [userResult, walletResult] = await Promise.all([
+        supabase.from('users').select('name, email').eq('id', userId).single(),
+        supabase.from('wallets').select('address').eq('user_id', userId).eq('chain', 'evm').single()
+      ]);
+
+      const userData = userResult.data;
+      const walletData = walletResult.data;
+
+      // Create new invoice record with required fields
       const { data: invoice, error } = await supabase
         .from('invoices')
         .insert({
           invoice_number: invoiceNumber,
+          freelancer_name: userData?.name || 'Unknown User',
+          freelancer_email: userData?.email || 'noreply@hedwigbot.xyz',
+          client_name: 'Client',
+          client_email: 'client@example.com',
+          project_description: 'Project Description',
+          quantity: 1,
+          rate: 0,
+          price: 0,
+          amount: 0,
+          wallet_address: walletData?.address || '0x0000000000000000000000000000000000000000',
           status: 'draft',
           currency: 'USD',
           payment_methods: {
             usdc_base: true,
-            usdc_solana: true,
-            flutterwave: true
-          }
+            usdc_solana: false,
+            flutterwave: false,
+          },
+          created_by: userId
         })
         .select()
         .single();
