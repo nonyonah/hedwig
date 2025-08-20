@@ -25,10 +25,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Map external status to DB enum: ('pending','paid','expired','cancelled')
     const dbStatus: 'pending' | 'paid' | 'expired' | 'cancelled' = status === 'completed' ? 'paid' : status as 'pending' | 'paid' | 'expired' | 'cancelled';
 
-    // First get the payment link to access the amount
+    // First get the payment link to access the amount and check for linked proposal/invoice
     const { data: paymentLink, error: fetchError } = await supabase
       .from('payment_links')
-      .select('*')
+      .select('*, proposal_id, invoice_id')
       .eq('id', paymentId)
       .single();
 
@@ -67,6 +67,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('Payment completed, should send email to:', data.recipient_email);
     }
 
+    // If payment is completed, update linked proposal or invoice status
+    if (dbStatus === 'paid') {
+      try {
+        if (data.proposal_id) {
+          // Update linked proposal status
+          const { error: proposalError } = await supabase
+            .from('proposals')
+            .update({
+              status: 'completed',
+              paid_at: new Date().toISOString(),
+              payment_transaction: transactionHash
+            })
+            .eq('id', data.proposal_id);
+
+          if (proposalError) {
+            console.error('Error updating linked proposal:', proposalError);
+          } else {
+            console.log('Successfully updated linked proposal status to completed');
+          }
+        }
+
+        if (data.invoice_id) {
+          // Update linked invoice status
+          const { error: invoiceError } = await supabase
+            .from('invoices')
+            .update({
+              status: 'paid',
+              paid_at: new Date().toISOString(),
+              payment_transaction: transactionHash
+            })
+            .eq('id', data.invoice_id);
+
+          if (invoiceError) {
+            console.error('Error updating linked invoice:', invoiceError);
+          } else {
+            console.log('Successfully updated linked invoice status to paid');
+          }
+        }
+      } catch (linkUpdateError) {
+        console.error('Error updating linked proposal/invoice:', linkUpdateError);
+        // Don't fail the main request if linked update fails
+      }
+    }
+
     // Send payment notification webhook
     try {
       const notificationData = {
@@ -87,6 +131,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         body: JSON.stringify(notificationData)
       });
+
+      // If there's a linked proposal, also send proposal notification
+      if (dbStatus === 'paid' && data.proposal_id) {
+        await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'proposal',
+            id: data.proposal_id,
+            amount: data.amount,
+            currency: data.currency || 'USDC',
+            transactionHash,
+            payerWallet: data.payer_wallet_address,
+            status: 'completed'
+          })
+        });
+      }
+
+      // If there's a linked invoice, also send invoice notification
+      if (dbStatus === 'paid' && data.invoice_id) {
+        await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'invoice',
+            id: data.invoice_id,
+            amount: data.amount,
+            currency: data.currency || 'USDC',
+            transactionHash,
+            payerWallet: data.payer_wallet_address,
+            status: 'paid'
+          })
+        });
+      }
     } catch (webhookError) {
       console.error('Error sending payment notification:', webhookError);
       // Don't fail the main request if webhook fails

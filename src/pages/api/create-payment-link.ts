@@ -18,6 +18,8 @@ interface CreatePaymentLinkRequest {
   userName: string;
   for: string;
   recipientEmail?: string;
+  proposalId?: string;
+  invoiceId?: string;
 }
 
 interface CreatePaymentLinkResponse {
@@ -44,7 +46,9 @@ export default async function handler(
       walletAddress,
       userName,
       for: paymentReason,
-      recipientEmail
+      recipientEmail,
+      proposalId,
+      invoiceId
     }: CreatePaymentLinkRequest = req.body;
 
     // Validate required fields
@@ -100,19 +104,37 @@ export default async function handler(
       });
     }
 
+    // Validate that only one of proposalId or invoiceId is provided
+    if (proposalId && invoiceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot link payment to both proposal and invoice. Choose one.'
+      });
+    }
+
     // Insert payment link into database
+    const insertData: any = {
+      amount,
+      token: token.toUpperCase(),
+      network: network.toLowerCase(),
+      wallet_address: walletAddress.toLowerCase(),
+      user_name: userName,
+      payment_reason: paymentReason,
+      recipient_email: recipientEmail || null,
+      status: 'pending'
+    };
+
+    // Add proposal_id or invoice_id if provided
+    if (proposalId) {
+      insertData.proposal_id = proposalId;
+    }
+    if (invoiceId) {
+      insertData.invoice_id = invoiceId;
+    }
+
     const { data, error } = await supabase
       .from('payment_links')
-      .insert({
-        amount,
-        token: token.toUpperCase(),
-        network: network.toLowerCase(),
-        wallet_address: walletAddress.toLowerCase(),
-        user_name: userName,
-        payment_reason: paymentReason,
-        recipient_email: recipientEmail || null,
-        status: 'pending'
-      })
+      .insert(insertData)
       .select('id')
       .single();
 

@@ -3,11 +3,19 @@ import { HedwigPaymentService } from '../../../contracts/HedwigPaymentService';
 import { PaymentReceivedEvent } from '../../../contracts/types';
 import { createClient } from '@supabase/supabase-js';
 
-// Environment variables
-const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || '';
-const RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Environment variables with fallback to hardcoded values for testing
+const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET || '0xfa12d294ac4Aa874C2b922F87b6Dd0EFb764783B';
+const RPC_URL = process.env.BASE_RPC_URL || 'https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zzvansqojcmavxqdmgcz.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6dmFuc3FvamNtYXZ4cWRtZ2N6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MzgwNTEwNCwiZXhwIjoyMDU5MzgxMTA0fQ.aLOLMl5DK4CJqWa6JfbbhpKkf3bG5XizAr8ZqghT-0A';
+
+// Debug environment variables
+console.log('Environment variables loaded:');
+console.log('All env vars:', Object.keys(process.env).filter(key => key.includes('HEDWIG')));
+console.log('CONTRACT_ADDRESS:', CONTRACT_ADDRESS);
+console.log('TESTNET_ADDRESS:', process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET);
+console.log('RPC_URL:', RPC_URL);
+console.log('SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Not set');
 
 // Initialize services
 const paymentService = new HedwigPaymentService(CONTRACT_ADDRESS, RPC_URL);
@@ -76,7 +84,7 @@ export default async function handler(
             return;
           }
           
-          // Update invoice/proposal status if applicable
+          // Update invoice/proposal/payment_link status if applicable
           if (event.invoiceId.startsWith('invoice_')) {
             await supabase
               .from('invoices')
@@ -95,6 +103,48 @@ export default async function handler(
                 payment_transaction: event.transactionHash
               })
               .eq('id', event.invoiceId.replace('proposal_', ''));
+          } else {
+            // Check if it's a payment link UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(event.invoiceId)) {
+              // Update payment link status
+              const { error: paymentLinkError } = await supabase
+                .from('payment_links')
+                .update({ 
+                  status: 'paid',
+                  paid_at: new Date(event.timestamp * 1000).toISOString(),
+                  transaction_hash: event.transactionHash,
+                  paid_amount: parseFloat(event.amount.toString()) / 1000000 // Convert from wei to USDC (6 decimals)
+                })
+                .eq('id', event.invoiceId);
+              
+              if (paymentLinkError) {
+                console.error('Error updating payment link:', paymentLinkError);
+              } else {
+                console.log('Successfully updated payment link status to paid');
+                
+                // Send webhook notification for payment link
+                try {
+                  await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      type: 'payment_link',
+                      id: event.invoiceId,
+                      amount: parseFloat(event.amount.toString()) / 1000000,
+                      currency: 'USDC',
+                      transactionHash: event.transactionHash,
+                      payerWallet: event.payer,
+                      status: 'paid'
+                    })
+                  });
+                } catch (webhookError) {
+                  console.error('Error sending payment link webhook:', webhookError);
+                }
+              }
+            }
           }
           
           // TODO: Send notification to freelancer via Telegram/WhatsApp

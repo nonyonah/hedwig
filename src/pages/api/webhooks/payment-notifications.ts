@@ -10,7 +10,7 @@ const supabase = createClient(
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { polling: false });
 
 interface PaymentNotificationData {
-  type: 'invoice' | 'payment_link';
+  type: 'invoice' | 'payment_link' | 'proposal';
   id: string;
   amount: number;
   currency: string;
@@ -59,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         clientName: invoice.client_name,
         clientEmail: invoice.client_email
       };
-    } else {
+    } else if (type === 'payment_link') {
       // Get payment link data and find the user who created it
       const { data: paymentLink, error: linkError } = await supabase
         .from('payment_links')
@@ -81,6 +81,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         description: paymentLink.description,
         recipientName: paymentLink.recipient_name,
         recipientEmail: paymentLink.recipient_email
+      };
+    } else if (type === 'proposal') {
+      // Get proposal data
+      const { data: proposal, error: proposalError } = await supabase
+        .from('proposals')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (proposalError || !proposal) {
+        console.error('Error fetching proposal:', proposalError);
+        return res.status(404).json({ error: 'Proposal not found' });
+      }
+
+      // Get the user who created the proposal using user_identifier
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email, telegram_chat_id')
+        .eq('id', proposal.user_identifier)
+        .single();
+
+      if (userError || !user) {
+        console.error('Error fetching user for proposal:', userError);
+        return res.status(404).json({ error: 'User not found for proposal' });
+      }
+
+      recipientUser = user;
+      itemData = {
+        number: proposal.proposal_number,
+        description: proposal.project_description || proposal.description,
+        clientName: proposal.client_name,
+        clientEmail: proposal.client_email,
+        projectTitle: proposal.project_title
       };
     }
 
@@ -122,7 +155,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function sendTelegramNotification(
   chatId: number,
-  type: 'invoice' | 'payment_link',
+  type: 'invoice' | 'payment_link' | 'proposal',
   itemData: any,
   amount: number,
   currency: string,
@@ -130,15 +163,27 @@ async function sendTelegramNotification(
   payerWallet?: string
 ) {
   try {
-    const emoji = type === 'invoice' ? '📄' : '💰';
-    const itemType = type === 'invoice' ? 'Invoice' : 'Payment Link';
-    const itemIdentifier = type === 'invoice' ? itemData.number : itemData.title;
+    let emoji, itemType, itemIdentifier;
+    
+    if (type === 'invoice') {
+      emoji = '📄';
+      itemType = 'Invoice';
+      itemIdentifier = itemData.number;
+    } else if (type === 'proposal') {
+      emoji = '📋';
+      itemType = 'Proposal';
+      itemIdentifier = itemData.number || itemData.projectTitle;
+    } else {
+      emoji = '💰';
+      itemType = 'Payment Link';
+      itemIdentifier = itemData.title;
+    }
     
     let message = `🎉 *Payment Received!*\n\n`;
     message += `${emoji} *${itemType}:* ${itemIdentifier}\n`;
     message += `💵 *Amount:* ${amount} ${currency}\n`;
     
-    if (type === 'invoice') {
+    if (type === 'invoice' || type === 'proposal') {
       message += `👤 *Client:* ${itemData.clientName}\n`;
       message += `📧 *Client Email:* ${itemData.clientEmail}\n`;
       message += `📝 *Project:* ${itemData.description}\n`;
@@ -177,7 +222,7 @@ async function sendTelegramNotification(
 async function sendEmailNotification(
   email: string,
   name: string,
-  type: 'invoice' | 'payment_link',
+  type: 'invoice' | 'payment_link' | 'proposal',
   itemData: any,
   amount: number,
   currency: string,
@@ -187,8 +232,18 @@ async function sendEmailNotification(
     // Import email service
     const { sendEmail } = await import('../../../lib/emailService');
     
-    const itemType = type === 'invoice' ? 'Invoice' : 'Payment Link';
-    const itemIdentifier = type === 'invoice' ? itemData.number : itemData.title;
+    let itemType, itemIdentifier;
+    
+    if (type === 'invoice') {
+      itemType = 'Invoice';
+      itemIdentifier = itemData.number;
+    } else if (type === 'proposal') {
+      itemType = 'Proposal';
+      itemIdentifier = itemData.number || itemData.projectTitle;
+    } else {
+      itemType = 'Payment Link';
+      itemIdentifier = itemData.title;
+    }
     
     const subject = `🎉 Payment Received - ${itemType} ${itemIdentifier}`;
     
@@ -209,7 +264,7 @@ async function sendEmailNotification(
             <h3 style="margin: 0 0 15px 0; color: #333;">Payment Details</h3>
             <p style="margin: 5px 0;"><strong>${itemType}:</strong> ${itemIdentifier}</p>
             <p style="margin: 5px 0;"><strong>Amount:</strong> ${amount} ${currency}</p>
-            ${type === 'invoice' ? `
+            ${type === 'invoice' || type === 'proposal' ? `
               <p style="margin: 5px 0;"><strong>Client:</strong> ${itemData.clientName}</p>
               <p style="margin: 5px 0;"><strong>Project:</strong> ${itemData.description}</p>
             ` : `
