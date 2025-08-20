@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET || '0xfa12d294ac4Aa874C2b922F87b6Dd0EFb764783B';
 const RPC_URL = process.env.BASE_RPC_URL || 'https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zzvansqojcmavxqdmgcz.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6dmFuc3FvamNtYXZ4cWRtZ2N6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MzgwNTEwNCwiZXhwIjoyMDU5MzgxMTA0fQ.aLOLMl5DK4CJqWa6JfbbhpKkf3bG5XizAr8ZqghT-0A';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 
 
 // Debug environment variables
 console.log('Environment variables loaded:');
