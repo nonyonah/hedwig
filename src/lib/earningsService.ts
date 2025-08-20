@@ -104,17 +104,14 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
     // Fetch all earnings sources
-    const [paymentLinksData, invoicesData, proposalsData] = await Promise.all([
+    const [paymentLinks, invoices, proposals, paymentEvents] = await Promise.all([
       fetchPaymentLinks(filter, startDate, endDate),
       fetchPaidInvoices(filter, startDate, endDate),
-      fetchAcceptedProposals(filter, startDate, endDate)
+      fetchAcceptedProposals(filter, startDate, endDate),
+      fetchPaymentEvents(filter, startDate, endDate)
     ]);
 
-    const paymentLinks = paymentLinksData || [];
-    const invoices = invoicesData || [];
-    const proposals = proposalsData || [];
-
-    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals`);
+    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events`);
 
     // Combine all earnings sources
     const allEarnings = [
@@ -138,6 +135,13 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         paid_at: p.paid_at || p.created_at || new Date().toISOString(), // Use paid_at if available, fallback to created_at
         title: p.project_title || 'Proposal Payment',
         description: p.description || ''
+      })),
+      ...paymentEvents.map(e => ({ 
+        ...e, 
+        source: 'payment_events' as const,
+        paid_amount: e.amount,
+        title: e.payment_reason || 'Direct Transfer',
+        description: `Transaction: ${e.transaction_hash}`
       }))
     ];
 
@@ -274,6 +278,80 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     console.error('[getEarningsSummary] Error:', error);
     throw error;
   }
+}
+
+/**
+ * Fetch payment events from blockchain tracking
+ */
+async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
+  try {
+    // Build the query for payment events
+    let query = supabase
+      .from('payment_events')
+      .select('*')
+      .eq('freelancer', filter.walletAddress)
+      .eq('processed', true);
+
+    // Add time filtering
+    if (startDate) {
+      query = query.gte('timestamp', startDate);
+    }
+    if (endDate) {
+      query = query.lte('timestamp', endDate);
+    }
+
+    // Add token filtering (need to map token addresses to symbols)
+    if (filter.token) {
+      // Map common token symbols to addresses for filtering
+      const tokenAddresses: { [key: string]: string } = {
+        'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        'USDbC': '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA'
+      };
+      const tokenAddress = tokenAddresses[filter.token.toUpperCase()];
+      if (tokenAddress) {
+        query = query.eq('token', tokenAddress);
+      }
+    }
+
+    // Order by timestamp descending
+    query = query.order('timestamp', { ascending: false });
+
+    const { data: events, error } = await query;
+
+    if (error) {
+      console.error('[fetchPaymentEvents] Database error:', error);
+      throw new Error(`Failed to fetch payment events: ${error.message}`);
+    }
+
+    // Transform payment events to match earnings format
+    return (events || []).map(event => ({
+      id: event.id,
+      amount: parseFloat(event.amount) / 1000000, // Convert from wei to token units (assuming 6 decimals)
+      token: getTokenSymbol(event.token),
+      network: 'Base', // Payment events are on Base network
+      paid_at: event.timestamp,
+      transaction_hash: event.transaction_hash,
+      payment_reason: `Direct transfer - Invoice ${event.invoice_id}`,
+      wallet_address: event.freelancer,
+      payer_wallet_address: event.payer,
+      source: 'payment_events',
+      category: 'freelance'
+    }));
+  } catch (error) {
+    console.error('[fetchPaymentEvents] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * Helper function to get token symbol from address
+ */
+function getTokenSymbol(tokenAddress: string): string {
+  const tokens: { [key: string]: string } = {
+    '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913': 'USDC',
+    '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA': 'USDbC'
+  };
+  return tokens[tokenAddress] || 'Unknown';
 }
 
 /**

@@ -46,8 +46,6 @@ export async function generateInvoicePDF(invoice: InvoiceData): Promise<Buffer> 
       // Payment methods
       doc.fontSize(14).text('Payment Methods:', 50, 470);
       doc.fontSize(12).text('• USDC on Base Network', 50, 490);
-      doc.text('• USDC on Solana', 50, 505);
-      doc.text('• Bank Transfer (Flutterwave)', 50, 520);
 
       // Payment link
       doc.fontSize(12).text(`Payment Link: ${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}`, 50, 550);

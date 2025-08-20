@@ -36,8 +36,6 @@ export interface ProposalData {
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
   payment_methods: {
     usdc_base?: string;
-    usdc_solana?: string;
-    flutterwave?: boolean;
   };
   created_at?: string;
   updated_at?: string;
@@ -69,9 +67,7 @@ export class ProposalModule {
         currency: 'USD',
         service_type: 'Custom Service',
         payment_methods: {
-          usdc_base: '',
-          usdc_solana: '',
-          flutterwave: true
+          usdc_base: ''
         }
       };
 
@@ -274,9 +270,7 @@ export class ProposalModule {
       `*Investment:* ${proposal.amount} ${proposal.currency}\n` +
       `*Status:* ${proposal.status.toUpperCase()}\n\n` +
       `*Payment Methods Available:*\n` +
-      `💰 USDC (Base Network)\n` +
-      `💰 USDC (Solana)\n` +
-      `💳 Bank Transfer (Flutterwave)\n\n` +
+      `💰 USDC (Base Network)\n\n` +
       `What would you like to do next?`
     );
   }

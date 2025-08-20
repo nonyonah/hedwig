@@ -19,8 +19,6 @@ export interface InvoiceData {
   status: string;
   payment_methods: {
     usdc_base?: boolean;
-    usdc_solana?: boolean;
-    flutterwave?: boolean;
   };
   created_at: string;
   updated_at: string;
@@ -78,8 +76,6 @@ export class InvoiceModule {
           currency: 'USD',
           payment_methods: {
             usdc_base: true,
-            usdc_solana: false,
-            flutterwave: false,
           },
           created_by: userId
         })
@@ -363,9 +359,7 @@ export class InvoiceModule {
       `*Due Date:* ${invoice.due_date}\n` +
       `*Status:* ${invoice.status.toUpperCase()}\n\n` +
       `*Payment Methods Available:*\n` +
-      `💰 USDC (Base Network)\n` +
-      `💰 USDC (Solana)\n` +
-      `💳 Bank Transfer (Flutterwave)\n\n` +
+      `💰 USDC (Base Network)\n\n` +
       `🔗 *Invoice Link:* ${invoiceLink}\n\n` +
       `What would you like to do next?`
     );

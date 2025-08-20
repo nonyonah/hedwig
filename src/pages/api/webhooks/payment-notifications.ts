@@ -1,0 +1,245 @@
+import { NextApiRequest, NextApiResponse } from 'next';
+import { createClient } from '@supabase/supabase-js';
+import TelegramBot from 'node-telegram-bot-api';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { polling: false });
+
+interface PaymentNotificationData {
+  type: 'invoice' | 'payment_link';
+  id: string;
+  amount: number;
+  currency: string;
+  transactionHash?: string;
+  payerWallet?: string;
+  recipientWallet?: string;
+  status: 'paid' | 'completed';
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { type, id, amount, currency, transactionHash, payerWallet, recipientWallet, status } = req.body as PaymentNotificationData;
+
+    if (!type || !id || !amount || !status) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Get the recipient user information
+    let recipientUser;
+    let itemData;
+
+    if (type === 'invoice') {
+      // Get invoice data and find the user who created it
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          users!invoices_created_by_fkey(id, name, email, telegram_chat_id)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (invoiceError || !invoice) {
+        console.error('Error fetching invoice:', invoiceError);
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+
+      recipientUser = invoice.users;
+      itemData = {
+        number: invoice.invoice_number,
+        description: invoice.project_description,
+        clientName: invoice.client_name,
+        clientEmail: invoice.client_email
+      };
+    } else {
+      // Get payment link data and find the user who created it
+      const { data: paymentLink, error: linkError } = await supabase
+        .from('payment_links')
+        .select(`
+          *,
+          users!payment_links_user_id_fkey(id, name, email, telegram_chat_id)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (linkError || !paymentLink) {
+        console.error('Error fetching payment link:', linkError);
+        return res.status(404).json({ error: 'Payment link not found' });
+      }
+
+      recipientUser = paymentLink.users;
+      itemData = {
+        title: paymentLink.title,
+        description: paymentLink.description,
+        recipientName: paymentLink.recipient_name,
+        recipientEmail: paymentLink.recipient_email
+      };
+    }
+
+    if (!recipientUser) {
+      console.error('Recipient user not found');
+      return res.status(404).json({ error: 'Recipient user not found' });
+    }
+
+    // Send Telegram notification if user has Telegram chat ID
+    if (recipientUser.telegram_chat_id) {
+      await sendTelegramNotification(
+        recipientUser.telegram_chat_id,
+        type,
+        itemData,
+        amount,
+        currency,
+        transactionHash,
+        payerWallet
+      );
+    }
+
+    // Send email notification
+    await sendEmailNotification(
+      recipientUser.email,
+      recipientUser.name,
+      type,
+      itemData,
+      amount,
+      currency,
+      transactionHash
+    );
+
+    return res.status(200).json({ success: true, message: 'Notifications sent successfully' });
+  } catch (error) {
+    console.error('Error in payment notification webhook:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+async function sendTelegramNotification(
+  chatId: number,
+  type: 'invoice' | 'payment_link',
+  itemData: any,
+  amount: number,
+  currency: string,
+  transactionHash?: string,
+  payerWallet?: string
+) {
+  try {
+    const emoji = type === 'invoice' ? '📄' : '💰';
+    const itemType = type === 'invoice' ? 'Invoice' : 'Payment Link';
+    const itemIdentifier = type === 'invoice' ? itemData.number : itemData.title;
+    
+    let message = `🎉 *Payment Received!*\n\n`;
+    message += `${emoji} *${itemType}:* ${itemIdentifier}\n`;
+    message += `💵 *Amount:* ${amount} ${currency}\n`;
+    
+    if (type === 'invoice') {
+      message += `👤 *Client:* ${itemData.clientName}\n`;
+      message += `📧 *Client Email:* ${itemData.clientEmail}\n`;
+      message += `📝 *Project:* ${itemData.description}\n`;
+    } else {
+      message += `👤 *From:* ${itemData.recipientName || 'Unknown'}\n`;
+      message += `📝 *Description:* ${itemData.description}\n`;
+    }
+    
+    if (payerWallet) {
+      message += `🔗 *Payer Wallet:* \`${payerWallet}\`\n`;
+    }
+    
+    if (transactionHash) {
+      message += `🧾 *Transaction:* \`${transactionHash}\`\n`;
+    }
+    
+    message += `\n✅ *Status:* Payment Confirmed\n`;
+    message += `⏰ *Time:* ${new Date().toLocaleString()}`;
+
+    await bot.sendMessage(chatId, message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '📊 View Earnings', callback_data: 'earnings_summary' },
+            { text: '💼 Dashboard', callback_data: 'business_dashboard' }
+          ]
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error sending Telegram notification:', error);
+  }
+}
+
+async function sendEmailNotification(
+  email: string,
+  name: string,
+  type: 'invoice' | 'payment_link',
+  itemData: any,
+  amount: number,
+  currency: string,
+  transactionHash?: string
+) {
+  try {
+    // Import email service
+    const { sendEmail } = await import('../../../lib/emailService');
+    
+    const itemType = type === 'invoice' ? 'Invoice' : 'Payment Link';
+    const itemIdentifier = type === 'invoice' ? itemData.number : itemData.title;
+    
+    const subject = `🎉 Payment Received - ${itemType} ${itemIdentifier}`;
+    
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+          <h1 style="margin: 0; font-size: 28px;">🎉 Payment Received!</h1>
+        </div>
+        
+        <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;">
+          <p style="font-size: 18px; margin-bottom: 20px;">Hi ${name},</p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+            Great news! You've received a payment for your ${itemType.toLowerCase()}.
+          </p>
+          
+          <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #28a745; margin-bottom: 25px;">
+            <h3 style="margin: 0 0 15px 0; color: #333;">Payment Details</h3>
+            <p style="margin: 5px 0;"><strong>${itemType}:</strong> ${itemIdentifier}</p>
+            <p style="margin: 5px 0;"><strong>Amount:</strong> ${amount} ${currency}</p>
+            ${type === 'invoice' ? `
+              <p style="margin: 5px 0;"><strong>Client:</strong> ${itemData.clientName}</p>
+              <p style="margin: 5px 0;"><strong>Project:</strong> ${itemData.description}</p>
+            ` : `
+              <p style="margin: 5px 0;"><strong>Description:</strong> ${itemData.description}</p>
+            `}
+            ${transactionHash ? `<p style="margin: 5px 0;"><strong>Transaction Hash:</strong> <code style="background: #f1f3f4; padding: 2px 4px; border-radius: 3px;">${transactionHash}</code></p>` : ''}
+            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">✅ Confirmed</span></p>
+            <p style="margin: 5px 0;"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+          </div>
+          
+          <div style="text-align: center; margin-top: 30px;">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" 
+               style="background: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+              View Dashboard
+            </a>
+          </div>
+          
+          <p style="font-size: 14px; color: #6c757d; margin-top: 30px; text-align: center;">
+            This is an automated notification from Hedwig Bot. The payment has been confirmed on the blockchain.
+          </p>
+        </div>
+      </div>
+    `;
+    
+    await sendEmail({
+      to: email,
+      subject,
+      html
+    });
+  } catch (error) {
+    console.error('Error sending email notification:', error);
+  }
+}

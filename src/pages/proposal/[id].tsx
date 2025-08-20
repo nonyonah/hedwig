@@ -8,9 +8,9 @@ import { Copy, Download, Send, Calendar, DollarSign, Clock, CheckCircle, Mail, L
 import { toast } from "sonner";
 import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
-import { ConnectButton } from '@coinbase/onchainkit/wallet';
+import { ConnectWallet } from '@coinbase/onchainkit/wallet';
 import { useAccount } from 'wagmi';
-import { HedwigContractAddress, usdcAddress } from '@/lib/contracts';
+import { BASE_MAINNET_CONFIG, SUPPORTED_TOKENS } from '@/contracts/config';
 
 interface ProposalSection {
   title: string;
@@ -80,10 +80,11 @@ const Proposal = () => {
   const { address, isConnected } = useAccount();
   const { 
     processPayment, 
-    paymentStatus, 
-    paymentReceipt, 
-    error: paymentError,
-    resetPayment
+    isProcessing, 
+    isConfirming, 
+    hash,
+    receipt,
+    error: paymentError
   } = useHedwigPayment();
 
   useEffect(() => {
@@ -94,7 +95,7 @@ const Proposal = () => {
 
   // When payment is successful, update the proposal status in the DB
   useEffect(() => {
-    if (paymentReceipt && paymentReceipt.status === 'success' && proposalData?.status !== 'paid') {
+    if (receipt && receipt.status === 'success' && proposalData?.status !== 'paid') {
       const updateProposalStatus = async () => {
         // Optimistically update local UI
         setProposalData(prev => (prev ? { ...prev, status: 'paid' } : prev));
@@ -109,7 +110,7 @@ const Proposal = () => {
             body: JSON.stringify({
               proposalId: id,
               status: 'completed',
-              transactionHash: paymentReceipt.transactionHash,
+              transactionHash: receipt.transactionHash,
             }),
           });
 
@@ -128,16 +129,16 @@ const Proposal = () => {
       };
       updateProposalStatus();
     }
-  }, [paymentReceipt, id, proposalData?.status]);
+  }, [receipt, id, proposalData?.status]);
 
   // Effect to show toast messages for payment status
   useEffect(() => {
-    if (paymentStatus === 'error' && paymentError) {
-      toast.error(paymentError);
-    } else if (paymentStatus === 'pending') {
+    if (paymentError) {
+      toast.error(paymentError.message || 'Payment failed');
+    } else if (isProcessing) {
       toast.info('Processing payment...');
     }
-  }, [paymentStatus, paymentError]);
+  }, [isProcessing, paymentError]);
 
   const fetchProposalData = async () => {
     const supabase = getSupabaseClient();
@@ -318,7 +319,7 @@ const Proposal = () => {
       amount: proposalData.project.totalCost,
       freelancerAddress: proposalData.freelancer.walletAddress as `0x${string}`,
       invoiceId: proposalData.id, // Using proposal id as invoiceId for tracking
-      tokenAddress: usdcAddress,
+      tokenAddress: SUPPORTED_TOKENS.USDC.address as `0x${string}`,
     });
   };
 
@@ -530,7 +531,7 @@ const Proposal = () => {
                   <div>
                     <p className="font-semibold text-lg">Proposal Paid</p>
                     <a 
-                      href={`https://sepolia.basescan.org/tx/${paymentReceipt?.transactionHash}`}
+                      href={`https://sepolia.basescan.org/tx/${receipt?.transactionHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-blue-600 hover:underline flex items-center gap-1"
@@ -541,15 +542,15 @@ const Proposal = () => {
                 </div>
               ) : (
                 <div className="flex flex-col sm:flex-row gap-4 items-start">
-                  <ConnectButton />
+                  <ConnectWallet />
                   {isConnected && (
                     <Button 
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={handlePayWithCrypto}
-                      disabled={paymentStatus === 'pending' || paymentStatus === 'success'}
+                      disabled={isProcessing || isConfirming}
                     >
-                      {paymentStatus === 'pending' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {paymentStatus === 'pending' ? 'Processing...' : `Pay ${proposalData.project.totalCost} USDC`}
+                      {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {isProcessing ? 'Processing...' : `Pay ${proposalData.project.totalCost} USDC`}
                     </Button>
                   )}
                 </div>

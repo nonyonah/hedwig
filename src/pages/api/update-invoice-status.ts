@@ -52,10 +52,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // 3) Update invoice status
+    // 3) Update invoice status with paid_at timestamp
+    const updateData: any = { status: invoiceStatus };
+    if (invoiceStatus === 'paid') {
+      updateData.paid_at = new Date().toISOString();
+      updateData.payment_transaction = transactionHash;
+    }
+    
     const { data, error } = await supabase
       .from('invoices')
-      .update({ status: invoiceStatus })
+      .update(updateData)
       .eq('id', invoiceId)
       .select()
       .single();
@@ -79,6 +85,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (paymentErr) {
         console.warn('Payment succeeded but failed to insert payments row:', paymentErr);
       }
+    }
+
+    // Send payment notification webhook
+    try {
+      const notificationData = {
+        type: 'invoice' as const,
+        id: invoiceId,
+        amount: amountPaid || data.amount,
+        currency: data.currency || 'USDC',
+        transactionHash,
+        payerWallet,
+        recipientWallet: freelancerAddress,
+        status: 'paid' as const
+      };
+
+      // Call internal webhook
+      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(notificationData)
+      });
+    } catch (webhookError) {
+      console.error('Error sending payment notification:', webhookError);
+      // Don't fail the main request if webhook fails
     }
 
     return res.status(200).json({ success: true, data });

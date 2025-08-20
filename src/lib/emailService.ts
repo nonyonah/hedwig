@@ -93,8 +93,6 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                 <h3>Payment Options</h3>
                 <ul>
                     <li>💰 USDC on Base Network</li>
-                    <li>💰 USDC on Solana</li>
-                    <li>💳 Bank Transfer (Flutterwave)</li>
                 </ul>
                 <a href="${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}" class="button">Pay Now</a>
             </div>

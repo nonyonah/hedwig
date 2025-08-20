@@ -139,11 +139,7 @@ export class USDCPaymentModule {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🔵 Base Network', callback_data: `usdc_base_${itemId}_${type}` },
-              { text: '🟣 Solana', callback_data: `usdc_solana_${itemId}_${type}` }
-            ],
-            [
-              { text: '💳 Bank Transfer', callback_data: `bank_transfer_${itemId}_${type}` }
+              { text: '🔵 Base Network', callback_data: `usdc_base_${itemId}_${type}` }
             ],
             [
               { text: '❌ Cancel', callback_data: `cancel_payment_${itemId}` }
@@ -425,12 +421,6 @@ export class USDCPaymentModule {
         if (parts.length >= 4) {
           const [, , itemId, type] = parts;
           await this.handleUSDCPayment(callbackQuery, 'base', itemId, type as 'invoice' | 'proposal');
-        }
-      } else if (data.startsWith('usdc_solana_')) {
-        const parts = data.split('_');
-        if (parts.length >= 4) {
-          const [, , itemId, type] = parts;
-          await this.handleUSDCPayment(callbackQuery, 'solana', itemId, type as 'invoice' | 'proposal');
         }
       } else if (data.startsWith('confirm_payment_')) {
         const parts = data.split('_');
