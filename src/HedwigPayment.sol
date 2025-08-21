@@ -31,8 +31,8 @@ contract HedwigPayment {
     );
 
     // --- Custom Errors (gas efficient) ---
-    error InvalidAmount();
     error InvalidAddress();
+    error InvalidAmount();
     error TransferFailed();
     error InsufficientAllowance();
     error Unauthorized();
@@ -45,6 +45,10 @@ contract HedwigPayment {
         if (_platformWallet == address(0)) revert InvalidAddress();
         PLATFORM_WALLET = _platformWallet;
         OWNER = msg.sender;
+    }
+
+    function version() public pure returns (string memory) {
+        return "3.0.0";
     }
     
     /**
