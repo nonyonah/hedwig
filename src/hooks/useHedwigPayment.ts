@@ -2,19 +2,16 @@ import { useState, useCallback, useEffect } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits } from 'viem';
 import { toast } from 'sonner';
-import { ERC20_ABI } from '@/lib/abi/erc20';
+import { HEDWIG_PAYMENT_ABI } from '@/contracts/HedwigPaymentService';
 
-// Token addresses
-const USDC_ADDRESS: `0x${string}` = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // USDC on Base Sepolia
+const HEDWIG_PAYMENT_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS as `0x${string}`;
 const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 export interface PaymentRequest {
   amount: number; // Amount in human readable format (e.g., 100.50 for $100.50)
   freelancerAddress: `0x${string}`;
   invoiceId: string;
-  tokenAddress?: `0x${string}`; // Defaults to USDC
 }
-
 
 export function useHedwigPayment() {
   const { address: accountAddress, isConnected } = useAccount();
@@ -43,26 +40,23 @@ export function useHedwigPayment() {
         return;
       }
 
-      // Validate freelancer address
       const addr = paymentRequest.freelancerAddress as string;
       if (!addr || !/^0x[a-fA-F0-9]{40}$/.test(addr)) {
         toast.error('Freelancer wallet address is missing or invalid.');
         return;
       }
 
-      const tokenAddress = paymentRequest.tokenAddress || USDC_ADDRESS;
       const amountInUnits = parseUnits(paymentRequest.amount.toString(), 6); // Assuming 6 decimals for USDC
 
-      // Rely on wallet to prompt for network switch based on chainId below
-
-      toast.info('Please confirm the USDC transfer in your wallet.');
+      toast.info('Please confirm the payment in your wallet.');
       await writeContract({
-        address: tokenAddress as `0x${string}`,
-        abi: ERC20_ABI,
-        functionName: 'transfer',
+        address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
+        abi: HEDWIG_PAYMENT_ABI,
+        functionName: 'pay',
         args: [
-          paymentRequest.freelancerAddress,
           amountInUnits,
+          paymentRequest.freelancerAddress,
+          paymentRequest.invoiceId,
         ],
         chainId: BASE_SEPOLIA_CHAIN_ID,
       });
@@ -79,6 +73,5 @@ export function useHedwigPayment() {
     hash,
     receipt,
     error,
-    usdcAddress: USDC_ADDRESS
   };
 }

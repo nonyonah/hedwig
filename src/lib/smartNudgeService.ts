@@ -490,6 +490,62 @@ export class SmartNudgeService {
   }
 
   /**
+   * Get user's paid payment links and invoices for tracking
+   */
+  static async getUserPaidItems(userId: string): Promise<{
+    paymentLinks: Array<{ id: string; title: string; amount: number; clientEmail: string; status: string; paidAt: string }>;
+    invoices: Array<{ id: string; title: string; amount: number; clientEmail: string; status: string; paidAt?: string }>;
+  }> {
+    const paymentLinks: any[] = [];
+    const invoices: any[] = [];
+
+    try {
+      // Get paid payment links
+      const { data: paymentLinksData } = await supabase
+        .from('payment_links')
+        .select('id, payment_reason, amount, recipient_email, status, paid_at')
+        .eq('created_by', userId)
+        .eq('status', 'paid')
+        .not('paid_at', 'is', null)
+        .order('paid_at', { ascending: false });
+
+      if (paymentLinksData) {
+        paymentLinks.push(...paymentLinksData.map(link => ({
+          id: link.id,
+          title: link.payment_reason || `Payment Link ${link.id}`,
+          amount: parseFloat(link.amount || '0'),
+          clientEmail: link.recipient_email || '',
+          status: link.status || 'paid',
+          paidAt: link.paid_at
+        })));
+      }
+
+      // Get paid invoices
+      const { data: invoicesData } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, total_amount, client_email, status, paid_at')
+        .eq('user_id', userId)
+        .eq('status', 'paid')
+        .order('updated_at', { ascending: false });
+
+      if (invoicesData) {
+        invoices.push(...invoicesData.map(invoice => ({
+          id: invoice.id,
+          title: `Invoice ${invoice.invoice_number || invoice.id}`,
+          amount: parseFloat(invoice.total_amount || '0'),
+          clientEmail: invoice.client_email || '',
+          status: invoice.status || 'paid',
+          paidAt: invoice.paid_at
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching paid items:', error);
+    }
+
+    return { paymentLinks, invoices };
+  }
+
+  /**
    * Get nudge statistics
    */
   static async getNudgeStats(userId?: string): Promise<{

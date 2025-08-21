@@ -957,6 +957,50 @@ export async function handleAction(
     case "send_reminder":
       return await sendManualReminder(userId, params);
     
+    case "list_paid_items":
+      try {
+        const actualUserId = await resolveUserId(userId);
+        if (!actualUserId) {
+          return {
+            text: "❌ User not found. Please make sure you're registered with the bot.",
+          };
+        }
+
+        const paidItems = await SmartNudgeService.getUserPaidItems(actualUserId);
+        const totalPaid = paidItems.paymentLinks.length + paidItems.invoices.length;
+        
+        if (totalPaid === 0) {
+          return {
+            text: "📭 You have no paid payment links or invoices yet.\n\n💡 **Tip:** Once clients pay your invoices or payment links, they'll appear here for tracking."
+          };
+        }
+
+        let paidList = `✅ **Paid Items Summary** (${totalPaid} total)\n\n`;
+        
+        if (paidItems.paymentLinks.length > 0) {
+          paidList += `💳 **Payment Links (${paidItems.paymentLinks.length}):**\n`;
+          paidItems.paymentLinks.forEach((item, index) => {
+            const paidDate = new Date(item.paidAt).toLocaleDateString();
+            paidList += `${index + 1}. ${item.title} - $${item.amount}\n   📧 ${item.clientEmail}\n   💰 Paid: ${paidDate}\n\n`;
+          });
+        }
+        
+        if (paidItems.invoices.length > 0) {
+          paidList += `📄 **Invoices (${paidItems.invoices.length}):**\n`;
+          paidItems.invoices.forEach((item, index) => {
+            const paidInfo = item.paidAt ? ` - Paid: ${new Date(item.paidAt).toLocaleDateString()}` : '';
+            paidList += `${index + 1}. ${item.title} - $${item.amount}\n   📧 ${item.clientEmail}${paidInfo}\n\n`;
+          });
+        }
+
+        return {
+          text: paidList
+        };
+      } catch (error) {
+        console.error('[handleAction] List paid items error:', error);
+        return { text: "❌ Failed to fetch paid items. Please try again later." };
+      }
+    
     case "help":
       return {
         text: "🦉 **Hedwig Help**\n\n" +

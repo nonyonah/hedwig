@@ -8,6 +8,7 @@ import { Copy, Download, Send, Calendar, DollarSign, Clock, CheckCircle, Mail, L
 import { toast } from "sonner";
 import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { ConnectWallet } from '@coinbase/onchainkit/wallet';
 import { useAccount } from 'wagmi';
 import { BASE_MAINNET_CONFIG, SUPPORTED_TOKENS } from '@/contracts/config';
@@ -87,49 +88,44 @@ const Proposal = () => {
     error: paymentError
   } = useHedwigPayment();
 
+  // Set up real-time subscription for proposal status updates
+  useRealtimeSubscription({
+    table: 'proposals',
+    id: Array.isArray(id) ? id[0] : id,
+    onUpdate: (payload) => {
+      if (payload.new && payload.new.id === (Array.isArray(id) ? id[0] : id)) {
+        const updatedData = payload.new;
+        const normalizedStatus = updatedData.status === 'completed' ? 'paid' : updatedData.status;
+        setProposalData(prev => prev ? {
+          ...prev,
+          status: normalizedStatus,
+          updated_at: updatedData.updated_at
+        } : null);
+        
+        if (normalizedStatus === 'paid') {
+          toast.success('Payment received! Proposal status updated automatically.');
+        }
+      }
+    }
+  });
+
   useEffect(() => {
     if (id) {
       fetchProposalData();
     }
   }, [id]);
 
-  // When payment is successful, update the proposal status in the DB
+  // Keep minimal manual update for immediate UI feedback, but rely on realtime for persistence
   useEffect(() => {
     if (receipt && receipt.status === 'success' && proposalData?.status !== 'paid') {
-      const updateProposalStatus = async () => {
-        // Optimistically update local UI
-        setProposalData(prev => (prev ? { ...prev, status: 'paid' } : prev));
-        toast.info('Updating proposal status...');
-        
-        try {
-          const response = await fetch('/api/update-proposal-status', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              proposalId: id,
-              status: 'completed',
-              transactionHash: receipt.transactionHash,
-            }),
-          });
-
-          const result = await response.json();
-
-          if (!response.ok || result.error) {
-            throw new Error(result.error || 'API request failed');
-          }
-          
-          toast.success('Proposal status updated successfully!');
-
-        } catch (error) {
-          console.error('Error updating proposal status:', error);
-          toast.warning('Payment succeeded, but syncing status to the server failed.');
-        }
-      };
-      updateProposalStatus();
+      // Optimistically update local UI for immediate feedback
+      setProposalData(prev => (prev ? { ...prev, status: 'paid' } : prev));
+      toast.info('Payment confirmed! Updating status...');
+      
+      // The backend event listener will handle the database update
+      // and the realtime subscription will sync the UI automatically
     }
-  }, [receipt, id, proposalData?.status]);
+  }, [receipt, proposalData?.status]);
 
   // Effect to show toast messages for payment status
   useEffect(() => {
@@ -316,10 +312,9 @@ const Proposal = () => {
     }
 
     processPayment({
-      amount: proposalData.project.totalCost,
+      amount: total, // Use the total amount including the fee
       freelancerAddress: proposalData.freelancer.walletAddress as `0x${string}`,
       invoiceId: proposalData.id, // Using proposal id as invoiceId for tracking
-      tokenAddress: SUPPORTED_TOKENS.USDC.address as `0x${string}`,
     });
   };
 
@@ -359,6 +354,10 @@ const Proposal = () => {
       </div>
     );
   }
+
+  const subtotal = proposalData.project.totalCost;
+  const platformFee = subtotal * 0.005;
+  const total = subtotal + platformFee;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -448,22 +447,22 @@ const Proposal = () => {
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-blue-600" />
                   <div>
-                    <p className="text-xs text-gray-600">Total Investment</p>
-                    <p className="font-semibold text-lg">${proposalData.project.totalCost.toLocaleString()}</p>
+                    <p className="text-xs text-gray-600">Subtotal</p>
+                    <p className="font-semibold text-lg">${subtotal.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <p className="text-xs text-gray-600">Platform Fee (0.5%)</p>
+                    <p className="font-semibold text-lg">${platformFee.toLocaleString()}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-blue-600" />
                   <div>
-                    <p className="text-xs text-gray-600">Timeline</p>
-                    <p className="font-semibold">{proposalData.project.timeline}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-blue-600" />
-                  <div>
-                    <p className="text-xs text-gray-600">Start Date</p>
-                    <p className="font-semibold">Upon Acceptance</p>
+                    <p className="text-xs text-gray-600">Total</p>
+                    <p className="font-semibold text-lg">${total.toLocaleString()}</p>
                   </div>
                 </div>
               </div>
@@ -550,7 +549,7 @@ const Proposal = () => {
                       disabled={isProcessing || isConfirming}
                     >
                       {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {isProcessing ? 'Processing...' : `Pay ${proposalData.project.totalCost} USDC`}
+                      {isProcessing ? 'Processing...' : `Pay ${total.toLocaleString()} USDC`}
                     </Button>
                   )}
                 </div>

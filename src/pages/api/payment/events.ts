@@ -3,11 +3,25 @@ import { HedwigPaymentService } from '../../../contracts/HedwigPaymentService';
 import { PaymentReceivedEvent } from '../../../contracts/types';
 import { createClient } from '@supabase/supabase-js';
 
-// Environment variables with fallback to hardcoded values for testing
-const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET || '0xfa12d294ac4Aa874C2b922F87b6Dd0EFb764783B';
-const RPC_URL = process.env.BASE_RPC_URL || 'https://base-sepolia.g.alchemy.com/v2/f69kp28_ExLI1yBQmngVL3g16oUzv2up';
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zzvansqojcmavxqdmgcz.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 
+// Environment variables - ensure all required env vars are set
+const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET;
+const RPC_URL = process.env.BASE_RPC_URL;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Validate required environment variables
+if (!CONTRACT_ADDRESS) {
+  throw new Error('HEDWIG_PAYMENT_CONTRACT_ADDRESS or HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET must be set');
+}
+if (!RPC_URL) {
+  throw new Error('BASE_RPC_URL must be set');
+}
+if (!SUPABASE_URL) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL must be set');
+}
+if (!SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY must be set');
+} 
 
 // Debug environment variables
 console.log('Environment variables loaded:');
@@ -19,7 +33,7 @@ console.log('SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Not set');
 
 // Initialize services
 const paymentService = new HedwigPaymentService(CONTRACT_ADDRESS, RPC_URL);
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 export default async function handler(
   req: NextApiRequest,
@@ -70,7 +84,6 @@ export default async function handler(
               transaction_hash: event.transactionHash,
               payer: event.payer,
               freelancer: event.freelancer,
-              token: event.token,
               amount: event.amount.toString(),
               fee: event.fee.toString(),
               invoice_id: event.invoiceId,

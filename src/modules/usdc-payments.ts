@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
 import { ethers } from 'ethers';
 import { HedwigPaymentService } from '../contracts/HedwigPaymentService';
-import { PrivyPaymentIntegration } from '../contracts/PrivyPaymentIntegration';
+
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -97,19 +97,13 @@ export class USDCPaymentModule {
   // Calculate fees using smart contract
   async calculateSmartContractFee(amount: number): Promise<{ platformFee: number; freelancerReceives: number }> {
     try {
-      // Convert amount to Wei (USDC has 6 decimals)
-      const amountInWei = ethers.parseUnits(amount.toString(), 6);
-      
-      // Get fee from smart contract
-      const { fee: feeInWei, freelancerPayout: freelancerPayoutInWei } = await this.hedwigPaymentService.calculateFee(amountInWei);
-      const platformFee = parseFloat(ethers.formatUnits(feeInWei, 6));
-      const freelancerReceives = parseFloat(ethers.formatUnits(freelancerPayoutInWei, 6));
-      
-      return { platformFee, freelancerReceives };
+      const feeInBasisPoints = await this.hedwigPaymentService.getPlatformFee();
+      const platformFee = amount * (feeInBasisPoints / 10000);
+      return { platformFee, freelancerReceives: amount - platformFee };
     } catch (error) {
       console.error('Error calculating smart contract fee:', error);
-      // Fallback to 2% fee
-      const platformFee = amount * 0.02;
+      // Fallback to 0.5% fee
+      const platformFee = amount * 0.005;
       return { platformFee, freelancerReceives: amount - platformFee };
     }
   }

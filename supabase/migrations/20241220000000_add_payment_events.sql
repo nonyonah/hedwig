@@ -5,9 +5,8 @@ CREATE TABLE IF NOT EXISTS payment_events (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     transaction_hash TEXT NOT NULL UNIQUE,
     payer TEXT NOT NULL,
-    freelancer TEXT NOT NULL,
-    token TEXT NOT NULL,
-    amount TEXT NOT NULL, -- Stored as string to handle large numbers
+  freelancer TEXT NOT NULL,
+  amount TEXT NOT NULL, -- Stored as string to handle large numbers
     fee TEXT NOT NULL,
     invoice_id TEXT NOT NULL,
     block_number BIGINT NOT NULL,

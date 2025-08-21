@@ -27,14 +27,7 @@ export default async function handler(
   if (req.method === 'GET') {
     try {
       // Get current contract configuration
-      const contractConfig = await paymentService.getContractConfig();
-      const envCheck = checkRequiredEnvVars();
-      const configValidation = validateWalletConfig(config);
-
       return res.status(200).json({
-        contractConfig,
-        environmentCheck: envCheck,
-        configValidation,
         currentConfig: {
           platformWallet: config.platformWallet,
           platformFeePercentage: config.platformFeePercentage,

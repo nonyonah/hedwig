@@ -26,14 +26,8 @@ export default async function handler(
     const paymentRequest: PaymentRequest = req.body;
 
     // Validate required fields
-    if (!paymentRequest.token || !paymentRequest.amount || !paymentRequest.freelancer || !paymentRequest.invoiceId) {
+    if (!paymentRequest.amount || !paymentRequest.freelancer || !paymentRequest.invoiceId) {
       return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // Validate token is whitelisted
-    const isWhitelisted = await paymentService.isTokenWhitelisted(paymentRequest.token);
-    if (!isWhitelisted) {
-      return res.status(400).json({ error: 'Token is not whitelisted' });
     }
 
     // Process the payment

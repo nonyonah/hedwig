@@ -56,6 +56,10 @@ export const sendEmail = sendEmailWithAttachment;
 
 // Template functions
 export function generateInvoiceEmailTemplate(invoice: any): string {
+  const subtotal = invoice.amount;
+  const platformFee = subtotal * 0.005;
+  const total = subtotal + platformFee;
+
   return `
     <!DOCTYPE html>
     <html>
@@ -86,7 +90,9 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                 <p><strong>Description:</strong> ${invoice.project_description}</p>
                 ${invoice.deliverables ? `<p><strong>Deliverables:</strong> ${invoice.deliverables}</p>` : ''}
                 <p><strong>Due Date:</strong> ${invoice.due_date}</p>
-                <p class="amount">Amount Due: ${invoice.amount} ${invoice.currency}</p>
+                <p><strong>Subtotal:</strong> ${subtotal.toLocaleString()} ${invoice.currency}</p>
+                <p><strong>Platform Fee (0.5%):</strong> ${platformFee.toLocaleString()} ${invoice.currency}</p>
+                <p class="amount">Amount Due: ${total.toLocaleString()} ${invoice.currency}</p>
             </div>
             
             <div class="payment-methods">
@@ -109,6 +115,10 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
 }
 
 export function generateProposalEmailTemplate(proposal: any): string {
+  const subtotal = proposal.amount;
+  const platformFee = subtotal * 0.005;
+  const total = subtotal + platformFee;
+
   return `
     <!DOCTYPE html>
     <html>
@@ -139,7 +149,9 @@ export function generateProposalEmailTemplate(proposal: any): string {
                 <p><strong>Description:</strong> ${proposal.project_description}</p>
                 ${proposal.scope_of_work ? `<p><strong>Scope:</strong> ${proposal.scope_of_work}</p>` : ''}
                 ${proposal.timeline ? `<p><strong>Timeline:</strong> ${proposal.timeline}</p>` : ''}
-                <p class="investment">Investment: ${proposal.amount} ${proposal.currency}</p>
+                <p><strong>Subtotal:</strong> ${subtotal.toLocaleString()} ${proposal.currency}</p>
+                <p><strong>Platform Fee (0.5%):</strong> ${platformFee.toLocaleString()} ${proposal.currency}</p>
+                <p class="investment">Investment: ${total.toLocaleString()} ${proposal.currency}</p>
             </div>
             
             <div class="next-steps">

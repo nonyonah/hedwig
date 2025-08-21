@@ -1,25 +1,16 @@
 import { useRouter } from 'next/router';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseUnits, formatUnits } from 'viem';
+import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
-
-const ERC20_ABI = [
-  { "constant": true, "inputs": [{ "name": "_owner", "type": "address" }], "name": "balanceOf", "outputs": [{ "name": "balance", "type": "uint256" }], "type": "function" },
-  { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" },
-  { "constant": true, "inputs": [{ "name": "_owner", "type": "address" }, { "name": "_spender", "type": "address" }], "name": "allowance", "outputs": [{ "name": "", "type": "uint256" }], "type": "function" },
-  { "constant": false, "inputs": [{ "name": "_spender", "type": "address" }, { "name": "_value", "type": "uint256" }], "name": "approve", "outputs": [{ "name": "", "type": "bool" }], "type": "function" },
-];
-
-const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913'; // Base Mainnet USDC
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 interface InvoiceItem {
   id: string;
@@ -70,24 +61,8 @@ const getSupabaseClient = () => {
 };
 
 function PaymentFlow({ invoiceData, total }: { invoiceData: InvoiceData; total: number }) {
-  const { address: accountAddress, isConnected } = useAccount();
-  const { usdcAddress } = useHedwigPayment();
-
-  const amountToPay = useMemo(() => parseUnits(total.toString(), 6), [total]);
-
-  const { data: balanceData, isLoading: isBalanceLoading } = useReadContract({
-    address: usdcAddress as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [accountAddress!],
-    query: { enabled: !!accountAddress },
-  });
-  const balance = balanceData as bigint | undefined;
-
+  const { isConnected } = useAccount();
   const { processPayment, isConfirming, hash: paymentHash, receipt: paymentReceipt } = useHedwigPayment();
-
-  // If balance hasn't loaded yet, don't block the user from opening their wallet.
-  const hasSufficientBalance = balance === undefined ? true : balance >= amountToPay;
 
   const handlePay = () => {
     if (!invoiceData.fromCompany.walletAddress) {
@@ -102,7 +77,6 @@ function PaymentFlow({ invoiceData, total }: { invoiceData: InvoiceData; total: 
       amount: total,
       freelancerAddress: invoiceData.fromCompany.walletAddress as `0x${string}`,
       invoiceId: invoiceData.id,
-      tokenAddress: usdcAddress,
     });
   };
 
@@ -112,27 +86,8 @@ function PaymentFlow({ invoiceData, total }: { invoiceData: InvoiceData; total: 
     return <ConnectWallet className="w-full" />;
   }
 
-  if (isBalanceLoading) {
-    return <Button disabled className="w-full"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading wallet data...</Button>;
-  }
-
   return (
     <div className="space-y-4">
-      {balance !== undefined && (
-         <div className="flex justify-between text-sm">
-           <span className="text-gray-600">Your Balance:</span>
-           <span className={`font-medium ${hasSufficientBalance ? 'text-green-600' : 'text-red-600'}`}>
-             {formatUnits(balance, 6)} USDC
-           </span>
-         </div>
-      )}
-
-      {!hasSufficientBalance && (
-        <div className="flex items-center text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-sm">
-          <AlertTriangle className="h-4 w-4 mr-2" /> Your balance may be insufficient. You can still try to pay.
-        </div>
-      )}
-
       <Button onClick={handlePay} disabled={isConfirming} className="w-full">
         {isConfirming ? (
           <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
@@ -156,64 +111,46 @@ export default function InvoicePage() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Set up real-time subscription for invoice status updates
+  useRealtimeSubscription({
+    table: 'invoices',
+    id: Array.isArray(id) ? id[0] : id,
+    onUpdate: (payload) => {
+      if (payload.new && payload.new.id === (Array.isArray(id) ? id[0] : id)) {
+        const updatedData = payload.new;
+        const normalizedStatus = updatedData.status === 'completed' ? 'paid' : updatedData.status;
+        setInvoiceData(prev => prev ? {
+          ...prev,
+          status: normalizedStatus,
+          updated_at: updatedData.updated_at
+        } : null);
+        
+        if (normalizedStatus === 'paid') {
+          toast.success('Payment received! Invoice status updated automatically.');
+        }
+      }
+    }
+  });
+
   useEffect(() => {
     if (id) {
       fetchInvoiceData();
     }
   }, [id]);
 
-  // When payment is successful, update the invoice status in the DB
+
+
+  // Keep minimal manual update for immediate UI feedback, but rely on realtime for persistence
   useEffect(() => {
-    if (paymentReceipt && paymentReceipt.status === 'success' && invoiceData?.status !== 'paid') {
-      const updateInvoiceStatus = async () => {
-        // Optimistically update local UI
-        setInvoiceData(prev => (prev ? { ...prev, status: 'paid' } : prev));
-        toast.info('Updating invoice status...');
-
-        // Compute amountPaid mirroring the UI total (exclude fee/platform/transaction items)
-        let amountPaid = 0;
-        try {
-          const filtered = (invoiceData?.items || []).filter(
-            (item) => !item.description.toLowerCase().includes('fee') &&
-                      !item.description.toLowerCase().includes('platform') &&
-                      !item.description.toLowerCase().includes('transaction')
-          );
-          amountPaid = filtered.reduce((sum, item) => sum + (item.amount || 0), 0);
-        } catch {}
-
-        try {
-          const invoiceId = Array.isArray(id) ? id[0] : id;
-          const response = await fetch('/api/update-invoice-status', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              invoiceId,
-              status: 'completed',
-              transactionHash: paymentReceipt.transactionHash,
-              amountPaid,
-              payerWallet: accountAddress,
-              freelancerAddress: invoiceData?.fromCompany?.walletAddress,
-            }),
-          });
-
-          const result = await response.json();
-
-          if (!response.ok || result.error) {
-            throw new Error(result.error || 'API request failed');
-          }
-
-          toast.success('Invoice status updated successfully!');
-
-        } catch (error) {
-          console.error('Error updating invoice status:', error);
-          toast.warning('Payment succeeded, but syncing status to the server failed.');
-        }
-      };
-      updateInvoiceStatus();
+    if (paymentReceipt && invoiceData?.status !== 'paid') {
+      // Optimistically update local UI for immediate feedback
+      setInvoiceData(prev => (prev ? { ...prev, status: 'paid' } : prev));
+      toast.info('Payment confirmed! Updating status...');
+      
+      // The backend event listener will handle the database update
+      // and the realtime subscription will sync the UI automatically
     }
-  }, [paymentReceipt, id, invoiceData?.status, accountAddress, invoiceData?.items, invoiceData?.fromCompany?.walletAddress]);
+  }, [paymentReceipt, invoiceData?.status]);
 
   const fetchInvoiceData = async () => {
     try {
@@ -383,7 +320,8 @@ export default function InvoicePage() {
   
   // Calculate subtotal from filtered items
   const subtotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
-  const total = subtotal; // Fees are temporarily disabled
+  const platformFee = subtotal * 0.005; // 0.5%
+  const total = subtotal + platformFee;
 
   const statusColor = {
     draft: 'bg-gray-100 text-gray-800',
@@ -521,6 +459,10 @@ export default function InvoicePage() {
                   <span className="text-gray-600">Subtotal:</span>
                   <span className="font-medium">${subtotal.toFixed(2)}</span>
                 </div>
+                <div className="flex justify-between py-2">
+                  <span className="text-gray-600">Platform Fee (0.5%):</span>
+                  <span className="font-medium">${platformFee.toFixed(2)}</span>
+                </div>
                 <Separator />
                 <div className="flex justify-between py-3">
                   <span className="text-lg font-semibold">Total:</span>
@@ -552,7 +494,7 @@ export default function InvoicePage() {
         </Card>
 
         {/* Payment Section */}
-        {invoiceData.status !== 'paid' && (
+        {invoiceData.status !== 'paid' ? (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -586,6 +528,39 @@ export default function InvoicePage() {
 
               <div className="text-center text-sm text-gray-600">
                 Secure payment processing via smart contract
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
+                Payment Completed
+              </CardTitle>
+              <CardDescription>
+                This invoice has been marked as paid.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Recipient:</span>
+                  <span className="font-medium">{invoiceData.fromCompany.name}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Amount:</span>
+                  <span className="font-medium">${total.toLocaleString()} USDC</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle className="h-6 w-6 mr-3 text-green-600" />
+                <span className="text-green-800 font-medium">Marked as Paid</span>
+              </div>
+
+              <div className="text-center text-sm text-gray-600">
+                Payment has been processed and confirmed
               </div>
             </CardContent>
           </Card>

@@ -1,15 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAccount, useReadContract } from 'wagmi';
-import { parseUnits, formatUnits } from 'viem';
+import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
-import { ERC20_ABI } from '@/lib/abi/erc20';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 // ERC20_ABI is now shared from '@/lib/abi/erc20'
 
@@ -43,32 +42,16 @@ interface PaymentData {
 
 // flutterwaveService is imported from the service file
 
-function PaymentFlow({ paymentData }: { paymentData: PaymentData }) {
-  const { address: accountAddress, isConnected } = useAccount();
-  const { usdcAddress } = useHedwigPayment();
-  const total = paymentData.amount;
-
-  const amountToPay = useMemo(() => parseUnits(total.toString(), 6), [total]);
-
-  const { data: balanceData, isLoading: isBalanceLoading } = useReadContract({
-    address: usdcAddress as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [accountAddress!],
-    query: { enabled: !!accountAddress },
-  });
-  const balance = balanceData as bigint | undefined;
+function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: number }) {
+  const { isConnected } = useAccount();
 
   const { processPayment, isConfirming, hash: paymentHash, receipt: paymentReceipt } = useHedwigPayment();
-
-  const hasSufficientBalance = balance !== undefined && balance >= amountToPay;
 
   const handlePay = () => {
     processPayment({
       amount: total,
       freelancerAddress: paymentData.walletAddress as `0x${string}`,
       invoiceId: paymentData.id,
-      tokenAddress: usdcAddress,
     });
   };
 
@@ -78,26 +61,8 @@ function PaymentFlow({ paymentData }: { paymentData: PaymentData }) {
     return <ConnectWallet className="w-full" />;
   }
 
-  if (isBalanceLoading) {
-    return <Button disabled className="w-full"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading wallet data...</Button>;
-  }
-
   return (
     <div className="space-y-4">
-      {balance !== undefined && (
-         <div className="flex justify-between text-sm">
-           <span className="text-gray-600">Your Balance:</span>
-           <span className={`font-medium ${hasSufficientBalance ? 'text-green-600' : 'text-red-600'}`}>
-             {formatUnits(balance, 6)} USDC
-           </span>
-         </div>
-      )}
-
-      {!hasSufficientBalance ? (
-        <Button disabled variant="destructive" className="w-full">
-          <AlertTriangle className="h-4 w-4 mr-2" /> Insufficient Balance
-        </Button>
-      ) : (
         <Button onClick={handlePay} disabled={isConfirming || !!paymentReceipt} className="w-full">
           {isConfirming ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
@@ -107,7 +72,6 @@ function PaymentFlow({ paymentData }: { paymentData: PaymentData }) {
             <><Wallet className="h-4 w-4 mr-2" /> Pay {total.toLocaleString()} USDC</>
           )}
         </Button>
-      )}
 
       {/* Transaction status and explorer link */}
       {/* Show when tx submitted */}
@@ -157,7 +121,32 @@ export default function PaymentLinkPage() {
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | null>(null);
+
+  const subtotal = paymentData?.amount || 0;
+  const platformFee = subtotal * 0.005;
+  const total = subtotal + platformFee;
   // Note: Only Base Sepolia USDC is supported for now
+
+  // Set up real-time subscription for payment status updates
+  useRealtimeSubscription({
+    table: 'payment_links',
+    id: Array.isArray(id) ? id[0] : id,
+    onUpdate: (payload) => {
+      if (payload.new && payload.new.id === (Array.isArray(id) ? id[0] : id)) {
+        const updatedData = payload.new;
+        const normalizedStatus = updatedData.status === 'completed' ? 'paid' : updatedData.status;
+        setPaymentData(prev => prev ? {
+          ...prev,
+          status: normalizedStatus,
+          updated_at: updatedData.updated_at
+        } : null);
+        
+        if (normalizedStatus === 'paid') {
+          toast.success('Payment received! Status updated automatically.');
+        }
+      }
+    }
+  });
 
   useEffect(() => {
     const fetchPaymentData = async () => {
@@ -195,46 +184,19 @@ export default function PaymentLinkPage() {
     fetchPaymentData();
   }, [id]);
 
+
+
+  // Keep minimal manual update for immediate UI feedback, but rely on realtime for persistence
   useEffect(() => {
-    if (paymentReceipt && paymentReceipt.status === 'success' && paymentData?.status !== 'paid') {
-      const updatePaymentStatus = async () => {
-        // Optimistically update local UI so the badge switches immediately
-        setPaymentData(prev => (prev ? { ...prev, status: 'paid' } : prev));
-
-        toast.info('Updating payment status...');
-        
-        try {
-          const paymentId = Array.isArray(id) ? id[0] : id;
-          const response = await fetch('/api/update-payment-status', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              paymentId,
-              status: 'completed', // Use 'completed' to match db
-              transactionHash: paymentReceipt.transactionHash,
-            }),
-          });
-
-          const result = await response.json();
-
-          if (!response.ok || result.error) {
-            // Use a more specific error from the API if available
-            throw new Error(result.error || 'API request failed');
-          }
-          
-          toast.success('Payment status updated successfully!');
-
-        } catch (error) {
-          console.error('Error updating payment status:', error);
-          // Keep local status as paid but notify about backend sync issue
-          toast.warning('Payment succeeded, but syncing status to the server failed.');
-        }
-      };
-      updatePaymentStatus();
+    if (paymentReceipt && paymentData?.status !== 'paid') {
+      // Optimistically update local UI for immediate feedback
+      setPaymentData(prev => (prev ? { ...prev, status: 'paid' } : prev));
+      toast.info('Payment confirmed! Updating status...');
+      
+      // The backend event listener will handle the database update
+      // and the realtime subscription will sync the UI automatically
     }
-  }, [paymentReceipt, id, paymentData?.status]);
+  }, [paymentReceipt, paymentData?.status]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href)
@@ -387,7 +349,15 @@ export default function PaymentLinkPage() {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Amount:</span>
-                        <span className="font-medium">${paymentData.amount.toLocaleString()} USDC</span>
+                        <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Platform Fee (0.5%):</span>
+                        <span className="font-medium">${platformFee.toLocaleString()} USDC</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold">
+                        <span className="text-gray-800">Total:</span>
+                        <span className="text-gray-800">${total.toLocaleString()} USDC</span>
                       </div>
                       <div className="text-xs text-gray-500 mt-2 p-2 bg-blue-50 rounded border border-blue-200">
                         <div className="font-medium mb-1 text-blue-800">💰 USDC Stablecoin Only:</div>
@@ -399,11 +369,51 @@ export default function PaymentLinkPage() {
                         <span className="text-right max-w-xs">{paymentData.description}</span>
                       </div>
                     </div>
-                    <PaymentFlow paymentData={paymentData} />
+                    <PaymentFlow paymentData={paymentData} total={total} />
                   </div>
                 )}
               </div>
 
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Payment Completed Section */}
+        {paymentData.status === 'paid' && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
+                Payment Completed
+              </CardTitle>
+              <CardDescription>
+                This payment link has been marked as paid.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Recipient:</span>
+                  <span className="font-medium">{paymentData.recipient.name}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Amount:</span>
+                  <span className="font-medium">${paymentData.amount.toLocaleString()} USDC</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Description:</span>
+                  <span className="text-right max-w-xs">{paymentData.description}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle className="h-6 w-6 mr-3 text-green-600" />
+                <span className="text-green-800 font-medium">Marked as Paid</span>
+              </div>
+
+              <div className="text-center text-sm text-gray-600">
+                Payment has been processed and confirmed
+              </div>
             </CardContent>
           </Card>
         )}
