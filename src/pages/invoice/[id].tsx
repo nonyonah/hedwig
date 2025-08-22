@@ -60,7 +60,7 @@ const getSupabaseClient = () => {
   return createClient(supabaseUrl, supabaseAnonKey);
 };
 
-function PaymentFlow({ invoiceData, total }: { invoiceData: InvoiceData; total: number }) {
+function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subtotal: number }) {
   const { isConnected } = useAccount();
   const { processPayment, isConfirming, hash: paymentHash, receipt: paymentReceipt } = useHedwigPayment();
 
@@ -69,12 +69,12 @@ function PaymentFlow({ invoiceData, total }: { invoiceData: InvoiceData; total: 
       toast.error('Freelancer wallet address is not configured for this invoice.');
       return;
     }
-    if (!total || Number.isNaN(total) || total <= 0) {
+    if (!subtotal || Number.isNaN(subtotal) || subtotal <= 0) {
       toast.error('Invalid payment amount.');
       return;
     }
     processPayment({
-      amount: total,
+      amount: subtotal,
       freelancerAddress: invoiceData.fromCompany.walletAddress as `0x${string}`,
       invoiceId: invoiceData.id,
     });
@@ -94,7 +94,7 @@ function PaymentFlow({ invoiceData, total }: { invoiceData: InvoiceData; total: 
         ) : paymentReceipt ? (
           <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
         ) : (
-          <><Wallet className="h-4 w-4 mr-2" /> Pay ${total.toLocaleString()} USDC</>
+          <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} USDC</>
         )}
       </Button>
     </div>
@@ -320,7 +320,7 @@ export default function InvoicePage() {
   
   // Calculate subtotal from filtered items
   const subtotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
-  const platformFee = subtotal * 0.005; // 0.5%
+  const platformFee = subtotal * 0.01; // 1%
   const total = subtotal + platformFee;
 
   const statusColor = {
@@ -460,7 +460,7 @@ export default function InvoicePage() {
                   <span className="font-medium">${subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Platform Fee (0.5%):</span>
+                  <span className="text-gray-600">Platform Fee (1%):</span>
                   <span className="font-medium">${platformFee.toFixed(2)}</span>
                 </div>
                 <Separator />
@@ -519,12 +519,24 @@ export default function InvoicePage() {
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Amount:</span>
-                  <span className="font-medium">${total.toLocaleString()} USDC</span>
+                  <span className="text-gray-600">Amount Due:</span>
+                  <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Platform Fee (1%) — deducted:</span>
+                  <span className="font-medium">${platformFee.toLocaleString()} USDC</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Freelancer Receives:</span>
+                  <span className="font-medium">${(subtotal - platformFee).toLocaleString()} USDC</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold">
+                  <span className="text-gray-800">Total to Pay:</span>
+                  <span className="text-gray-800">${subtotal.toLocaleString()} USDC</span>
                 </div>
               </div>
 
-              <PaymentFlow invoiceData={invoiceData} total={total} />
+              <PaymentFlow invoiceData={invoiceData} subtotal={subtotal} />
 
               <div className="text-center text-sm text-gray-600">
                 Secure payment processing via smart contract
@@ -549,8 +561,8 @@ export default function InvoicePage() {
                   <span className="font-medium">{invoiceData.fromCompany.name}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Amount:</span>
-                  <span className="font-medium">${total.toLocaleString()} USDC</span>
+                  <span className="text-gray-600">Amount Paid:</span>
+                  <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
                 </div>
               </div>
 

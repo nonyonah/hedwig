@@ -21,7 +21,7 @@ contract HedwigPaymentTest is Test {
     function testDeployment() public view {
         assertEq(payment.PLATFORM_WALLET(), platformWallet);
         assertEq(payment.OWNER(), address(this));
-        assertEq(payment.PLATFORM_FEE(), 50); // 0.5%
+        assertEq(payment.PLATFORM_FEE(), 100); // 1%
     }
     
     function testVersion() public view {

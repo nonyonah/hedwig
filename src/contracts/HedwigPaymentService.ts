@@ -9,21 +9,64 @@ import {
 
 // Contract ABI (simplified for key functions)
 export const HEDWIG_PAYMENT_ABI = [
-  // Main payment function
-  "function pay(uint256 amount, address freelancer, string calldata invoiceId) external",
-  
-  // Admin functions
-  "function setPlatformWallet(address _wallet) external",
-  "function setPlatformFee(uint256 _feeInBasisPoints) external",
-  "function whitelistToken(address _token, bool _status) external",
-  "function batchWhitelistTokens(address[] calldata _tokens, bool[] calldata _statuses) external",
-
-  // View functions
-  "function platformFee() public view returns (uint256)",
-
-  // Events
-  "event PaymentReceived(address indexed payer, address indexed freelancer, uint256 amount, uint256 fee, string invoiceId)",
-];
+  {
+    "type": "function",
+    "name": "pay",
+    "inputs": [
+      { "type": "uint256", "name": "amount" },
+      { "type": "address", "name": "freelancer" },
+      { "type": "string", "name": "invoiceId" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "OWNER",
+    "inputs": [],
+    "outputs": [{ "type": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PLATFORM_FEE",
+    "inputs": [],
+    "outputs": [{ "type": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PLATFORM_WALLET",
+    "inputs": [],
+    "outputs": [{ "type": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "USDC",
+    "inputs": [],
+    "outputs": [{ "type": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "version",
+    "inputs": [],
+    "outputs": [{ "type": "string" }],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "event",
+    "name": "PaymentReceived",
+    "inputs": [
+      { "type": "address", "name": "payer", "indexed": true },
+      { "type": "address", "name": "freelancer", "indexed": true },
+      { "type": "uint256", "name": "amount", "indexed": false },
+      { "type": "uint256", "name": "fee", "indexed": false },
+      { "type": "string", "name": "invoiceId", "indexed": false }
+    ]
+  }
+] as const;
 
 export class HedwigPaymentService {
   private provider: ethers.Provider;
@@ -159,46 +202,38 @@ export class HedwigPaymentService {
   }
 
   /**
-   * Admin Functions
+   * Get platform fee from contract
    */
-
-  async setPlatformWallet(walletAddress: string): Promise<string> {
-    if (!this.signer) throw new Error('Admin signer required');
-    const tx = await this.contract.setPlatformWallet(walletAddress);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async setPlatformFee(feeInBasisPoints: number): Promise<string> {
-    if (!this.signer) throw new Error('Admin signer required');
-    const tx = await this.contract.setPlatformFee(feeInBasisPoints);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async whitelistToken(tokenAddress: string, status: boolean): Promise<string> {
-    if (!this.signer) throw new Error('Admin signer required');
-    const tx = await this.contract.whitelistToken(tokenAddress, status);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async batchWhitelistTokens(tokens: { address: string; status: boolean }[]): Promise<string[]> {
-    if (!this.signer) throw new Error('Admin signer required');
-    
-    const addresses = tokens.map(t => t.address);
-    const statuses = tokens.map(t => t.status);
-    
-    const tx = await this.contract.batchWhitelistTokens(addresses, statuses);
-    await tx.wait();
-    
-    // This is a single transaction, so we return a single hash in an array
-    // to align with the expected return type of the calling API.
-    return [tx.hash];
-  }
-
   async getPlatformFee(): Promise<number> {
-    const feeInBasisPoints = await this.contract.platformFee();
+    const feeInBasisPoints = await this.contract.PLATFORM_FEE();
     return Number(feeInBasisPoints);
+  }
+
+  /**
+   * Get platform wallet address from contract
+   */
+  async getPlatformWallet(): Promise<string> {
+    return await this.contract.PLATFORM_WALLET();
+  }
+
+  /**
+   * Get USDC contract address from contract
+   */
+  async getUSDCAddress(): Promise<string> {
+    return await this.contract.USDC();
+  }
+
+  /**
+   * Get contract owner address
+   */
+  async getOwner(): Promise<string> {
+    return await this.contract.OWNER();
+  }
+
+  /**
+   * Get contract version
+   */
+  async getVersion(): Promise<string> {
+    return await this.contract.version();
   }
 }

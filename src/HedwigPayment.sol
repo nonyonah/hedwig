@@ -10,13 +10,13 @@ interface IERC20 {
 
 /**
  * @title HedwigPayment
- * @dev Optimized smart contract for Hedwig payments with 0.5% platform fee
+ * @dev Optimized smart contract for Hedwig payments with 1% platform fee
  * Gas-optimized version with minimal features for cost-effective deployment
  */
 contract HedwigPayment {
     // --- Constants (immutable for gas savings) ---
-    address public constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913; // Base USDC
-    uint256 public constant PLATFORM_FEE = 50; // 0.5% in basis points
+    address public constant USDC = 0x036CbD53842c5426634e7929541eC2318f3dCF7e; // Base Sepolia USDC Testnet (correct)
+    uint256 public constant PLATFORM_FEE = 100; // 1% in basis points
     
     address public immutable PLATFORM_WALLET;
     address public immutable OWNER;
@@ -52,7 +52,7 @@ contract HedwigPayment {
     }
     
     /**
-     * @notice Pay an invoice or payment link in USDC with 0.5% platform fee
+     * @notice Pay an invoice or payment link in USDC with 1% platform fee
      * @dev Optimized for gas efficiency with minimal checks
      * @param amount Amount of USDC to pay (must be > 0)
      * @param freelancer Address to receive payout
@@ -61,7 +61,7 @@ contract HedwigPayment {
     function pay(
         uint256 amount,
         address freelancer,
-        string calldata invoiceId
+        string memory invoiceId
     ) external {
         // Input validation
         if (amount == 0) revert InvalidAmount();
@@ -74,7 +74,7 @@ contract HedwigPayment {
             revert InsufficientAllowance();
         }
 
-        // Calculate fee (0.5%)
+        // Calculate fee (1%)
         uint256 fee = (amount * PLATFORM_FEE) / 10000;
         uint256 freelancerPayout = amount - fee;
 

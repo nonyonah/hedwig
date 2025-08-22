@@ -102,8 +102,8 @@ export class USDCPaymentModule {
       return { platformFee, freelancerReceives: amount - platformFee };
     } catch (error) {
       console.error('Error calculating smart contract fee:', error);
-      // Fallback to 0.5% fee
-      const platformFee = amount * 0.005;
+      // Fallback to 1% fee
+      const platformFee = amount * 0.01;
       return { platformFee, freelancerReceives: amount - platformFee };
     }
   }
@@ -322,11 +322,13 @@ export class USDCPaymentModule {
         parse_mode: 'Markdown'
       });
 
-      // Start monitoring for payment (in a real implementation, this would be a background job)
-      // For now, we'll simulate payment confirmation after 30 seconds
-      setTimeout(async () => {
-        await this.simulatePaymentConfirmation(chatId, itemId, type, network);
-      }, 30000);
+      // Start real blockchain monitoring for Base network payments
+      if (network === 'base') {
+        await this.startPaymentMonitoring(chatId, itemId, type);
+      } else {
+        // For Solana, we'll need to implement Solana-specific monitoring
+        await this.bot.sendMessage(chatId, '⚠️ Solana payment monitoring not yet implemented. Please check your payment status manually.');
+      }
 
     } catch (error) {
       console.error('Error handling payment confirmation:', error);
@@ -334,20 +336,45 @@ export class USDCPaymentModule {
     }
   }
 
-  // Simulate payment confirmation (replace with real blockchain monitoring)
-  private async simulatePaymentConfirmation(
+  // Start real blockchain payment monitoring
+  private async startPaymentMonitoring(
+    chatId: number,
+    itemId: string,
+    type: 'invoice' | 'proposal'
+  ) {
+    try {
+      // Set up event listener for payments related to this item
+      const invoiceIdToMonitor = `${type}_${itemId}`;
+      
+      // Listen for payment events
+      await this.hedwigPaymentService.listenForPayments(async (event) => {
+        // Check if this event is for our item
+        if (event.invoiceId === invoiceIdToMonitor) {
+          await this.handlePaymentReceived(chatId, itemId, type, event);
+        }
+      });
+
+      console.log(`Started monitoring payments for ${type} ${itemId}`);
+    } catch (error) {
+      console.error('Error starting payment monitoring:', error);
+      await this.bot.sendMessage(chatId, '❌ Error starting payment monitoring.');
+    }
+  }
+
+  // Handle confirmed payment from blockchain
+  private async handlePaymentReceived(
     chatId: number,
     itemId: string,
     type: 'invoice' | 'proposal',
-    network: 'base' | 'solana'
+    event: any
   ) {
     try {
       // Update item status
       const updateData = {
         status: type === 'invoice' ? 'paid' : 'accepted',
-        payment_method: `usdc_${network}`,
-        transaction_hash: `0x${Math.random().toString(16).substr(2, 64)}`, // Simulated hash
-        paid_at: new Date().toISOString()
+        payment_method: 'usdc_base',
+        transaction_hash: event.transactionHash,
+        paid_at: new Date(event.timestamp * 1000).toISOString()
       };
 
       await supabase
@@ -357,8 +384,10 @@ export class USDCPaymentModule {
 
       const message = (
         `✅ *Payment Confirmed!*\n\n` +
-        `Your ${type} payment has been successfully confirmed on the ${network} network.\n\n` +
-        `*Transaction Hash:*\n\`${updateData.transaction_hash}\`\n\n` +
+        `Your ${type} payment has been successfully confirmed on the Base network.\n\n` +
+        `*Amount:* ${(Number(event.amount) / 1000000).toFixed(2)} USDC\n` +
+        `*Fee:* ${(Number(event.fee) / 1000000).toFixed(2)} USDC\n` +
+        `*Transaction Hash:*\n\`${event.transactionHash}\`\n\n` +
         `Thank you for your payment!`
       );
 
@@ -367,14 +396,14 @@ export class USDCPaymentModule {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🔗 View Transaction', callback_data: `view_tx_${network}_${updateData.transaction_hash}` }
+              { text: '🔗 View on BaseScan', url: `https://basescan.org/tx/${event.transactionHash}` }
             ]
           ]
         }
       });
 
     } catch (error) {
-      console.error('Error confirming payment:', error);
+      console.error('Error handling payment received:', error);
     }
   }
 

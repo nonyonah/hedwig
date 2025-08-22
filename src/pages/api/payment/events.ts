@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { HedwigPaymentService } from '../../../contracts/HedwigPaymentService';
 import { PaymentReceivedEvent } from '../../../contracts/types';
 import { createClient } from '@supabase/supabase-js';
+import { formatBigInt, makeSerializable } from '../../../lib/bigintUtils';
 
 // Environment variables - ensure all required env vars are set
 const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET;
@@ -180,20 +181,9 @@ export default async function handler(
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
-// Helper function to format payment amount for display
+// Helper function to format payment amount for display (deprecated - use formatBigInt from bigintUtils)
 export function formatPaymentAmount(amount: bigint, decimals: number = 6): string {
-  const divisor = BigInt(10 ** decimals);
-  const wholePart = amount / divisor;
-  const fractionalPart = amount % divisor;
-  
-  if (fractionalPart === 0n) {
-    return wholePart.toString();
-  }
-  
-  const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
-  const trimmedFractional = fractionalStr.replace(/0+$/, '');
-  
-  return `${wholePart}.${trimmedFractional}`;
+  return formatBigInt(amount, decimals);
 }
 
 // Helper function to get token symbol from address

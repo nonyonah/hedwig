@@ -147,8 +147,11 @@ function setupBotHandlers() {
           ]);
           
           // Only send message if response is not empty
-          if (response && response.trim() !== '') {
-            await bot?.sendMessage(chatId, response);
+          if (response) {
+            const messageToSend = typeof response === 'string' ? response : JSON.stringify(response);
+            if (messageToSend.trim() !== '') {
+                await bot?.sendMessage(chatId, messageToSend);
+            }
           }
         } catch (aiError) {
           console.error('[Webhook] AI processing error:', aiError);
@@ -681,35 +684,33 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
       return "I'm sorry, I couldn't process your request at the moment.";
     }
 
-    // Parse JSON response from LLM agent
-    try {
-      let jsonContent = llmResponse;
-      
-      // Check if response is wrapped in markdown code blocks
-      if (llmResponse.includes('```json')) {
-        const jsonMatch = llmResponse.match(/```json\s*([\s\S]*?)\s*```/);
-        if (jsonMatch && jsonMatch[1]) {
-          jsonContent = jsonMatch[1].trim();
+    let parsedResponse: any;
+
+    if (typeof llmResponse === 'object' && llmResponse !== null) {
+      parsedResponse = llmResponse;
+    } else if (typeof llmResponse === 'string') {
+      try {
+        let jsonContent = llmResponse;
+        if (llmResponse.startsWith('```')) {
+          const match = llmResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+          jsonContent = match && match[1] ? match[1].trim() : llmResponse;
         }
-      } else if (llmResponse.includes('```')) {
-        // Handle generic code blocks that might contain JSON
-        const codeMatch = llmResponse.match(/```\s*([\s\S]*?)\s*```/);
-        if (codeMatch && codeMatch[1]) {
-          jsonContent = codeMatch[1].trim();
-        }
+        parsedResponse = JSON.parse(jsonContent);
+      } catch (e) {
+        console.log('[Webhook] Returning plain string response from LLM:', llmResponse);
+        return llmResponse;
       }
-      
-      const parsedResponse = JSON.parse(jsonContent);
-      
-      if (parsedResponse.intent && parsedResponse.params !== undefined) {
-        return await formatResponseForUser(parsedResponse, user.id, message, chatId);
-      }
-    } catch (parseError) {
-      // If it's not JSON, return as is (fallback for plain text responses)
-      console.log('[Webhook] Non-JSON response from LLM:', llmResponse);
+    } else {
+      console.log('[Webhook] Unhandled LLM response:', llmResponse);
+      return "I received an unexpected response. Please try again.";
     }
-    
-    return llmResponse;
+
+    if (parsedResponse && parsedResponse.intent) {
+      return await formatResponseForUser(parsedResponse, user.id, message, chatId);
+    }
+
+    console.log('[Webhook] Fallback, returning original string or stringified object.');
+    return typeof llmResponse === 'string' ? llmResponse : JSON.stringify(llmResponse);
   } catch (error) {
     console.error('[Webhook] Error processing with AI:', error);
     return "I'm experiencing some technical difficulties. Please try again later.";

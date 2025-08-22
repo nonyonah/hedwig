@@ -10,7 +10,7 @@ export interface WalletConfig {
 // Base Chain Configuration
 export const BASE_MAINNET_CONFIG: WalletConfig = {
   platformWallet: process.env.HEDWIG_PLATFORM_WALLET || '',
-  platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '250'), // Default 2.5%
+  platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '100'), // Default 1%
   contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || '',
   rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   chainId: 8453
@@ -19,7 +19,7 @@ export const BASE_MAINNET_CONFIG: WalletConfig = {
 // Testnet Configuration (for development)
 export const BASE_SEPOLIA_CONFIG: WalletConfig = {
   platformWallet: process.env.HEDWIG_PLATFORM_WALLET_TESTNET || '',
-  platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '250'),
+  platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '100'),
   contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET || '',
   rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
   chainId: 84532

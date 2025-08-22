@@ -503,5 +503,28 @@ For unknown requests that are clearly not blockchain-related, use intent "unknow
   ];
   await setUserContext(userId, newContext);
 
-  return llmResponse;
+  // 5. Parse the response to return a structured object
+  try {
+    // The model might return a JSON string wrapped in markdown or with other text.
+    // We need to extract the JSON object itself.
+    const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('[LLM Agent] No JSON object found in response:', llmResponse);
+      return { intent: 'clarification', params: { message: 'I received a response I could not understand. Could you please rephrase?' } };
+    }
+    
+    const jsonString = jsonMatch[0];
+    const responseData = JSON.parse(jsonString);
+
+    // Ensure the parsed data has the expected structure
+    if (responseData && responseData.intent) {
+      return responseData;
+    }
+
+    console.error('[LLM Agent] Invalid or malformed JSON response:', responseData);
+    return { intent: 'clarification', params: { message: 'I seem to have a problem with my thinking process. Could you please rephrase your request?' } };
+  } catch (error) {
+    console.error("[LLM Agent] Failed to parse LLM response:", error, "Raw response:", llmResponse);
+    return { intent: 'clarification', params: { message: 'I had trouble understanding the response from my core intelligence. Please try again.' } };
+  }
 }

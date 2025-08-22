@@ -57,7 +57,7 @@ export const sendEmail = sendEmailWithAttachment;
 // Template functions
 export function generateInvoiceEmailTemplate(invoice: any): string {
   const subtotal = invoice.amount;
-  const platformFee = subtotal * 0.005;
+  const platformFee = subtotal * 0.01;
   const total = subtotal + platformFee;
 
   return `
@@ -91,7 +91,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                 ${invoice.deliverables ? `<p><strong>Deliverables:</strong> ${invoice.deliverables}</p>` : ''}
                 <p><strong>Due Date:</strong> ${invoice.due_date}</p>
                 <p><strong>Subtotal:</strong> ${subtotal.toLocaleString()} ${invoice.currency}</p>
-                <p><strong>Platform Fee (0.5%):</strong> ${platformFee.toLocaleString()} ${invoice.currency}</p>
+                <p><strong>Platform Fee (1%):</strong> ${platformFee.toLocaleString()} ${invoice.currency}</p>
                 <p class="amount">Amount Due: ${total.toLocaleString()} ${invoice.currency}</p>
             </div>
             
@@ -116,7 +116,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
 
 export function generateProposalEmailTemplate(proposal: any): string {
   const subtotal = proposal.amount;
-  const platformFee = subtotal * 0.005;
+  const platformFee = subtotal * 0.01;
   const total = subtotal + platformFee;
 
   return `
@@ -150,7 +150,7 @@ export function generateProposalEmailTemplate(proposal: any): string {
                 ${proposal.scope_of_work ? `<p><strong>Scope:</strong> ${proposal.scope_of_work}</p>` : ''}
                 ${proposal.timeline ? `<p><strong>Timeline:</strong> ${proposal.timeline}</p>` : ''}
                 <p><strong>Subtotal:</strong> ${subtotal.toLocaleString()} ${proposal.currency}</p>
-                <p><strong>Platform Fee (0.5%):</strong> ${platformFee.toLocaleString()} ${proposal.currency}</p>
+                <p><strong>Platform Fee (1%):</strong> ${platformFee.toLocaleString()} ${proposal.currency}</p>
                 <p class="investment">Investment: ${total.toLocaleString()} ${proposal.currency}</p>
             </div>
             

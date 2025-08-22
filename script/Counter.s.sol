@@ -13,7 +13,7 @@ contract DeployHedwigPayment is Script {
         // Get platform wallet from environment or use default
         address platformWallet = vm.envOr("HEDWIG_PLATFORM_WALLET_TESTNET", 
                                          vm.envOr("HEDWIG_PLATFORM_WALLET_MAINNET", 
-                                                 address(0x869a1E10cA4d1e1223676C0a4214C6cC10023244)));
+                                                 address(0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d)));
         
         // Get private key from environment
         string memory privateKeyStr = vm.envString("PLATFORM_PRIVATE_KEY");
@@ -33,7 +33,7 @@ contract DeployHedwigPayment is Script {
         console.log("HedwigPayment deployed at:", address(payment));
         console.log("Platform wallet:", platformWallet);
         console.log("Owner:", payment.OWNER());
-        console.log("Platform fee:", payment.PLATFORM_FEE(), "basis points (0.5%)");
+        console.log("Platform fee:", payment.PLATFORM_FEE(), "basis points (1%)");
         
         // Output environment variable to add to .env.local
         console.log("\nAdd this to your .env.local:");

@@ -1108,11 +1108,21 @@ async function handleSend(params: ActionParams, userId: string) {
         };
       }
 
-      // Determine which wallet to use based on token/network
+      // Function to detect if an address is a Solana address
+      const isSolanaAddress = (address: string): boolean => {
+        // Solana addresses are 32-44 characters long and use base58 encoding
+        // They typically don't contain 0, O, I, or l characters
+        const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+        return solanaAddressRegex.test(address) && address.length >= 32 && address.length <= 44;
+      };
+
+      // Determine which wallet to use based on token/network/recipient address
       let selectedWallet;
       let selectedNetwork;
       
-      if (token?.toLowerCase() === 'sol' || network?.toLowerCase() === 'solana') {
+      if (token?.toLowerCase() === 'sol' || 
+          network?.toLowerCase() === 'solana' || 
+          isSolanaAddress(recipientAddress)) {
         selectedWallet = wallets.find(w => w.chain === 'solana');
         selectedNetwork = 'solana';
       } else {
@@ -1214,12 +1224,22 @@ async function handleSend(params: ActionParams, userId: string) {
     if (amount && recipientAddress && (token || network)) {
       // We have all the info - show confirmation with gas estimation
       
-      // Determine which wallet to use based on token/network
+      // Function to detect if an address is a Solana address
+      const isSolanaAddress = (address: string): boolean => {
+        // Solana addresses are 32-44 characters long and use base58 encoding
+        // They typically don't contain 0, O, I, or l characters
+        const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+        return solanaAddressRegex.test(address) && address.length >= 32 && address.length <= 44;
+      };
+
+      // Determine which wallet to use based on token/network/recipient address
       let selectedWallet;
       let selectedNetwork;
       let networkName;
       
-      if (token?.toLowerCase() === 'sol' || network?.toLowerCase() === 'solana') {
+      if (token?.toLowerCase() === 'sol' || 
+          network?.toLowerCase() === 'solana' || 
+          isSolanaAddress(recipientAddress)) {
         selectedWallet = wallets.find(w => w.chain === 'solana');
         selectedNetwork = 'solana-devnet';
         networkName = 'Solana';

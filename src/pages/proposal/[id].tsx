@@ -356,7 +356,7 @@ const Proposal = () => {
   }
 
   const subtotal = proposalData.project.totalCost;
-  const platformFee = subtotal * 0.005;
+  const platformFee = subtotal * 0.01;
   const total = subtotal + platformFee;
 
   return (
@@ -454,7 +454,7 @@ const Proposal = () => {
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-blue-600" />
                   <div>
-                    <p className="text-xs text-gray-600">Platform Fee (0.5%)</p>
+                    <p className="text-xs text-gray-600">Platform Fee (1%)</p>
                     <p className="font-semibold text-lg">${platformFee.toLocaleString()}</p>
                   </div>
                 </div>

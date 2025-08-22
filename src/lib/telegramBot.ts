@@ -708,10 +708,11 @@ Choose an action below:`;
         if (typeof actionResult === 'string') {
           responseMessage = actionResult;
         } else if (actionResult && typeof actionResult === 'object') {
-          if ('text' in actionResult && actionResult.text) {
-            responseMessage = actionResult.text;
-          } else if ('name' in actionResult && actionResult.name) {
-            responseMessage = `Action completed: ${actionResult.name}`;
+          const result = actionResult as Record<string, any>;
+          if (result.text && typeof result.text === 'string') {
+            responseMessage = result.text;
+          } else if (result.name && typeof result.name === 'string') {
+            responseMessage = `Action completed: ${result.name}`;
           }
         }
       }
@@ -886,3 +887,29 @@ export const createTelegramBot = (config: TelegramBotConfig): TelegramBotService
 
 // Export for backward compatibility
 export { TelegramBotService as TelegramBot };
+
+
+// Add this function to the end of the file
+export async function processWithAI(text: string, chatId: number): Promise<string> {
+  const { runLLM } = await import('./llmAgent');
+  const { handleAction } = await import('../api/actions');
+  
+  const actionResult = await runLLM({
+    userId: String(chatId),
+    message: text
+  });
+
+  if (actionResult && typeof actionResult === 'object') {
+    // Type guard to ensure actionResult is a record
+    const actionParams = actionResult as Record<string, any>;
+
+    if ('intent' in actionParams && typeof actionParams.intent === 'string') {
+      // Call handleAction and return its string result
+      const result = await handleAction(actionParams.intent, actionParams.params, String(chatId));
+      return result.text || 'Action completed successfully.';
+    }
+  }
+  
+  // Fallback for unexpected cases
+  return 'I received a response I couldn\'t process. Please try again.';
+}
