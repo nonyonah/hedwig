@@ -62,7 +62,14 @@ const getSupabaseClient = () => {
 
 function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subtotal: number }) {
   const { isConnected } = useAccount();
-  const { processPayment, isConfirming, hash: paymentHash, receipt: paymentReceipt } = useHedwigPayment();
+  const { 
+    processPayment, 
+    isConfirming, 
+    hash: paymentHash, 
+    receipt: paymentReceipt, 
+    approvalCompleted, 
+    continuePendingPayment 
+  } = useHedwigPayment();
 
   const handlePay = () => {
     if (!invoiceData.fromCompany.walletAddress) {
@@ -88,11 +95,17 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
 
   return (
     <div className="space-y-4">
-      <Button onClick={handlePay} disabled={isConfirming} className="w-full">
+      <Button 
+        onClick={approvalCompleted ? continuePendingPayment : handlePay} 
+        disabled={isConfirming || !!paymentReceipt} 
+        className="w-full"
+      >
         {isConfirming ? (
           <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
         ) : paymentReceipt ? (
           <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
+        ) : approvalCompleted ? (
+          <><Wallet className="h-4 w-4 mr-2" /> Continue Payment</>
         ) : (
           <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} USDC</>
         )}

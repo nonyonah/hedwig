@@ -26,11 +26,10 @@ export default async function handler(
   if (req.method === 'GET') {
     try {
       // Get current contract configuration from the smart contract
-      const [platformWallet, platformFee, usdcAddress, owner, version] = await Promise.all([
+      const [platformWallet, platformFee, usdcAddress, version] = await Promise.all([
         paymentService.getPlatformWallet(),
         paymentService.getPlatformFee(),
         paymentService.getUSDCAddress(),
-        paymentService.getOwner(),
         paymentService.getVersion()
       ]);
 
@@ -42,7 +41,6 @@ export default async function handler(
           usdcAddress,
           contractAddress: config.contractAddress,
           chainId: config.chainId,
-          owner,
           version
         }
       });

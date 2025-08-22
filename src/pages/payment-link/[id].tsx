@@ -45,7 +45,14 @@ interface PaymentData {
 function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: number }) {
   const { isConnected } = useAccount();
 
-  const { processPayment, isConfirming, hash: paymentHash, receipt: paymentReceipt } = useHedwigPayment();
+  const { 
+    processPayment, 
+    isConfirming, 
+    hash: paymentHash, 
+    receipt: paymentReceipt, 
+    approvalCompleted, 
+    continuePendingPayment 
+  } = useHedwigPayment();
 
   const handlePay = () => {
     processPayment({
@@ -63,52 +70,23 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
 
   return (
     <div className="space-y-4">
-        <Button onClick={handlePay} disabled={isConfirming || !!paymentReceipt} className="w-full">
+      <Button 
+        onClick={approvalCompleted ? continuePendingPayment : handlePay} 
+        disabled={isConfirming || !!paymentReceipt} 
+        className="w-full"
+      >
           {isConfirming ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
           ) : paymentReceipt ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
+          ) : approvalCompleted ? (
+            <><Wallet className="h-4 w-4 mr-2" /> Continue Payment</>
           ) : (
             <><Wallet className="h-4 w-4 mr-2" /> Pay {paymentData.amount.toLocaleString()} USDC</>
           )}
-        </Button>
+      </Button>
 
-      {/* Transaction status and explorer link */}
-      {/* Show when tx submitted */}
-      {paymentHash && !paymentReceipt && (
-        <div className="text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-800 p-3">
-          <div className="font-medium mb-1">Transaction submitted</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono break-all">{paymentHash}</span>
-            <a
-              href={`https://sepolia.basescan.org/tx/${paymentHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center text-blue-700 hover:underline"
-            >
-              View on BaseScan <ExternalLink className="ml-1 h-3 w-3" />
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* Show when confirmed */}
-      {paymentReceipt && (
-        <div className="text-xs rounded-md border border-green-200 bg-green-50 text-green-800 p-3">
-          <div className="font-medium mb-1">Transaction confirmed</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono break-all">{paymentReceipt.transactionHash}</span>
-            <a
-              href={`https://sepolia.basescan.org/tx/${paymentReceipt.transactionHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center text-green-700 hover:underline"
-            >
-              View on BaseScan <ExternalLink className="ml-1 h-3 w-3" />
-            </a>
-          </div>
-        </div>
-      )}
+      {/* Transaction receipt display removed as requested */}
     </div>
   );
 }

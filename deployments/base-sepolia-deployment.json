@@ -1,0 +1,11 @@
+{
+  "contractAddress": "0x1c0A0eFBb438cc7705b947644F6AB88698b2704F",
+  "platformWallet": "0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d",
+  "usdcAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "deploymentTransaction": "0x94a4fa63a49bd10dd87350c1855a82242a6b3044e488f7eb966b7f01660d9d4e",
+  "deployer": "0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d",
+  "timestamp": "2025-08-22T15:47:43.355Z",
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "gasUsed": "3000000"
+}

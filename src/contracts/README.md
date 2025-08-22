@@ -7,7 +7,7 @@ This directory contains the Solidity smart contract for the Hedwig freelancer as
 The `HedwigPayment` contract enables:
 - **Invoice Payments**: Clients can pay invoices generated from chat or backend
 - **Payment Links**: Direct payments without prior invoice generation
-- **Automatic Fee Splitting**: Platform fee (default 1.5%) + freelancer payout
+- **Automatic Fee Splitting**: Platform fee (default 1%) + freelancer payout
 - **Stablecoin Support**: Whitelisted stablecoins (USDC, USDbC on Base)
 - **Event Tracking**: Comprehensive payment event logging for backend integration
 

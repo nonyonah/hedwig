@@ -7,6 +7,11 @@ const HEDWIG_PAYMENT_ABI = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
         "internalType": "uint256",
         "name": "amount",
         "type": "uint256"
@@ -26,6 +31,41 @@ const HEDWIG_PAYMENT_ABI = [
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidAddress",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InsufficientAllowance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "Unauthorized",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenNotWhitelisted",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvoiceAlreadyProcessed",
+    "type": "error"
   }
 ] as const;
 
@@ -95,10 +135,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log('User USDC allowance:', allowance.toString());
 
+    // Solution 1: Check if tokens need to be approved first
     if (allowance < BigInt(amount)) {
       return res.status(400).json({
-        message: `Insufficient USDC allowance. Required: ${amount}, Approved: ${allowance.toString()}`
+        message: `Insufficient USDC allowance. Please approve ${amount} USDC tokens for the contract first.`,
+        error: 'INSUFFICIENT_ALLOWANCE',
+        required: amount,
+        current: allowance.toString(),
+        action: 'APPROVE_TOKENS'
       });
+    }
+
+    // Solution 3: Check unit conversion - ensure amount is in correct decimals (USDC has 6 decimals)
+    const amountBigInt = BigInt(amount);
+    if (amountBigInt <= 0) {
+      return res.status(400).json({
+        message: 'Invalid amount: must be greater than 0',
+        error: 'INVALID_AMOUNT'
+      });
+    }
+
+    // Check if amount seems to be in wrong units (too small for USDC which has 6 decimals)
+    if (amountBigInt < 1000000n) { // Less than 1 USDC (1,000,000 units)
+      console.warn('Amount seems very small for USDC:', amountBigInt.toString());
+    }
+
+    // Solution 2: Check if contract has sufficient USDC balance (for contracts that hold funds)
+    const contractBalance = await publicClient.readContract({
+      address: USDC_CONTRACT_ADDRESS,
+      abi: USDC_ABI,
+      functionName: 'balanceOf',
+      args: [contractAddress as `0x${string}`]
+    });
+
+    console.log('Contract USDC balance:', contractBalance.toString());
+    
+    // Note: This check is optional depending on contract design
+    // Some contracts transfer directly from user, others require pre-deposit
+    if (contractBalance === 0n) {
+      console.warn('Contract has no USDC balance - this may be expected for direct transfer contracts');
     }
 
     // Simulate the contract call
@@ -107,7 +182,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         address: contractAddress as `0x${string}`,
         abi: HEDWIG_PAYMENT_ABI,
         functionName: 'pay',
-        args: [BigInt(amount), freelancer as `0x${string}`, invoiceId],
+        args: [USDC_CONTRACT_ADDRESS, BigInt(amount), freelancer as `0x${string}`, invoiceId],
         account: userAddress as `0x${string}`
       });
 
@@ -115,8 +190,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ success: true, result: makeSerializable(result) });
     } catch (simError: any) {
       console.error('Contract simulation failed:', simError);
+      
+      // Handle specific error signatures
+      const errorMessage = simError.message || simError.shortMessage || 'Unknown error';
+      const errorData = simError.data || '';
+      
+      // Check for the problematic 0xe450d38c signature
+      if (errorData.includes('0xe450d38c')) {
+        return res.status(400).json({
+          message: 'Transaction would fail due to insufficient allowance or balance. Please ensure you have approved sufficient USDC tokens and have enough balance.',
+          error: 'SIMULATION_FAILED_ALLOWANCE',
+          signature: '0xe450d38c',
+          solutions: [
+            'Approve more USDC tokens for the contract',
+            'Check your USDC balance is sufficient',
+            'Verify the amount is in correct units (USDC has 6 decimals)'
+          ],
+          details: makeSerializable(simError)
+        });
+      }
+      
+      // Handle other known error patterns
+      if (errorMessage.toLowerCase().includes('insufficient')) {
+        return res.status(400).json({
+          message: 'Insufficient funds or allowance for this transaction',
+          error: 'INSUFFICIENT_FUNDS',
+          solutions: [
+            'Check your USDC balance',
+            'Approve sufficient USDC tokens',
+            'Verify the payment amount'
+          ],
+          details: makeSerializable(simError)
+        });
+      }
+      
       return res.status(400).json({
-        message: `Contract simulation failed: ${simError.message || simError.shortMessage || 'Unknown error'}`,
+        message: `Contract simulation failed: ${errorMessage}`,
+        error: 'SIMULATION_FAILED',
         details: makeSerializable(simError)
       });
     }

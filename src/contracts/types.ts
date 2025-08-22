@@ -5,6 +5,7 @@ export interface HedwigPaymentContract {
   
   // Main payment function
   pay(
+    token: string,
     amount: bigint,
     freelancer: string,
     invoiceId: string
@@ -41,6 +42,7 @@ export const BASE_CHAIN_CONFIG: HedwigPaymentConfig = {
 
 // Payment request interface for API
 export interface PaymentRequest {
+  token: string; // Token contract address
   amount: bigint; // Amount in token units (e.g., 1000000n for 1 USDC)
   freelancer: string; // Freelancer wallet address
   invoiceId: string; // Invoice or payment link ID

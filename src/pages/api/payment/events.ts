@@ -48,14 +48,12 @@ export default async function handler(
       let events: PaymentReceivedEvent[] = [];
       
       if (invoiceId) {
-        events = await paymentService.getPaymentsByInvoice(
-          invoiceId as string,
-          fromBlock ? parseInt(fromBlock as string) : 0
+        events = await paymentService.getPaymentEventsByInvoice(
+          invoiceId as string
         );
       } else if (freelancer) {
-        events = await paymentService.getPaymentsByFreelancer(
-          freelancer as string,
-          fromBlock ? parseInt(fromBlock as string) : 0
+        events = await paymentService.getPaymentEventsByFreelancer(
+          freelancer as string
         );
       } else {
         return res.status(400).json({ error: 'Either invoiceId or freelancer parameter is required' });

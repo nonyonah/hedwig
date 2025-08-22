@@ -8,6 +8,11 @@ const HEDWIG_PAYMENT_ABI = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
         "internalType": "uint256",
         "name": "amount",
         "type": "uint256"
@@ -38,6 +43,41 @@ const HEDWIG_PAYMENT_ABI = [
     }],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidAddress",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InsufficientAllowance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "Unauthorized",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TokenNotWhitelisted",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvoiceAlreadyProcessed",
+    "type": "error"
   }
 ];
 
@@ -99,17 +139,18 @@ export function useHedwigPayment() {
     address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
     abi: [{
       "inputs": [],
-      "name": "PLATFORM_WALLET",
+      "name": "platformWallet",
       "outputs": [{"internalType": "address", "name": "", "type": "address"}],
       "stateMutability": "view",
       "type": "function"
     }],
-    functionName: 'PLATFORM_WALLET',
+    functionName: 'platformWallet',
     chainId: BASE_SEPOLIA_CHAIN_ID
   });
   const [pendingPaymentRequest, setPendingPaymentRequest] = useState<PaymentRequest | null>(null);
   const [lastAction, setLastAction] = useState<'approve' | 'pay' | null>(null);
   const [paymentReceipt, setPaymentReceipt] = useState<any>(null);
+  const [approvalCompleted, setApprovalCompleted] = useState(false);
 
   const { data: receipt, isLoading: isProcessing } = useWaitForTransactionReceipt({ hash });
   
@@ -140,6 +181,7 @@ export function useHedwigPayment() {
   useEffect(() => {
     if (receipt && lastAction === 'pay') {
       setPaymentReceipt(receipt);
+      setApprovalCompleted(false); // Reset approval state after successful payment
       toast.success('Payment successful!');
     }
     if (error) {
@@ -231,7 +273,25 @@ export function useHedwigPayment() {
       if (!simulation.ok) {
         const simError = await simulation.json();
         console.error('Transaction simulation failed:', simError);
-        toast.error(`Transaction would fail: ${simError.message || 'Unknown simulation error'}`);
+        
+        // Handle specific error types with actionable guidance
+        if (simError.error === 'SIMULATION_FAILED_ALLOWANCE' || simError.signature === '0xe450d38c') {
+          toast.error('Insufficient allowance detected. Please approve more USDC tokens first.');
+          // Could trigger approval flow here automatically
+          return;
+        }
+        
+        if (simError.error === 'INSUFFICIENT_FUNDS') {
+          toast.error('Insufficient USDC balance or allowance. Please check your wallet.');
+          return;
+        }
+        
+        if (simError.solutions && Array.isArray(simError.solutions)) {
+          const solutionText = simError.solutions.join(', ');
+          toast.error(`Transaction would fail: ${simError.message}. Try: ${solutionText}`);
+        } else {
+          toast.error(`Transaction would fail: ${simError.message || 'Unknown simulation error'}`);
+        }
         return;
       }
       
@@ -248,7 +308,7 @@ export function useHedwigPayment() {
         address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
         abi: HEDWIG_PAYMENT_ABI,
         functionName: 'pay',
-        args: [amountInUnits, req.freelancerAddress, req.invoiceId],
+        args: [USDC_CONTRACT_ADDRESS, amountInUnits, req.freelancerAddress, req.invoiceId],
         chainId: BASE_SEPOLIA_CHAIN_ID,
         gas: 300000n // Increase gas limit to 300,000 for safety
       });
@@ -265,23 +325,16 @@ export function useHedwigPayment() {
     }
   }, [writeContract, accountAddress]);
 
-  // After approval confirmation, auto-continue to pay
+  // After approval confirmation, set state to show 'Continue' button
   useEffect(() => {
     if (receipt && isApproving && lastAction === 'approve') {
-      toast.success('USDC approval confirmed!');
+      toast.success('USDC approval confirmed! Click Continue to complete payment.');
       setIsApproving(false);
+      setApprovalCompleted(true);
       refetchAllowance();
-      if (pendingPaymentRequest) {
-        // Clear any prior payment receipt (e.g., from previous attempts)
-        setPaymentReceipt(null);
-        // Auto-start the payment transaction with a slight delay to ensure wallet modal opens reliably
-        setTimeout(() => {
-          void sendPay(pendingPaymentRequest);
-          setPendingPaymentRequest(null);
-        }, 300);
-      }
+      // Don't auto-continue payment - let user click Continue button
     }
-  }, [receipt, isApproving, lastAction, refetchAllowance, pendingPaymentRequest, sendPay]);
+  }, [receipt, isApproving, lastAction, refetchAllowance]);
 
   const processPayment = useCallback(async (paymentRequest: PaymentRequest) => {
     try {
@@ -363,5 +416,15 @@ export function useHedwigPayment() {
     error,
     isApproving,
     paymentReceipt,
+    approvalCompleted,
+    pendingPaymentRequest,
+    continuePendingPayment: () => {
+      if (pendingPaymentRequest) {
+        setPaymentReceipt(null);
+        setApprovalCompleted(false);
+        void sendPay(pendingPaymentRequest);
+        setPendingPaymentRequest(null);
+      }
+    },
   };
 }
