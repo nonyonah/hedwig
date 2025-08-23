@@ -148,6 +148,7 @@ export function useHedwigPayment() {
     chainId: BASE_SEPOLIA_CHAIN_ID
   });
   const [pendingPaymentRequest, setPendingPaymentRequest] = useState<PaymentRequest | null>(null);
+  const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null);
   const [lastAction, setLastAction] = useState<'approve' | 'pay' | null>(null);
   const [paymentReceipt, setPaymentReceipt] = useState<any>(null);
   const [approvalCompleted, setApprovalCompleted] = useState(false);
@@ -183,11 +184,58 @@ export function useHedwigPayment() {
       setPaymentReceipt(receipt);
       setApprovalCompleted(false); // Reset approval state after successful payment
       toast.success('Payment successful!');
+      
+      // Update backend status after successful payment
+      if (currentPaymentRequest) {
+        updateBackendStatus(currentPaymentRequest.invoiceId, receipt.transactionHash);
+      }
     }
     if (error) {
       toast.error(error.message || 'Transaction failed.');
     }
   }, [receipt, error, lastAction]);
+
+  // Helper to update backend status after successful payment
+  const updateBackendStatus = useCallback(async (invoiceId: string, transactionHash: string) => {
+    try {
+      // Try to update as invoice first
+      const invoiceResponse = await fetch(`/api/invoices/${invoiceId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'paid',
+          transactionHash: transactionHash,
+        }),
+      });
+
+      if (invoiceResponse.ok) {
+        console.log('Invoice status updated successfully');
+        return;
+      }
+
+      // If invoice update fails, try payment link
+      const paymentLinkResponse = await fetch(`/api/payment-links/${invoiceId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'paid',
+          transactionHash: transactionHash,
+        }),
+      });
+
+      if (paymentLinkResponse.ok) {
+        console.log('Payment link status updated successfully');
+      } else {
+        console.error('Failed to update payment link status');
+      }
+    } catch (error) {
+      console.error('Error updating backend status:', error);
+    }
+  }, []);
 
   // Helper to send the pay transaction
   const sendPay = useCallback(async (req: PaymentRequest) => {
@@ -353,6 +401,9 @@ export function useHedwigPayment() {
         toast.error('Freelancer wallet address is missing or invalid.');
         return;
       }
+
+      // Set current payment request for backend status update
+      setCurrentPaymentRequest(paymentRequest);
 
       const amountInUnits = parseUnits(paymentRequest.amount.toString(), 6); // USDC has 6 decimals
       console.log('Payment details:', {

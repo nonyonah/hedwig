@@ -80,6 +80,10 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
       toast.error('Invalid payment amount.');
       return;
     }
+    if (invoiceData.status === 'paid') {
+      toast.error('This invoice has already been paid.');
+      return;
+    }
     processPayment({
       amount: subtotal,
       freelancerAddress: invoiceData.fromCompany.walletAddress as `0x${string}`,
@@ -93,19 +97,23 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
     return <ConnectWallet className="w-full" />;
   }
 
+  const isAlreadyPaid = invoiceData.status === 'paid';
+
   return (
     <div className="space-y-4">
       <Button 
         onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={isConfirming || !!paymentReceipt} 
+        disabled={isConfirming || !!paymentReceipt || isAlreadyPaid} 
         className="w-full"
       >
-        {isConfirming ? (
+        {isAlreadyPaid ? (
+          <><CheckCircle className="h-4 w-4 mr-2" /> Invoice Already Paid</>
+        ) : isConfirming ? (
           <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
-        ) : paymentReceipt ? (
-          <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
         ) : approvalCompleted ? (
           <><Wallet className="h-4 w-4 mr-2" /> Continue Payment</>
+        ) : paymentReceipt ? (
+          <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
         ) : (
           <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} USDC</>
         )}

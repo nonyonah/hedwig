@@ -79,6 +79,8 @@ const nextConfig = {
     NEXT_PUBLIC_POSTHOG_PROJECT_HOST: process.env.NEXT_PUBLIC_POSTHOG_PROJECT_HOST,
     PAYCREST_API_KEY:process.env.PAYCREST_API_KEY,
     WEBAPP_BASE_URL: process.env.WEBAPP_BASE_URL,
+    ALCHEMY_AUTH_TOKEN: process.env.ALCHEMY_AUTH_TOKEN,
+    ALCHEMY_SIGNING_KEY: process.env.ALCHEMY_SIGNING_KEY,
   },
 
   reactStrictMode: true,

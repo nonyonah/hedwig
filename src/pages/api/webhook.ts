@@ -454,12 +454,16 @@ async function handleCommand(msg: TelegramBot.Message) {
 
     case '/wallet':
       const walletResponse = await processWithAI('get wallet address', chatId);
-      await bot.sendMessage(chatId, walletResponse);
+      if (walletResponse && walletResponse.trim() !== '' && walletResponse !== '__NO_MESSAGE__') {
+        await bot.sendMessage(chatId, walletResponse);
+      }
       break;
 
     case '/balance':
       const balanceResponse = await processWithAI('check balance', chatId);
-      await bot.sendMessage(chatId, balanceResponse);
+      if (balanceResponse && balanceResponse.trim() !== '' && balanceResponse !== '__NO_MESSAGE__') {
+        await bot.sendMessage(chatId, balanceResponse);
+      }
       break;
 
     case '/send':
@@ -471,7 +475,9 @@ async function handleCommand(msg: TelegramBot.Message) {
 
     case '/payment':
       const paymentResponse = await processWithAI('create payment link', chatId);
-      await bot.sendMessage(chatId, paymentResponse);
+      if (paymentResponse && paymentResponse.trim() !== '' && paymentResponse !== '__NO_MESSAGE__') {
+        await bot.sendMessage(chatId, paymentResponse);
+      }
       break;
 
     case '/offramp':
@@ -575,24 +581,32 @@ async function handleCommand(msg: TelegramBot.Message) {
         } else {
           console.log('[Webhook] BotIntegration not available, falling back to processWithAI');
           const dashboardResponse = await processWithAI('show business dashboard', chatId);
-          await bot.sendMessage(chatId, dashboardResponse);
+          if (dashboardResponse && dashboardResponse.trim() !== '' && dashboardResponse !== '__NO_MESSAGE__') {
+            await bot.sendMessage(chatId, dashboardResponse);
+          }
         }
       } catch (error) {
         console.error('[Webhook] Error in /business_dashboard:', error);
         const fallbackResponse = await processWithAI('show business dashboard', chatId);
-        await bot.sendMessage(chatId, fallbackResponse);
+        if (fallbackResponse && fallbackResponse.trim() !== '' && fallbackResponse !== '__NO_MESSAGE__') {
+          await bot.sendMessage(chatId, fallbackResponse);
+        }
       }
       break;
 
     case '/paymentlink':
       const paymentLinkResponse = await processWithAI('create payment link', chatId);
-      await bot.sendMessage(chatId, paymentLinkResponse);
+      if (paymentLinkResponse && paymentLinkResponse.trim() !== '' && paymentLinkResponse !== '__NO_MESSAGE__') {
+        await bot.sendMessage(chatId, paymentLinkResponse);
+      }
       break;
 
     case '/history':
       // Redirect to earnings summary for better user experience
       const redirectResponse = await processWithAI('show earnings summary', chatId);
-      await bot.sendMessage(chatId, `📈 *Redirecting to Earnings Summary*\n\n${redirectResponse}`);
+      if (redirectResponse && redirectResponse.trim() !== '' && redirectResponse !== '__NO_MESSAGE__') {
+        await bot.sendMessage(chatId, `📈 *Redirecting to Earnings Summary*\n\n${redirectResponse}`);
+      }
       break;
 
     default:

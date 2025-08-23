@@ -55,6 +55,10 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
   } = useHedwigPayment();
 
   const handlePay = () => {
+    if (paymentData.status === 'paid') {
+      toast.error('This payment link has already been paid.');
+      return;
+    }
     processPayment({
       amount: paymentData.amount, // send subtotal only; contract will deduct fee
       freelancerAddress: paymentData.walletAddress as `0x${string}`,
@@ -68,19 +72,23 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
     return <ConnectWallet className="w-full" />;
   }
 
+  const isAlreadyPaid = paymentData.status === 'paid';
+
   return (
     <div className="space-y-4">
       <Button 
         onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={isConfirming || !!paymentReceipt} 
+        disabled={isConfirming || !!paymentReceipt || isAlreadyPaid} 
         className="w-full"
       >
-          {isConfirming ? (
+          {isAlreadyPaid ? (
+            <><CheckCircle className="h-4 w-4 mr-2" /> Payment Already Completed</>
+          ) : isConfirming ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
-          ) : paymentReceipt ? (
-            <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
           ) : approvalCompleted ? (
             <><Wallet className="h-4 w-4 mr-2" /> Continue Payment</>
+          ) : paymentReceipt ? (
+            <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
           ) : (
             <><Wallet className="h-4 w-4 mr-2" /> Pay {paymentData.amount.toLocaleString()} USDC</>
           )}
