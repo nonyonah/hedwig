@@ -247,6 +247,8 @@ async function processPayment(
 
   // Send notification
   try {
+    console.log('Preparing notification for payment:', { paymentType, relatedId, amount, currency });
+    
     const notificationPayload: any = {
       type: paymentType,
       id: relatedId,
@@ -259,30 +261,49 @@ async function processPayment(
       chain: chain,
       status: 'completed'
     };
+    
+    console.log('Base notification payload:', notificationPayload);
 
     // Add type-specific data
     if (paymentType === 'invoice' && relatedItem && 'freelancer_name' in relatedItem) {
       notificationPayload.freelancerName = relatedItem.freelancer_name;
       notificationPayload.clientName = relatedItem.client_name;
+      console.log('Added invoice-specific data:', { freelancerName: relatedItem.freelancer_name, clientName: relatedItem.client_name });
     } else if (paymentType === 'payment_link' && relatedItem && 'user_name' in relatedItem) {
       notificationPayload.userName = relatedItem.user_name;
       notificationPayload.paymentReason = relatedItem.payment_reason;
+      console.log('Added payment link-specific data:', { userName: relatedItem.user_name, paymentReason: relatedItem.payment_reason });
     }
+    
+    console.log('Final notification payload:', JSON.stringify(notificationPayload, null, 2));
 
     // Call payment-notifications webhook directly
     const { default: paymentNotificationHandler } = await import('./payment-notifications');
     const mockReq = {
       method: 'POST',
-      body: notificationPayload
+      body: notificationPayload,
+      headers: {},
+      query: {},
+      cookies: {}
     } as NextApiRequest;
     const mockRes = {
-      status: (code: number) => ({ json: (data: any) => console.log('Notification response:', code, data) }),
-      json: (data: any) => console.log('Notification sent:', data)
+      status: (code: number) => ({
+        json: (data: any) => {
+          console.log('Notification response:', code, data);
+          return mockRes;
+        }
+      }),
+      json: (data: any) => {
+        console.log('Notification sent:', data);
+        return mockRes;
+      }
     } as any;
     
     await paymentNotificationHandler(mockReq, mockRes);
+    console.log('Notification handler completed successfully');
   } catch (notificationError) {
     console.error('Failed to send notification:', notificationError);
+    console.error('Notification error details:', notificationError.message, notificationError.stack);
   }
 
   // Log the transfer
