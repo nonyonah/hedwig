@@ -1,5 +1,6 @@
-const axios = require('axios');
-require('dotenv').config();
+import axios from 'axios';
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Helius API configuration
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
@@ -150,7 +151,7 @@ async function main() {
 
 main();
 
-module.exports = {
+export {
   createWebhook,
   listWebhooks,
   deleteWebhook,

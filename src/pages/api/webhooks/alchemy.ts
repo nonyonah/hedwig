@@ -91,30 +91,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const rawBody = JSON.stringify(req.body);
     const signature = req.headers['x-alchemy-signature'] as string;
-    const authToken = req.headers['authorization']?.replace('Bearer ', '') || req.headers['x-auth-token'] as string;
+    
+    // Verify webhook signature (Alchemy uses signature-based authentication)
     const signingKey = process.env.ALCHEMY_SIGNING_KEY;
-
-    // Check for required environment variables
     if (!signingKey) {
       console.error('ALCHEMY_SIGNING_KEY not configured');
       return res.status(500).json({ error: 'Signing key not configured' });
     }
-
-    if (!process.env.ALCHEMY_AUTH_TOKEN) {
-      console.error('ALCHEMY_AUTH_TOKEN not configured');
-      return res.status(500).json({ error: 'Auth token not configured' });
-    }
-
-    // Verify webhook signature
     if (!signature || !isValidSignatureForStringBody(rawBody, signature, signingKey)) {
       console.error('Invalid webhook signature');
       return res.status(401).json({ error: 'Invalid signature' });
-    }
-
-    // Verify auth token
-    if (!authToken || !verifyAuthToken(authToken)) {
-      console.error('Invalid auth token');
-      return res.status(401).json({ error: 'Invalid auth token' });
     }
 
     const event: AlchemyWebhookEvent = req.body;

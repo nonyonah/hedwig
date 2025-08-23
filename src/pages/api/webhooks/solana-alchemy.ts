@@ -1,14 +1,35 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
-import { Helius, TransactionType } from 'helius-sdk';
-import bs58 from 'bs58';
+import * as crypto from 'crypto';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const helius = new Helius(process.env.HELIUS_API_KEY!);
+// Alchemy Solana Webhook Event Types
+interface AlchemySolanaWebhookEvent {
+  webhookId: string;
+  id: string;
+  createdAt: string;
+  type: string;
+  event: {
+    network: string;
+    activity: Array<{
+      fromAddress: string;
+      toAddress: string;
+      blockNum: string;
+      hash: string;
+      value: number;
+      asset: string;
+      category: string;
+      rawContract?: {
+        address: string;
+        decimals: number;
+      };
+    }>;
+  };
+}
 
 interface InvoiceData {
   id: string;
@@ -28,6 +49,23 @@ interface PaymentLinkData {
   payment_reason: string;
 }
 
+// Signature verification function
+function isValidSignatureForStringBody(
+  body: string,
+  signature: string,
+  signingKey: string,
+): boolean {
+  const hmac = crypto.createHmac('sha256', signingKey);
+  hmac.update(body, 'utf8');
+  const digest = hmac.digest('hex');
+  return signature === digest;
+}
+
+// Auth token verification function
+function verifyAuthToken(token: string): boolean {
+  return token === process.env.ALCHEMY_SOLANA_AUTH_TOKEN;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -35,87 +73,87 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const body = req.body;
-    const signature = req.headers['helius-signature'] as string;
-    const webhookSecret = process.env.HELIUS_WEBHOOK_SECRET;
+    const signature = req.headers['x-alchemy-signature'] as string;
+    const authToken = req.headers['authorization']?.replace('Bearer ', '') || req.headers['x-auth-token'] as string;
 
-    if (!webhookSecret) {
-      console.error('HELIUS_WEBHOOK_SECRET not configured');
-      return res.status(500).json({ error: 'Webhook secret not configured' });
+    console.log('Solana webhook headers:', {
+      signature: signature ? 'present' : 'missing',
+      authToken: authToken ? 'present' : 'missing',
+      contentType: req.headers['content-type']
+    });
+
+    // Verify signature for non-deposit transactions
+    if (signature && process.env.ALCHEMY_SOLANA_SIGNING_KEY) {
+      const rawBody = JSON.stringify(body);
+      if (!isValidSignatureForStringBody(rawBody, signature, process.env.ALCHEMY_SOLANA_SIGNING_KEY)) {
+        console.error('Invalid signature for Solana webhook');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
     }
 
-    // Verify webhook signature using Helius SDK
-    const isValid = helius.webhooks.verify(
-      Buffer.from(JSON.stringify(body)),
-      Buffer.from(signature, 'base64'),
-      webhookSecret
-    );
+    const event = body as AlchemySolanaWebhookEvent;
 
-    if (!isValid) {
-      console.error('Invalid webhook signature');
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
+    // Process Alchemy Solana webhook events
+    if (event.type === 'ADDRESS_ACTIVITY') {
+      for (const activity of event.event.activity) {
+        // Skip if no value or invalid activity
+        if (!activity.value || activity.value <= 0) continue;
 
-    const events = body as any[];
-
-    for (const event of events) {
-      if (event.type === TransactionType.NATIVE_TRANSFER) {
-        for (const transfer of event.nativeTransfers || []) {
-          if (transfer.amount <= 0) continue;
-          
-          const amount = transfer.amount / 1e9; // SOL has 9 decimals
-          
-          const { data: walletData, error: walletError } = await supabase
-            .from('wallets')
-            .select('user_id, users(id, telegram_chat_id, email, name)')
-            .eq('address', transfer.toUserAccount.toLowerCase())
-            .single();
-
-          if (walletError || !walletData) {
-            console.log(`No user found for wallet address: ${transfer.toUserAccount}`);
-            continue;
-          }
-
-          await processPayment(
-            walletData,
-            amount,
-            'SOL',
-            event.signature,
-            transfer.fromUserAccount,
-            transfer.toUserAccount,
-            'solana-mainnet',
-            event
-          );
-        }
-      } else if (event.type === TransactionType.TOKEN_TRANSFER) {
-        const SOLANA_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+        // Determine if this is SOL or USDC transfer
+        const isNativeSOL = activity.category === 'external' && activity.asset === 'SOL';
+        const isUSDC = activity.category === 'token' && activity.rawContract?.address === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
         
-        for (const transfer of event.tokenTransfers || []) {
-          if (transfer.mint !== SOLANA_USDC_MINT || transfer.tokenAmount <= 0) continue;
-          
-          const amount = transfer.tokenAmount;
-          
-          const { data: walletData, error: walletError } = await supabase
+        if (!isNativeSOL && !isUSDC) continue;
+
+        // Calculate amount based on token type
+        let amount: number;
+        let currency: string;
+        
+        if (isNativeSOL) {
+          amount = activity.value / 1e9; // SOL has 9 decimals
+          currency = 'SOL';
+        } else if (isUSDC) {
+          amount = activity.value / Math.pow(10, activity.rawContract?.decimals || 6); // USDC typically has 6 decimals
+          currency = 'USDC';
+        } else {
+          continue;
+        }
+
+        // Try both original case and lowercase for wallet lookup
+        let walletData;
+        let walletError;
+        
+        // First try exact case match
+        ({ data: walletData, error: walletError } = await supabase
+          .from('wallets')
+          .select('user_id, users(id, telegram_chat_id, email, name)')
+          .eq('address', activity.toAddress)
+          .single());
+
+        // If not found, try lowercase
+        if (walletError || !walletData) {
+          ({ data: walletData, error: walletError } = await supabase
             .from('wallets')
             .select('user_id, users(id, telegram_chat_id, email, name)')
-            .eq('address', transfer.toUserAccount.toLowerCase())
-            .single();
-
-          if (walletError || !walletData) {
-            console.log(`No user found for wallet address: ${transfer.toUserAccount}`);
-            continue;
-          }
-
-          await processPayment(
-            walletData,
-            amount,
-            'USDC',
-            event.signature,
-            transfer.fromUserAccount,
-            transfer.toUserAccount,
-            'solana-mainnet',
-            event
-          );
+            .eq('address', activity.toAddress.toLowerCase())
+            .single());
         }
+
+        if (walletError || !walletData) {
+          console.log(`No user found for wallet address: ${activity.toAddress}`);
+          continue;
+        }
+
+        await processPayment(
+          walletData,
+          amount,
+          currency,
+          activity.hash,
+          activity.fromAddress,
+          activity.toAddress,
+          event.event.network,
+          event
+        );
       }
     }
 

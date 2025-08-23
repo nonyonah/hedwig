@@ -81,6 +81,7 @@ const nextConfig = {
     WEBAPP_BASE_URL: process.env.WEBAPP_BASE_URL,
     ALCHEMY_AUTH_TOKEN: process.env.ALCHEMY_AUTH_TOKEN,
     ALCHEMY_SIGNING_KEY: process.env.ALCHEMY_SIGNING_KEY,
+    HELIUS_API_KEY: process.env.HELIUS_API_KEY,
   },
 
   reactStrictMode: true,
