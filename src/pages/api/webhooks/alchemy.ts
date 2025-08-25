@@ -242,20 +242,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           notificationPayload.paymentReason = relatedItem.payment_reason;
         }
 
-        // Call payment-notifications webhook directly
-        const { default: paymentNotificationHandler } = await import('./payment-notifications');
-        const mockReq = {
-          method: 'POST',
-          body: notificationPayload
-        } as NextApiRequest;
-        const mockRes = {
-          status: (code: number) => ({ json: (data: any) => console.log('Notification response:', code, data) }),
-          json: (data: any) => console.log('Notification sent:', data)
-        } as any;
+        // Send HTTP request to payment-notifications webhook
+        console.log('Preparing notification for Alchemy webhook:', { paymentType, relatedId, amount, currency });
+        console.log('Final notification payload:', JSON.stringify(notificationPayload, null, 2));
         
-        await paymentNotificationHandler(mockReq, mockRes);
+        const notificationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/payment-notifications`;
+        
+        const notificationResponse = await fetch(notificationUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(notificationPayload)
+        });
+        
+        if (notificationResponse.ok) {
+          const responseData = await notificationResponse.json();
+          console.log('Alchemy notification sent successfully:', responseData);
+        } else {
+          const errorData = await notificationResponse.text();
+          console.error('Alchemy notification failed:', notificationResponse.status, errorData);
+        }
       } catch (notificationError) {
         console.error('Failed to send notification:', notificationError);
+        console.error('Notification error details:', notificationError.message, notificationError.stack);
         // Don't fail the webhook if notification fails
       }
 

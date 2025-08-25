@@ -1,34 +1,50 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
-import * as crypto from 'crypto';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Alchemy Solana Webhook Event Types
-interface AlchemySolanaWebhookEvent {
-  webhookId: string;
-  id: string;
-  createdAt: string;
-  type: string;
-  event: {
-    network: string;
-    activity: Array<{
-      fromAddress: string;
-      toAddress: string;
-      blockNum: string;
-      hash: string;
-      value: number;
-      asset: string;
-      category: string;
-      rawContract?: {
-        address: string;
+// Helius Solana webhook event interface
+interface HeliusSolanaWebhookEvent {
+  accountData: Array<{
+    account: string;
+    nativeBalanceChange: number;
+    tokenBalanceChanges: Array<{
+      mint: string;
+      rawTokenAmount: {
+        tokenAmount: string;
         decimals: number;
       };
+      userAccount: string;
     }>;
-  };
+  }>;
+  description: string;
+  events: any;
+  fee: number;
+  feePayer: string;
+  instructions: Array<any>;
+  nativeTransfers: Array<{
+    fromUserAccount: string;
+    toUserAccount: string;
+    amount: number;
+  }>;
+  signature: string;
+  slot: number;
+  source: string;
+  timestamp: number;
+  tokenTransfers: Array<{
+    fromTokenAccount: string;
+    fromUserAccount: string;
+    mint: string;
+    toTokenAccount: string;
+    toUserAccount: string;
+    tokenAmount: number;
+    tokenStandard: string;
+  }>;
+  transactionError: any;
+  type: string;
 }
 
 interface InvoiceData {
@@ -49,112 +65,115 @@ interface PaymentLinkData {
   payment_reason: string;
 }
 
-// Signature verification function
-function isValidSignatureForStringBody(
-  body: string,
-  signature: string,
-  signingKey: string,
-): boolean {
-  const hmac = crypto.createHmac('sha256', signingKey);
-  hmac.update(body, 'utf8');
-  const digest = hmac.digest('hex');
-  return signature === digest;
-}
-
-// Auth token verification function
-function verifyAuthToken(token: string): boolean {
-  return token === process.env.ALCHEMY_SOLANA_AUTH_TOKEN;
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const body = req.body;
-    const signature = req.headers['x-alchemy-signature'] as string;
-    const authToken = req.headers['authorization']?.replace('Bearer ', '') || req.headers['x-auth-token'] as string;
-
-    console.log('Solana webhook headers:', {
-      signature: signature ? 'present' : 'missing',
-      authToken: authToken ? 'present' : 'missing',
-      contentType: req.headers['content-type']
+    console.log('Helius Solana webhook received:', {
+      contentType: req.headers['content-type'],
+      userAgent: req.headers['user-agent']
     });
 
-    // Verify signature for non-deposit transactions
-    if (signature && process.env.ALCHEMY_SOLANA_SIGNING_KEY) {
-      const rawBody = JSON.stringify(body);
-      if (!isValidSignatureForStringBody(rawBody, signature, process.env.ALCHEMY_SOLANA_SIGNING_KEY)) {
-        console.error('Invalid signature for Solana webhook');
-        return res.status(401).json({ error: 'Invalid signature' });
+    const event = req.body as HeliusSolanaWebhookEvent;
+    
+    // Log the complete webhook payload for debugging
+    console.log('Complete Helius Solana webhook payload:', JSON.stringify(event, null, 2));
+
+    // Process native SOL transfers
+    for (const transfer of event.nativeTransfers || []) {
+      if (!transfer.fromUserAccount || !transfer.toUserAccount || !transfer.amount) {
+        console.warn('Invalid native transfer data:', transfer);
+        continue;
       }
-    }
 
-    const event = body as AlchemySolanaWebhookEvent;
+      // Try both original case and lowercase for wallet lookup
+      let walletData;
+      let walletError;
+      
+      // First try exact case match
+      ({ data: walletData, error: walletError } = await supabase
+        .from('wallets')
+        .select('user_id, users(id, telegram_chat_id, email, name)')
+        .eq('address', transfer.toUserAccount)
+        .single());
 
-    // Process Alchemy Solana webhook events
-    if (event.type === 'ADDRESS_ACTIVITY') {
-      for (const activity of event.event.activity) {
-        // Skip if no value or invalid activity
-        if (!activity.value || activity.value <= 0) continue;
-
-        // Determine if this is SOL or USDC transfer
-        const isNativeSOL = activity.category === 'external' && activity.asset === 'SOL';
-        const isUSDC = activity.category === 'token' && activity.rawContract?.address === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-        
-        if (!isNativeSOL && !isUSDC) continue;
-
-        // Calculate amount based on token type
-        let amount: number;
-        let currency: string;
-        
-        if (isNativeSOL) {
-          amount = activity.value / 1e9; // SOL has 9 decimals
-          currency = 'SOL';
-        } else if (isUSDC) {
-          amount = activity.value / Math.pow(10, activity.rawContract?.decimals || 6); // USDC typically has 6 decimals
-          currency = 'USDC';
-        } else {
-          continue;
-        }
-
-        // Try both original case and lowercase for wallet lookup
-        let walletData;
-        let walletError;
-        
-        // First try exact case match
+      // If not found, try lowercase
+      if (walletError || !walletData) {
         ({ data: walletData, error: walletError } = await supabase
           .from('wallets')
           .select('user_id, users(id, telegram_chat_id, email, name)')
-          .eq('address', activity.toAddress)
+          .eq('address', transfer.toUserAccount.toLowerCase())
           .single());
-
-        // If not found, try lowercase
-        if (walletError || !walletData) {
-          ({ data: walletData, error: walletError } = await supabase
-            .from('wallets')
-            .select('user_id, users(id, telegram_chat_id, email, name)')
-            .eq('address', activity.toAddress.toLowerCase())
-            .single());
-        }
-
-        if (walletError || !walletData) {
-          console.log(`No user found for wallet address: ${activity.toAddress}`);
-          continue;
-        }
-
-        await processPayment(
-          walletData,
-          amount,
-          currency,
-          activity.hash,
-          activity.fromAddress,
-          activity.toAddress,
-          event.event.network,
-          event
-        );
       }
+
+      if (walletError || !walletData) {
+        console.log(`No user found for wallet address: ${transfer.toUserAccount}`);
+        continue;
+      }
+
+      await processPayment(
+        walletData,
+        transfer.amount / 1e9, // Convert lamports to SOL
+        'SOL',
+        event.signature,
+        transfer.fromUserAccount,
+        transfer.toUserAccount,
+        'solana',
+        event
+      );
+    }
+
+    // Process token transfers (USDC)
+    for (const transfer of event.tokenTransfers || []) {
+      if (!transfer.fromUserAccount || !transfer.toUserAccount || !transfer.tokenAmount) {
+        console.warn('Invalid token transfer data:', transfer);
+        continue;
+      }
+
+      // Check if this is USDC
+      const isUSDC = transfer.mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+      if (!isUSDC) {
+        console.log('Skipping non-USDC transfer:', transfer);
+        continue;
+      }
+
+      // Try both original case and lowercase for wallet lookup
+      let walletData;
+      let walletError;
+      
+      // First try exact case match
+      ({ data: walletData, error: walletError } = await supabase
+        .from('wallets')
+        .select('user_id, users(id, telegram_chat_id, email, name)')
+        .eq('address', transfer.toUserAccount)
+        .single());
+
+      // If not found, try lowercase
+      if (walletError || !walletData) {
+        ({ data: walletData, error: walletError } = await supabase
+          .from('wallets')
+          .select('user_id, users(id, telegram_chat_id, email, name)')
+          .eq('address', transfer.toUserAccount.toLowerCase())
+          .single());
+      }
+
+      if (walletError || !walletData) {
+        console.log(`No user found for wallet address: ${transfer.toUserAccount}`);
+        continue;
+      }
+
+      await processPayment(
+        walletData,
+        transfer.tokenAmount,
+        'USDC',
+        event.signature,
+        transfer.fromUserAccount,
+        transfer.toUserAccount,
+        'solana',
+        event
+      );
     }
 
     return res.status(200).json({ success: true });
@@ -277,30 +296,24 @@ async function processPayment(
     
     console.log('Final notification payload:', JSON.stringify(notificationPayload, null, 2));
 
-    // Call payment-notifications webhook directly
-    const { default: paymentNotificationHandler } = await import('./payment-notifications');
-    const mockReq = {
-      method: 'POST',
-      body: notificationPayload,
-      headers: {},
-      query: {},
-      cookies: {}
-    } as NextApiRequest;
-    const mockRes = {
-      status: (code: number) => ({
-        json: (data: any) => {
-          console.log('Notification response:', code, data);
-          return mockRes;
-        }
-      }),
-      json: (data: any) => {
-        console.log('Notification sent:', data);
-        return mockRes;
-      }
-    } as any;
+    // Send HTTP request to payment-notifications webhook
+    const notificationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/payment-notifications`;
     
-    await paymentNotificationHandler(mockReq, mockRes);
-    console.log('Notification handler completed successfully');
+    const notificationResponse = await fetch(notificationUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(notificationPayload)
+    });
+    
+    if (notificationResponse.ok) {
+      const responseData = await notificationResponse.json();
+      console.log('Notification sent successfully:', responseData);
+    } else {
+      const errorData = await notificationResponse.text();
+      console.error('Notification failed:', notificationResponse.status, errorData);
+    }
   } catch (notificationError) {
     console.error('Failed to send notification:', notificationError);
     console.error('Notification error details:', notificationError.message, notificationError.stack);

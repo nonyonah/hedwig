@@ -1,95 +1,117 @@
-import axios from 'axios';
+// Helius Solana webhook management functions
 import dotenv from 'dotenv';
-dotenv.config();
+import fetch from 'node-fetch';
 
-// Helius API configuration
+dotenv.config({ path: '.env.local' });
+
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
-const HELIUS_BASE_URL = 'https://api.helius.xyz/v0';
+const HELIUS_BASE_URL = 'https://api.helius.xyz';
 
 if (!HELIUS_API_KEY) {
-  console.error('HELIUS_API_KEY environment variable is required');
+  console.error('❌ HELIUS_API_KEY environment variable is required');
   process.exit(1);
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://your-app.vercel.app';
-const webhookUrl = `${BASE_URL}/api/webhooks/solana`;
+const NEXT_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
+const webhookUrl = `${NEXT_PUBLIC_BASE_URL}/api/webhooks/solana-helius`;
 
-// Helius webhook management functions
+// Helius Solana webhook management functions
 async function createWebhook(addresses) {
   try {
-    const response = await axios.post(
-      `${HELIUS_BASE_URL}/webhooks?api-key=${HELIUS_API_KEY}`,
-      {
+    const response = await fetch(`${HELIUS_BASE_URL}/v0/webhooks?api-key=${HELIUS_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         webhookURL: webhookUrl,
         transactionTypes: ['Any'],
         accountAddresses: addresses,
         webhookType: 'enhanced'
-      }
-    );
-    
-    console.log('Webhook created successfully:');
-    console.log('Webhook ID:', response.data.webhookID);
-    console.log('Webhook URL:', response.data.webhookURL);
-    console.log('Account Addresses:', response.data.accountAddresses);
-    return response.data;
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Webhook created successfully:', data);
+    return data;
   } catch (error) {
-    console.error('Error creating webhook:', error.response?.data || error.message);
+    console.error('❌ Error creating webhook:', error.message);
     throw error;
   }
 }
 
 async function listWebhooks() {
   try {
-    const response = await axios.get(
-      `${HELIUS_BASE_URL}/webhooks?api-key=${HELIUS_API_KEY}`
-    );
-    
-    console.log('Existing webhooks:');
-    response.data.forEach((webhook, index) => {
-      console.log(`\n${index + 1}. Webhook ID: ${webhook.webhookID}`);
-      console.log(`   URL: ${webhook.webhookURL}`);
-      console.log(`   Type: ${webhook.webhookType}`);
-      console.log(`   Transaction Types: ${webhook.transactionTypes.join(', ')}`);
-      console.log(`   Account Addresses: ${webhook.accountAddresses.length} addresses`);
-      if (webhook.accountAddresses.length > 0) {
-        console.log(`   First few addresses: ${webhook.accountAddresses.slice(0, 3).join(', ')}`);
+    const response = await fetch(`${HELIUS_BASE_URL}/v0/webhooks?api-key=${HELIUS_API_KEY}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
       }
     });
-    
-    return response.data;
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('📋 Existing webhooks:', JSON.stringify(data, null, 2));
+    return data;
   } catch (error) {
-    console.error('Error listing webhooks:', error.response?.data || error.message);
+    console.error('❌ Error listing webhooks:', error.message);
     throw error;
   }
 }
 
 async function deleteWebhook(webhookId) {
   try {
-    await axios.delete(
-      `${HELIUS_BASE_URL}/webhooks/${webhookId}?api-key=${HELIUS_API_KEY}`
-    );
-    
-    console.log(`Webhook ${webhookId} deleted successfully`);
+    const response = await fetch(`${HELIUS_BASE_URL}/v0/webhooks/${webhookId}?api-key=${HELIUS_API_KEY}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    console.log(`✅ Webhook ${webhookId} deleted successfully`);
   } catch (error) {
-    console.error('Error deleting webhook:', error.response?.data || error.message);
+    console.error('❌ Error deleting webhook:', error.message);
     throw error;
   }
 }
 
 async function addAddressesToWebhook(webhookId, addresses) {
   try {
-    const response = await axios.put(
-      `${HELIUS_BASE_URL}/webhooks/${webhookId}?api-key=${HELIUS_API_KEY}`,
-      {
+    const response = await fetch(`${HELIUS_BASE_URL}/v0/webhooks/${webhookId}?api-key=${HELIUS_API_KEY}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         accountAddresses: addresses
-      }
-    );
-    
-    console.log(`Added ${addresses.length} addresses to webhook ${webhookId}`);
-    console.log('Updated webhook:', response.data);
-    return response.data;
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log(`✅ Added ${addresses.length} addresses to webhook ${webhookId}`);
+    console.log('Updated webhook:', data);
+    return data;
   } catch (error) {
-    console.error('Error adding addresses to webhook:', error.response?.data || error.message);
+    console.error('❌ Error adding addresses to webhook:', error.message);
     throw error;
   }
 }
@@ -139,7 +161,7 @@ async function main() {
         console.log('  node setup-solana-webhook.js delete <webhook-id>                - Delete a webhook');
         console.log('  node setup-solana-webhook.js add-addresses <webhook-id> <addr>  - Add addresses to webhook');
         console.log('\nEnvironment variables required:');
-        console.log('  HELIUS_API_KEY - Your Helius API key');
+        console.log('  HELIUS_API_KEY - Your Helius API key (get one at https://www.helius.xyz)');
         console.log('  NEXT_PUBLIC_BASE_URL - Your application base URL');
         break;
     }

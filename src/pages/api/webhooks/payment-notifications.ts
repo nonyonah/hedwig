@@ -7,7 +7,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN!, { polling: false });
+// Validate Telegram bot configuration
+if (!process.env.TELEGRAM_BOT_TOKEN) {
+  console.error('TELEGRAM_BOT_TOKEN is not configured');
+}
+
+const bot = process.env.TELEGRAM_BOT_TOKEN 
+  ? new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false })
+  : null;
 
 interface PaymentNotificationData {
   type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer';
@@ -205,16 +212,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Send Telegram notification if user has Telegram chat ID
     if (recipientUser.telegram_chat_id) {
-      await sendTelegramNotification(
-        recipientUser.telegram_chat_id,
-        type,
-        itemData,
-        amount,
-        currency,
-        transactionHash,
-        senderAddress || payerWallet,
-        chain
-      );
+      try {
+        console.log('Attempting to send Telegram notification to chat ID:', recipientUser.telegram_chat_id);
+        await sendTelegramNotification(
+          recipientUser.telegram_chat_id,
+          type,
+          itemData,
+          amount,
+          currency,
+          transactionHash,
+          senderAddress || payerWallet,
+          chain
+        );
+        console.log('Telegram notification sent successfully');
+      } catch (telegramError) {
+        console.error('Failed to send Telegram notification:', telegramError);
+        console.error('Telegram error details:', {
+          chatId: recipientUser.telegram_chat_id,
+          type,
+          amount,
+          currency,
+          error: telegramError.message
+        });
+        // Don't fail the entire webhook if Telegram fails
+      }
+    } else {
+      console.log('No Telegram chat ID found for user, skipping Telegram notification');
     }
 
     // Send email notification
@@ -248,6 +271,21 @@ async function sendTelegramNotification(
   chain?: string
 ) {
   try {
+    // Validate bot configuration
+    if (!bot) {
+      console.error('Telegram bot is not configured - TELEGRAM_BOT_TOKEN missing');
+      throw new Error('Telegram bot not configured');
+    }
+    
+    console.log('Sending Telegram notification:', {
+      chatId,
+      type,
+      amount,
+      currency,
+      transactionHash,
+      senderWallet,
+      chain
+    });
     let emoji, itemType, itemIdentifier;
     
     if (type === 'invoice') {
