@@ -135,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Find the recipient user by wallet address
       const { data: walletData, error: walletError } = await supabase
         .from('wallets')
-        .select('user_id, user:users(id, telegram_chat_id, email, name)')
+        .select('user_id')
         .eq('address', transfer.toAddress.toLowerCase())
         .single();
 
@@ -143,6 +143,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`No user found for wallet address: ${transfer.toAddress}`);
         continue; // Skip this transfer
       }
+
+      // Get user data separately
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, telegram_chat_id, email, name')
+        .eq('id', walletData.user_id)
+        .single();
+      
+      if (userError || !userData) {
+        console.log(`User data not found for user_id: ${walletData.user_id}`);
+        continue; // Skip this transfer
+      }
+
+      // Attach user data to wallet data
+      (walletData as any).user = userData;
 
       // Check if this transfer is for a specific invoice or payment link
       let paymentType = 'direct_transfer';

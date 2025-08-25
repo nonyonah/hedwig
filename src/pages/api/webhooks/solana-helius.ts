@@ -76,13 +76,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       userAgent: req.headers['user-agent']
     });
 
-    const event = req.body as HeliusSolanaWebhookEvent;
+    const events = req.body as HeliusSolanaWebhookEvent[];
     
     // Log the complete webhook payload for debugging
-    console.log('Complete Helius Solana webhook payload:', JSON.stringify(event, null, 2));
+    console.log('Complete Helius Solana webhook payload:', JSON.stringify(events, null, 2));
 
-    // Process native SOL transfers
-    for (const transfer of event.nativeTransfers || []) {
+    // Process each event in the webhook payload
+    for (const event of events) {
+      console.log('Processing event:', event.signature);
+      
+      // Process native SOL transfers
+      console.log('Processing native transfers, count:', (event.nativeTransfers || []).length);
+      for (const transfer of event.nativeTransfers || []) {
+      console.log('Processing native transfer:', { from: transfer.fromUserAccount, to: transfer.toUserAccount, amount: transfer.amount });
       if (!transfer.fromUserAccount || !transfer.toUserAccount || !transfer.amount) {
         console.warn('Invalid native transfer data:', transfer);
         continue;
@@ -95,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // First try exact case match
       ({ data: walletData, error: walletError } = await supabase
         .from('wallets')
-        .select('user_id, user:users(id, telegram_chat_id, email, name)')
+        .select('user_id')
         .eq('address', transfer.toUserAccount)
         .single());
 
@@ -103,13 +109,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (walletError || !walletData) {
         ({ data: walletData, error: walletError } = await supabase
           .from('wallets')
-          .select('user_id, user:users(id, telegram_chat_id, email, name)')
+          .select('user_id')
           .eq('address', transfer.toUserAccount.toLowerCase())
           .single());
       }
 
-      if (walletError || !walletData) {
-        console.log(`No user found for wallet address: ${transfer.toUserAccount}`);
+      // If wallet found, get user data separately
+      if (walletData && !walletError) {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, telegram_chat_id, email, name')
+          .eq('id', walletData.user_id)
+          .single();
+        
+        if (userData && !userError) {
+          walletData.user = userData;
+          console.log(`Found user for wallet ${transfer.toUserAccount}:`, { userId: userData.id, telegramChatId: userData.telegram_chat_id });
+        } else {
+          console.log(`User data not found for user_id: ${walletData.user_id}`, userError);
+          continue;
+        }
+      } else {
+        console.log(`No wallet found for address: ${transfer.toUserAccount}`, walletError);
         continue;
       }
 
@@ -125,19 +146,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       );
     }
 
-    // Process token transfers (USDC)
-    for (const transfer of event.tokenTransfers || []) {
+      // Process token transfers (USDC)
+      for (const transfer of event.tokenTransfers || []) {
       if (!transfer.fromUserAccount || !transfer.toUserAccount || !transfer.tokenAmount) {
         console.warn('Invalid token transfer data:', transfer);
         continue;
       }
 
-      // Check if this is USDC
-      const isUSDC = transfer.mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+      // Check if this is USDC (mainnet or devnet)
+      const mainnetUSDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+      const devnetUSDC = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
+      const isUSDC = transfer.mint === mainnetUSDC || transfer.mint === devnetUSDC;
       if (!isUSDC) {
         console.log('Skipping non-USDC transfer:', transfer);
         continue;
       }
+      
+      console.log(`Processing USDC transfer (${transfer.mint === mainnetUSDC ? 'mainnet' : 'devnet'}):`, transfer);
 
       // Try both original case and lowercase for wallet lookup
       let walletData;
@@ -146,7 +171,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // First try exact case match
       ({ data: walletData, error: walletError } = await supabase
         .from('wallets')
-        .select('user_id, user:users(id, telegram_chat_id, email, name)')
+        .select('user_id')
         .eq('address', transfer.toUserAccount)
         .single());
 
@@ -154,13 +179,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (walletError || !walletData) {
         ({ data: walletData, error: walletError } = await supabase
           .from('wallets')
-          .select('user_id, user:users(id, telegram_chat_id, email, name)')
+          .select('user_id')
           .eq('address', transfer.toUserAccount.toLowerCase())
           .single());
       }
 
-      if (walletError || !walletData) {
-        console.log(`No user found for wallet address: ${transfer.toUserAccount}`);
+      // If wallet found, get user data separately
+      if (walletData && !walletError) {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, telegram_chat_id, email, name')
+          .eq('id', walletData.user_id)
+          .single();
+        
+        if (userData && !userError) {
+          walletData.user = userData;
+          console.log(`Found user for wallet ${transfer.toUserAccount}:`, { userId: userData.id, telegramChatId: userData.telegram_chat_id });
+        } else {
+          console.log(`User data not found for user_id: ${walletData.user_id}`, userError);
+          continue;
+        }
+      } else {
+        console.log(`No wallet found for address: ${transfer.toUserAccount}`, walletError);
         continue;
       }
 
@@ -174,6 +214,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         'solana',
         event
       );
+      }
     }
 
     return res.status(200).json({ success: true });
