@@ -105,8 +105,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const event: AlchemyWebhookEvent = req.body;
     
+    // Log the complete webhook payload for debugging
+    console.log('=== ALCHEMY WEBHOOK RECEIVED ===');
+    console.log('Headers:', {
+      'content-type': req.headers['content-type'],
+      'user-agent': req.headers['user-agent'],
+      'x-alchemy-signature': req.headers['x-alchemy-signature'] ? '[PRESENT]' : '[MISSING]'
+    });
+    console.log('Event Type:', event.type);
+    console.log('Event ID:', event.id);
+    console.log('Webhook ID:', event.webhookId);
+    console.log('Network:', event.event?.network);
+    console.log('Activity Count:', event.event?.activity?.length || 0);
+    console.log('Complete Payload:', JSON.stringify(event, null, 2));
+    console.log('================================');
+    
     // Only process address activity events
     if (event.type !== 'ADDRESS_ACTIVITY') {
+      console.log(`Skipping event type: ${event.type}`);
       return res.status(200).json({ message: 'Event type not processed' });
     }
 
@@ -132,17 +148,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         continue; // Skip unsupported transfers
       }
       
-      // Find the recipient user by wallet address
+      // Find the recipient user by wallet address (case-insensitive)
+      console.log(`🔍 Looking up wallet address: ${transfer.toAddress}`);
       const { data: walletData, error: walletError } = await supabase
         .from('wallets')
         .select('user_id')
-        .eq('address', transfer.toAddress.toLowerCase())
+        .ilike('address', transfer.toAddress)
         .single();
 
       if (walletError || !walletData) {
-        console.log(`No user found for wallet address: ${transfer.toAddress}`);
+        console.log(`❌ No user found for wallet address: ${transfer.toAddress}`);
+        console.log('Wallet lookup error:', walletError);
         continue; // Skip this transfer
       }
+      
+      console.log(`✅ Found wallet for address ${transfer.toAddress}, user_id: ${walletData.user_id}`);
 
       // Get user data separately
       const { data: userData, error: userError } = await supabase
