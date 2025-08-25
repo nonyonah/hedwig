@@ -2,25 +2,23 @@ import fetch from 'node-fetch';
 
 // Test webhook payload that simulates a Helius webhook
 const testPayload = {
+  signature: 'test_signature_123456789',
+  nativeTransfers: [{
+    fromUserAccount: 'sender_wallet_address_123',
+    toUserAccount: 'CQCPLL2jcQAVeHeqXYqDApTic7EzA1d8qPDEwHaW7BGw', // Wallet address for user with telegram_chat_id
+    amount: 1000000 // 0.001 SOL in lamports
+  }],
+  tokenTransfers: [],
+  timestamp: Date.now(),
   type: 'TRANSFER',
-  source: 'HELIUS',
-  data: [{
-    signature: 'test_signature_123456789',
-    nativeTransfers: [{
-      fromUserAccount: 'sender_wallet_address_123',
-      toUserAccount: 'nonyonah@gmail.com', // This should match a user in your database
-      amount: 1000000 // 0.001 SOL in lamports
-    }],
-    tokenTransfers: [],
-    timestamp: Date.now()
-  }]
+  source: 'HELIUS'
 };
 
 async function testHeliusWebhook() {
   try {
     console.log('🧪 Testing Helius webhook flow...');
     
-    const webhookUrl = 'https://afbe0011bf06.ngrok-free.app/api/webhooks/solana-helius';
+    const webhookUrl = 'http://localhost:3000/api/webhooks/solana-helius';
     
     const response = await fetch(webhookUrl, {
       method: 'POST',

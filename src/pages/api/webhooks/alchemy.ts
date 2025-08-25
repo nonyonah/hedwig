@@ -135,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Find the recipient user by wallet address
       const { data: walletData, error: walletError } = await supabase
         .from('wallets')
-        .select('user_id, users(id, telegram_chat_id, email, name)')
+        .select('user_id, user:users(id, telegram_chat_id, email, name)')
         .eq('address', transfer.toAddress.toLowerCase())
         .single();
 
@@ -244,6 +244,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // Send HTTP request to payment-notifications webhook
         console.log('Preparing notification for Alchemy webhook:', { paymentType, relatedId, amount, currency });
+        console.log('Base notification payload:', notificationPayload);
         console.log('Final notification payload:', JSON.stringify(notificationPayload, null, 2));
         
         const notificationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/payment-notifications`;

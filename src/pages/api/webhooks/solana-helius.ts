@@ -95,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // First try exact case match
       ({ data: walletData, error: walletError } = await supabase
         .from('wallets')
-        .select('user_id, users(id, telegram_chat_id, email, name)')
+        .select('user_id, user:users(id, telegram_chat_id, email, name)')
         .eq('address', transfer.toUserAccount)
         .single());
 
@@ -103,7 +103,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (walletError || !walletData) {
         ({ data: walletData, error: walletError } = await supabase
           .from('wallets')
-          .select('user_id, users(id, telegram_chat_id, email, name)')
+          .select('user_id, user:users(id, telegram_chat_id, email, name)')
           .eq('address', transfer.toUserAccount.toLowerCase())
           .single());
       }
@@ -146,7 +146,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // First try exact case match
       ({ data: walletData, error: walletError } = await supabase
         .from('wallets')
-        .select('user_id, users(id, telegram_chat_id, email, name)')
+        .select('user_id, user:users(id, telegram_chat_id, email, name)')
         .eq('address', transfer.toUserAccount)
         .single());
 
@@ -154,7 +154,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (walletError || !walletData) {
         ({ data: walletData, error: walletError } = await supabase
           .from('wallets')
-          .select('user_id, users(id, telegram_chat_id, email, name)')
+          .select('user_id, user:users(id, telegram_chat_id, email, name)')
           .eq('address', transfer.toUserAccount.toLowerCase())
           .single());
       }
