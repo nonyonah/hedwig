@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSimulateContract } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { toast } from 'sonner';
 
@@ -306,51 +306,6 @@ export function useHedwigPayment() {
       return;
     }
     
-    // First simulate the transaction to catch any revert reasons
-    console.log('Simulating transaction before execution...');
-    try {
-      const simulation = await fetch('/api/simulate-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contractAddress: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
-          amount: amountInUnits.toString(),
-          freelancer: req.freelancerAddress,
-          invoiceId: req.invoiceId,
-          userAddress: accountAddress
-        })
-      });
-      
-      if (!simulation.ok) {
-        const simError = await simulation.json();
-        console.error('Transaction simulation failed:', simError);
-        
-        // Handle specific error types with actionable guidance
-        if (simError.error === 'SIMULATION_FAILED_ALLOWANCE' || simError.signature === '0xe450d38c') {
-          toast.error('Insufficient allowance detected. Please approve more USDC tokens first.');
-          // Could trigger approval flow here automatically
-          return;
-        }
-        
-        if (simError.error === 'INSUFFICIENT_FUNDS') {
-          toast.error('Insufficient USDC balance or allowance. Please check your wallet.');
-          return;
-        }
-        
-        if (simError.solutions && Array.isArray(simError.solutions)) {
-          const solutionText = simError.solutions.join(', ');
-          toast.error(`Transaction would fail: ${simError.message}. Try: ${solutionText}`);
-        } else {
-          toast.error(`Transaction would fail: ${simError.message || 'Unknown simulation error'}`);
-        }
-        return;
-      }
-      
-      console.log('Transaction simulation successful, proceeding with actual transaction...');
-    } catch (simError: any) {
-      console.error('Simulation request failed:', simError);
-      // Continue with transaction even if simulation fails
-    }
     
     toast.info('Please confirm the payment in your wallet.');
     setLastAction('pay');
