@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { Copy, Download, Send, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
@@ -68,7 +68,8 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
     hash: paymentHash, 
     receipt: paymentReceipt, 
     approvalCompleted, 
-    continuePendingPayment 
+    continuePendingPayment,
+    resetTransaction 
   } = useHedwigPayment();
 
   const handlePay = () => {
@@ -103,7 +104,7 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
     <div className="space-y-4">
       <Button 
         onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={isConfirming || !!paymentReceipt || isAlreadyPaid} 
+        disabled={(isConfirming && !approvalCompleted) || !!paymentReceipt || isAlreadyPaid} 
         className="w-full"
       >
         {isAlreadyPaid ? (
@@ -118,6 +119,16 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
           <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} USDC</>
         )}
       </Button>
+      
+      {(isConfirming || approvalCompleted) && !paymentReceipt && !isAlreadyPaid && (
+        <Button 
+          onClick={resetTransaction}
+          variant="outline"
+          className="w-full"
+        >
+          <><RefreshCw className="h-4 w-4 mr-2" /> Reset Transaction</>
+        </Button>
+      )}
     </div>
   );
 }
@@ -341,7 +352,7 @@ export default function InvoicePage() {
   
   // Calculate subtotal from filtered items
   const subtotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
-  const platformFee = subtotal * 0.01; // 1%
+  const platformFee = subtotal * 0.01; // 1% platform fee for payment processing
   const total = subtotal + platformFee;
 
   const statusColor = {
@@ -476,18 +487,9 @@ export default function InvoicePage() {
             {/* Totals */}
             <div className="flex justify-end">
               <div className="w-full max-w-sm space-y-2">
-                <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-medium">${subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Platform Fee (1%):</span>
-                  <span className="font-medium">${platformFee.toFixed(2)}</span>
-                </div>
-                <Separator />
                 <div className="flex justify-between py-3">
-                  <span className="text-lg font-semibold">Total:</span>
-                  <span className="text-lg font-bold text-blue-600">${total.toFixed(2)}</span>
+                  <span className="text-lg font-semibold">Amount:</span>
+                  <span className="text-lg font-bold text-blue-600">${subtotal.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -544,20 +546,20 @@ export default function InvoicePage() {
                   <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Platform Fee (1%) — deducted:</span>
-                  <span className="font-medium">${platformFee.toLocaleString()} USDC</span>
+                  <span className="text-gray-600">Invoice Amount:</span>
+                  <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Freelancer Receives:</span>
-                  <span className="font-medium">${(subtotal - platformFee).toLocaleString()} USDC</span>
+                  <span className="text-gray-600">Platform Fee (1%):</span>
+                  <span className="font-medium">${platformFee.toLocaleString()} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold">
                   <span className="text-gray-800">Total to Pay:</span>
-                  <span className="text-gray-800">${subtotal.toLocaleString()} USDC</span>
+                  <span className="text-gray-800">${total.toLocaleString()} USDC</span>
                 </div>
               </div>
 
-              <PaymentFlow invoiceData={invoiceData} subtotal={subtotal} />
+              <PaymentFlow invoiceData={invoiceData} subtotal={total} />
 
               <div className="text-center text-sm text-gray-600">
                 Secure payment processing via smart contract

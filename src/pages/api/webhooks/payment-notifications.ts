@@ -286,63 +286,86 @@ async function sendTelegramNotification(
       senderWallet,
       chain
     });
-    let emoji, itemType, itemIdentifier;
+    let emoji, itemType, itemIdentifier, customTitle;
     
     if (type === 'invoice') {
       emoji = '📄';
       itemType = 'Invoice';
       itemIdentifier = itemData.number;
+      customTitle = `📄 <b>Invoice Paid!</b>`;
     } else if (type === 'proposal') {
       emoji = '📋';
       itemType = 'Proposal';
       itemIdentifier = itemData.number || itemData.projectTitle;
+      customTitle = `📋 <b>Proposal Paid!</b>`;
     } else if (type === 'direct_transfer') {
       emoji = '💸';
       itemType = 'Direct Transfer';
       itemIdentifier = 'Received';
+      customTitle = `💸 <b>Direct Transfer Received!</b>`;
     } else {
       emoji = '💰';
       itemType = 'Payment Link';
       itemIdentifier = itemData.title;
+      customTitle = `💰 <b>Payment Link Paid!</b>`;
     }
     
-    let message = type === 'direct_transfer' ? `💸 *Direct Transfer Received!*\n\n` : `🎉 *Payment Received!*\n\n`;
+    let message = `${customTitle}\n\n`;
     
     if (type === 'direct_transfer') {
-      message += `💰 *Amount:* ${amount} ${currency}\n`;
-      message += `👤 *From:* \`${itemData.senderAddress}\`\n`;
-      message += `📱 *To:* \`${itemData.recipientWallet}\`\n`;
-      message += `⛓️ *Chain:* ${itemData.chain}\n`;
+      message += `💰 <b>Amount:</b> ${amount} ${currency}\n`;
+      message += `👤 <b>From:</b> ${itemData.senderAddress}\n`;
+      message += `📱 <b>To:</b> ${itemData.recipientWallet}\n`;
+      message += `⛓️ <b>Chain:</b> ${itemData.chain}\n`;
     } else {
-      message += `${emoji} *${itemType}:* ${itemIdentifier}\n`;
-      message += `💵 *Amount:* ${amount} ${currency}\n`;
+      // Add specific ID for tracking
+      message += `🆔 <b>${itemType} ID:</b> ${itemData.id || 'N/A'}\n`;
+      message += `${emoji} <b>${itemType}:</b> ${itemIdentifier}\n`;
+      message += `💵 <b>Amount Paid:</b> ${amount} ${currency}\n`;
       
       if (type === 'invoice' || type === 'proposal') {
-        message += `👤 *Client:* ${itemData.clientName}\n`;
-        if (itemData.clientEmail) {
-          message += `📧 *Client Email:* ${itemData.clientEmail}\n`;
+        message += `👤 <b>Client:</b> ${itemData.clientName || itemData.client_name || 'Unknown'}\n`;
+        if (itemData.clientEmail || itemData.client_email) {
+          message += `📧 <b>Client Email:</b> ${itemData.clientEmail || itemData.client_email}\n`;
         }
-        message += `📝 *Project:* ${itemData.description}\n`;
-      } else {
-        message += `👤 *From:* ${itemData.recipientName || 'Unknown'}\n`;
-        message += `📝 *Description:* ${itemData.description}\n`;
+        message += `📝 <b>Project:</b> ${itemData.description || itemData.project_title || 'N/A'}\n`;
+        if (itemData.freelancer_name) {
+          message += `👨‍💼 <b>Freelancer:</b> ${itemData.freelancer_name}\n`;
+        }
+      } else if (type === 'payment_link') {
+        message += `👤 <b>Paid By:</b> ${senderWallet ? senderWallet.substring(0, 6) + '...' + senderWallet.substring(senderWallet.length - 4) : 'Unknown'}\n`;
+        message += `📝 <b>Description:</b> ${itemData.description || itemData.payment_reason || 'N/A'}\n`;
+        if (itemData.user_name) {
+          message += `👨‍💼 <b>Recipient:</b> ${itemData.user_name}\n`;
+        }
       }
       
       if (senderWallet) {
-        message += `🔗 *Sender Wallet:* \`${senderWallet}\`\n`;
+        message += `🔗 <b>Payer Wallet:</b> ${senderWallet.substring(0, 6)}...${senderWallet.substring(senderWallet.length - 4)}\n`;
       }
       
       if (chain) {
-        message += `⛓️ *Chain:* ${chain}\n`;
+        message += `⛓️ <b>Network:</b> ${chain.charAt(0).toUpperCase() + chain.slice(1)}\n`;
       }
     }
     
     if (transactionHash) {
-      message += `🧾 *Transaction:* \`${transactionHash}\`\n`;
+      message += `🧾 <b>Transaction Hash:</b> \n<code>${transactionHash}</code>\n`;
     }
     
-    message += `\n✅ *Status:* Payment Confirmed\n`;
-    message += `⏰ *Time:* ${new Date().toLocaleString()}`;
+    message += `\n✅ <b>Status:</b> Payment Confirmed & Processed\n`;
+    message += `⏰ <b>Confirmed At:</b> ${new Date().toLocaleString()}\n`;
+    
+    // Add success footer based on payment type
+    if (type === 'invoice') {
+      message += `\n🎉 Your invoice has been successfully paid!`;
+    } else if (type === 'payment_link') {
+      message += `\n🎉 Your payment link has been successfully paid!`;
+    } else if (type === 'proposal') {
+      message += `\n🎉 Your proposal has been accepted and paid!`;
+    } else {
+      message += `\n💰 Direct payment received in your wallet!`;
+    }
 
     let keyboard;
     if (transactionHash) {
@@ -357,13 +380,19 @@ async function sendTelegramNotification(
         if (type === 'direct_transfer') {
           addressUrl = `https://basescan.org/address/${itemData.recipientWallet}`;
         }
+      } else if (chain === 'base-sepolia' || chain === 'BASE_SEPOLIA') {
+        explorerUrl = `https://sepolia.basescan.org/tx/${transactionHash}`;
+        explorerName = 'BaseScan Sepolia';
+        if (type === 'direct_transfer') {
+          addressUrl = `https://sepolia.basescan.org/address/${itemData.recipientWallet}`;
+        }
       } else if (chain === 'ethereum-mainnet' || chain === 'ETHEREUM_MAINNET') {
         explorerUrl = `https://etherscan.io/tx/${transactionHash}`;
         explorerName = 'Etherscan';
         if (type === 'direct_transfer') {
           addressUrl = `https://etherscan.io/address/${itemData.recipientWallet}`;
         }
-      } else if (chain === 'solana-mainnet' || chain === 'SOLANA_MAINNET') {
+      } else if (chain === 'solana-mainnet' || chain === 'SOLANA_MAINNET' || chain === 'solana') {
         explorerUrl = `https://solscan.io/tx/${transactionHash}`;
         explorerName = 'Solscan';
         if (type === 'direct_transfer') {
@@ -387,7 +416,7 @@ async function sendTelegramNotification(
             }],
             [{
               text: '💰 Check Balance',
-              url: addressUrl
+              callback_data: `check_balance_${itemData.recipientWallet}`
             }]
           ]
         };
@@ -417,7 +446,7 @@ async function sendTelegramNotification(
     }
 
     await bot.sendMessage(chatId, message, {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: keyboard
     });
   } catch (error) {

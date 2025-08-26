@@ -90,9 +90,9 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                 <p><strong>Description:</strong> ${invoice.project_description}</p>
                 ${invoice.deliverables ? `<p><strong>Deliverables:</strong> ${invoice.deliverables}</p>` : ''}
                 <p><strong>Due Date:</strong> ${invoice.due_date}</p>
-                <p><strong>Subtotal:</strong> ${subtotal.toLocaleString()} ${invoice.currency}</p>
+                <p><strong>Invoice Amount:</strong> ${subtotal.toLocaleString()} ${invoice.currency}</p>
                 <p><strong>Platform Fee (1%):</strong> ${platformFee.toLocaleString()} ${invoice.currency}</p>
-                <p class="amount">Amount Due: ${total.toLocaleString()} ${invoice.currency}</p>
+                <p class="amount">Total Due: ${total.toLocaleString()} ${invoice.currency}</p>
             </div>
             
             <div class="payment-methods">
@@ -149,9 +149,9 @@ export function generateProposalEmailTemplate(proposal: any): string {
                 <p><strong>Description:</strong> ${proposal.project_description}</p>
                 ${proposal.scope_of_work ? `<p><strong>Scope:</strong> ${proposal.scope_of_work}</p>` : ''}
                 ${proposal.timeline ? `<p><strong>Timeline:</strong> ${proposal.timeline}</p>` : ''}
-                <p><strong>Subtotal:</strong> ${subtotal.toLocaleString()} ${proposal.currency}</p>
+                <p><strong>Project Amount:</strong> ${subtotal.toLocaleString()} ${proposal.currency}</p>
                 <p><strong>Platform Fee (1%):</strong> ${platformFee.toLocaleString()} ${proposal.currency}</p>
-                <p class="investment">Investment: ${total.toLocaleString()} ${proposal.currency}</p>
+                <p class="investment">Total Investment: ${total.toLocaleString()} ${proposal.currency}</p>
             </div>
             
             <div class="next-steps">

@@ -380,9 +380,16 @@ export function useHedwigPayment() {
       setIsApproving(false);
       setApprovalCompleted(true);
       refetchAllowance();
-      // Don't auto-continue payment - let user click Continue button
     }
   }, [receipt, isApproving, lastAction, refetchAllowance]);
+
+  // Reset isConfirming state after approval is completed
+  useEffect(() => {
+    if (approvalCompleted && lastAction === 'approve') {
+      // Reset the last action to clear the isConfirming state
+      setLastAction(null);
+    }
+  }, [approvalCompleted, lastAction]);
 
   const processPayment = useCallback(async (paymentRequest: PaymentRequest) => {
     try {
@@ -458,6 +465,16 @@ export function useHedwigPayment() {
     }
   }, [writeContract, isConnected, accountAddress, currentAllowance, sendPay]);
 
+  const resetTransaction = useCallback(() => {
+    console.log('Resetting transaction state...');
+    setIsApproving(false);
+    setApprovalCompleted(false);
+    setPaymentReceipt(null);
+    setPendingPaymentRequest(null);
+    setLastAction(null);
+    toast.success('Transaction state reset. You can now retry the payment.');
+  }, []);
+
   return {
     processPayment,
     isProcessing,
@@ -477,5 +494,6 @@ export function useHedwigPayment() {
         setPendingPaymentRequest(null);
       }
     },
+    resetTransaction,
   };
 }

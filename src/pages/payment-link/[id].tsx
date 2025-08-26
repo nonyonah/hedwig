@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
@@ -51,7 +51,8 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
     hash: paymentHash, 
     receipt: paymentReceipt, 
     approvalCompleted, 
-    continuePendingPayment 
+    continuePendingPayment,
+    resetTransaction 
   } = useHedwigPayment();
 
   const handlePay = () => {
@@ -60,7 +61,7 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
       return;
     }
     processPayment({
-      amount: paymentData.amount, // send subtotal only; contract will deduct fee
+      amount: total, // send total amount including platform fee
       freelancerAddress: paymentData.walletAddress as `0x${string}`,
       invoiceId: paymentData.id,
     });
@@ -78,7 +79,7 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
     <div className="space-y-4">
       <Button 
         onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={isConfirming || !!paymentReceipt || isAlreadyPaid} 
+        disabled={(isConfirming && !approvalCompleted) || !!paymentReceipt || isAlreadyPaid} 
         className="w-full"
       >
           {isAlreadyPaid ? (
@@ -93,6 +94,16 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
             <><Wallet className="h-4 w-4 mr-2" /> Pay {paymentData.amount.toLocaleString()} USDC</>
           )}
       </Button>
+      
+      {(isConfirming || approvalCompleted) && !paymentReceipt && !isAlreadyPaid && (
+        <Button 
+          onClick={resetTransaction}
+          variant="outline"
+          className="w-full"
+        >
+          <><RefreshCw className="h-4 w-4 mr-2" /> Reset Transaction</>
+        </Button>
+      )}
 
       {/* Transaction receipt display removed as requested */}
     </div>
@@ -334,20 +345,16 @@ export default function PaymentLinkPage() {
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Amount Due:</span>
+                        <span className="text-gray-600">Payment Amount:</span>
                         <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Platform Fee (1%) — deducted:</span>
+                        <span className="text-gray-600">Platform Fee (1%):</span>
                         <span className="font-medium">${platformFee.toLocaleString()} USDC</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Freelancer Receives:</span>
-                        <span className="font-medium">${(subtotal - platformFee).toLocaleString()} USDC</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold">
                         <span className="text-gray-800">Total to Pay:</span>
-                        <span className="text-gray-800">${subtotal.toLocaleString()} USDC</span>
+                        <span className="text-gray-800">${total.toLocaleString()} USDC</span>
                       </div>
                       <div className="text-xs text-gray-500 mt-2 p-2 bg-blue-50 rounded border border-blue-200">
                         <div className="font-medium mb-1 text-blue-800">💰 USDC Stablecoin Only:</div>

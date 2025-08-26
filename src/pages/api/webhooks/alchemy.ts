@@ -78,9 +78,28 @@ function verifyAuthToken(token: string): boolean {
 }
 
 // Convert wei to readable format
-function formatTokenAmount(value: number, decimals: number): number {
-  const divisor = Math.pow(10, decimals);
-  return value / divisor;
+function formatTokenAmount(value: string | number, decimals: number, isUSDC: boolean = false): number {
+  let numericValue: number;
+  
+  if (typeof value === 'string') {
+    // Raw value from blockchain (e.g., "2000000" for 2 USDC)
+    numericValue = parseFloat(value);
+    const divisor = Math.pow(10, decimals);
+    const result = numericValue / divisor;
+    
+    if (isUSDC) {
+      return parseFloat(result.toFixed(2));
+    } else {
+      return parseFloat(result.toFixed(8));
+    }
+  } else {
+    // Already formatted value from Alchemy (e.g., 0.1 for 0.1 USDC)
+    if (isUSDC) {
+      return parseFloat(value.toFixed(2));
+    } else {
+      return parseFloat(value.toFixed(8));
+    }
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -92,16 +111,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const rawBody = JSON.stringify(req.body);
     const signature = req.headers['x-alchemy-signature'] as string;
     
-    // Verify webhook signature (Alchemy uses signature-based authentication)
-    const signingKey = process.env.ALCHEMY_SIGNING_KEY;
-    if (!signingKey) {
-      console.error('ALCHEMY_SIGNING_KEY not configured');
-      return res.status(500).json({ error: 'Signing key not configured' });
-    }
-    if (!signature || !isValidSignatureForStringBody(rawBody, signature, signingKey)) {
-      console.error('Invalid webhook signature');
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
+    // Verify webhook signature
+      const signingKey = process.env.ALCHEMY_SIGNING_KEY;
+      if (!signingKey) {
+        console.error('ALCHEMY_SIGNING_KEY not configured');
+        return res.status(500).json({ error: 'Signing key not configured' });
+      }
+      // Verify webhook signature
+      if (!signature || !isValidSignatureForStringBody(rawBody, signature, signingKey)) {
+        console.error('Invalid webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
 
     const event: AlchemyWebhookEvent = req.body;
     
@@ -128,22 +148,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { activity } = event.event;
     
+    // Track processed transactions to avoid duplicates
+    const processedTransactions = new Set<string>();
+    
     // Process each activity in the event
     for (const transfer of activity) {
+      // Skip if we've already processed this transaction
+      if (processedTransactions.has(transfer.hash)) {
+        console.log(`⏭️ Skipping duplicate transaction: ${transfer.hash}`);
+        continue;
+      }
+      
+      // Mark this transaction as processed
+      processedTransactions.add(transfer.hash);
+      
+      // Check if this transaction has already been processed in the database
+      // Check both payments table (for invoices) and a general transaction log
+      const [{ data: existingPayment }, { data: existingInvoice }, { data: existingPaymentLink }] = await Promise.all([
+        supabase.from('payments').select('id').eq('tx_hash', transfer.hash).single(),
+        supabase.from('invoices').select('id').eq('payment_transaction', transfer.hash).single(),
+        supabase.from('payment_links').select('id').eq('transaction_hash', transfer.hash).single()
+      ]);
+      
+      if (existingPayment || existingInvoice || existingPaymentLink) {
+        console.log(`⏭️ Transaction already processed in database: ${transfer.hash}`);
+        continue;
+      }
+      
       let currency: string;
       let amount: number;
       
       // Check if this is a supported token transfer
-      const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+      const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
+      const BASE_SEPOLIA_USDC_ADDRESS = '0x036cbd53842c5426634e7929541ec2318f3dcf7e'; // Base Sepolia USDC
       
-      if (transfer.category === 'erc20' && transfer.rawContract.address.toLowerCase() === BASE_USDC_ADDRESS.toLowerCase()) {
+      const isUSDC = (transfer.category === 'erc20' || transfer.category === 'token') && (
+        transfer.rawContract.address.toLowerCase() === BASE_USDC_ADDRESS.toLowerCase() ||
+        transfer.rawContract.address.toLowerCase() === BASE_SEPOLIA_USDC_ADDRESS.toLowerCase()
+      );
+      
+      if (isUSDC) {
         // USDC transfer
         currency = 'USDC';
-        amount = formatTokenAmount(transfer.value, transfer.rawContract.decimals);
+        amount = formatTokenAmount(transfer.value, transfer.rawContract.decimals, true);
       } else if (transfer.category === 'external' && transfer.asset === 'ETH') {
         // ETH transfer
         currency = 'ETH';
-        amount = formatTokenAmount(transfer.value, 18); // ETH has 18 decimals
+        amount = formatTokenAmount(transfer.value, 18, false); // ETH has 18 decimals
       } else {
         continue; // Skip unsupported transfers
       }
@@ -248,6 +299,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               payer_wallet_address: transfer.fromAddress
             })
             .eq('id', paymentLinkData.id);
+        } else if (paymentType === 'direct_transfer') {
+          // For direct transfers, create a record in payments table for tracking
+          await supabase
+            .from('payments')
+            .insert({
+              amount_paid: amount,
+              payer_wallet: transfer.fromAddress,
+              tx_hash: transfer.hash,
+              status: 'completed',
+              payment_type: 'direct_transfer',
+              recipient_wallet: transfer.toAddress,
+              recipient_user_id: walletData.user_id
+            });
         }
       }
 
@@ -322,7 +386,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ 
       success: true, 
       message: 'Webhook processed successfully',
-      processed: event.event.activity.length
+      processed: processedTransactions.size
     });
 
   } catch (error) {
