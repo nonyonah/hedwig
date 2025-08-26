@@ -109,6 +109,7 @@ IMPORTANT INTENT RECOGNITION RULES:
    - Any request for formal invoicing with professional formatting
    - NEVER ask for clarification - proceed with creating invoice and prompt for missing details
    - Even simple requests like "create invoice" should use this intent
+   - IMPORTANT: Always inform users that a 1% platform fee will be deducted from payments
 
 3. PROPOSAL REQUESTS: Always use "create_proposal" intent for:
    - "proposal", "create proposal", "generate proposal", "draft proposal"
@@ -118,6 +119,7 @@ IMPORTANT INTENT RECOGNITION RULES:
    - Any request to create or generate a project proposal
    - NEVER ask for clarification - proceed with creating proposal and prompt for missing details
    - Even simple requests like "create proposal" should use this intent
+   - IMPORTANT: Always inform users that a 1% platform fee will be deducted from payments
 
 4. WALLET ADDRESS REQUESTS: Always use "get_wallet_address" intent for:
    - "wallet address", "my address", "show address", "view address"
@@ -160,6 +162,7 @@ IMPORTANT INTENT RECOGNITION RULES:
    - Always require both amount and recipient_email
    - Look for keywords like "for", "because", "reason" to extract description
    - If description is missing, the system will prompt for it
+   - IMPORTANT: Always inform users that a 1% platform fee will be deducted from payments
    - Examples of good payment link requests:
      * "Create payment link for 0.1 ETH to user@example.com for consulting services"
      * "Make payment request of 50 USDC to client@company.com for freelance work"

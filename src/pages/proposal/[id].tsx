@@ -356,8 +356,9 @@ const Proposal = () => {
   }
 
   const subtotal = proposalData.project.totalCost;
-  const platformFee = subtotal * 0.01; // 1% platform fee for payment processing
-  const total = subtotal + platformFee;
+  const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
+  const total = subtotal; // Total amount to be paid
+  const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -443,11 +444,31 @@ const Proposal = () => {
               <h3 className="font-semibold text-gray-900 mb-4">Project Summary</h3>
               <p className="text-gray-600 mb-4">{proposalData.project.description}</p>
               
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-blue-600" />
-                <div>
-                  <p className="text-xs text-gray-600">Project Amount</p>
-                  <p className="font-semibold text-lg">${subtotal.toLocaleString()}</p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <p className="text-xs text-gray-600">Project Amount</p>
+                    <p className="font-semibold text-lg">${subtotal.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="text-sm space-y-1 pt-2 border-t border-gray-200">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Project Amount:</span>
+                    <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Platform Fee (1% deducted):</span>
+                    <span className="font-medium text-red-600">-${platformFee.toLocaleString()} USDC</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Freelancer Receives:</span>
+                    <span className="font-medium">${freelancerReceives.toLocaleString()} USDC</span>
+                  </div>
+                  <div className="flex justify-between font-bold pt-1 border-t border-gray-200">
+                    <span className="text-gray-800">Total to Pay:</span>
+                    <span className="text-gray-800">${total.toLocaleString()} USDC</span>
+                  </div>
                 </div>
               </div>
             </div>

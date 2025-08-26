@@ -61,6 +61,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: 'Failed to update payment status' });
     }
 
+    // If payment is completed, record transaction in payment_events table
+    if (dbStatus === 'paid' && transactionHash) {
+      try {
+        const { error: transactionError } = await supabase
+          .from('payment_events')
+          .insert({
+            transaction_hash: transactionHash,
+            payer: data.payer_wallet_address || 'unknown',
+            freelancer: data.wallet_address,
+            amount: data.amount.toString(),
+            fee: '0', // Fee can be calculated separately if needed
+            token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+            invoice_id: `payment_link_${paymentId}`,
+            block_number: 0, // Will be updated by blockchain listener
+            timestamp: new Date().toISOString(),
+            processed: true
+          });
+
+        if (transactionError) {
+          console.error('Error recording transaction:', transactionError);
+        } else {
+          console.log('Transaction recorded successfully:', transactionHash);
+        }
+      } catch (transactionRecordError) {
+        console.error('Error recording transaction:', transactionRecordError);
+      }
+    }
+
     // If payment is completed and there's a recipient email, send notification
     if (dbStatus === 'paid' && data.recipient_email) {
       // TODO: Implement email notification using Resend

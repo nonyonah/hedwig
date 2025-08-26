@@ -346,6 +346,8 @@ export class InvoiceModule {
   private generateInvoicePreview(invoice: InvoiceData): string {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
     const invoiceLink = `${baseUrl}/invoice/${invoice.id}`;
+    const platformFee = invoice.amount * 0.01;
+    const freelancerReceives = invoice.amount - platformFee;
     
     return (
       `📋 *Invoice Preview*\n\n` +
@@ -355,9 +357,12 @@ export class InvoiceModule {
       `*Project:* ${invoice.project_description}\n` +
       `*Quantity:* ${invoice.quantity}\n` +
       `*Rate:* ${invoice.rate} ${invoice.currency}\n` +
-      `*Amount:* ${invoice.amount} ${invoice.currency}\n` +
+      `*Invoice Amount:* ${invoice.amount} ${invoice.currency}\n` +
+      `*Platform Fee (1%):* -${platformFee.toFixed(2)} ${invoice.currency}\n` +
+      `*You'll Receive:* ${freelancerReceives.toFixed(2)} ${invoice.currency}\n` +
       `*Due Date:* ${invoice.due_date}\n` +
       `*Status:* ${invoice.status.toUpperCase()}\n\n` +
+      `ℹ️ *Note:* A 1% platform fee is deducted from payments to support our services.\n\n` +
       `*Payment Methods Available:*\n` +
       `💰 USDC (Base Network)\n\n` +
       `🔗 *Invoice Link:* ${invoiceLink}\n\n` +
@@ -550,7 +555,9 @@ export class InvoiceModule {
     
     switch (step) {
       case 'freelancer_name':
-        message = '*Step 1/9:* What\'s your name (freelancer)?';
+        message = '📋 *Creating Professional Invoice*\n\n' +
+                 'ℹ️ *Note:* A 1% platform fee will be deducted from payments to support our services.\n\n' +
+                 '*Step 1/9:* What\'s your name (freelancer)?';
         break;
       case 'freelancer_email':
         message = '*Step 2/9:* What\'s your email address?';

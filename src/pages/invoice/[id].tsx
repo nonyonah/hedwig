@@ -69,7 +69,8 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
     receipt: paymentReceipt, 
     approvalCompleted, 
     continuePendingPayment,
-    resetTransaction 
+    resetTransaction,
+    isProcessing 
   } = useHedwigPayment();
 
   const handlePay = () => {
@@ -104,7 +105,7 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
     <div className="space-y-4">
       <Button 
         onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={(isConfirming && !approvalCompleted) || !!paymentReceipt || isAlreadyPaid} 
+        disabled={isConfirming || isProcessing || !!paymentReceipt || isAlreadyPaid} 
         className="w-full"
       >
         {isAlreadyPaid ? (
@@ -352,8 +353,9 @@ export default function InvoicePage() {
   
   // Calculate subtotal from filtered items
   const subtotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
-  const platformFee = subtotal * 0.01; // 1% platform fee for payment processing
-  const total = subtotal + platformFee;
+  const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
+  const total = subtotal; // Total amount to be paid
+  const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
 
   const statusColor = {
     draft: 'bg-gray-100 text-gray-800',
@@ -542,16 +544,16 @@ export default function InvoicePage() {
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Amount Due:</span>
-                  <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
-                </div>
-                <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Invoice Amount:</span>
                   <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Platform Fee (1%):</span>
-                  <span className="font-medium">${platformFee.toLocaleString()} USDC</span>
+                  <span className="text-gray-600">Platform Fee (1% deducted):</span>
+                  <span className="font-medium text-red-600">-${platformFee.toLocaleString()} USDC</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Freelancer Receives:</span>
+                  <span className="font-medium">${freelancerReceives.toLocaleString()} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold">
                   <span className="text-gray-800">Total to Pay:</span>

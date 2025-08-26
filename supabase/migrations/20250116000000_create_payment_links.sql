@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public.payment_links (
     user_name VARCHAR(100) NOT NULL,
     payment_reason TEXT NOT NULL,
     recipient_email VARCHAR(255),
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'expired', 'cancelled')),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'expired', 'cancelled', 'completed')),
     transaction_hash VARCHAR(66),
     paid_amount DECIMAL(20, 8),
     paid_at TIMESTAMP WITH TIME ZONE,

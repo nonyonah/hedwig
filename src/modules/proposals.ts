@@ -84,6 +84,7 @@ export class ProposalModule {
       await this.bot.sendMessage(chatId, 
         `📋 *Creating New Proposal ${proposal.proposal_number}*\n\n` +
         `Let's create a professional proposal for your client.\n\n` +
+        `ℹ️ *Note:* A 1% platform fee will be deducted from payments to support our services.\n\n` +
         `*Step 1/8:* What's your name (freelancer/service provider)?`,
         { 
           parse_mode: 'Markdown',
@@ -259,6 +260,9 @@ export class ProposalModule {
 
   // Generate proposal preview
   private generateProposalPreview(proposal: ProposalData): string {
+    const platformFee = proposal.amount * 0.01;
+    const freelancerReceives = proposal.amount - platformFee;
+    
     return (
       `📋 *Proposal Preview*\n\n` +
       `*Proposal #:* ${proposal.proposal_number}\n` +
@@ -267,8 +271,11 @@ export class ProposalModule {
       `*Project:* ${proposal.project_description}\n` +
       `*Scope:* ${proposal.scope_of_work}\n` +
       `*Timeline:* ${proposal.timeline}\n` +
-      `*Investment:* ${proposal.amount} ${proposal.currency}\n` +
+      `*Project Amount:* ${proposal.amount} ${proposal.currency}\n` +
+      `*Platform Fee (1%):* -${platformFee.toFixed(2)} ${proposal.currency}\n` +
+      `*You'll Receive:* ${freelancerReceives.toFixed(2)} ${proposal.currency}\n` +
       `*Status:* ${proposal.status.toUpperCase()}\n\n` +
+      `ℹ️ *Note:* A 1% platform fee is deducted from payments to support our services.\n\n` +
       `*Payment Methods Available:*\n` +
       `💰 USDC (Base Network)\n\n` +
       `What would you like to do next?`

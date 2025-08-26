@@ -85,6 +85,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (paymentErr) {
         console.warn('Payment succeeded but failed to insert payments row:', paymentErr);
       }
+
+      // Also record transaction in payment_events table for earnings tracking
+      if (transactionHash) {
+        try {
+          const { error: transactionError } = await supabase
+            .from('payment_events')
+            .insert({
+              transaction_hash: transactionHash,
+              payer: payerWallet,
+              freelancer: freelancerAddress || data.wallet_address,
+              amount: amountPaid.toString(),
+              fee: '0', // Fee can be calculated separately if needed
+              token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+              invoice_id: `invoice_${invoiceId}`,
+              block_number: 0, // Will be updated by blockchain listener
+              timestamp: new Date().toISOString(),
+              processed: true
+            });
+
+          if (transactionError) {
+            console.error('Error recording transaction in payment_events:', transactionError);
+          } else {
+            console.log('Transaction recorded successfully in payment_events:', transactionHash);
+          }
+        } catch (transactionRecordError) {
+          console.error('Error recording transaction in payment_events:', transactionRecordError);
+        }
+      }
     }
 
     // Send payment notification webhook

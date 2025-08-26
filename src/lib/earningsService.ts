@@ -326,7 +326,7 @@ async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | nu
     // Transform payment events to match earnings format
     return (events || []).map(event => ({
       id: event.id,
-      amount: parseFloat(event.amount) / 1000000, // Convert from wei to token units (assuming 6 decimals)
+      amount: parseFloat(event.amount), // Amount is already in token units, no conversion needed
       token: getTokenSymbol(event.token),
       network: 'Base', // Payment events are on Base network
       paid_at: event.timestamp,

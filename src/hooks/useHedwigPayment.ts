@@ -152,6 +152,7 @@ export function useHedwigPayment() {
   const [lastAction, setLastAction] = useState<'approve' | 'pay' | null>(null);
   const [paymentReceipt, setPaymentReceipt] = useState<any>(null);
   const [approvalCompleted, setApprovalCompleted] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const { data: receipt, isLoading: isProcessing } = useWaitForTransactionReceipt({ hash });
   
@@ -178,23 +179,6 @@ export function useHedwigPayment() {
     chainId: BASE_SEPOLIA_CHAIN_ID
   });
 
-  // Only show payment success when the last action was 'pay'
-  useEffect(() => {
-    if (receipt && lastAction === 'pay') {
-      setPaymentReceipt(receipt);
-      setApprovalCompleted(false); // Reset approval state after successful payment
-      toast.success('Payment successful!');
-      
-      // Update backend status after successful payment
-      if (currentPaymentRequest) {
-        updateBackendStatus(currentPaymentRequest.invoiceId, receipt.transactionHash);
-      }
-    }
-    if (error) {
-      toast.error(error.message || 'Transaction failed.');
-    }
-  }, [receipt, error, lastAction]);
-
   // Helper to update backend status after successful payment
   const updateBackendStatus = useCallback(async (invoiceId: string, transactionHash: string) => {
     try {
@@ -205,7 +189,7 @@ export function useHedwigPayment() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          status: 'paid',
+          status: 'completed',
           transactionHash: transactionHash,
         }),
       });
@@ -236,6 +220,25 @@ export function useHedwigPayment() {
       console.error('Error updating backend status:', error);
     }
   }, []);
+
+  // Only show payment success when the last action was 'pay'
+  useEffect(() => {
+    if (receipt && lastAction === 'pay') {
+      setPaymentReceipt(receipt);
+      setApprovalCompleted(false); // Reset approval state after successful payment
+      setIsProcessingPayment(false); // Reset processing state
+      toast.success('Payment successful!');
+      
+      // Update backend status after successful payment
+      if (currentPaymentRequest) {
+        updateBackendStatus(currentPaymentRequest.invoiceId, receipt.transactionHash);
+      }
+    }
+    if (error) {
+      toast.error(error.message || 'Transaction failed.');
+      setIsProcessingPayment(false); // Reset processing state on error
+    }
+  }, [receipt, error, lastAction, currentPaymentRequest, updateBackendStatus]);
 
   // Helper to send the pay transaction
   const sendPay = useCallback(async (req: PaymentRequest) => {
@@ -472,12 +475,13 @@ export function useHedwigPayment() {
     setPaymentReceipt(null);
     setPendingPaymentRequest(null);
     setLastAction(null);
+    setIsProcessingPayment(false);
     toast.success('Transaction state reset. You can now retry the payment.');
   }, []);
 
   return {
     processPayment,
-    isProcessing,
+    isProcessing: isProcessing || isProcessingPayment,
     isConfirming: isConfirming || isApproving,
     hash,
     receipt,
@@ -486,14 +490,19 @@ export function useHedwigPayment() {
     paymentReceipt,
     approvalCompleted,
     pendingPaymentRequest,
-    continuePendingPayment: () => {
-      if (pendingPaymentRequest) {
+    continuePendingPayment: useCallback(async () => {
+      if (pendingPaymentRequest && !isProcessingPayment) {
+        setIsProcessingPayment(true);
         setPaymentReceipt(null);
-        setApprovalCompleted(false);
-        void sendPay(pendingPaymentRequest);
-        setPendingPaymentRequest(null);
+        try {
+          await sendPay(pendingPaymentRequest);
+          setPendingPaymentRequest(null);
+        } catch (error) {
+          console.error('Continue payment failed:', error);
+          setIsProcessingPayment(false);
+        }
       }
-    },
+    }, [pendingPaymentRequest, isProcessingPayment, sendPay]),
     resetTransaction,
   };
 }

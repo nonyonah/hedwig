@@ -52,7 +52,8 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
     receipt: paymentReceipt, 
     approvalCompleted, 
     continuePendingPayment,
-    resetTransaction 
+    resetTransaction,
+    isProcessing 
   } = useHedwigPayment();
 
   const handlePay = () => {
@@ -79,7 +80,7 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
     <div className="space-y-4">
       <Button 
         onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={(isConfirming && !approvalCompleted) || !!paymentReceipt || isAlreadyPaid} 
+        disabled={isConfirming || isProcessing || !!paymentReceipt || isAlreadyPaid} 
         className="w-full"
       >
           {isAlreadyPaid ? (
@@ -120,8 +121,9 @@ export default function PaymentLinkPage() {
   const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | null>(null);
 
   const subtotal = paymentData?.amount || 0;
-  const platformFee = subtotal * 0.01;
-  const total = subtotal + platformFee;
+  const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
+  const total = subtotal; // Total amount to be paid
+  const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
   // Note: Only Base Sepolia USDC is supported for now
 
   // Set up real-time subscription for payment status updates
@@ -349,8 +351,12 @@ export default function PaymentLinkPage() {
                         <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Platform Fee (1%):</span>
-                        <span className="font-medium">${platformFee.toLocaleString()} USDC</span>
+                        <span className="text-gray-600">Platform Fee (1% deducted):</span>
+                        <span className="font-medium text-red-600">-${platformFee.toLocaleString()} USDC</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Freelancer Receives:</span>
+                        <span className="font-medium">${freelancerReceives.toLocaleString()} USDC</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold">
                         <span className="text-gray-800">Total to Pay:</span>

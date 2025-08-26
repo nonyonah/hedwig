@@ -73,6 +73,7 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
         freelancer: event.freelancer,
         amount: event.amount.toString(),
         fee: event.fee.toString(),
+        token: event.token || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Use event token or default to USDC
         invoice_id: event.invoiceId,
         block_number: event.blockNumber,
         timestamp: new Date(event.timestamp * 1000).toISOString(),

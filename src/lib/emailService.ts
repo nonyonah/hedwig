@@ -57,8 +57,9 @@ export const sendEmail = sendEmailWithAttachment;
 // Template functions
 export function generateInvoiceEmailTemplate(invoice: any): string {
   const subtotal = invoice.amount;
-  const platformFee = subtotal * 0.01;
-  const total = subtotal + platformFee;
+  const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
+  const total = subtotal; // Total amount to be paid
+  const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
 
   return `
     <!DOCTYPE html>
@@ -91,7 +92,8 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                 ${invoice.deliverables ? `<p><strong>Deliverables:</strong> ${invoice.deliverables}</p>` : ''}
                 <p><strong>Due Date:</strong> ${invoice.due_date}</p>
                 <p><strong>Invoice Amount:</strong> ${subtotal.toLocaleString()} ${invoice.currency}</p>
-                <p><strong>Platform Fee (1%):</strong> ${platformFee.toLocaleString()} ${invoice.currency}</p>
+                <p><strong>Platform Fee (1% deducted):</strong> -${platformFee.toLocaleString()} ${invoice.currency}</p>
+                <p><strong>Freelancer Receives:</strong> ${freelancerReceives.toLocaleString()} ${invoice.currency}</p>
                 <p class="amount">Total Due: ${total.toLocaleString()} ${invoice.currency}</p>
             </div>
             
@@ -116,8 +118,9 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
 
 export function generateProposalEmailTemplate(proposal: any): string {
   const subtotal = proposal.amount;
-  const platformFee = subtotal * 0.01;
-  const total = subtotal + platformFee;
+  const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
+  const total = subtotal; // Total amount to be paid
+  const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
 
   return `
     <!DOCTYPE html>
@@ -150,7 +153,8 @@ export function generateProposalEmailTemplate(proposal: any): string {
                 ${proposal.scope_of_work ? `<p><strong>Scope:</strong> ${proposal.scope_of_work}</p>` : ''}
                 ${proposal.timeline ? `<p><strong>Timeline:</strong> ${proposal.timeline}</p>` : ''}
                 <p><strong>Project Amount:</strong> ${subtotal.toLocaleString()} ${proposal.currency}</p>
-                <p><strong>Platform Fee (1%):</strong> ${platformFee.toLocaleString()} ${proposal.currency}</p>
+                <p><strong>Platform Fee (1% deducted):</strong> -${platformFee.toLocaleString()} ${proposal.currency}</p>
+                <p><strong>Freelancer Receives:</strong> ${freelancerReceives.toLocaleString()} ${proposal.currency}</p>
                 <p class="investment">Total Investment: ${total.toLocaleString()} ${proposal.currency}</p>
             </div>
             
