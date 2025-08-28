@@ -24,6 +24,7 @@ export interface NudgeTarget {
   lastNudgeAt?: string;
   nudgeDisabled: boolean;
   createdAt: string;
+  senderName?: string;
 }
 
 export interface NudgeLog {
@@ -66,7 +67,8 @@ export class SmartNudgeService {
         last_nudge_at,
         nudge_disabled,
         created_at,
-        created_by
+        created_by,
+        users!created_by(name)
       `)
       .eq('status', 'pending')
       .is('paid_at', null)
@@ -95,7 +97,8 @@ export class SmartNudgeService {
               nudgeCount: link.nudge_count || 0,
               lastNudgeAt: link.last_nudge_at,
               nudgeDisabled: link.nudge_disabled,
-              createdAt: link.created_at
+              createdAt: link.created_at,
+              senderName: link.users?.name || 'Unknown Sender'
             });
           }
         }
@@ -116,7 +119,8 @@ export class SmartNudgeService {
         last_nudge_at,
         nudge_disabled,
         date_created,
-        user_id
+        user_id,
+        users!user_id(name)
       `)
       .neq('status', 'paid')
       .eq('nudge_disabled', false)
@@ -144,7 +148,8 @@ export class SmartNudgeService {
               nudgeCount: invoice.nudge_count || 0,
               lastNudgeAt: invoice.last_nudge_at,
               nudgeDisabled: invoice.nudge_disabled,
-              createdAt: invoice.date_created
+              createdAt: invoice.date_created,
+              senderName: invoice.users?.name || 'Unknown Sender'
             });
           }
         }
@@ -173,7 +178,7 @@ export class SmartNudgeService {
               token: 'USDC', // TODO: fetch real token if needed
               network: 'base', // TODO: fetch real network if needed
               invoiceLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/invoice/${target.id}`,
-              freelancerName: 'Hedwig User', // TODO: fetch real sender name if needed
+              freelancerName: target.senderName || 'Unknown Sender',
               description: target.title,
               invoiceNumber: target.title.replace('Invoice ', ''), // crude fallback
             });
@@ -184,7 +189,7 @@ export class SmartNudgeService {
               token: 'USDC', // TODO: fetch real token if needed
               network: 'base', // TODO: fetch real network if needed
               paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/payment-link/${target.id}`,
-              senderName: 'Hedwig User', // TODO: fetch real sender name if needed
+              senderName: target.senderName || 'Unknown Sender',
               reason: target.title,
             });
           }
@@ -266,15 +271,63 @@ export class SmartNudgeService {
    * Mark a payment link or invoice as paid
    */
   static async markAsPaid(targetType: 'payment_link' | 'invoice', targetId: string): Promise<void> {
-    const tableName = targetType === 'payment_link' ? 'payment_links' : 'invoices';
-    const updateData = targetType === 'payment_link' 
-      ? { paid_at: new Date().toISOString(), status: 'paid' }
-      : { status: 'paid' }; // For invoices, we only update status
-    
-    await supabase
-      .from(tableName)
-      .update(updateData)
-      .eq('id', targetId);
+    if (targetType === 'payment_link') {
+      await supabase
+        .from('payment_links')
+        .update({ paid_at: new Date().toISOString(), status: 'paid' })
+        .eq('id', targetId);
+    } else {
+      // For invoices, first fetch current data to check required fields
+      const { data: currentInvoice, error: fetchError } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', targetId)
+        .single();
+
+      if (!fetchError && currentInvoice) {
+        const updateData: any = {
+          status: 'paid',
+          paid_at: new Date().toISOString()
+        };
+
+        // Ensure all required fields are populated for non-draft invoices
+        if (!currentInvoice.deliverables) {
+          updateData.deliverables = currentInvoice.project_description || 'Payment completed via blockchain transaction';
+        }
+        if (!currentInvoice.project_description) {
+          updateData.project_description = 'Blockchain payment processing';
+        }
+        if (!currentInvoice.freelancer_name) {
+          updateData.freelancer_name = 'Freelancer';
+        }
+        if (!currentInvoice.freelancer_email) {
+          updateData.freelancer_email = 'freelancer@hedwig.com';
+        }
+        if (!currentInvoice.client_name) {
+          updateData.client_name = 'Client';
+        }
+        if (!currentInvoice.client_email) {
+          updateData.client_email = 'client@hedwig.com';
+        }
+        if (!currentInvoice.wallet_address) {
+          updateData.wallet_address = '0x0000000000000000000000000000000000000000';
+        }
+        if (!currentInvoice.blockchain) {
+          updateData.blockchain = 'base';
+        }
+        if (currentInvoice.price === null || currentInvoice.price === undefined) {
+          updateData.price = currentInvoice.amount || 0;
+        }
+        if (currentInvoice.amount === null || currentInvoice.amount === undefined) {
+          updateData.amount = currentInvoice.price || 0;
+        }
+
+        await supabase
+          .from('invoices')
+          .update(updateData)
+          .eq('id', targetId);
+      }
+    }
   }
 
   /**

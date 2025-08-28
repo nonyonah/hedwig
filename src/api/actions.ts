@@ -1,3 +1,8 @@
+import { loadServerEnvironment } from '@/lib/serverEnv';
+
+// Load environment variables first
+loadServerEnvironment();
+
 import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "@/lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 // Earnings service temporarily removed
@@ -1440,6 +1445,13 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     try {
       // Use direct payment link service
       const { createPaymentLink } = await import('@/lib/paymentlinkservice');
+      
+      // Debug environment variables
+      console.log('Environment check in actions.ts:', {
+        NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+        NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+        VERCEL_URL: process.env.VERCEL_URL
+      });
       
       const result = await createPaymentLink({
         amount: parseFloat(amount),

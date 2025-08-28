@@ -16,6 +16,7 @@ export interface HedwigPaymentContract {
 export interface PaymentReceivedEvent {
   payer: string;
   freelancer: string;
+  token: string;
   amount: bigint;
   fee: bigint;
   invoiceId: string;
@@ -45,7 +46,9 @@ export interface PaymentRequest {
   token: string; // Token contract address
   amount: bigint; // Amount in token units (e.g., 1000000n for 1 USDC)
   freelancer: string; // Freelancer wallet address
+  freelancerAddress?: string; // Optional freelancer address
   invoiceId: string; // Invoice or payment link ID
+  paymentLinkId?: string; // Optional payment link ID
   payer?: string; // Optional payer address for validation
 }
 

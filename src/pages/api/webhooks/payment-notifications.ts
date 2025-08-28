@@ -117,10 +117,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         recipientUser = user;
         itemData = {
+          id: id,
           title: `Payment from ${userName}`,
           description: paymentReason,
           recipientName: userName,
-          paymentReason: paymentReason
+          paymentReason: paymentReason,
+          user_name: user.name, // Use actual user's name instead of 'Hedwig User'
+          recipientEmail: userName // If userName is an email, use it as recipientEmail
         };
       } else {
         // Fallback to database query
@@ -140,10 +143,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         recipientUser = paymentLink.users;
         itemData = {
+          id: paymentLink.id,
           title: paymentLink.user_name,
           description: paymentLink.payment_reason,
           recipientName: paymentLink.user_name,
-          recipientEmail: paymentLink.recipient_email
+          recipientEmail: paymentLink.recipient_email,
+          user_name: paymentLink.users.name // Use actual user's name instead of 'Hedwig User'
         };
       }
     } else if (type === 'proposal') {
@@ -318,12 +323,11 @@ async function sendTelegramNotification(
       message += `📱 <b>To:</b> ${itemData.recipientWallet}\n`;
       message += `⛓️ <b>Chain:</b> ${itemData.chain}\n`;
     } else {
-      // Add specific ID for tracking
-      message += `🆔 <b>${itemType} ID:</b> ${itemData.id || 'N/A'}\n`;
-      message += `${emoji} <b>${itemType}:</b> ${itemIdentifier}\n`;
-      message += `💵 <b>Amount Paid:</b> ${amount} ${currency}\n`;
-      
       if (type === 'invoice' || type === 'proposal') {
+        // Add specific ID for tracking
+        message += `🆔 <b>${itemType} ID:</b> ${itemData.id || 'N/A'}\n`;
+        message += `${emoji} <b>${itemType}:</b> ${itemIdentifier}\n`;
+        message += `💵 <b>Amount Paid:</b> ${amount} ${currency}\n`;
         message += `👤 <b>Client:</b> ${itemData.clientName || itemData.client_name || 'Unknown'}\n`;
         if (itemData.clientEmail || itemData.client_email) {
           message += `📧 <b>Client Email:</b> ${itemData.clientEmail || itemData.client_email}\n`;
@@ -333,8 +337,23 @@ async function sendTelegramNotification(
           message += `👨‍💼 <b>Freelancer:</b> ${itemData.freelancer_name}\n`;
         }
       } else if (type === 'payment_link') {
-        message += `👤 <b>Paid By:</b> ${senderWallet ? senderWallet.substring(0, 6) + '...' + senderWallet.substring(senderWallet.length - 4) : 'Unknown'}\n`;
+        // Show payment link ID as requested
+        message += `🆔 <b>Payment Link ID:</b> ${itemData.id || 'N/A'}\n`;
+        message += `💵 <b>Amount Paid:</b> ${amount} ${currency}\n`;
+        
+        // Show payer info - wallet address or email if available
+        if (itemData.recipientEmail) {
+          message += `👤 <b>Paid By:</b> ${itemData.recipientEmail}\n`;
+        } else if (senderWallet) {
+          message += `👤 <b>Paid By:</b> ${senderWallet.substring(0, 6)}...${senderWallet.substring(senderWallet.length - 4)}\n`;
+        } else {
+          message += `👤 <b>Paid By:</b> Unknown\n`;
+        }
+        
+        // Show description
         message += `📝 <b>Description:</b> ${itemData.description || itemData.payment_reason || 'N/A'}\n`;
+        
+        // Show recipient (actual user's name)
         if (itemData.user_name) {
           message += `👨‍💼 <b>Recipient:</b> ${itemData.user_name}\n`;
         }

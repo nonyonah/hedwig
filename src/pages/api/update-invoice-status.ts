@@ -129,12 +129,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       // Call internal webhook
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(notificationData)
+        body: JSON.stringify(notificationData),
+        signal: AbortSignal.timeout(5000)
       });
     } catch (webhookError) {
       console.error('Error sending payment notification:', webhookError);

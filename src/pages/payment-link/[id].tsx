@@ -10,6 +10,7 @@ import dynamic from 'next/dynamic';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
+
 // ERC20_ABI is now shared from '@/lib/abi/erc20'
 
 interface PaymentData {
@@ -50,13 +51,16 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
     isConfirming, 
     hash: paymentHash, 
     receipt: paymentReceipt, 
-    approvalCompleted, 
-    continuePendingPayment,
     resetTransaction,
     isProcessing 
   } = useHedwigPayment();
 
   const handlePay = () => {
+    if (!total || Number.isNaN(total) || total <= 0) {
+      console.error('Invalid payment amount:', total);
+      toast.error('Invalid payment amount.');
+      return;
+    }
     if (paymentData.status === 'paid') {
       toast.error('This payment link has already been paid.');
       return;
@@ -79,30 +83,28 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
   return (
     <div className="space-y-4">
       <Button 
-        onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={isConfirming || isProcessing || !!paymentReceipt || isAlreadyPaid} 
+        onClick={handlePay} 
+        disabled={isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing} 
         className="w-full"
       >
           {isAlreadyPaid ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Already Completed</>
           ) : isConfirming ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
-          ) : approvalCompleted ? (
-            <><Wallet className="h-4 w-4 mr-2" /> Continue Payment</>
           ) : paymentReceipt ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
           ) : (
-            <><Wallet className="h-4 w-4 mr-2" /> Pay {paymentData.amount.toLocaleString()} USDC</>
+            <><Wallet className="h-4 w-4 mr-2" /> Pay {total.toLocaleString()} USDC</>
           )}
       </Button>
       
-      {(isConfirming || approvalCompleted) && !paymentReceipt && !isAlreadyPaid && (
+      {isConfirming && !paymentReceipt && !isAlreadyPaid && (
         <Button 
-          onClick={resetTransaction}
+          onClick={() => resetTransaction(true)}
           variant="outline"
           className="w-full"
         >
-          <><RefreshCw className="h-4 w-4 mr-2" /> Reset Transaction</>
+          <><RefreshCw className="h-4 w-4 mr-2" /> Reset & Refresh</>
         </Button>
       )}
 
@@ -120,7 +122,11 @@ export default function PaymentLinkPage() {
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | null>(null);
 
-  const subtotal = paymentData?.amount || 0;
+  // Validate and calculate amounts with proper fallbacks
+  const rawAmount = paymentData?.amount || 0;
+  const validAmount = (typeof rawAmount === 'number' && !Number.isNaN(rawAmount) && rawAmount > 0) ? rawAmount : 0;
+  
+  const subtotal = validAmount;
   const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
   const total = subtotal; // Total amount to be paid
   const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
@@ -156,11 +162,25 @@ export default function PaymentLinkPage() {
         if (!res.ok) throw new Error('Failed to fetch payment link');
         const data = await res.json();
         const normalizedStatus = data.status === 'completed' ? 'paid' : data.status;
+        // Parse amount with proper validation and conversion
+        let parsedAmount = 0;
+        if (data.amount) {
+          const rawAmount = parseFloat(data.amount);
+          // If amount is very small (likely in wei), convert from wei to USDC
+          if (rawAmount > 0 && rawAmount < 0.01) {
+            // Assume it's in wei format (18 decimals) and convert to USDC (6 decimals)
+            parsedAmount = rawAmount * Math.pow(10, 12); // Convert from wei to USDC
+          } else if (rawAmount >= 0.01) {
+            // Amount is already in proper USDC format
+            parsedAmount = rawAmount;
+          }
+        }
+        
         setPaymentData({
           id: data.id,
           title: data.payment_reason || 'Payment Request',
           description: data.payment_reason || 'Payment for services',
-          amount: parseFloat(data.amount),
+          amount: parsedAmount,
           currency: data.token,
           status: normalizedStatus,
           recipient: { name: data.user_name, email: data.recipient_email || '' },
@@ -256,6 +276,8 @@ export default function PaymentLinkPage() {
           </p>
         </div>
 
+
+
         {/* Payment Details Card */}
         <Card className="mb-6">
           <CardHeader>
@@ -272,7 +294,7 @@ export default function PaymentLinkPage() {
               {/* Amount */}
               <div className="text-center py-6 bg-gray-50 rounded-lg">
                 <div className="text-3xl font-bold text-gray-900">
-                  ${paymentData.amount.toLocaleString()}
+                  ${validAmount.toLocaleString()}
                 </div>
                 <div className="text-sm text-gray-600 mt-1">{paymentData.currency}</div>
               </div>
@@ -401,18 +423,21 @@ export default function PaymentLinkPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Amount:</span>
-                  <span className="font-medium">${paymentData.amount.toLocaleString()} USDC</span>
+                  <span className="font-medium">${validAmount.toLocaleString()} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Description:</span>
                   <span className="text-right max-w-xs">{paymentData.description}</span>
                 </div>
+
               </div>
 
               <div className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg">
                 <CheckCircle className="h-6 w-6 mr-3 text-green-600" />
-                <span className="text-green-800 font-medium">Marked as Paid</span>
+                <span className="text-green-800 font-medium">Payment Completed</span>
               </div>
+
+
 
               <div className="text-center text-sm text-gray-600">
                 Payment has been processed and confirmed

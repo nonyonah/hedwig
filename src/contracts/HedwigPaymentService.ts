@@ -232,6 +232,7 @@ export class HedwigPaymentService {
       return {
         payer: args[0],
         freelancer: args[1],
+        token: args[2],
         amount: args[3],
         fee: args[4],
         invoiceId: args[6],

@@ -827,24 +827,59 @@ async function calculateGrowthComparison(filter: EarningsFilter): Promise<Earnin
 function generateMotivationalMessage(earnings: EarningsSummaryItem[], growthComparison?: EarningsInsights['growthComparison']): string {
   const totalFiat = earnings.reduce((sum, e) => sum + (e.fiatValue || 0), 0);
   const totalPayments = earnings.reduce((sum, e) => sum + e.count, 0);
+  const hasMultipleNetworks = new Set(earnings.map(e => e.network)).size > 1;
+  const hasUSDC = earnings.some(e => e.token === 'USDC');
 
+  // Growth-based messages (most exciting!)
+  if (growthComparison && growthComparison.growthPercentage > 50) {
+    return `🚀 HODL up! You earned ${growthComparison.growthPercentage.toFixed(1)}% more than last period. That's some serious number-go-up energy! 📈`;
+  }
+  if (growthComparison && growthComparison.growthPercentage > 20) {
+    return `🎯 Bullish! ${growthComparison.growthPercentage.toFixed(1)}% growth vs last period. Your wallet is definitely not rekt! 💪`;
+  }
   if (growthComparison && growthComparison.growthPercentage > 0) {
-    return `🚀 Amazing! You earned ${growthComparison.growthPercentage.toFixed(1)}% more than last period. Keep up the great work!`;
+    return `📊 Green candles! Up ${growthComparison.growthPercentage.toFixed(1)}% from last period. Slow and steady wins the race! 🐢💚`;
   }
 
+  // High-value achievements
+  if (totalFiat > 10000) {
+    return `🏆 Whale alert! Over $${totalFiat.toFixed(0)} earned across ${totalPayments} payments. You're basically a crypto legend now! 🐋`;
+  }
+  if (totalFiat > 5000) {
+    return `💎 Diamond hands paying off! $${totalFiat.toFixed(0)} earned shows you're building serious wealth. Keep stacking! 💎🙌`;
+  }
   if (totalFiat > 1000) {
-    return `💰 Impressive! You've earned over $${totalFiat.toFixed(0)} across ${totalPayments} payments. You're building real wealth!`;
+    return `🌟 Four-digit club! $${totalFiat.toFixed(0)} across ${totalPayments} payments. Your portfolio is looking mighty fine! ✨`;
   }
 
+  // Activity-based messages
+  if (totalPayments > 25) {
+    return `🔥 Payment machine! ${totalPayments} transactions means you're absolutely crushing it. This is the gwei! ⚡`;
+  }
   if (totalPayments > 10) {
-    return `🔥 You're on fire! ${totalPayments} payments shows consistent earning activity. Momentum is building!`;
+    return `🎮 Combo streak! ${totalPayments} payments shows consistent earning. You've unlocked the 'Crypto Earner' achievement! 🏅`;
   }
 
+  // Diversification messages
+  if (hasMultipleNetworks && earnings.length > 3) {
+    return `🌐 Multi-chain master! Earning across ${earnings.length} tokens on multiple networks. You're basically DeFi royalty! 👑`;
+  }
   if (earnings.length > 3) {
-    return `🌟 Great diversification! Earning across ${earnings.length} different tokens shows smart portfolio management.`;
+    return `🎨 Portfolio artist! ${earnings.length} different tokens shows you're painting a beautiful diversification masterpiece! 🖼️`;
   }
 
-  return `💪 Every step counts! You're building your crypto earnings steadily. Keep going!`;
+  // Network-specific fun
+  if (hasUSDC && hasMultipleNetworks) {
+    return `🏦 Stablecoin strategist! USDC across multiple networks shows you know how to play it smart. Big brain energy! 🧠`;
+  }
+
+  // Encouraging messages for smaller amounts
+  if (totalPayments > 1) {
+    return `🌱 Growing strong! ${totalPayments} payments means you're building momentum. Rome wasn't built in a day, but they were laying bricks every hour! 🧱`;
+  }
+
+  // Default encouraging message
+  return `🚀 Every satoshi counts! You're on the path to financial freedom, one transaction at a time. LFG! 🌙`;
 }
 export async function getSpendingSummary(filter: EarningsFilter): Promise<EarningsSummaryResponse> {
   try {
@@ -1020,57 +1055,74 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   
   if (totalPayments === 0) {
     const action = type === 'earnings' ? 'earned' : 'spent';
-    return `You haven't ${action} anything${timeframe !== 'allTime' ? ` in the ${timeframe}` : ''}.`;
+    const emptyEmoji = type === 'earnings' ? '🦉' : '💸';
+    const encouragement = type === 'earnings' 
+      ? "Time to start earning! Create some payment links or send out invoices. Your crypto journey awaits! 🚀"
+      : "Your wallet is staying nice and cozy! No spending means more HODLing. 💎🙌";
+    return `${emptyEmoji} You haven't ${action} anything${timeframe !== 'allTime' ? ` in the ${timeframe}` : ''}. ${encouragement}`;
   }
 
   const action = type === 'earnings' ? 'earned' : 'spent';
   const timeframeText = timeframe === 'allTime' ? 'all time' : timeframe.replace(/([A-Z])/g, ' $1').toLowerCase();
+  const headerEmoji = type === 'earnings' ? '💰' : '💸';
   
-  let response = `💰 **${type.charAt(0).toUpperCase() + type.slice(1)} Summary**\n\n`;
+  let response = `${headerEmoji} **${type.charAt(0).toUpperCase() + type.slice(1)} Summary**\n\n`;
   
-  // Main summary with fiat value
+  // Main summary with fiat value and fun language
   if (totalFiatValue && totalFiatValue > 0) {
-    response += `You have ${action} **${totalEarnings} tokens** (≈ **$${totalFiatValue.toFixed(2)} USD**) across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}.\n\n`;
+    const fiatFormatted = totalFiatValue >= 1000 ? `$${(totalFiatValue/1000).toFixed(1)}k` : `$${totalFiatValue.toFixed(2)}`;
+    response += `You've ${action} **${totalEarnings} tokens** (≈ **${fiatFormatted} USD**) across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. `;
+    if (type === 'earnings') {
+      response += totalFiatValue > 1000 ? "That's some serious bag building! 💪\n\n" : "Nice work stacking those sats! 📈\n\n";
+    } else {
+      response += "Hope it was worth it! 😄\n\n";
+    }
   } else {
-    response += `You have ${action} **${totalEarnings} tokens** across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}.\n\n`;
+    response += `You've ${action} **${totalEarnings} tokens** across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. Keep building! 🔨\n\n`;
   }
   
-  // Breakdown by token with percentages and categories
-  response += `📊 **Breakdown by Token:**\n`;
+  // Breakdown by token with fun formatting and emojis
+  response += `🪙 **Token Breakdown:**\n`;
   
-  for (const earning of earnings) {
+  for (const [index, earning] of earnings.entries()) {
     const fiatText = earning.fiatValue ? ` (≈ $${earning.fiatValue.toFixed(2)})` : '';
     const percentageText = earning.percentage ? ` • ${earning.percentage}%` : '';
     const categoryText = earning.category && earning.category !== 'other' ? ` • ${earning.category}` : '';
+    const tokenEmoji = earning.token === 'USDC' ? '💵' : earning.token === 'ETH' ? '💎' : earning.token === 'USDT' ? '💰' : '🪙';
+    const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '•';
     
-    response += `• **${earning.total} ${earning.token}**${fiatText} on ${earning.network}\n`;
+    response += `${rankEmoji} **${earning.total} ${earning.token}** ${tokenEmoji}${fiatText} on ${earning.network}\n`;
     response += `  ${earning.count} payment${earning.count > 1 ? 's' : ''} • avg: ${earning.averageAmount} ${earning.token}${percentageText}${categoryText}\n\n`;
   }
 
-  // Add insights if available
+  // Add insights if available with fun language
   if (insights) {
-    response += `🔍 **Insights:**\n`;
+    response += `🔍 **Fun Facts:**\n`;
     
     if (insights.largestPayment) {
       const { amount, token, network, fiatValue } = insights.largestPayment;
       const fiatText = fiatValue ? ` ($${fiatValue.toFixed(2)})` : '';
-      response += `• Largest payment: ${amount} ${token} on ${network}${fiatText}\n`;
+      const bigPaymentEmoji = fiatValue && fiatValue > 1000 ? '🐋' : fiatValue && fiatValue > 100 ? '🦈' : '🐟';
+      response += `${bigPaymentEmoji} Biggest splash: **${amount} ${token}** on ${network}${fiatText}\n`;
     }
     
     if (insights.mostActiveNetwork) {
       const { network, count, totalAmount } = insights.mostActiveNetwork;
-      response += `• Most active: ${network} (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
+      const networkEmoji = network.toLowerCase().includes('polygon') ? '🟣' : network.toLowerCase().includes('ethereum') ? '💎' : network.toLowerCase().includes('base') ? '🔵' : '⛓️';
+      response += `${networkEmoji} Network champion: **${network}** (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
     }
     
     if (insights.topToken) {
       const { token, percentage } = insights.topToken;
-      response += `• Top token: ${token} (${percentage}% of total)\n`;
+      const tokenEmoji = token === 'USDC' ? '👑' : token === 'ETH' ? '💎' : token === 'USDT' ? '🏆' : '🪙';
+      response += `${tokenEmoji} Token MVP: **${token}** (${percentage}% of portfolio)\n`;
     }
     
     if (insights.growthComparison) {
       const { growthPercentage, trend } = insights.growthComparison;
-      const trendEmoji = trend === 'up' ? '📈' : trend === 'down' ? '📉' : '➡️';
-      response += `• Growth: ${growthPercentage > 0 ? '+' : ''}${growthPercentage.toFixed(1)}% vs last period ${trendEmoji}\n`;
+      const trendEmoji = trend === 'up' ? '🚀' : trend === 'down' ? '📉' : '🔄';
+      const trendText = trend === 'up' ? 'crushing it with a' : trend === 'down' ? 'taking a breather with a' : 'staying steady with';
+      response += `${trendEmoji} Momentum check: You're ${trendText} ${Math.abs(growthPercentage)}% ${trend === 'up' ? 'boost' : trend === 'down' ? 'dip' : 'hold'} vs last period\n`;
     }
     
     response += `\n${insights.motivationalMessage}\n`;

@@ -121,10 +121,20 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
 
     // Build a robust base URL that works in Vercel, other prod, and local dev
     const vercelUrl = process.env.VERCEL_URL;
-    const resolvedBaseUrl = vercelUrl
-      ? (vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`)
-      : (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz');
+    let resolvedBaseUrl;
+    
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      resolvedBaseUrl = process.env.NEXT_PUBLIC_APP_URL;
+    } else if (process.env.NEXT_PUBLIC_BASE_URL) {
+      resolvedBaseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    } else if (vercelUrl) {
+      resolvedBaseUrl = vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`;
+    } else {
+      resolvedBaseUrl = 'https://hedwigbot.xyz';
+    }
+    
     const paymentLink = `${resolvedBaseUrl}/payment-link/${data.id}`;
+    console.log('Payment link generated:', paymentLink);
 
     // Send email if recipientEmail is provided
     if (recipientEmail) {

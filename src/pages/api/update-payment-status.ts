@@ -117,20 +117,66 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         if (data.invoice_id) {
-          // Update linked invoice status
-          const { error: invoiceError } = await supabase
+          // First fetch the current invoice to check required fields
+          const { data: currentInvoice, error: fetchInvoiceError } = await supabase
             .from('invoices')
-            .update({
+            .select('*')
+            .eq('id', data.invoice_id)
+            .single();
+
+          if (!fetchInvoiceError && currentInvoice) {
+            // Prepare update data for invoice
+            const invoiceUpdateData: any = {
               status: 'paid',
               paid_at: new Date().toISOString(),
               payment_transaction: transactionHash
-            })
-            .eq('id', data.invoice_id);
+            };
 
-          if (invoiceError) {
-            console.error('Error updating linked invoice:', invoiceError);
+            // Ensure all required fields are populated for non-draft invoices
+            if (!currentInvoice.deliverables) {
+              invoiceUpdateData.deliverables = currentInvoice.project_description || 'Payment completed via blockchain transaction';
+            }
+            if (!currentInvoice.project_description) {
+              invoiceUpdateData.project_description = 'Blockchain payment processing';
+            }
+            if (!currentInvoice.freelancer_name) {
+              invoiceUpdateData.freelancer_name = 'Freelancer';
+            }
+            if (!currentInvoice.freelancer_email) {
+              invoiceUpdateData.freelancer_email = 'freelancer@hedwig.com';
+            }
+            if (!currentInvoice.client_name) {
+              invoiceUpdateData.client_name = 'Client';
+            }
+            if (!currentInvoice.client_email) {
+              invoiceUpdateData.client_email = 'client@hedwig.com';
+            }
+            if (!currentInvoice.wallet_address) {
+              invoiceUpdateData.wallet_address = '0x0000000000000000000000000000000000000000';
+            }
+            if (!currentInvoice.blockchain) {
+              invoiceUpdateData.blockchain = 'base';
+            }
+            if (currentInvoice.price === null || currentInvoice.price === undefined) {
+              invoiceUpdateData.price = currentInvoice.amount || 0;
+            }
+            if (currentInvoice.amount === null || currentInvoice.amount === undefined) {
+              invoiceUpdateData.amount = currentInvoice.price || 0;
+            }
+
+            // Update linked invoice status
+            const { error: invoiceError } = await supabase
+              .from('invoices')
+              .update(invoiceUpdateData)
+              .eq('id', data.invoice_id);
+
+            if (invoiceError) {
+              console.error('Error updating linked invoice:', invoiceError);
+            } else {
+              console.log('Successfully updated linked invoice status to paid');
+            }
           } else {
-            console.log('Successfully updated linked invoice status to paid');
+            console.error('Error fetching linked invoice:', fetchInvoiceError);
           }
         }
       } catch (linkUpdateError) {
@@ -152,17 +198,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       // Call internal webhook
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(notificationData)
+        body: JSON.stringify(notificationData),
+        signal: AbortSignal.timeout(5000)
       });
 
       // If there's a linked proposal, also send proposal notification
       if (dbStatus === 'paid' && data.proposal_id) {
-        await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+        await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -175,13 +223,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             transactionHash,
             payerWallet: data.payer_wallet_address,
             status: 'completed'
-          })
+          }),
+          signal: AbortSignal.timeout(5000)
         });
       }
 
       // If there's a linked invoice, also send invoice notification
       if (dbStatus === 'paid' && data.invoice_id) {
-        await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+        await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -194,7 +243,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             transactionHash,
             payerWallet: data.payer_wallet_address,
             status: 'paid'
-          })
+          }),
+          signal: AbortSignal.timeout(5000)
         });
       }
     } catch (webhookError) {

@@ -45,6 +45,7 @@ interface InvoiceData {
   total: number;
   notes: string;
   paymentTerms: string;
+
 }
 
 // Initialize Supabase client with environment variable checks
@@ -67,8 +68,6 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
     isConfirming, 
     hash: paymentHash, 
     receipt: paymentReceipt, 
-    approvalCompleted, 
-    continuePendingPayment,
     resetTransaction,
     isProcessing 
   } = useHedwigPayment();
@@ -78,8 +77,10 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
       toast.error('Freelancer wallet address is not configured for this invoice.');
       return;
     }
-    if (!subtotal || Number.isNaN(subtotal) || subtotal <= 0) {
-      toast.error('Invalid payment amount.');
+    // Enhanced validation for payment amount
+    if (!subtotal || Number.isNaN(subtotal) || subtotal <= 0 || typeof subtotal !== 'number') {
+      console.error('Invalid payment amount:', { subtotal, type: typeof subtotal });
+      toast.error('Invalid payment amount. Please refresh the page and try again.');
       return;
     }
     if (invoiceData.status === 'paid') {
@@ -104,16 +105,14 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
   return (
     <div className="space-y-4">
       <Button 
-        onClick={approvalCompleted ? continuePendingPayment : handlePay} 
-        disabled={isConfirming || isProcessing || !!paymentReceipt || isAlreadyPaid} 
+        onClick={handlePay} 
+        disabled={isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing} 
         className="w-full"
       >
         {isAlreadyPaid ? (
           <><CheckCircle className="h-4 w-4 mr-2" /> Invoice Already Paid</>
         ) : isConfirming ? (
           <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
-        ) : approvalCompleted ? (
-          <><Wallet className="h-4 w-4 mr-2" /> Continue Payment</>
         ) : paymentReceipt ? (
           <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
         ) : (
@@ -121,13 +120,13 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
         )}
       </Button>
       
-      {(isConfirming || approvalCompleted) && !paymentReceipt && !isAlreadyPaid && (
+      {isConfirming && !paymentReceipt && !isAlreadyPaid && (
         <Button 
-          onClick={resetTransaction}
+          onClick={() => resetTransaction(true)}
           variant="outline"
           className="w-full"
         >
-          <><RefreshCw className="h-4 w-4 mr-2" /> Reset Transaction</>
+          <><RefreshCw className="h-4 w-4 mr-2" /> Reset & Refresh</>
         </Button>
       )}
     </div>
@@ -351,11 +350,24 @@ export default function InvoicePage() {
             !item.description.toLowerCase().includes('transaction')
   );
   
-  // Calculate subtotal from filtered items
-  const subtotal = filteredItems.reduce((sum, item) => sum + item.amount, 0);
-  const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
-  const total = subtotal; // Total amount to be paid
-  const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
+  // Calculate subtotal from filtered items with validation
+  const subtotal = filteredItems.reduce((sum, item) => {
+    let amount = typeof item.amount === 'number' ? item.amount : parseFloat(item.amount || '0');
+    
+    // Check if amount is very small (likely in wei format) and convert to USDC
+    if (amount > 0 && amount < 0.01) {
+      // Assume it's in wei (18 decimals) and convert to USDC (6 decimals)
+      amount = amount * Math.pow(10, 12);
+      console.log('Converted small amount from wei to USDC:', item.amount, '->', amount);
+    }
+    
+    return sum + (isNaN(amount) ? 0 : amount);
+  }, 0);
+  // Validate subtotal and ensure it's a valid number
+  const validSubtotal = typeof subtotal === 'number' && !isNaN(subtotal) && subtotal > 0 ? subtotal : 0;
+  const platformFee = validSubtotal * 0.01; // 1% platform fee deducted from payment
+  const total = validSubtotal; // Total amount to be paid
+  const freelancerReceives = validSubtotal - platformFee; // Amount freelancer receives after fee deduction
 
   const statusColor = {
     draft: 'bg-gray-100 text-gray-800',
@@ -491,7 +503,7 @@ export default function InvoicePage() {
               <div className="w-full max-w-sm space-y-2">
                 <div className="flex justify-between py-3">
                   <span className="text-lg font-semibold">Amount:</span>
-                  <span className="text-lg font-bold text-blue-600">${subtotal.toFixed(2)}</span>
+                  <span className="text-lg font-bold text-blue-600">${validSubtotal.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -589,12 +601,15 @@ export default function InvoicePage() {
                   <span className="text-gray-600">Amount Paid:</span>
                   <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
                 </div>
+
               </div>
 
               <div className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg">
                 <CheckCircle className="h-6 w-6 mr-3 text-green-600" />
-                <span className="text-green-800 font-medium">Marked as Paid</span>
+                <span className="text-green-800 font-medium">Payment Completed</span>
               </div>
+
+
 
               <div className="text-center text-sm text-gray-600">
                 Payment has been processed and confirmed

@@ -70,7 +70,9 @@ export default async function handler(
         tax: tax,
         total: total,
         notes: invoice.additional_notes || 'Thank you for your business!',
-        paymentTerms: invoice.payment_instructions || ''
+        paymentTerms: invoice.payment_instructions || '',
+        paymentTransaction: invoice.payment_transaction || null,
+        paidAt: invoice.paid_at || null
       };
 
       res.status(200).json(transformedInvoice);

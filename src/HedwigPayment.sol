@@ -108,9 +108,9 @@ contract HedwigPayment is ReentrancyGuard, Ownable, Pausable {
         emit PlatformWalletUpdated(address(0), _platformWallet);
     }
     
-    // ============ Main Payment Function ============
+    // ============ Main Payment Functions ============
     /**
-     * @notice Process a payment for an invoice or payment link
+     * @notice Process a payment for an invoice or payment link (requires approval)
      * @dev Transfers tokens from payer to freelancer with platform fee deduction
      * @param token Token contract address (must be whitelisted)
      * @param amount Total amount to pay
@@ -169,6 +169,76 @@ contract HedwigPayment is ReentrancyGuard, Ownable, Pausable {
         
         emit PaymentReceived(
             msg.sender,
+            freelancer,
+            token,
+            amount,
+            fee,
+            freelancerPayout,
+            invoiceId,
+            block.timestamp
+        );
+    }
+    
+    /**
+     * @notice Process a payment for an invoice or payment link (no approval required)
+     * @dev Processes tokens already sent to the contract with platform fee deduction
+     * @param token Token contract address (must be whitelisted)
+     * @param amount Total amount to process
+     * @param freelancer Address to receive the payment
+     * @param invoiceId Unique identifier for the payment
+     * @param payer Address of the payer (for tracking purposes)
+     */
+    function payDirect(
+        address token,
+        uint256 amount,
+        address freelancer,
+        string calldata invoiceId,
+        address payer
+    )
+        external
+        nonReentrant
+        whenNotPaused
+        validAddress(freelancer)
+        validAddress(payer)
+        validAmount(amount)
+        onlyWhitelistedToken(token)
+    {
+        // Check if invoice was already processed
+        if (bytes(invoiceId).length > 0 && processedInvoices[invoiceId]) {
+            revert InvoiceAlreadyProcessed();
+        }
+        
+        IERC20 paymentToken = IERC20(token);
+        
+        // Check contract has sufficient balance
+        uint256 contractBalance = paymentToken.balanceOf(address(this));
+        if (contractBalance < amount) {
+            revert InsufficientAllowance(); // Reusing error for insufficient funds
+        }
+        
+        // Calculate fees and payouts
+        uint256 fee = (amount * platformFee) / BASIS_POINTS;
+        uint256 freelancerPayout = amount - fee;
+        
+        // Transfer fee to platform wallet
+        if (fee > 0) {
+            paymentToken.safeTransfer(platformWallet, fee);
+        }
+        
+        // Transfer payout to freelancer
+        paymentToken.safeTransfer(freelancer, freelancerPayout);
+        
+        // Mark invoice as processed if provided
+        if (bytes(invoiceId).length > 0) {
+            processedInvoices[invoiceId] = true;
+        }
+        
+        // Update payment tracking
+        totalPaymentsReceived[freelancer] += freelancerPayout;
+        totalPaymentsSent[payer] += amount;
+        
+        emit PaymentReceived(
+            payer,
             freelancer,
             token,
             amount,

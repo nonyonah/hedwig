@@ -73,7 +73,7 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
         freelancer: event.freelancer,
         amount: event.amount.toString(),
         fee: event.fee.toString(),
-        token: event.token || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Use event token or default to USDC
+        token: event.token,
         invoice_id: event.invoiceId,
         block_number: event.blockNumber,
         timestamp: new Date(event.timestamp * 1000).toISOString(),
@@ -87,14 +87,59 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
 
     // Update invoice/proposal/payment_link status based on invoiceId format
     if (event.invoiceId.startsWith('invoice_')) {
-      await supabase
+      const invoiceId = event.invoiceId.replace('invoice_', '');
+      
+      // First fetch current invoice to check required fields
+      const { data: currentInvoice, error: fetchError } = await supabase
         .from('invoices')
-        .update({ 
+        .select('*')
+        .eq('id', invoiceId)
+        .single();
+
+      if (!fetchError && currentInvoice) {
+        const updateData: any = {
           status: 'paid',
           paid_at: new Date(event.timestamp * 1000).toISOString(),
           payment_transaction: event.transactionHash
-        })
-        .eq('id', event.invoiceId.replace('invoice_', ''));
+        };
+
+        // Ensure all required fields are populated for non-draft invoices
+        if (!currentInvoice.deliverables) {
+          updateData.deliverables = currentInvoice.project_description || 'Payment completed via blockchain transaction';
+        }
+        if (!currentInvoice.project_description) {
+          updateData.project_description = 'Blockchain payment processing';
+        }
+        if (!currentInvoice.freelancer_name) {
+          updateData.freelancer_name = 'Freelancer';
+        }
+        if (!currentInvoice.freelancer_email) {
+          updateData.freelancer_email = 'freelancer@hedwig.com';
+        }
+        if (!currentInvoice.client_name) {
+          updateData.client_name = 'Client';
+        }
+        if (!currentInvoice.client_email) {
+          updateData.client_email = 'client@hedwig.com';
+        }
+        if (!currentInvoice.wallet_address) {
+          updateData.wallet_address = '0x0000000000000000000000000000000000000000';
+        }
+        if (!currentInvoice.blockchain) {
+          updateData.blockchain = 'base';
+        }
+        if (currentInvoice.price === null || currentInvoice.price === undefined) {
+          updateData.price = currentInvoice.amount || 0;
+        }
+        if (currentInvoice.amount === null || currentInvoice.amount === undefined) {
+          updateData.amount = currentInvoice.price || 0;
+        }
+
+        await supabase
+          .from('invoices')
+          .update(updateData)
+          .eq('id', invoiceId);
+      }
       
       console.log(`✅ Updated invoice ${event.invoiceId} status to paid`);
     } else if (event.invoiceId.startsWith('proposal_')) {
@@ -129,7 +174,8 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
           
           // Send webhook notification for payment link
           try {
-            await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/payment-notifications`, {
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+            await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -142,7 +188,8 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
                 transactionHash: event.transactionHash,
                 payerWallet: event.payer,
                 status: 'paid'
-              })
+              }),
+              signal: AbortSignal.timeout(5000)
             });
           } catch (webhookError) {
             console.error('Error sending payment link webhook:', webhookError);
