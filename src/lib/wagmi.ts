@@ -77,7 +77,7 @@ const assetChainTestnet = defineChain({
 export const config = getDefaultConfig({
   appName: 'Hedwig Payment',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
-  // Prefer Base Sepolia first to ensure testnet is the default chain for connections
-  chains: [baseSepolia, base, mainnet, optimismSepolia, celoAlfajores], // BEP20 and Asset Chain are DISABLED
+  // Prefer Base Mainnet first for production deployment
+  chains: [base, mainnet, baseSepolia, optimismSepolia, celoAlfajores], // BEP20 and Asset Chain are DISABLED
   ssr: true,
 });

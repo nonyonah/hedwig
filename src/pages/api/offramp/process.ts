@@ -93,12 +93,13 @@ export default async function handler(
     console.error('[API] Offramp process error:', error);
     
     // Handle specific error types
-    if (error.message === 'KYC verification required') {
-      return res.status(403).json({
-        error: 'KYC verification required',
-        code: 'KYC_REQUIRED'
-      });
-    }
+    // TODO: Re-enable KYC error handling once suitable provider is found
+    // if (error.message === 'KYC verification required') {
+    //   return res.status(403).json({
+    //     error: 'KYC verification required',
+    //     code: 'KYC_REQUIRED'
+    //   });
+    // }
     
     if (error.message === 'Insufficient balance') {
       return res.status(400).json({

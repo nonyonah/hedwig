@@ -9,7 +9,7 @@ export interface WalletConfig {
 
 // Base Chain Configuration
 export const BASE_MAINNET_CONFIG: WalletConfig = {
-  platformWallet: process.env.HEDWIG_PLATFORM_WALLET || '',
+  platformWallet: process.env.HEDWIG_PLATFORM_WALLET_MAINNET || '0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc',
   platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '100'), // Default 1%
   contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || '',
   rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
@@ -18,7 +18,7 @@ export const BASE_MAINNET_CONFIG: WalletConfig = {
 
 // Testnet Configuration (for development)
 export const BASE_SEPOLIA_CONFIG: WalletConfig = {
-  platformWallet: process.env.HEDWIG_PLATFORM_WALLET_TESTNET || '',
+  platformWallet: process.env.HEDWIG_PLATFORM_WALLET_TESTNET || '0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d',
   platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '100'),
   contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET || '',
   rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
@@ -72,9 +72,9 @@ export function validateWalletConfig(config: WalletConfig): { isValid: boolean; 
 }
 
 // Get current configuration based on environment
-export function getCurrentConfig(): WalletConfig {
+export function getWalletConfig(): WalletConfig {
   const isProduction = process.env.NODE_ENV === 'production';
-  return isProduction ? BASE_MAINNET_CONFIG : BASE_SEPOLIA_CONFIG;
+  return isProduction ? BASE_MAINNET_CONFIG : BASE_MAINNET_CONFIG;
 }
 
 // Environment variables documentation

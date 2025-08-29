@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { PaymentReceivedEvent } from '../contracts/types';
 
 // Environment variables
-const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET;
+const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET;
 const RPC_URL = process.env.BASE_RPC_URL;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -24,7 +24,7 @@ export async function startPaymentListener(): Promise<boolean> {
   try {
     // Validate environment variables
     if (!CONTRACT_ADDRESS) {
-      throw new Error('HEDWIG_PAYMENT_CONTRACT_ADDRESS or HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET must be set');
+      throw new Error('HEDWIG_PAYMENT_CONTRACT_ADDRESS or HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET must be set');
     }
     if (!RPC_URL) {
       throw new Error('BASE_RPC_URL must be set');

@@ -2,8 +2,8 @@ import { useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import { useReadContract } from 'wagmi';
 
-const USDC_CONTRACT_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
-const BASE_SEPOLIA_CHAIN_ID = 84532;
+const USDC_CONTRACT_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const BASE_MAINNET_CHAIN_ID = 8453;
 
 export function WalletDebug() {
   // Wagmi account hook
@@ -21,7 +21,7 @@ export function WalletDebug() {
     }],
     functionName: 'balanceOf',
     args: wagmiAddress ? [wagmiAddress] : undefined,
-    chainId: BASE_SEPOLIA_CHAIN_ID,
+    chainId: BASE_MAINNET_CHAIN_ID,
     query: {
       enabled: !!wagmiAddress,
     },
@@ -44,10 +44,10 @@ export function WalletDebug() {
       
 
       
-      {wagmiChainId !== BASE_SEPOLIA_CHAIN_ID && (
+      {wagmiChainId !== BASE_MAINNET_CHAIN_ID && (
         <div className="p-2 bg-yellow-100 border border-yellow-300 rounded">
           <p className="text-yellow-700 font-semibold">⚠️ Wrong Network!</p>
-          <p className="text-sm text-yellow-600">Please switch to Base Sepolia (Chain ID: {BASE_SEPOLIA_CHAIN_ID})</p>
+          <p className="text-sm text-yellow-600">Please switch to Base Mainnet (Chain ID: {BASE_MAINNET_CHAIN_ID})</p>
         </div>
       )}
       

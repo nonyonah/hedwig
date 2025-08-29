@@ -59,20 +59,20 @@ export interface NetworkConfig {
 }
 
 /**
- * Get Base Sepolia balances using Coinbase RPC endpoint
- * @param address - Wallet address
- * @returns Token balances
+ /**
+ * Get Base balances using Coinbase RPC endpoint
+ * @param address - Wallet address to check
  */
-async function getBaseSepoliaBalances(address: string) {
+async function getBaseBalances(address: string) {
   try {
-    const baseSepoliaRpc = 'https://api.developer.coinbase.com/rpc/v1/base-sepolia/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
-    const usdcContractAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
+    const baseRpc = process.env.NEXT_PUBLIC_BASE_MAINNET_RPC_URL || 'https://api.developer.coinbase.com/rpc/v1/base/QPwHIcurQPClYOPIGNmRONEHGmZUXikg';
+  const usdcContractAddress = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
     
-    console.log(`[CDP] Fetching Base Sepolia balances using Coinbase RPC for ${address}`);
+    console.log(`[CDP] Fetching Base balances using Coinbase RPC for ${address}`);
     console.log(`[CDP] Using USDC contract address: ${usdcContractAddress}`);
 
     // Get ETH balance
-    const ethBalanceResponse = await fetch(baseSepoliaRpc, {
+    const ethBalanceResponse = await fetch(baseRpc, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -89,14 +89,14 @@ async function getBaseSepoliaBalances(address: string) {
     console.log(`[CDP] ETH balance response:`, ethBalanceData);
     
     if (ethBalanceData.error) {
-      throw new Error(`Base Sepolia ETH balance error: ${ethBalanceData.error.message}`);
+      throw new Error(`Base ETH balance error: ${ethBalanceData.error.message}`);
     }
 
     // Get USDC balance using ERC-20 balanceOf method
     const balanceOfData = `0x70a08231000000000000000000000000${address.slice(2)}`;
     console.log(`[CDP] USDC balanceOf call data: ${balanceOfData}`);
     
-    const usdcBalanceResponse = await fetch(baseSepoliaRpc, {
+    const usdcBalanceResponse = await fetch(baseRpc, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -145,10 +145,10 @@ async function getBaseSepoliaBalances(address: string) {
       amount: usdcBalance
     });
 
-    console.log(`[CDP] Final Base Sepolia balances:`, balances);
+    console.log(`[CDP] Final Base balances:`, balances);
     return { data: balances };
   } catch (error) {
-    console.error('[CDP] Failed to get Base Sepolia balances:', error);
+    console.error('[CDP] Failed to get Base balances:', error);
     // Return default balances with 0 values instead of throwing
     return {
       data: [
@@ -167,17 +167,13 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'ethereum-sepolia',
     chainId: 11155111,
   },
-  'base-sepolia': {
-    name: 'base-sepolia',
-    chainId: 84532,
+  'base': {
+    name: 'base',
+    chainId: 8453,
   },
   'ethereum': {
     name: 'ethereum',
     chainId: 1,
-  },
-  'base': {
-    name: 'base',
-    chainId: 8453,
   },
   'optimism-sepolia': {
     name: 'optimism-sepolia',
@@ -186,10 +182,6 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
   'celo-alfajores': {
     name: 'celo-alfajores',
     chainId: 44787,
-  },
-  'solana-devnet': {
-    name: 'solana-devnet',
-    networkId: 'devnet',
   },
   'solana': {
     name: 'solana',
@@ -219,12 +211,10 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
  */
 export const ACTIVE_NETWORKS = [
   'ethereum-sepolia',
-  'base-sepolia', 
   'ethereum',
   'base',
   'optimism-sepolia',
   'celo-alfajores',
-  'solana-devnet',
   'solana'
 ];
 
@@ -246,12 +236,12 @@ export const DISABLED_NETWORKS = [
 export function formatNetworkName(chain: string): string {
   switch (chain.toLowerCase()) {
     case "base":
-      return "base-sepolia";
+      return "base";
     case "ethereum":
     case "evm":
       return "ethereum-sepolia";
     case "solana":
-      return "solana-devnet";
+      return "solana";
     default:
       return chain;
   }
@@ -267,8 +257,6 @@ export function getBlockExplorerUrl(txHash: string, network: string): string {
   const actualNetwork = getActualNetworkName(network);
   
   switch (actualNetwork) {
-    case 'base-sepolia':
-      return `https://sepolia.basescan.org/tx/${txHash}`;
     case 'base':
       return `https://basescan.org/tx/${txHash}`;
     case 'ethereum-sepolia':
@@ -277,8 +265,6 @@ export function getBlockExplorerUrl(txHash: string, network: string): string {
       return `https://etherscan.io/tx/${txHash}`;
     case 'optimism-sepolia':
       return `https://sepolia-optimism.etherscan.io/tx/${txHash}`;
-    case 'solana-devnet':
-      return `https://explorer.solana.com/tx/${txHash}?cluster=devnet`;
     case 'solana':
       return `https://explorer.solana.com/tx/${txHash}`;
     default:
@@ -292,9 +278,9 @@ export function getBlockExplorerUrl(txHash: string, network: string): string {
 function getActualNetworkName(chain: string): string {
   switch (chain) {
     case 'evm':
-      return 'base-sepolia';
+      return 'base';
     case 'solana':
-      return 'solana-devnet';
+      return 'solana';
     default:
       return chain; // Return as-is for backward compatibility
   }
@@ -602,7 +588,7 @@ export async function getBalances(address: string, network: string) {
       // For Ethereum Sepolia, use Alchemy API since CDP doesn't support it
       if (actualNetwork === 'ethereum-sepolia') {
         balances = await getEthereumSepoliaBalances(address);
-      } else if (actualNetwork === 'base-sepolia') {
+      } else if (actualNetwork === 'base') {
         // Try CDP first, fallback to Coinbase RPC if needed
         try {
           balances = await evmClient.listTokenBalances({
@@ -612,12 +598,12 @@ export async function getBalances(address: string, network: string) {
           
           // Check if we got valid balances
            if (!balances || !(balances as any).data || (Array.isArray((balances as any).data) && (balances as any).data.length === 0)) {
-             console.log('[CDP] CDP returned empty balances for Base Sepolia, trying Coinbase RPC fallback');
-             balances = await getBaseSepoliaBalances(address);
+             console.log('[CDP] CDP returned empty balances for Base, trying Coinbase RPC fallback');
+      balances = await getBaseBalances(address);
            }
         } catch (cdpError) {
-          console.warn('[CDP] CDP failed for Base Sepolia, trying Coinbase RPC fallback:', cdpError);
-          balances = await getBaseSepoliaBalances(address);
+          console.warn('[CDP] CDP failed for Base, trying Coinbase RPC fallback:', cdpError);
+      balances = await getBaseBalances(address);
         }
       } else {
         // Get EVM balances using CDP for other supported networks
@@ -880,7 +866,7 @@ export async function transferNativeToken(
   fromAddress: string,
   toAddress: string,
   amount: string,
-  network: string = 'base-sepolia'
+  network: string = 'base'
 ) {
   try {
     console.log(`[CDP] Transferring ${amount} native tokens from ${fromAddress} to ${toAddress} on network ${network}`);
@@ -932,8 +918,8 @@ export async function transferNativeToken(
       // Solana transfer - build and sign transaction
       const connection = new Connection(
         networkConfig.networkId === 'devnet' 
-          ? 'https://api.devnet.solana.com' 
-          : 'https://api.mainnet-beta.solana.com'
+        ? 'https://api.devnet.solana.com' 
+        : 'https://api.mainnet-beta.solana.com'
       );
       
       const fromPubkey = new PublicKey(fromAddress);
@@ -991,7 +977,7 @@ export async function transferToken(
   tokenAddress: string,
   amount: string,
   decimals: number = 18,
-  network: string = 'base-sepolia'
+  network: string = 'base'
 ) {
   try {
     console.log(`[CDP] Transferring ${amount} tokens (${tokenAddress}) from ${fromAddress} to ${toAddress} on network ${network}`);

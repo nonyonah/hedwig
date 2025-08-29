@@ -73,8 +73,8 @@ async function getEvmTransactionHistory(filter: TransactionHistoryFilter): Promi
       alchemyUrl = process.env.ALCHEMY_URL_BASE_MAINNET || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
     } else if (network.toLowerCase() === 'ethereum-sepolia') {
       alchemyUrl = process.env.ALCHEMY_URL_ETH_SEPOLIA || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
-    } else if (network.toLowerCase() === 'base-sepolia') {
-      alchemyUrl = process.env.ALCHEMY_URL_BASE_SEPOLIA || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
+    } else if (network.toLowerCase() === 'base') {
+    alchemyUrl = process.env.ALCHEMY_URL_BASE_MAINNET || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
     } else {
       alchemyUrl = `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
     }
@@ -169,7 +169,7 @@ async function getSolanaTransactionHistory(filter: TransactionHistoryFilter): Pr
     // Use Solana RPC endpoint from environment variables if available
     let rpcUrl: string;
     if (network.includes('devnet')) {
-      rpcUrl = process.env.SOLANA_DEVNET_RPC_URL || 'https://api.devnet.solana.com';
+    rpcUrl = process.env.SOLANA_DEVNET_RPC_URL || 'https://api.devnet.solana.com';
     } else {
       rpcUrl = process.env.SOLANA_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com';
     }
@@ -217,8 +217,8 @@ function mapNetworkToAlchemy(network: string): string {
     case 'base':
     case 'base-mainnet':
       return 'base-mainnet';
-    case 'base-sepolia':
-      return 'base-sepolia';
+    case 'base':
+      return 'base';
     case 'ethereum':
     case 'ethereum-mainnet':
       return 'eth-mainnet';
@@ -248,8 +248,8 @@ function mapNetworkToAlchemy(network: string): string {
       if (network.toLowerCase().includes('mainnet')) {
         return 'eth-mainnet';
       }
-      // Otherwise default to testnet
-      return 'base-sepolia';
+      // Otherwise default to mainnet
+    return 'base';
   }
 }
 

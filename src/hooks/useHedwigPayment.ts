@@ -414,12 +414,12 @@ const HEDWIG_PAYMENT_ABI = [
 ] as const;
 
 const HEDWIG_PAYMENT_CONTRACT_ADDRESS = (
-  process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET ||
+  process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET ||
   process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS ||
   '0x1c0A0eFBb438cc7705b947644F6AB88698b2704F' // Fallback to deployed contract address
 ) as `0x${string}`;
-const BASE_SEPOLIA_CHAIN_ID = 84532;
-const USDC_CONTRACT_ADDRESS = '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`; // Base Sepolia USDC Testnet (correct)
+const BASE_MAINNET_CHAIN_ID = 8453;
+const USDC_CONTRACT_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`; // Base Mainnet USDC
 
 // ERC20 ABI for approve function
 const ERC20_ABI = [
@@ -468,8 +468,8 @@ export function useHedwigPayment() {
       "type": "function"
     }],
     functionName: 'version',
-    chainId: BASE_SEPOLIA_CHAIN_ID
-  });
+    chainId: BASE_MAINNET_CHAIN_ID
+        });
   
   // Read platform wallet to verify contract setup
   const { data: platformWallet } = useReadContract({
@@ -482,8 +482,8 @@ export function useHedwigPayment() {
       "type": "function"
     }],
     functionName: 'platformWallet',
-    chainId: BASE_SEPOLIA_CHAIN_ID
-  });
+    chainId: BASE_MAINNET_CHAIN_ID
+        });
   
   // Check if USDC is whitelisted
   const { data: isUsdcWhitelisted } = useReadContract({
@@ -497,8 +497,8 @@ export function useHedwigPayment() {
     }],
     functionName: 'isTokenWhitelisted',
     args: [USDC_CONTRACT_ADDRESS],
-    chainId: BASE_SEPOLIA_CHAIN_ID
-  });
+    chainId: BASE_MAINNET_CHAIN_ID
+      });
   
   // Check if contract is paused
   const { data: isPaused } = useReadContract({
@@ -511,7 +511,7 @@ export function useHedwigPayment() {
       "type": "function"
     }],
     functionName: 'paused',
-    chainId: BASE_SEPOLIA_CHAIN_ID
+    chainId: BASE_MAINNET_CHAIN_ID
   });
   const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null);
   const [lastAction, setLastAction] = useState<'transfer' | 'pay' | null>(null);
@@ -540,7 +540,7 @@ export function useHedwigPayment() {
         address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
         abi: HEDWIG_PAYMENT_ABI,
         functionName: 'version',
-        chainId: BASE_SEPOLIA_CHAIN_ID,
+        chainId: BASE_MAINNET_CHAIN_ID,
       });
       console.log('Contract deployment verified. Version:', version);
     } catch (error) {
@@ -586,7 +586,7 @@ export function useHedwigPayment() {
     }],
     functionName: 'balanceOf',
     args: accountAddress ? [accountAddress] : undefined,
-    chainId: BASE_SEPOLIA_CHAIN_ID,
+    chainId: BASE_MAINNET_CHAIN_ID,
     query: {
       enabled: !!accountAddress,
     },
@@ -606,7 +606,7 @@ export function useHedwigPayment() {
         }],
         functionName: 'isInvoiceProcessed',
         args: [invoiceId],
-        chainId: BASE_SEPOLIA_CHAIN_ID
+        chainId: BASE_MAINNET_CHAIN_ID
       });
       return result as boolean;
     } catch (error) {
@@ -624,7 +624,7 @@ export function useHedwigPayment() {
       accountAddress,
       isConnected,
       usdcBalance: usdcBalance?.toString(),
-      chainId: BASE_SEPOLIA_CHAIN_ID
+      chainId: BASE_MAINNET_CHAIN_ID
     });
   }, [accountAddress, isConnected, usdcBalance]);
 
@@ -640,7 +640,7 @@ export function useHedwigPayment() {
           // Wait for transaction receipt
           const transactionReceipt = await waitForTransactionReceipt(config, {
             hash,
-            chainId: BASE_SEPOLIA_CHAIN_ID,
+            chainId: BASE_MAINNET_CHAIN_ID,
           });
           
           console.log('Payment transaction confirmed:', transactionReceipt);
@@ -817,7 +817,7 @@ export function useHedwigPayment() {
       amount: amountInUnits.toString(),
       freelancer: req.freelancerAddress,
       invoiceId: req.invoiceId,
-      chainId: BASE_SEPOLIA_CHAIN_ID,
+      chainId: BASE_MAINNET_CHAIN_ID,
       userAddress: accountAddress
     });
     
@@ -855,7 +855,7 @@ export function useHedwigPayment() {
           }],
           functionName: 'balanceOf',
           args: [accountAddress],
-          chainId: BASE_SEPOLIA_CHAIN_ID,
+          chainId: BASE_MAINNET_CHAIN_ID,
       });
       console.log('Successfully fetched fresh balance:', freshBalance?.toString());
     } catch (error) {
@@ -893,7 +893,7 @@ export function useHedwigPayment() {
       amount: amountInUnits.toString(),
       amountFormatted: formatUnits(amountInUnits, 6),
       userBalance: formatUnits(safeUsdcBalance, 6),
-      chainId: BASE_SEPOLIA_CHAIN_ID
+      chainId: BASE_MAINNET_CHAIN_ID
     });
     
     // Check current allowance
@@ -904,7 +904,7 @@ export function useHedwigPayment() {
         abi: ERC20_ABI,
         functionName: 'allowance',
         args: [accountAddress!, HEDWIG_PAYMENT_CONTRACT_ADDRESS],
-        chainId: BASE_SEPOLIA_CHAIN_ID
+        chainId: BASE_MAINNET_CHAIN_ID
       });
       currentAllowance = allowanceResult as bigint;
       console.log('Current USDC allowance:', {
@@ -931,7 +931,7 @@ export function useHedwigPayment() {
           abi: ERC20_ABI,
           functionName: 'approve',
           args: [HEDWIG_PAYMENT_CONTRACT_ADDRESS, amountInUnits],
-          chainId: BASE_SEPOLIA_CHAIN_ID,
+          chainId: BASE_MAINNET_CHAIN_ID,
           gas: 100000n
         });
         
@@ -958,7 +958,7 @@ export function useHedwigPayment() {
         try {
           const approveReceipt = await waitForTransactionReceipt(config, {
             hash: approveHash,
-            chainId: BASE_SEPOLIA_CHAIN_ID,
+            chainId: BASE_MAINNET_CHAIN_ID,
             timeout: 60000 // 60 second timeout
           });
           
@@ -1007,7 +1007,7 @@ export function useHedwigPayment() {
          abi: HEDWIG_PAYMENT_ABI,
          functionName: 'pay',
          args: [USDC_CONTRACT_ADDRESS, amountInUnits, req.freelancerAddress, req.invoiceId],
-         chainId: BASE_SEPOLIA_CHAIN_ID,
+         chainId: BASE_MAINNET_CHAIN_ID,
          gas: 300000n // Increase gas limit to 300,000 for safety
        });
        

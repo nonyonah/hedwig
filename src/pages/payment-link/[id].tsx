@@ -130,7 +130,7 @@ export default function PaymentLinkPage() {
   const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
   const total = subtotal; // Total amount to be paid
   const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
-  // Note: Only Base Sepolia USDC is supported for now
+  // Note: Only Base Mainnet USDC is supported for now
 
   // Set up real-time subscription for payment status updates
   useRealtimeSubscription({
@@ -269,9 +269,9 @@ export default function PaymentLinkPage() {
             Complete your USDC stablecoin payment securely
             <span
               className="ml-2 text-xs text-gray-500 underline decoration-dotted"
-              title="This payment runs on Base Sepolia (testnet)"
+              title="This payment runs on Base Mainnet"
             >
-              Base Sepolia (testnet)
+              Base Mainnet
             </span>
           </p>
         </div>
@@ -327,9 +327,9 @@ export default function PaymentLinkPage() {
                 Complete this payment using USDC on Base network
                 <span
                   className="ml-2 text-xs text-gray-500 underline decoration-dotted"
-                  title="This payment runs on Base Sepolia (testnet)"
-                >
-                  Base Sepolia (testnet)
+                  title="This payment runs on Base Mainnet"
+            >
+              Base Mainnet
                 </span>
               </CardDescription>
             </CardHeader>

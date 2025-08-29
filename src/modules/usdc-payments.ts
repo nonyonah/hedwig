@@ -12,7 +12,7 @@ const supabase = createClient(
 
 // USDC Contract addresses
 const USDC_CONTRACTS = {
-  base: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // USDC on Base Sepolia (testnet)
+  base: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base Mainnet
   ethereum: '0xA0b86a33E6441b8C4505E2c8C5C6e8C8C8C8C8C8', // USDC on Ethereum
 };
 
@@ -21,8 +21,8 @@ const SOLANA_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 // HedwigPayment contract configuration
 const HEDWIG_PAYMENT_CONFIG = {
-  contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET || '0xf614B0e35AE0fce9A70b64A11D417DFe83868B27',
-  rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
+  contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET || '0xf614B0e35AE0fce9A70b64A11D417DFe83868B27',
+  rpcUrl: process.env.BASE_MAINNET_RPC_URL || 'https://mainnet.base.org',
   usdcAddress: USDC_CONTRACTS.base
 };
 
@@ -214,16 +214,16 @@ export class USDCPaymentModule {
       `*Payment Amount:* ${amount.toFixed(2)} USDC\n` +
       `*Platform Fee (2%):* ${platformFee.toFixed(2)} USDC\n` +
       `*Freelancer Receives:* ${freelancerReceives.toFixed(2)} USDC\n\n` +
-      `*Network:* Base Sepolia (Testnet)\n` +
+      `*Network:* Base Mainnet\n` +
       `*Smart Contract:* \`${HEDWIG_PAYMENT_CONFIG.contractAddress}\`\n` +
       `*Recipient Address:*\n\`${recipientAddress}\`\n\n` +
       `*Instructions:*\n` +
       `1. Open your Web3 wallet (MetaMask, Coinbase Wallet, etc.)\n` +
-      `2. Switch to Base Sepolia testnet\n` +
+      `2. Switch to Base Mainnet\n` +
       `3. Use the Hedwig payment interface or send ${amount.toFixed(2)} USDC\n` +
       `4. Payment will be processed through our smart contract\n` +
       `5. Click "Payment Sent" after transaction is confirmed\n\n` +
-      `⚠️ *Important:* Only send USDC on Base Sepolia testnet. Payment is processed via smart contract with automatic fee deduction.`
+      `⚠️ *Important:* Only send USDC on Base Mainnet. Payment is processed via smart contract with automatic fee deduction.`
     );
 
     await this.bot.sendMessage(chatId, message, {

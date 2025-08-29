@@ -196,33 +196,36 @@ export function loadServerEnvironment() {
 }
 
 /**
- * Get CDP environment variables
+ * Get CDP environment variables with network-specific configuration
  */
 export function getCdpEnvironment() {
   console.log('[ENV DEBUG] Getting CDP environment');
   
-  // Use non-public variables first, then fall back to public ones if needed
-  const apiKeyId = process.env.CDP_API_KEY_ID || process.env.NEXT_PUBLIC_CDP_API_KEY_ID;
-  const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET;
+  // Import the network configuration helper
+  const { NetworkConfig, getCurrentNetworkEnvironment } = require('./envConfig');
+  const currentNetwork = getCurrentNetworkEnvironment();
   
-  // Get wallet secret - this is now required for CDP V2 wallet provider
-  const walletSecret = process.env.CDP_WALLET_SECRET || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET;
+  // Use network-specific variables first, then fall back to general ones
+  const apiKeyId = NetworkConfig.cdp.apiKeyId(currentNetwork) || process.env.NEXT_PUBLIC_CDP_API_KEY_ID;
+  const apiKeySecret = NetworkConfig.cdp.apiKeySecret(currentNetwork) || process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET;
+  const walletSecret = NetworkConfig.cdp.walletSecret(currentNetwork) || process.env.NEXT_PUBLIC_CDP_WALLET_SECRET;
   
   // Check if we have all required CDP credentials
   if (!apiKeyId || !apiKeySecret || !walletSecret) {
-    console.error('[ENV ERROR] Missing required CDP credentials:',
+    console.error('[ENV ERROR] Missing required CDP credentials for', currentNetwork, ':',
       !apiKeyId ? 'CDP_API_KEY_ID is missing' : '',
       !apiKeySecret ? 'CDP_API_KEY_SECRET is missing' : '',
       !walletSecret ? 'CDP_WALLET_SECRET is missing' : ''
     );
   } else {
-    console.log('[ENV] CDP credentials loaded successfully');
+    console.log(`[ENV] CDP credentials loaded successfully for ${currentNetwork}`);
   }
   
-  const networkId = process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || "base-sepolia";
+  const networkId = process.env.NETWORK_ID || process.env.NEXT_PUBLIC_NETWORK_ID || "base";
   
   // Log the CDP environment configuration (without exposing secrets)
   console.log('CDP environment loaded:', {
+    network: currentNetwork,
     apiKeyId: apiKeyId ? 'PRESENT' : 'MISSING',
     apiKeySecret: apiKeySecret ? 'PRESENT' : 'MISSING',
     walletSecret: walletSecret ? 'PRESENT' : 'MISSING',
@@ -234,6 +237,7 @@ export function getCdpEnvironment() {
     apiKeySecret,
     walletSecret,
     networkId,
+    network: currentNetwork,
   };
 }
 

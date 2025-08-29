@@ -4,7 +4,7 @@
 -- Table for storing user KYC information
 CREATE TABLE IF NOT EXISTS user_kyc (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     kyc_id TEXT UNIQUE,
     status TEXT NOT NULL CHECK (status IN ('not_started', 'pending', 'verified', 'rejected')) DEFAULT 'not_started',
     message TEXT,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS user_kyc (
 -- Table for storing offramp transactions
 CREATE TABLE IF NOT EXISTS offramp_transactions (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     amount DECIMAL(20, 8) NOT NULL,
     token TEXT NOT NULL,
     fiat_amount DECIMAL(20, 2) NOT NULL,

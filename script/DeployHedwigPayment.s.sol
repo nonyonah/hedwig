@@ -115,7 +115,7 @@ contract DeployHedwigPayment is Script {
     }
     
     function getDeployerPrivateKey() internal view returns (uint256) {
-        string memory privateKeyStr = vm.envString("PLATFORM_PRIVATE_KEY");
+        string memory privateKeyStr = vm.envString("DEPLOYER_PRIVATE_KEY");
         
         // Handle private key format (with or without 0x prefix)
         if (bytes(privateKeyStr).length >= 2 && 

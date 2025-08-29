@@ -140,7 +140,7 @@ export async function createProposal(params: CreateProposalParams): Promise<Crea
 
     // Validate network if provided
     if (network) {
-      const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-alfajores'];
+      const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo'];
       
       if (!supportedNetworks.includes(network.toLowerCase())) {
         return {

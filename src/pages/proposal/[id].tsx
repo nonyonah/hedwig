@@ -535,7 +535,7 @@ const Proposal = () => {
                   <div>
                     <p className="font-semibold text-lg">Proposal Paid</p>
                     <a 
-                      href={`https://sepolia.basescan.org/tx/${receipt?.transactionHash}`}
+                      href={`https://basescan.org/tx/${receipt?.transactionHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-blue-600 hover:underline flex items-center gap-1"

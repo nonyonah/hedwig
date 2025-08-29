@@ -180,9 +180,9 @@ export function WalletProviderWrapper({ children }: { children: ReactNode }) {
     const id = parseInt(chainId, 16);
     switch (id) {
       case 8453: return 'Base Mainnet';
-      case 84532: return 'Base Sepolia';
+    case 84532: return 'Base Sepolia';
       case 1: return 'Ethereum Mainnet';
-      case 11155111: return 'Sepolia';
+      case 11155111: return 'Ethereum Sepolia';
       default: return `Chain ${id}`;
     }
   };

@@ -5,14 +5,14 @@ import { createClient } from '@supabase/supabase-js';
 import { formatBigInt, makeSerializable } from '../../../lib/bigintUtils';
 
 // Environment variables - ensure all required env vars are set
-const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET;
+const CONTRACT_ADDRESS = process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET;
 const RPC_URL = process.env.BASE_RPC_URL;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Validate required environment variables
 if (!CONTRACT_ADDRESS) {
-  throw new Error('HEDWIG_PAYMENT_CONTRACT_ADDRESS or HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET must be set');
+  throw new Error('HEDWIG_PAYMENT_CONTRACT_ADDRESS or HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET must be set');
 }
 if (!RPC_URL) {
   throw new Error('BASE_RPC_URL must be set');
@@ -28,7 +28,7 @@ if (!SUPABASE_SERVICE_ROLE_KEY) {
 console.log('Environment variables loaded:');
 console.log('All env vars:', Object.keys(process.env).filter(key => key.includes('HEDWIG')));
 console.log('CONTRACT_ADDRESS:', CONTRACT_ADDRESS);
-console.log('TESTNET_ADDRESS:', process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET);
+console.log('MAINNET_ADDRESS:', process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET);
 console.log('RPC_URL:', RPC_URL);
 console.log('SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Not set');
 

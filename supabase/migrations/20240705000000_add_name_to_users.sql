@@ -43,8 +43,8 @@ BEGIN
     END IF;
   ELSE
     -- Create new user
-    INSERT INTO public.users (phone_number, name)
-    VALUES (p_phone, p_name)
+    INSERT INTO public.users (phone_number, name, created_at, updated_at)
+    VALUES (p_phone, p_name, NOW(), NOW())
     RETURNING id INTO v_user_id;
   END IF;
   
@@ -53,4 +53,4 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Add comment to explain the column
-COMMENT ON COLUMN public.users.name IS 'User''s display name, can be from WhatsApp or manually provided'; 
+COMMENT ON COLUMN public.users.name IS 'User''s display name, can be from WhatsApp or manually provided';

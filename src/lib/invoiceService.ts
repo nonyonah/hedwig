@@ -147,7 +147,7 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
     }
 
     // Validate network
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-alfajores'];
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo'];
     
     if (!supportedNetworks.includes(network.toLowerCase())) {
       return {

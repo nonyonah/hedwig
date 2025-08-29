@@ -399,11 +399,11 @@ async function sendTelegramNotification(
         if (type === 'direct_transfer') {
           addressUrl = `https://basescan.org/address/${itemData.recipientWallet}`;
         }
-      } else if (chain === 'base-sepolia' || chain === 'BASE_SEPOLIA') {
-        explorerUrl = `https://sepolia.basescan.org/tx/${transactionHash}`;
-        explorerName = 'BaseScan Sepolia';
+      } else if (chain === 'base' || chain === 'BASE') {
+        explorerUrl = `https://basescan.org/tx/${transactionHash}`;
+        explorerName = 'BaseScan';
         if (type === 'direct_transfer') {
-          addressUrl = `https://sepolia.basescan.org/address/${itemData.recipientWallet}`;
+          addressUrl = `https://basescan.org/address/${itemData.recipientWallet}`;
         }
       } else if (chain === 'ethereum-mainnet' || chain === 'ETHEREUM_MAINNET') {
         explorerUrl = `https://etherscan.io/tx/${transactionHash}`;

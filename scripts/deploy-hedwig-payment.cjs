@@ -7,7 +7,7 @@ async function main() {
   console.log(`Deploying HedwigPayment contract to ${network}...`);
 
   // Debug: Check environment variables
-  console.log("PLATFORM_PRIVATE_KEY exists:", !!process.env.PLATFORM_PRIVATE_KEY);
+  console.log("PLATFORM_PRIVATE_KEY exists:", !!process.env.DEPLOYER_PRIVATE_KEY);
   console.log("BASE_MAINNET_RPC_URL:", process.env.BASE_MAINNET_RPC_URL);
 
   // Get the deployer account
@@ -15,27 +15,45 @@ async function main() {
   console.log('Available signers:', signers.length);
   
   if (signers.length === 0) {
-    throw new Error('No signers available. Please check your PLATFORM_PRIVATE_KEY in .env.local');
+    throw new Error('No signers available. Please check your DEPLOYER_PRIVATE_KEY in .env.local');
   }
   
   const [deployer] = signers;
   const deployerAddress = await deployer.getAddress();
   console.log('Deploying with account:', deployerAddress);
-  console.log('Expected deployer address: 0x869a1e10ca4d1e1223676c0a4214c6cc10023244');
+  console.log('Expected deployer address: 0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d');
 
   // Verify deployer address matches expected
-  if (deployerAddress.toLowerCase() !== '0x869a1e10ca4d1e1223676c0a4214c6cc10023244'.toLowerCase()) {
+  if (deployerAddress.toLowerCase() !== '0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d'.toLowerCase()) {
     console.warn('⚠️  Warning: Deployer address does not match expected address!');
-    console.warn(`Expected: 0x869a1e10ca4d1e1223676c0a4214c6cc10023244`);
+    console.warn(`Expected: 0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d`);
     console.warn(`Actual: ${deployerAddress}`);
   }
 
   // Platform wallet address (must be valid, non-zero)
-  const platformWallet = process.env.HEDWIG_PLATFORM_WALLET_TESTNET || process.env.HEDWIG_PLATFORM_WALLET || deployerAddress;
+  const platformWallet = network === 'base-sepolia' 
+    ? (process.env.HEDWIG_PLATFORM_WALLET_TESTNET || '0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc')
+    : (process.env.HEDWIG_PLATFORM_WALLET_MAINNET || '0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc');
+  
+  // USDC address for the network
+  const usdcAddress = network === 'base-sepolia'
+    ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' // Base Sepolia USDC
+    : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
 
-  // Deploy the contract (constructor now takes only platformWallet)
+  console.log('Platform wallet:', platformWallet);
+  console.log('Expected platform wallet: 0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc');
+  console.log('USDC address:', usdcAddress);
+
+  // Verify platform wallet matches expected
+  if (platformWallet.toLowerCase() !== '0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc'.toLowerCase()) {
+    console.warn('⚠️  Warning: Platform wallet does not match expected address!');
+    console.warn(`Expected: 0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc`);
+    console.warn(`Actual: ${platformWallet}`);
+  }
+
+  // Deploy the contract (constructor takes platformWallet and usdcAddress)
   const HedwigPayment = await ethers.getContractFactory('HedwigPayment');
-  const hedwigPayment = await HedwigPayment.deploy(platformWallet);
+  const hedwigPayment = await HedwigPayment.deploy(platformWallet, usdcAddress);
 
   await hedwigPayment.waitForDeployment();
 
@@ -53,7 +71,7 @@ async function main() {
     try {
       await hre.run('verify:verify', {
         address: contractAddress,
-        constructorArguments: [platformWallet],
+        constructorArguments: [platformWallet, usdcAddress],
       });
       console.log('Contract verified on Basescan');
     } catch (error) {

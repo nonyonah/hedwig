@@ -338,9 +338,28 @@ export class OfframpModule {
   }
 
   /**
-   * Initiate KYC process
+   * Initiate KYC process - TEMPORARILY DISABLED
+   * TODO: Re-enable once suitable KYC provider is found
    */
   private async initiateKYC(chatId: number, userId: string): Promise<void> {
+    // KYC is temporarily disabled - skip verification
+    await this.bot.sendMessage(
+      chatId,
+      '✅ *KYC Verification Temporarily Disabled*\n\n' +
+      'KYC verification is currently disabled. You can proceed with your withdrawal.\n\n' +
+      'Please specify the amount and token you want to withdraw.',
+      {
+        parse_mode: 'Markdown'
+      }
+    );
+    
+    // Update state to skip KYC
+    await this.updateOfframpState(userId, {
+      kycStatus: 'verified', // Temporarily set as verified
+      step: 'amount_input'
+    });
+    
+    /* TODO: Re-enable when KYC provider is ready
     try {
       if (!this.apiToken) {
         throw new Error('Paycrest API token not configured');
@@ -419,6 +438,7 @@ export class OfframpModule {
         '❌ Sorry, there was an error initiating the KYC process. Please try again later.'
       );
     }
+    */
   }
 
   /**

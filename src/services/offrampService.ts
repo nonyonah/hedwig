@@ -393,27 +393,28 @@ export class OfframpService {
         this.handleOfframpError(new Error(`Unsupported currency: ${request.currency}`), 'validation');
       }
 
+      // TODO: Re-enable KYC check once suitable provider is found
       // 2. Check KYC status
-      try {
-        const kycStatus = await this.checkKYCStatus(request.userId);
-        if (kycStatus.status !== 'verified') {
-          this.handleOfframpError(new Error('KYC verification required'), 'kyc_check');
-        }
-      } catch (error) {
-        this.handleOfframpError(error, 'kyc_check');
-      }
+      // try {
+      //   const kycStatus = await this.checkKYCStatus(request.userId);
+      //   if (kycStatus.status !== 'verified') {
+      //     this.handleOfframpError(new Error('KYC verification required'), 'kyc_check');
+      //   }
+      // } catch (error) {
+      //   this.handleOfframpError(error, 'kyc_check');
+      // }
 
       // 3. Get user's wallet
       let wallet;
       try {
-        wallet = await getOrCreateCdpWallet(request.userId, 'base-sepolia');
+        wallet = await getOrCreateCdpWallet(request.userId, 'base');
       } catch (error) {
         this.handleOfframpError(error, 'wallet_access');
       }
       
       // 4. Check wallet balance
       try {
-        const balances = await getBalances(wallet.address, 'base-sepolia');
+        const balances = await getBalances(wallet.address, 'base');
         const tokenBalance = balances.find(b => 
           b.asset.symbol.toUpperCase() === request.token.toUpperCase()
         );
@@ -518,14 +519,14 @@ export class OfframpService {
       // 10. Transfer tokens to Paycrest address
       let transferResult;
       try {
-        const tokenAddress = this.getTokenAddress(request.token, 'base-sepolia');
+        const tokenAddress = this.getTokenAddress(request.token, 'base');
         transferResult = await transferToken(
           wallet.address,
           receiveAddress,
           tokenAddress,
           request.amount.toString(),
           18,
-          'base-sepolia'
+          'base'
         );
       } catch (error) {
         this.handleOfframpError(error, 'blockchain_transfer', transactionId);
@@ -603,14 +604,10 @@ export class OfframpService {
    */
   private getTokenAddress(token: string, network: string): string {
     const addresses: Record<string, Record<string, string>> = {
-      'base-sepolia': {
-        'USDC': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-        'USDT': '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06'
-      },
       'base': {
-        'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-        'USDT': '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'
-      }
+         'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+         'USDT': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb'
+      },
     };
 
     return addresses[network]?.[token.toUpperCase()] || '';

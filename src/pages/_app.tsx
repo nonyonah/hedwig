@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { OnchainKitProvider } from '@coinbase/onchainkit';
-import { baseSepolia } from 'wagmi/chains';
+import { base } from 'wagmi/chains';
 import { config } from '../lib/wagmi';
 import { Toaster } from 'sonner';
 
@@ -20,7 +20,7 @@ export default function App({ Component, pageProps }: AppProps) {
       <QueryClientProvider client={queryClient}>
         <OnchainKitProvider
           apiKey={apiKey}
-          chain={baseSepolia}
+          chain={base}
           config={{
             appearance: {
               name: 'Hedwig',

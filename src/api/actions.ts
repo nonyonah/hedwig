@@ -9,13 +9,13 @@ import { createClient } from "@supabase/supabase-js";
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
 import { SmartNudgeService } from '@/lib/smartNudgeService';
-import { offrampService } from '@/services/offrampService';
+import { offrampService } from '../services/offrampService';
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
-import { formatAddress, formatBalance } from "@/lib/utils";
-import { handleCurrencyConversion } from "@/lib/currencyConversionService";
-import crypto from "crypto";
+import { formatAddress, formatBalance } from "../lib/utils";
+import { handleCurrencyConversion } from "../lib/currencyConversionService";
+import * as crypto from "crypto";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { formatEther, parseUnits, encodeFunctionData, toHex } from 'viem';
@@ -169,44 +169,26 @@ async function resolveUserId(userId: string): Promise<string | null> {
       return user.id;
     }
 
-    // If not found by email or phone, try by username (if it exists)
+    // If not found by email or phone, try by telegram_chat_id
     ({ data: user, error: userError } = await supabase
       .from('users')
       .select('id')
-      .eq('username', userId)
+      .eq('telegram_chat_id', userId)
       .single());
     
     if (user) {
+      console.log(`[resolveUserId] Found existing user by telegram_chat_id ${userId}:`, user.id);
       return user.id;
     }
 
-    // If user not found by any method, create a new user directly in users table
-    console.log(`[resolveUserId] User ${userId} not found, creating new user record...`);
-    
-    // Create user directly in users table without auth.users dependency
-    const { data: newUser, error: createError } = await supabase
-      .from('users')
-      .insert({
-        username: userId,
-        telegram_id: userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select('id')
-      .single();
-    
-    if (createError) {
-      console.error(`[resolveUserId] Failed to create user ${userId}:`, createError);
-      // Return the userId as fallback for basic functionality
-      return userId;
-    }
-    
-    console.log(`[resolveUserId] Created new user ${userId} with ID:`, newUser.id);
-    return newUser.id;
+    // If user not found by any method, log error and return null
+    console.error(`[resolveUserId] User ${userId} not found in database. Offramp should only work with existing users.`);
+    return null;
   } catch (error) {
     console.error('[resolveUserId] Error:', error);
     return null;
   }
+}
 
 // Helper function to get user wallet addresses
 async function getUserWalletAddresses(userId: string): Promise<string[]> {
@@ -301,8 +283,8 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const evmWallet = wallets.find(w => w.chain === 'evm');
     if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
       try {
-        // Get balances for testnet networks (base-sepolia only - Ethereum disabled)
-        const supportedEvmNetworks = ['base-sepolia'];
+        // Get balances for mainnet networks (base mainnet only - Ethereum disabled)
+        const supportedEvmNetworks = ['base'];
         let allEvmBalances = "";
 
         // Get token prices for USD conversion
@@ -321,7 +303,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
         let networksToCheck = supportedEvmNetworks;
         if (requestedNetwork && requestedNetwork !== 'evm') {
           const chainMap: { [key: string]: string } = {
-            'base': 'base-sepolia'
+            'base': 'base'
           };
           const specificNetwork = chainMap[requestedNetwork];
           if (specificNetwork) {
@@ -396,7 +378,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const solanaWallet = wallets.find(w => w.chain === 'solana');
     if (solanaWallet && (!isSpecificChainRequest || isSolanaRequest)) {
       try {
-        const balances = await getBalances(solanaWallet.address, 'solana-devnet');
+        const balances = await getBalances(solanaWallet.address, 'solana');
         
         let solAmount = '0';
         let usdcAmount = '0';
@@ -1142,7 +1124,7 @@ async function handleSend(params: ActionParams, userId: string) {
             fromAddress,
             recipientAddress,
             amount,
-            selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
+            selectedNetwork === 'evm' ? 'base' : 'solana'
           );
         } else {
           // Token transfer using CDP API <mcreference link="https://docs.cdp.coinbase.com/wallet-api/v2/evm-features/sending-transactions" index="2">2</mcreference>
@@ -1150,9 +1132,9 @@ async function handleSend(params: ActionParams, userId: string) {
           if (token?.toLowerCase() === 'usdc') {
             // Use appropriate USDC contract address based on network
             if (selectedNetwork === 'evm') {
-              tokenAddress = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Base Sepolia USDC
+              tokenAddress = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
             } else {
-              tokenAddress = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Solana Devnet USDC
+              tokenAddress = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Solana Mainnet USDC
             }
           } else {
             return {
@@ -1166,12 +1148,12 @@ async function handleSend(params: ActionParams, userId: string) {
             tokenAddress,
             amount,
             selectedNetwork === 'evm' ? 6 : 6, // USDC has 6 decimals
-            selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet'
+            selectedNetwork === 'evm' ? 'base' : 'solana'
           );
         }
 
         // Generate block explorer link
-        const explorerUrl = getBlockExplorerUrl(result.hash, selectedNetwork === 'evm' ? 'base-sepolia' : 'solana-devnet');
+        const explorerUrl = getBlockExplorerUrl(result.hash, selectedNetwork === 'evm' ? 'base' : 'solana');
         
         // Format success message
         const networkName = selectedNetwork === 'evm' ? 'Base' : 'Solana';
@@ -1230,12 +1212,12 @@ async function handleSend(params: ActionParams, userId: string) {
           network?.toLowerCase() === 'solana' || 
           isSolanaAddress(recipientAddress)) {
         selectedWallet = wallets.find(w => w.chain === 'solana');
-        selectedNetwork = 'solana-devnet';
+        selectedNetwork = 'solana';
         networkName = 'Solana';
       } else {
         // Default to EVM for ETH, USDC, etc.
         selectedWallet = wallets.find(w => w.chain === 'evm');
-        selectedNetwork = 'base-sepolia';
+        selectedNetwork = 'base';
         networkName = 'Base';
       }
 
@@ -1247,8 +1229,8 @@ async function handleSend(params: ActionParams, userId: string) {
 
       // Determine transaction type for gas estimation
       const isNativeToken = (
-        (selectedNetwork === 'base-sepolia' && (!token || token.toLowerCase() === 'eth')) ||
-        (selectedNetwork === 'solana-devnet' && (!token || token.toLowerCase() === 'sol'))
+        (selectedNetwork === 'base' && (!token || token.toLowerCase() === 'eth')) ||
+      (selectedNetwork === 'solana' && (!token || token.toLowerCase() === 'sol'))
       );
       
       const transactionType = isNativeToken ? 'native' : 'token';
@@ -1411,7 +1393,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     const userName = user?.name || 'Hedwig User';
 
     // Validate network and token
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-alfajores'];
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo'];
     const supportedTokens = ['USDC']; // Only USDC stablecoin is supported
 
     if (!supportedNetworks.includes(selectedNetwork)) {
@@ -1428,7 +1410,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
 
     try {
       // Use direct payment link service
-      const { createPaymentLink } = await import('@/lib/paymentlinkservice');
+      const { createPaymentLink } = await import('../lib/paymentlinkservice');
       
       // Debug environment variables
       console.log('Environment check in actions.ts:', {
@@ -1618,8 +1600,8 @@ async function handleDepositNotification(
     const truncatedFrom = `${fromAddress.slice(0, 8)}...${fromAddress.slice(-4)}`;
     
     // Format network name for display
-    const networkName = network === 'solana-devnet' ? 'Solana' : 
-                       network === 'base-sepolia' ? 'Base' : 
+    const networkName = network === 'solana' ? 'Solana' :
+      network === 'base' ? 'Base' : 
                        network.charAt(0).toUpperCase() + network.slice(1);
 
     const message = `+${amount} ${token.toUpperCase()} just came in\n` +
@@ -1794,7 +1776,7 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
     }
 
     // Import and use the invoice creation service
-    const { InvoiceModule } = await import('@/modules/invoices');
+    const { InvoiceModule } = await import('../modules/invoices');
     
     // Get the user's chat ID for Telegram interaction
     const { data: user } = await supabase
@@ -1856,7 +1838,7 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
     }
 
     // Import and use the proposal creation service with bot integration
-    const { ProposalModule } = await import('@/modules/proposals');
+    const { ProposalModule } = await import('../modules/proposals');
     
     // Get the user's chat ID for Telegram interaction
     const { data: user } = await supabase
@@ -1901,26 +1883,27 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
       };
     }
 
+    // TODO: Re-enable KYC check once suitable provider is found
     // Check if user has completed KYC
-    const { data: kycData } = await supabase
-      .from('user_kyc')
-      .select('status')
-      .eq('user_id', actualUserId)
-      .single();
+    // const { data: kycData } = await supabase
+    //   .from('user_kyc')
+    //   .select('status')
+    //   .eq('user_id', actualUserId)
+    //   .single();
 
-    if (!kycData || kycData.status !== 'approved') {
-      return {
-        text: "🔐 **KYC Verification Required**\n\n" +
-              "To withdraw crypto to your bank account, you need to complete KYC verification first.\n\n" +
-              "This is required for compliance with financial regulations.",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🔐 Start KYC Verification", callback_data: "start_kyc" }],
-            [{ text: "❓ Learn More", callback_data: "kyc_info" }]
-          ]
-        }
-      };
-    }
+    // if (!kycData || kycData.status !== 'approved') {
+    //   return {
+    //     text: "🔐 **KYC Verification Required**\n\n" +
+    //           "To withdraw crypto to your bank account, you need to complete KYC verification first.\n\n" +
+    //           "This is required for compliance with financial regulations.",
+    //     reply_markup: {
+    //       inline_keyboard: [
+    //         [{ text: "🔐 Start KYC Verification", callback_data: "start_kyc" }],
+    //         [{ text: "❓ Learn More", callback_data: "kyc_info" }]
+    //       ]
+    //     }
+    //   };
+    // }
 
     // Get user's wallet balances
     const { data: wallets } = await supabase
@@ -1942,8 +1925,14 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
       try {
         const balances = await getBalances(wallet.address, wallet.chain as 'evm' | 'solana');
         
+        // Check if balances is valid and iterable
+        if (!balances || !Array.isArray(balances)) {
+          console.warn(`Invalid balances response for ${wallet.address}:`, balances);
+          continue;
+        }
+        
         for (const balance of balances) {
-          if ((balance.symbol === 'USDT' || balance.symbol === 'USDC') && parseFloat(balance.balance) > 0) {
+          if (balance.symbol === 'USDC' && parseFloat(balance.balance) > 0) {
             balanceText += `• ${balance.balance} ${balance.symbol} (${wallet.chain.toUpperCase()})\n`;
             hasBalance = true;
           }
@@ -1956,9 +1945,9 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
     if (!hasBalance) {
       return {
         text: "💰 **No Withdrawable Balance**\n\n" +
-              "You don't have any USDT or USDC available for withdrawal.\n\n" +
-              "Supported tokens: USDT, USDC\n" +
-              "Supported networks: Base, Ethereum, Solana",
+              "You don't have any USDC available for withdrawal.\n\n" +
+              "Supported token: USDC\n" +
+              "Supported network: Base",
       };
     }
 
@@ -2125,7 +2114,7 @@ async function handleOfframpHistory(params: ActionParams, userId: string): Promi
       historyText += `\n`;
     }
 
-    const keyboard = [];
+    const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
     
     // Add retry button for failed transactions
     const failedTx = transactions.find(tx => tx.status === 'failed');
@@ -2441,7 +2430,7 @@ async function handleTransactionStatus(params: ActionParams, userId: string): Pr
       statusText += `**Error:** ${transaction.errorMessage}\n`;
     }
 
-    const keyboard = [];
+    const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
     
     if (transaction.status === 'failed') {
       keyboard.push([{ text: "🔄 Retry Transaction", callback_data: `retry_tx_${transaction.id}` }]);

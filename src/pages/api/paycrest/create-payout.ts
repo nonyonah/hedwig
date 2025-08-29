@@ -42,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('id')
-      .eq('telegram_id', userId)
+      .eq('telegram_chat_id', userId)
       .single();
 
     if (userError || !userData) {

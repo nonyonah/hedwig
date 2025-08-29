@@ -1199,7 +1199,7 @@ export function parseEarningsQuery(query: string): EarningsFilter | null {
 
   // Extract network with more patterns
   let network: string | undefined;
-  const networkPatterns = ['base', 'polygon', 'ethereum', 'optimism-sepolia', 'avalanche', 'bsc', 'solana', 'celo-alfajores'];
+  const networkPatterns = ['base', 'polygon', 'ethereum', 'optimism', 'avalanche', 'bsc', 'solana', 'celo'];
   // DISABLED NETWORKS: BEP20 and Asset Chain patterns are defined but not active
   // Additional patterns when enabled: 'bsc-testnet', 'asset-chain', 'asset-chain-testnet'
   for (const networkPattern of networkPatterns) {
