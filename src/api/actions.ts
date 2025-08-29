@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
 import { SmartNudgeService } from '@/lib/smartNudgeService';
+import { offrampService } from '@/services/offrampService';
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -958,6 +959,25 @@ export async function handleAction(
         console.error('[handleAction] Spending error:', error);
         return { text: "❌ Failed to fetch spending data. Please try again later." };
       }
+
+    case "offramp":
+    case "withdraw":
+      return await handleOfframp(params, userId);
+
+    case "kyc_verification":
+      return await handleKYCVerification(params, userId);
+
+    case "offramp_history":
+      return await handleOfframpHistory(params, userId);
+
+    case "retry_transaction":
+      return await handleRetryTransaction(params, userId);
+
+    case "cancel_transaction":
+      return await handleCancelTransaction(params, userId);
+
+    case "transaction_status":
+      return await handleTransactionStatus(params, userId);
     
     case "send_reminder":
       return await sendManualReminder(userId, params);
@@ -1907,5 +1927,581 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
   }
 }
 
+// Handle offramp intent
+async function handleOfframp(params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ User not found. Please make sure you're registered with the bot.",
+      };
+    }
+
+    // Check if user has completed KYC
+    const { data: kycData } = await supabase
+      .from('user_kyc')
+      .select('status')
+      .eq('user_id', actualUserId)
+      .single();
+
+    if (!kycData || kycData.status !== 'approved') {
+      return {
+        text: "🔐 **KYC Verification Required**\n\n" +
+              "To withdraw crypto to your bank account, you need to complete KYC verification first.\n\n" +
+              "This is required for compliance with financial regulations.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔐 Start KYC Verification", callback_data: "start_kyc" }],
+            [{ text: "❓ Learn More", callback_data: "kyc_info" }]
+          ]
+        }
+      };
+    }
+
+    // Get user's wallet balances
+    const { data: wallets } = await supabase
+      .from('wallets')
+      .select('address, chain')
+      .eq('user_id', actualUserId);
+
+    if (!wallets || wallets.length === 0) {
+      return {
+        text: "❌ No wallets found. Please create a wallet first.",
+      };
+    }
+
+    // Check balances for supported tokens (USDT, USDC)
+    let balanceText = "💰 **Available for Withdrawal:**\n\n";
+    let hasBalance = false;
+
+    for (const wallet of wallets) {
+      try {
+        const balances = await getBalances(wallet.address, wallet.chain as 'evm' | 'solana');
+        
+        for (const balance of balances) {
+          if ((balance.symbol === 'USDT' || balance.symbol === 'USDC') && parseFloat(balance.balance) > 0) {
+            balanceText += `• ${balance.balance} ${balance.symbol} (${wallet.chain.toUpperCase()})\n`;
+            hasBalance = true;
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching balance for ${wallet.address}:`, error);
+      }
+    }
+
+    if (!hasBalance) {
+      return {
+        text: "💰 **No Withdrawable Balance**\n\n" +
+              "You don't have any USDT or USDC available for withdrawal.\n\n" +
+              "Supported tokens: USDT, USDC\n" +
+              "Supported networks: Base, Ethereum, Solana",
+      };
+    }
+
+    return {
+      text: balanceText + "\n" +
+            "🏦 **Supported Currencies:** NGN, KES\n\n" +
+            "To proceed with withdrawal, please specify:\n" +
+            "• Amount and token (e.g., \"withdraw 100 USDT\")\n" +
+            "• Your bank details\n\n" +
+            "💡 **Example:** \"withdraw 50 USDC to my NGN account\"",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🏦 View Supported Banks", callback_data: "view_banks" }],
+          [{ text: "📊 Transaction History", callback_data: "offramp_history" }]
+        ]
+      }
+    };
+  } catch (error) {
+    console.error('[handleOfframp] Error:', error);
+    return {
+      text: "❌ Failed to process offramp request. Please try again later.",
+    };
+  }
+}
+
+// Handle KYC verification intent
+async function handleKYCVerification(params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ User not found. Please make sure you're registered with the bot.",
+      };
+    }
+
+    // Check current KYC status
+    const { data: kycData } = await supabase
+      .from('user_kyc')
+      .select('status, paycrest_customer_id, created_at')
+      .eq('user_id', actualUserId)
+      .single();
+
+    if (kycData) {
+      switch (kycData.status) {
+        case 'approved':
+          return {
+            text: "✅ **KYC Verification Complete**\n\n" +
+                  "Your identity has been verified successfully.\n" +
+                  "You can now withdraw crypto to your bank account.",
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "💱 Start Withdrawal", callback_data: "start_offramp" }]
+              ]
+            }
+          };
+        
+        case 'pending':
+          return {
+            text: "⏳ **KYC Verification Pending**\n\n" +
+                  "Your KYC verification is being reviewed.\n" +
+                  "This usually takes 1-3 business days.\n\n" +
+                  `Submitted: ${new Date(kycData.created_at).toLocaleDateString()}`,
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "🔄 Check Status", callback_data: "check_kyc_status" }]
+              ]
+            }
+          };
+        
+        case 'rejected':
+          return {
+            text: "❌ **KYC Verification Rejected**\n\n" +
+                  "Your previous KYC submission was rejected.\n" +
+                  "Please contact support or try again with updated documents.",
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "🔄 Retry KYC", callback_data: "start_kyc" }],
+                [{ text: "💬 Contact Support", callback_data: "contact_support" }]
+              ]
+            }
+          };
+      }
+    }
+
+    // No KYC record found, show start KYC option
+    return {
+      text: "🔐 **KYC Verification Required**\n\n" +
+            "To withdraw crypto to your bank account, you need to complete identity verification.\n\n" +
+            "**What you'll need:**\n" +
+            "• Government-issued ID\n" +
+            "• Proof of address\n" +
+            "• Bank account details\n\n" +
+            "**Process takes:** 1-3 business days\n" +
+            "**Supported countries:** Nigeria, Kenya",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🔐 Start KYC Verification", callback_data: "start_kyc" }],
+          [{ text: "❓ Learn More", callback_data: "kyc_info" }]
+        ]
+      }
+    };
+  } catch (error) {
+    console.error('[handleKYCVerification] Error:', error);
+    return {
+      text: "❌ Failed to check KYC status. Please try again later.",
+    };
+  }
+}
+
+// Handle offramp transaction history
+async function handleOfframpHistory(params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ User not found. Please make sure you're registered with the bot.",
+      };
+    }
+
+    const transactions = await offrampService.getTransactionHistory(actualUserId);
+    const stats = await offrampService.getTransactionStats(actualUserId);
+
+    if (transactions.length === 0) {
+      return {
+        text: "📊 **Transaction History**\n\n" +
+              "No withdrawal transactions found.\n\n" +
+              "Start your first withdrawal by typing 'withdraw' or 'offramp'.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "💰 Start Withdrawal", callback_data: "offramp" }]
+          ]
+        }
+      };
+    }
+
+    let historyText = `📊 **Transaction History**\n\n`;
+    historyText += `**Summary:**\n`;
+    historyText += `• Total: ${stats.total} transactions\n`;
+    historyText += `• Completed: ${stats.completed}\n`;
+    historyText += `• Pending: ${stats.pending}\n`;
+    historyText += `• Failed: ${stats.failed}\n`;
+    historyText += `• Total Amount: ${stats.totalAmount.toFixed(2)}\n\n`;
+
+    historyText += `**Recent Transactions:**\n`;
+    
+    const recentTransactions = transactions.slice(0, 5);
+    for (const tx of recentTransactions) {
+      const statusEmoji = {
+        'completed': '✅',
+        'processing': '🔄',
+        'pending': '⏳',
+        'failed': '❌'
+      }[tx.status] || '❓';
+
+      const date = tx.createdAt.toLocaleDateString();
+      const txId = tx.id.substring(0, 8);
+      
+      historyText += `${statusEmoji} ${tx.fiatAmount} ${tx.fiatCurrency} - ${date}\n`;
+      historyText += `   ID: ${txId} | ${tx.status.toUpperCase()}\n`;
+      
+      if (tx.status === 'failed' && tx.errorMessage) {
+        historyText += `   Error: ${tx.errorMessage}\n`;
+      }
+      historyText += `\n`;
+    }
+
+    const keyboard = [];
+    
+    // Add retry button for failed transactions
+    const failedTx = transactions.find(tx => tx.status === 'failed');
+    if (failedTx) {
+      keyboard.push([{ text: "🔄 Retry Failed Transaction", callback_data: `retry_tx_${failedTx.id}` }]);
+    }
+    
+    keyboard.push([{ text: "💰 New Withdrawal", callback_data: "offramp" }]);
+
+    return {
+      text: historyText,
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    };
+  } catch (error) {
+    console.error('[handleOfframpHistory] Error:', error);
+    return {
+      text: "❌ Failed to fetch transaction history. Please try again later.",
+    };
+  }
+}
+
+// Handle transaction retry with enhanced error handling
+async function handleRetryTransaction(params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ **Access Denied**\n\nUser not found. Please make sure you're registered with the bot.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔗 Register", url: "https://t.me/hedwig_bot" }]
+          ]
+        }
+      };
+    }
+
+    const transactionId = params.transaction_id;
+    if (!transactionId) {
+      return {
+        text: "❌ **Invalid Request**\n\nTransaction ID is required for retry. Please select a transaction from your history.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    }
+
+    // First check if transaction exists and is retryable
+    const existingTx = await offrampService.checkTransactionStatus(transactionId);
+    if (!existingTx) {
+      return {
+        text: "❌ **Transaction Not Found**\n\nThe transaction you're trying to retry doesn't exist or you don't have permission to access it.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    }
+
+    if (existingTx.status !== 'failed') {
+      const statusText = {
+        'completed': 'already completed',
+        'processing': 'currently processing',
+        'pending': 'still pending'
+      }[existingTx.status] || 'in an unknown state';
+      
+      return {
+        text: `⚠️ **Cannot Retry Transaction**\n\nThis transaction is ${statusText} and cannot be retried.\n\nOnly failed transactions can be retried.`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔍 Check Status", callback_data: `tx_status_${transactionId}` }],
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    }
+
+    const result = await offrampService.retryTransaction(transactionId);
+    
+    if (result) {
+      return {
+        text: `🔄 **Transaction Retry Successful**\n\n` +
+              `✅ Your failed transaction has been resubmitted\n\n` +
+              `**Details:**\n` +
+              `• Transaction ID: ${result.id.substring(0, 8)}\n` +
+              `• Amount: ${result.fiatAmount} ${result.fiatCurrency}\n` +
+              `• Status: Processing\n\n` +
+              `📱 You'll receive notifications as your transaction progresses.`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔍 Track Progress", callback_data: `tx_status_${result.id}` }],
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    } else {
+      return {
+        text: "❌ **Retry Failed**\n\n" +
+              "Unable to retry the transaction at this time. This could be due to:\n\n" +
+              "• Temporary service issues\n" +
+              "• Invalid transaction state\n" +
+              "• Network connectivity problems\n\n" +
+              "Please try again in a few minutes or contact support if the issue persists.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔄 Try Again", callback_data: `retry_tx_${transactionId}` }],
+            [{ text: "📊 View History", callback_data: "offramp_history" }],
+            [{ text: "💬 Contact Support", url: "https://t.me/hedwig_support" }]
+          ]
+        }
+      };
+    }
+  } catch (error) {
+    console.error('[handleRetryTransaction] Error:', error);
+    
+    // Provide specific error messages based on error type
+    let errorMessage = "❌ **Retry Failed**\n\n";
+    
+    if (error.message?.includes('Service temporarily')) {
+      errorMessage += "Our services are temporarily unavailable. Please try again in a few minutes.";
+    } else if (error.message?.includes('Network')) {
+      errorMessage += "Network connectivity issues detected. Please check your connection and try again.";
+    } else if (error.message?.includes('KYC')) {
+      errorMessage += "Your KYC verification has expired. Please complete verification again.";
+    } else {
+      errorMessage += "An unexpected error occurred. Please try again or contact support if the issue persists.";
+    }
+    
+    return {
+      text: errorMessage,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🔄 Try Again", callback_data: `retry_tx_${params.transaction_id || 'unknown'}` }],
+          [{ text: "📊 View History", callback_data: "offramp_history" }],
+          [{ text: "💬 Contact Support", url: "https://t.me/hedwig_support" }]
+        ]
+      }
+    };
+  }
+}
+
+// Handle transaction cancellation with enhanced error handling
+async function handleCancelTransaction(params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ **Access Denied**\n\nUser not found. Please make sure you're registered with the bot.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔗 Register", url: "https://t.me/hedwig_bot" }]
+          ]
+        }
+      };
+    }
+
+    const transactionId = params.transaction_id;
+    if (!transactionId) {
+      return {
+        text: "❌ **Invalid Request**\n\nTransaction ID is required for cancellation. Please select a transaction from your history.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    }
+
+    // First check if transaction exists and is cancellable
+    const existingTx = await offrampService.checkTransactionStatus(transactionId);
+    if (!existingTx) {
+      return {
+        text: "❌ **Transaction Not Found**\n\nThe transaction you're trying to cancel doesn't exist or you don't have permission to access it.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    }
+
+    if (existingTx.status !== 'pending') {
+      const statusText = {
+        'completed': 'already completed',
+        'processing': 'currently processing',
+        'failed': 'already failed'
+      }[existingTx.status] || 'in an unknown state';
+      
+      return {
+        text: `⚠️ **Cannot Cancel Transaction**\n\nThis transaction is ${statusText} and cannot be cancelled.\n\nOnly pending transactions can be cancelled before processing begins.`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔍 Check Status", callback_data: `tx_status_${transactionId}` }],
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    }
+
+    const success = await offrampService.cancelTransaction(transactionId);
+    
+    if (success) {
+      return {
+        text: `✅ **Transaction Cancelled Successfully**\n\n` +
+              `🚫 Your pending withdrawal has been cancelled\n\n` +
+              `**Details:**\n` +
+              `• Transaction ID: ${transactionId.substring(0, 8)}\n` +
+              `• Amount: ${existingTx.fiatAmount} ${existingTx.fiatCurrency}\n` +
+              `• Status: Cancelled\n\n` +
+              `💡 You can start a new withdrawal anytime.`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "💰 New Withdrawal", callback_data: "offramp" }],
+            [{ text: "📊 View History", callback_data: "offramp_history" }]
+          ]
+        }
+      };
+    } else {
+      return {
+        text: "❌ **Cancellation Failed**\n\n" +
+              "Unable to cancel the transaction at this time. This could be due to:\n\n" +
+              "• Transaction has already started processing\n" +
+              "• Temporary service issues\n" +
+              "• Network connectivity problems\n\n" +
+              "Please check the transaction status or contact support.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔍 Check Status", callback_data: `tx_status_${transactionId}` }],
+            [{ text: "📊 View History", callback_data: "offramp_history" }],
+            [{ text: "💬 Contact Support", url: "https://t.me/hedwig_support" }]
+          ]
+        }
+      };
+    }
+  } catch (error) {
+    console.error('[handleCancelTransaction] Error:', error);
+    
+    // Provide specific error messages based on error type
+    let errorMessage = "❌ **Cancellation Failed**\n\n";
+    
+    if (error.message?.includes('Service temporarily')) {
+      errorMessage += "Our services are temporarily unavailable. Please try again in a few minutes.";
+    } else if (error.message?.includes('Network')) {
+      errorMessage += "Network connectivity issues detected. Please check your connection and try again.";
+    } else if (error.message?.includes('already processing')) {
+      errorMessage += "This transaction has already started processing and cannot be cancelled.";
+    } else {
+      errorMessage += "An unexpected error occurred. Please try again or contact support if the issue persists.";
+    }
+    
+    return {
+      text: errorMessage,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🔍 Check Status", callback_data: `tx_status_${params.transaction_id || 'unknown'}` }],
+          [{ text: "📊 View History", callback_data: "offramp_history" }],
+          [{ text: "💬 Contact Support", url: "https://t.me/hedwig_support" }]
+        ]
+      }
+    };
+  }
+}
+
+// Handle transaction status check
+async function handleTransactionStatus(params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "❌ User not found. Please make sure you're registered with the bot.",
+      };
+    }
+
+    const transactionId = params.transaction_id;
+    if (!transactionId) {
+      return {
+        text: "❌ Transaction ID is required for status check.",
+      };
+    }
+
+    const transaction = await offrampService.checkTransactionStatus(transactionId);
+    
+    if (!transaction) {
+      return {
+        text: "❌ Transaction not found or you don't have permission to view it.",
+      };
+    }
+
+    const statusEmoji = {
+      'completed': '✅',
+      'processing': '🔄',
+      'pending': '⏳',
+      'failed': '❌'
+    }[transaction.status] || '❓';
+
+    let statusText = `${statusEmoji} **Transaction Status**\n\n`;
+    statusText += `**Transaction ID:** ${transaction.id.substring(0, 8)}\n`;
+    statusText += `**Amount:** ${transaction.amount} ${transaction.token}\n`;
+    statusText += `**Fiat Amount:** ${transaction.fiatAmount} ${transaction.fiatCurrency}\n`;
+    statusText += `**Status:** ${transaction.status.toUpperCase()}\n`;
+    statusText += `**Created:** ${transaction.createdAt.toLocaleDateString()}\n`;
+    statusText += `**Updated:** ${transaction.updatedAt.toLocaleDateString()}\n`;
+    
+    if (transaction.txHash) {
+      statusText += `**Blockchain TX:** ${transaction.txHash.substring(0, 10)}...\n`;
+    }
+    
+    if (transaction.errorMessage) {
+      statusText += `**Error:** ${transaction.errorMessage}\n`;
+    }
+
+    const keyboard = [];
+    
+    if (transaction.status === 'failed') {
+      keyboard.push([{ text: "🔄 Retry Transaction", callback_data: `retry_tx_${transaction.id}` }]);
+    }
+    
+    if (transaction.status === 'pending') {
+      keyboard.push([{ text: "❌ Cancel Transaction", callback_data: `cancel_tx_${transaction.id}` }]);
+    }
+    
+    keyboard.push([{ text: "📊 View History", callback_data: "offramp_history" }]);
+
+    return {
+      text: statusText,
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    };
+  } catch (error) {
+    console.error('[handleTransactionStatus] Error:', error);
+    return {
+      text: "❌ Failed to check transaction status. Please try again later.",
+    };
+  }
+}
+
 // Export for external use
-export { handleGetWalletBalance, handleGetWalletAddress, handleDepositNotification, sendManualReminder };
+export { handleGetWalletBalance, handleGetWalletAddress, handleDepositNotification, sendManualReminder, handleOfframp, handleKYCVerification, handleOfframpHistory, handleRetryTransaction, handleCancelTransaction, handleTransactionStatus };

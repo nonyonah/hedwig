@@ -768,6 +768,12 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
       case 'show_earnings_summary':
       case 'business_dashboard':
       case 'show_business_dashboard':
+      case 'offramp':
+      case 'kyc_verification':
+      case 'offramp_history':
+      case 'retry_transaction':
+      case 'cancel_transaction':
+      case 'transaction_status':
         // Use the existing actions.ts handler for these intents
         const actionResult = await handleAction(intent, params, userId);
         

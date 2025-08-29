@@ -61,29 +61,90 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     const payoutId: string | undefined = payload?.data?.id;
-    const status = payload?.event;
-    const meta = payload?.data?.meta || {};
+    const paycrestStatus = payload?.event;
+    const payoutData = payload?.data || {};
+    const meta = payoutData?.meta || {};
     const chatId = meta?.telegramChatId;
 
-    if (payoutId && status) {
-      // Update transaction status by payout_id
+    if (payoutId && paycrestStatus) {
+      // Map Paycrest status to our internal status
+      let internalStatus: string;
+      switch (paycrestStatus) {
+        case 'payout.initiated':
+        case 'payout.processing':
+          internalStatus = 'processing';
+          break;
+        case 'payout.completed':
+        case 'payout.success':
+          internalStatus = 'completed';
+          break;
+        case 'payout.failed':
+        case 'payout.rejected':
+        case 'payout.cancelled':
+          internalStatus = 'failed';
+          break;
+        default:
+          internalStatus = 'pending';
+      }
+
+      // Get transaction details for better notifications
+      const { data: transaction } = await supabase
+        .from('offramp_transactions')
+        .select('*')
+        .eq('payout_id', payoutId)
+        .single();
+
+      // Update transaction status with additional details
+      const updateData: any = {
+        status: internalStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      // Add error message for failed transactions
+      if (internalStatus === 'failed' && payoutData.reason) {
+        updateData.error_message = payoutData.reason;
+      }
+
       await supabase
         .from('offramp_transactions')
-        .update({ status })
+        .update(updateData)
         .eq('payout_id', payoutId);
-    }
 
-    // Send Telegram template updates based on status
-    if (chatId) {
-      let message = `ℹ️ Update: ${status}`;
-      if (status === 'payout.initiated') {
-        message = '✅ Your payout has been initiated.';
-      } else if (status === 'payout.completed') {
-        message = '🎉 Your payout has been completed.';
-      } else if (status === 'payout.failed') {
-        message = '❌ Your payout failed. Our team is investigating.';
+      // Send enhanced Telegram notifications
+      if (chatId && transaction) {
+        let message = '';
+        const amount = `${transaction.fiat_amount} ${transaction.fiat_currency}`;
+        const txId = transaction.id.substring(0, 8);
+
+        switch (internalStatus) {
+          case 'processing':
+            message = `🔄 **Withdrawal Processing**\n\n` +
+                     `Amount: ${amount}\n` +
+                     `Transaction ID: ${txId}\n\n` +
+                     `Your withdrawal is being processed. You'll receive another update when it's completed.`;
+            break;
+          case 'completed':
+            message = `✅ **Withdrawal Completed**\n\n` +
+                     `Amount: ${amount}\n` +
+                     `Transaction ID: ${txId}\n\n` +
+                     `🎉 Your funds have been successfully transferred to your bank account!`;
+            break;
+          case 'failed':
+            const errorMsg = updateData.error_message ? `\n\nReason: ${updateData.error_message}` : '';
+            message = `❌ **Withdrawal Failed**\n\n` +
+                     `Amount: ${amount}\n` +
+                     `Transaction ID: ${txId}${errorMsg}\n\n` +
+                     `Please contact support if you need assistance.`;
+            break;
+          default:
+            message = `ℹ️ **Withdrawal Update**\n\n` +
+                     `Amount: ${amount}\n` +
+                     `Status: ${internalStatus}\n` +
+                     `Transaction ID: ${txId}`;
+        }
+
+        await notifyTelegram(chatId, message);
       }
-      await notifyTelegram(chatId, message);
     }
 
     return res.status(200).json({ success: true });

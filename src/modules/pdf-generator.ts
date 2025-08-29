@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { InvoiceData } from './invoices';
+import { NaturalProposalGenerator } from '../lib/naturalProposalGenerator';
 
 export async function generateInvoicePDF(invoice: InvoiceData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -72,55 +73,78 @@ export async function generateProposalPDF(proposal: any): Promise<Buffer> {
         resolve(pdfData);
       });
 
-      // Header
-      doc.fontSize(20).text('PROJECT PROPOSAL', 50, 50);
-      doc.fontSize(12).text(`Proposal #: ${proposal.proposal_number}`, 50, 80);
-      doc.text(`Date: ${new Date().toLocaleDateString()}`, 50, 95);
+      // Header with Hedwig branding
+      doc.fontSize(24).fillColor('#2563eb').text('HEDWIG', 50, 50);
+      doc.fontSize(16).fillColor('#000000').text('Project Proposal', 50, 80);
+      doc.fontSize(10).text(`Proposal #: ${proposal.proposal_number}`, 50, 105);
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, 50, 120);
 
-      // From section
-      doc.fontSize(14).text('From:', 50, 130);
-      doc.fontSize(12).text(proposal.freelancer_name, 50, 150);
-      doc.text(proposal.freelancer_email, 50, 165);
+      // Client and Project Info
+      doc.fontSize(14).fillColor('#374151').text(`For: ${proposal.client_name}`, 50, 150);
+      doc.fontSize(12).fillColor('#6b7280').text(proposal.client_email, 50, 170);
+      doc.fontSize(16).fillColor('#000000').text(`Project: ${proposal.project_description}`, 50, 200);
 
-      // To section
-      doc.fontSize(14).text('To:', 300, 130);
-      doc.fontSize(12).text(proposal.client_name, 300, 150);
-      doc.text(proposal.client_email, 300, 165);
-
-      // Project overview
-      doc.fontSize(14).text('Project Overview:', 50, 200);
-      doc.fontSize(12).text(proposal.project_description, 50, 220, { width: 500 });
-
-      // Scope of work
-      if (proposal.scope_of_work) {
-        doc.fontSize(14).text('Scope of Work:', 50, 280);
-        doc.fontSize(12).text(proposal.scope_of_work, 50, 300, { width: 500 });
+      // Generate natural language proposal content
+      const naturalGenerator = new NaturalProposalGenerator();
+      const naturalInputs = NaturalProposalGenerator.standardizeProposalInputs(proposal);
+      
+      const proposalContent = naturalGenerator.generateFullProposal(naturalInputs);
+      
+      // Add the dynamic proposal content
+      let yPosition = 240;
+      const lineHeight = 18;
+      const paragraphSpacing = 12;
+      
+      // Split content into paragraphs and render
+      const paragraphs = proposalContent.split('\n\n');
+      
+      for (const paragraph of paragraphs) {
+        if (paragraph.trim()) {
+          // Check if we need a new page
+          if (yPosition > 700) {
+            doc.addPage();
+            yPosition = 50;
+          }
+          
+          doc.fontSize(11)
+             .fillColor('#374151')
+             .text(paragraph.trim(), 50, yPosition, { 
+               width: 500, 
+               align: 'left',
+               lineGap: 4
+             });
+          
+          // Calculate height of rendered text and update position
+          const textHeight = doc.heightOfString(paragraph.trim(), { width: 500 });
+          yPosition += textHeight + paragraphSpacing;
+        }
       }
-
-      // Timeline
-      if (proposal.timeline) {
-        doc.fontSize(14).text('Timeline:', 50, 360);
-        doc.fontSize(12).text(proposal.timeline, 50, 380, { width: 500 });
+      
+      // Rate section (highlighted)
+      yPosition += 20;
+      if (yPosition > 650) {
+        doc.addPage();
+        yPosition = 50;
       }
-
-      // Investment
-      doc.fontSize(16).text('Investment:', 50, 440);
-      doc.fontSize(20).text(`${proposal.amount} ${proposal.currency}`, 50, 460);
-
-      // Payment terms
-      if (proposal.payment_terms) {
-        doc.fontSize(14).text('Payment Terms:', 50, 500);
-        doc.fontSize(12).text(proposal.payment_terms, 50, 520, { width: 500 });
-      }
-
-      // Next steps
-      doc.fontSize(14).text('Next Steps:', 50, 580);
-      doc.fontSize(12).text('1. Review this proposal', 50, 600);
-      doc.text('2. Accept and make payment to begin work', 50, 615);
-      doc.text('3. Project kickoff within 24 hours of payment', 50, 630);
+      
+      doc.rect(50, yPosition - 10, 500, 60)
+         .fillAndStroke('#f3f4f6', '#e5e7eb');
+      
+      doc.fontSize(14)
+         .fillColor('#1f2937')
+         .text('Total Rate:', 70, yPosition + 10);
+      
+      doc.fontSize(20)
+         .fillColor('#059669')
+         .text(`${proposal.amount} ${proposal.currency}`, 70, yPosition + 30);
 
       // Footer
-      doc.fontSize(10).text('Thank you for considering our services!', 50, 700);
+      const footerY = doc.page.height - 100;
+      doc.fontSize(10)
+         .fillColor('#6b7280')
+         .text(`Prepared by: ${proposal.freelancer_name}`, 50, footerY)
+         .text(`Contact: ${proposal.freelancer_email}`, 50, footerY + 15)
+         .text('Powered by Hedwig - Professional Freelance Management', 50, footerY + 35);
 
       doc.end();
     } catch (error) {

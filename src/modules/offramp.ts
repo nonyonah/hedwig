@@ -95,7 +95,8 @@ export class OfframpModule {
    */
   async handleOfframpStart(chatId: number, userId: string): Promise<void> {
     try {
-      console.log(`[OfframpModule] Redirecting to mini app for user ${userId}`);
+      console.log(`[OfframpModule] Starting offramp flow for user ${userId}`);
+      
       // Clear any lingering legacy offramp state
       try {
         const { supabase } = await import('../lib/supabase');
@@ -107,12 +108,19 @@ export class OfframpModule {
       } catch (e) {
         console.warn('[OfframpModule] Failed clearing legacy offramp state (non-fatal):', e);
       }
-      const url = this.buildOfframpUrl(userId, chatId, 'Base');
-      await this.bot.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
-        reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
+
+      // Use the new integrated offramp logic from actions.ts
+      const { handleOfframp } = await import('../api/actions');
+      const result = await handleOfframp({}, userId);
+      
+      // Send the result message to the user
+      await this.bot.sendMessage(chatId, result.message, {
+        parse_mode: 'Markdown',
+        reply_markup: result.keyboard ? { inline_keyboard: result.keyboard } : undefined
       });
+      
     } catch (error) {
-      console.error('[OfframpModule] Error redirecting to mini app:', error);
+      console.error('[OfframpModule] Error starting offramp flow:', error);
       await this.bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try /offramp again.');
     }
   }

@@ -78,6 +78,7 @@ Valid intents:
 - view_proposals: For viewing existing proposals
 - edit_proposal: For editing existing proposals
 - offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
+- kyc_verification: For KYC status, identity verification, or compliance requirements
 - welcome: For greetings and help
 - clarification: ONLY when you absolutely cannot determine intent and need specific information
 
@@ -441,6 +442,18 @@ Response: {"intent": "send_payment_link_email", "params": {}}
 
 User: "I want to share my payment link by email"
 Response: {"intent": "send_payment_link_email", "params": {}}
+
+User: "withdraw 100 USDT to my bank account"
+Response: {"intent": "offramp", "params": {"amount": "100", "token": "USDT"}}
+
+User: "cash out my crypto" or "convert to fiat" or "withdraw to bank"
+Response: {"intent": "offramp", "params": {}}
+
+User: "check my KYC status" or "identity verification" or "am I verified?"
+Response: {"intent": "kyc_verification", "params": {}}
+
+User: "complete KYC" or "verify my identity" or "start verification"
+Response: {"intent": "kyc_verification", "params": {}}
 
 AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.

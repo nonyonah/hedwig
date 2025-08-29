@@ -369,6 +369,43 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
     
+    // Offramp keywords - comprehensive detection for cash out functionality
+    if (text.includes('offramp') || 
+        text.includes('cash out') || 
+        text.includes('withdraw to bank') ||
+        text.includes('convert to fiat') || 
+        text.includes('sell crypto') ||
+        text.includes('withdraw money') || 
+        text.includes('send to bank') ||
+        text.includes('bank transfer') || 
+        text.includes('fiat withdrawal') ||
+        text.includes('convert to cash') || 
+        text.includes('withdraw funds') ||
+        (text.includes('withdraw') && (text.includes('bank') || text.includes('fiat') || text.includes('cash'))) ||
+        (text.includes('convert') && (text.includes('bank') || text.includes('fiat') || text.includes('cash'))) ||
+        (text.includes('send') && text.includes('bank account')) ||
+        text.includes('cash withdrawal') || 
+        text.includes('money withdrawal')) {
+      const result = { intent: 'offramp', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+    
+    // KYC keywords - for KYC verification process
+    if (text.includes('kyc') || 
+        text.includes('verify identity') || 
+        text.includes('identity verification') ||
+        text.includes('complete verification') || 
+        text.includes('verify account') ||
+        text.includes('verification process') || 
+        text.includes('identity check') ||
+        (text.includes('verify') && text.includes('identity')) ||
+        (text.includes('complete') && text.includes('verification'))) {
+      const result = { intent: 'kyc_verification', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+    
     // News keywords
     if (text.includes('news') || 
         text.includes('latest') || 

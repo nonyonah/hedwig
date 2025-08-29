@@ -1,7 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { supabase } from '@/lib/supabase';
-import { sendEmailWithAttachment, generateProposalEmailTemplate } from '@/lib/emailService';
+import { sendEmailWithAttachment, generateNaturalProposalEmail } from '@/lib/emailService';
 import { generateProposalPDF } from '@/modules/pdf-generator';
+import { NaturalProposalGenerator } from '@/lib/naturalProposalGenerator';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -41,19 +42,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       payment_terms: '50% deposit required to begin work, remaining balance due upon completion'
     });
 
-    // Generate email HTML
-    const emailHtml = generateProposalEmailTemplate({
-      proposal_number: proposal.proposal_number || `PROP-${proposal.id}`,
-      freelancer_name: 'Freelancer Name',
-      freelancer_email: 'freelancer@hedwigbot.xyz',
-      client_name: proposal.client_name || 'Client',
-      project_description: proposal.description || 'Project description',
-      scope_of_work: proposal.deliverables ? proposal.deliverables.join(', ') : '',
-      timeline: proposal.timeline || '4 weeks',
-      amount: proposal.budget || 0,
-      currency: proposal.currency || 'USD',
-      id: proposal.id
-    });
+    // Generate natural language email content
+    const naturalGenerator = new NaturalProposalGenerator();
+    const naturalInputs = NaturalProposalGenerator.standardizeProposalInputs(proposal);
+    
+    const emailContent = naturalGenerator.generateEmailTemplate(naturalInputs);
+    const emailHtml = generateNaturalProposalEmail(emailContent);
 
     // Send email with PDF attachment
     const emailSent = await sendEmailWithAttachment({

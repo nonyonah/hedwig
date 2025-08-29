@@ -1,5 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
+import { NaturalProposalGenerator } from '../lib/naturalProposalGenerator';
 // Generate proposal number function moved here
 function generateProposalNumber(): string {
   const date = new Date();
@@ -10,7 +11,9 @@ function generateProposalNumber(): string {
   return `PROP-${year}${month}${day}-${random}`;
 }
 import { generateProposalPDF } from './pdf-generator';
-import { sendEmailWithAttachment, generateProposalEmailTemplate } from '../lib/emailService';
+import { sendEmailWithAttachment, generateNaturalProposalEmail } from '../lib/emailService';
+
+const naturalGenerator = new NaturalProposalGenerator();
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,16 +27,26 @@ export interface ProposalData {
   proposal_number: string;
   freelancer_name: string;
   freelancer_email: string;
+  freelancer_title?: string;
+  freelancer_experience?: string;
   client_name: string;
   client_email: string;
+  client_company?: string;
+  client_industry?: string;
   service_type: string;
-  project_description: string;
-  scope_of_work?: string;
+  project_description: string; // This will be used as project title
+  scope_of_work?: string; // This will be used as deliverables
   timeline?: string;
   amount: number;
   currency: 'USD' | 'NGN';
-  payment_terms?: string;
-  status: 'draft' | 'sent' | 'accepted' | 'rejected';
+  payment_terms?: string; // This will be used as extra notes
+  project_complexity?: 'simple' | 'moderate' | 'complex';
+  communication_style?: 'formal' | 'casual' | 'professional';
+  status: 'draft' | 'sent' | 'under_negotiation' | 'revised' | 'accepted' | 'rejected' | 'completed';
+  negotiation_notes?: string;
+  client_feedback?: string;
+  revision_count?: number;
+  last_revision_date?: string;
   payment_methods: {
     usdc_base?: string;
   };
@@ -66,6 +79,9 @@ export class ProposalModule {
         status: 'draft',
         currency: 'USD',
         service_type: 'Custom Service',
+        project_complexity: 'moderate',
+        communication_style: 'professional',
+        revision_count: 0,
         payment_methods: {
           usdc_base: ''
         }
@@ -83,9 +99,9 @@ export class ProposalModule {
       // Start the creation flow
       await this.bot.sendMessage(chatId, 
         `📋 *Creating New Proposal ${proposal.proposal_number}*\n\n` +
-        `Let's create a professional proposal for your client.\n\n` +
-        `ℹ️ *Note:* A 1% platform fee will be deducted from payments to support our services.\n\n` +
-        `*Step 1/8:* What's your name (freelancer/service provider)?`,
+        `Let's create a personalized, professional proposal for your client.\n\n` +
+        `This will generate a natural language proposal that invites discussion and negotiation.\n\n` +
+        `*Step 1/12:* What's your name (freelancer/service provider)?`,
         { 
           parse_mode: 'Markdown',
           reply_markup: {
@@ -126,8 +142,14 @@ export class ProposalModule {
       switch (step) {
         case 'freelancer_name':
           updateData.freelancer_name = userInput.trim();
+          nextStep = 'freelancer_title';
+          responseMessage = `✅ Freelancer name: ${userInput}\n\n*Step 2/12:* What's your professional title? (e.g., "Full-Stack Developer", "UI/UX Designer", "Digital Marketing Specialist")`;
+          break;
+
+        case 'freelancer_title':
+          updateData.freelancer_title = userInput.trim();
           nextStep = 'freelancer_email';
-          responseMessage = `✅ Freelancer name: ${userInput}\n\n*Step 2/8:* What's your email address?`;
+          responseMessage = `✅ Title: ${userInput}\n\n*Step 3/12:* What's your email address?`;
           break;
 
         case 'freelancer_email':
@@ -136,13 +158,29 @@ export class ProposalModule {
           }
           updateData.freelancer_email = userInput.trim();
           nextStep = 'client_name';
-          responseMessage = `✅ Email: ${userInput}\n\n*Step 3/8:* What's your client's name?`;
+          responseMessage = `✅ Email: ${userInput}\n\n*Step 4/12:* Who is the client? (Enter their name)`;
           break;
 
         case 'client_name':
           updateData.client_name = userInput.trim();
+          nextStep = 'client_company';
+          responseMessage = `✅ Client name: ${userInput}\n\n*Step 5/12:* What's the client's company name? (Type "skip" if individual client)`;
+          break;
+
+        case 'client_company':
+          if (userInput.trim().toLowerCase() !== 'skip') {
+            updateData.client_company = userInput.trim();
+          }
+          nextStep = 'client_industry';
+          responseMessage = `✅ Company info saved\n\n*Step 6/12:* What industry is the client in? (e.g., "E-commerce", "Healthcare", "Education", or "skip")`;
+          break;
+
+        case 'client_industry':
+          if (userInput.trim().toLowerCase() !== 'skip') {
+            updateData.client_industry = userInput.trim();
+          }
           nextStep = 'client_email';
-          responseMessage = `✅ Client name: ${userInput}\n\n*Step 4/8:* What's your client's email address?`;
+          responseMessage = `✅ Industry info saved\n\n*Step 7/12:* What's the client's email address?`;
           break;
 
         case 'client_email':
@@ -151,25 +189,35 @@ export class ProposalModule {
           }
           updateData.client_email = userInput.trim();
           nextStep = 'project_description';
-          responseMessage = `✅ Client email: ${userInput}\n\n*Step 5/8:* Describe the project overview:`;
+          responseMessage = `✅ Client email: ${userInput}\n\n*Step 8/12:* What's the project title? (e.g., "Website Redesign" or "Mobile App Development")`;
           break;
 
         case 'project_description':
           updateData.project_description = userInput.trim();
           nextStep = 'scope_of_work';
-          responseMessage = `✅ Project description saved\n\n*Step 6/8:* Define the scope of work (what exactly will you deliver)?`;
+          responseMessage = `✅ Project title saved\n\n*Step 9/12:* What are the deliverables? (List what you'll provide, separated by commas)`;
           break;
 
         case 'scope_of_work':
           updateData.scope_of_work = userInput.trim();
+          nextStep = 'project_complexity';
+          responseMessage = `✅ Deliverables saved\n\n*Step 10/12:* How would you rate the project complexity?\n\n🟢 Type "simple" - Basic tasks, straightforward requirements\n🟡 Type "moderate" - Standard complexity, some challenges\n🔴 Type "complex" - Advanced requirements, significant challenges`;
+          break;
+
+        case 'project_complexity':
+          const complexity = userInput.trim().toLowerCase();
+          if (!['simple', 'moderate', 'complex'].includes(complexity)) {
+            return '❌ Please choose: simple, moderate, or complex';
+          }
+          updateData.project_complexity = complexity as 'simple' | 'moderate' | 'complex';
           nextStep = 'timeline';
-          responseMessage = `✅ Scope of work saved\n\n*Step 7/8:* What's the project timeline? (e.g., "2-3 weeks" or "30 days")`;
+          responseMessage = `✅ Complexity set to ${complexity}\n\n*Step 11/12:* What's the timeline? (e.g., "2 weeks", "1 month", "by March 15th")`;
           break;
 
         case 'timeline':
           updateData.timeline = userInput.trim();
           nextStep = 'amount';
-          responseMessage = `✅ Timeline saved\n\n*Step 8/8:* What's the total investment? (e.g., 1500 USD or 600000 NGN)`;
+          responseMessage = `✅ Timeline saved\n\n*Step 12/12:* What's the budget? (e.g., 1500 USD or 600000 NGN)`;
           break;
 
         case 'amount':
@@ -260,26 +308,9 @@ export class ProposalModule {
 
   // Generate proposal preview
   private generateProposalPreview(proposal: ProposalData): string {
-    const platformFee = proposal.amount * 0.01;
-    const freelancerReceives = proposal.amount - platformFee;
+    const naturalInputs = NaturalProposalGenerator.standardizeProposalInputs(proposal);
     
-    return (
-      `📋 *Proposal Preview*\n\n` +
-      `*Proposal #:* ${proposal.proposal_number}\n` +
-      `*From:* ${proposal.freelancer_name} (${proposal.freelancer_email})\n` +
-      `*To:* ${proposal.client_name} (${proposal.client_email})\n` +
-      `*Project:* ${proposal.project_description}\n` +
-      `*Scope:* ${proposal.scope_of_work}\n` +
-      `*Timeline:* ${proposal.timeline}\n` +
-      `*Project Amount:* ${proposal.amount} ${proposal.currency}\n` +
-      `*Platform Fee (1%):* -${platformFee.toFixed(2)} ${proposal.currency}\n` +
-      `*You'll Receive:* ${freelancerReceives.toFixed(2)} ${proposal.currency}\n` +
-      `*Status:* ${proposal.status.toUpperCase()}\n\n` +
-      `ℹ️ *Note:* A 1% platform fee is deducted from payments to support our services.\n\n` +
-      `*Payment Methods Available:*\n` +
-      `💰 USDC (Base Network)\n\n` +
-      `What would you like to do next?`
-    );
+    return naturalGenerator.generateTelegramPreview(naturalInputs);
   }
 
   // Handle callback queries for proposal actions
@@ -347,16 +378,36 @@ export class ProposalModule {
       // Generate PDF
       const pdfBuffer = await generateProposalPDF(proposal);
       
-      // Send email with PDF attachment
-      await sendEmailWithAttachment({
-        to: proposal.client_email,
-        subject: `Project Proposal ${proposal.proposal_number} from ${proposal.freelancer_name}`,
-        html: generateProposalEmailTemplate(proposal),
-        attachments: [{
-          filename: `proposal-${proposal.proposal_number}.pdf`,
-          content: pdfBuffer
-        }]
-      });
+      // Generate natural language email content
+      const naturalInputs = {
+        freelancerName: proposal.freelancer_name,
+        freelancerTitle: proposal.freelancer_title || 'Professional',
+        clientName: proposal.client_name,
+        clientCompany: proposal.client_company,
+        clientIndustry: proposal.client_industry,
+        projectTitle: proposal.project_description,
+        projectDescription: proposal.scope_of_work || '',
+        scopeOfWork: proposal.scope_of_work || '',
+        deliverables: proposal.scope_of_work?.split(',').map(d => d.trim()) || [],
+        timeline: proposal.timeline || '',
+        budget: proposal.amount,
+        currency: proposal.currency,
+        complexity: proposal.project_complexity || 'moderate',
+        communicationStyle: proposal.communication_style || 'professional'
+      };
+      
+      const emailContent = naturalGenerator.generateEmailTemplate(naturalInputs);
+       
+       // Send email with PDF attachment
+       await sendEmailWithAttachment({
+         to: proposal.client_email,
+         subject: `Project Proposal: ${proposal.project_description} - ${proposal.freelancer_name}`,
+         html: generateNaturalProposalEmail(emailContent),
+         attachments: [{
+           filename: `proposal-${proposal.proposal_number}.pdf`,
+           content: pdfBuffer
+         }]
+       });
 
       // Update proposal status
       await supabase
@@ -602,7 +653,7 @@ export class ProposalModule {
   private async startEditAmount(chatId: number, proposalId: string) {
     await this.bot.sendMessage(chatId, 
       '💰 *Edit Amount*\n\n' +
-      'Please enter the new total investment amount:\n' +
+      'Please enter the new total rate amount:\n' +
       '(e.g., 1500 USD or 600000 NGN)',
       {
         parse_mode: 'Markdown',
@@ -738,14 +789,15 @@ export class ProposalModule {
 
   private async sendStepPrompt(chatId: number, step: string, proposalId: string) {
     const prompts: { [key: string]: string } = {
-      'freelancer_name': '*Step 1/8:* What\'s your name (freelancer/service provider)?',
-      'freelancer_email': '*Step 2/8:* What\'s your email address?',
-      'client_name': '*Step 3/8:* What\'s your client\'s name?',
-      'client_email': '*Step 4/8:* What\'s your client\'s email address?',
-      'project_description': '*Step 5/8:* Describe the project overview:',
-      'scope_of_work': '*Step 6/8:* Define the scope of work (what exactly will you deliver)?',
-      'timeline': '*Step 7/8:* What\'s the project timeline? (e.g., "2-3 weeks" or "30 days")',
-      'amount': '*Step 8/8:* What\'s the total investment? (e.g., 1500 USD or 600000 NGN)'
+      'freelancer_name': '*Step 1/9:* What\'s your name (freelancer/service provider)?',
+      'freelancer_email': '*Step 2/9:* What\'s your email address?',
+      'client_name': '*Step 3/9:* Who is the client? (Enter their name)',
+      'client_email': '*Step 4/9:* What\'s the client\'s email address?',
+      'project_description': '*Step 5/9:* What\'s the project title? (e.g., "Website Redesign" or "Mobile App Development")',
+      'scope_of_work': '*Step 6/9:* What are the deliverables? (List what you\'ll provide, separated by commas)',
+      'timeline': '*Step 7/9:* What\'s the timeline? (e.g., "2 weeks", "1 month", "by March 15th")',
+      'amount': '*Step 8/9:* What\'s the budget? (e.g., 1500 USD or 600000 NGN)',
+      'payment_terms': '*Step 9/9:* Any extra notes? (Optional - additional context, special requirements, etc.)'
     };
 
     const message = prompts[step] || 'Please provide the required information.';
