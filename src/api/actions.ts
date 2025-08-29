@@ -180,69 +180,33 @@ async function resolveUserId(userId: string): Promise<string | null> {
       return user.id;
     }
 
-    // If user not found by any method, create a new user in auth.users
-    console.log(`[resolveUserId] User ${userId} not found, creating new user in auth.users...`);
+    // If user not found by any method, create a new user directly in users table
+    console.log(`[resolveUserId] User ${userId} not found, creating new user record...`);
     
-    // Create user in auth.users table first
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-      email: `${userId}@hedwig.local`,
-      password: crypto.randomBytes(32).toString('hex'),
-      email_confirm: true,
-      user_metadata: {
-        name: userId,
-        phone: userId
-      }
-    });
+    // Create user directly in users table without auth.users dependency
+    const { data: newUser, error: createError } = await supabase
+      .from('users')
+      .insert({
+        username: userId,
+        telegram_id: userId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select('id')
+      .single();
     
-    if (authError) {
-      console.error(`[resolveUserId] Failed to create auth user ${userId}:`, authError);
-      return null;
+    if (createError) {
+      console.error(`[resolveUserId] Failed to create user ${userId}:`, createError);
+      // Return the userId as fallback for basic functionality
+      return userId;
     }
     
-    const newUserId = authUser.user.id;
-    console.log(`[resolveUserId] Successfully created auth user ${userId} with ID: ${newUserId}`);
-    
-    // Also create entry in users table for compatibility
-    try {
-      await supabase
-        .from('users')
-        .insert({
-          id: newUserId,
-          email: `${userId}@hedwig.local`,
-          name: userId,
-          phone_number: userId,
-          username: userId
-        });
-      console.log(`[resolveUserId] Created users table entry for ${userId}`);
-    } catch (userTableError) {
-      console.error(`[resolveUserId] Failed to create users table entry:`, userTableError);
-      // Continue anyway since auth.users entry exists
-    }
-    
-    // Automatically create wallets for the new user
-    try {
-      console.log(`[resolveUserId] Creating wallets for new user ${userId}...`);
-      
-      // Create EVM wallet
-      const evmWallet = await createWallet(newUserId, 'evm');
-      console.log(`[resolveUserId] EVM wallet created for user ${userId}: ${evmWallet.address}`);
-      
-      // Create Solana wallet
-      const solanaWallet = await createWallet(newUserId, 'solana');
-      console.log(`[resolveUserId] Solana wallet created for user ${userId}: ${solanaWallet.address}`);
-      
-      console.log(`[resolveUserId] Successfully created user ${userId} with wallets`);
-    } catch (walletError) {
-      console.error(`[resolveUserId] Failed to create wallets for user ${userId}:`, walletError);
-      // Don't fail user creation if wallet creation fails - wallets can be created later
-    }
-    
-    return newUserId;
+    console.log(`[resolveUserId] Created new user ${userId} with ID:`, newUser.id);
+    return newUser.id;
   } catch (error) {
     console.error('[resolveUserId] Error:', error);
     return null;
   }
-}
 
 // Helper function to get user wallet addresses
 async function getUserWalletAddresses(userId: string): Promise<string[]> {

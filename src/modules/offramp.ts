@@ -114,9 +114,9 @@ export class OfframpModule {
       const result = await handleOfframp({}, userId);
       
       // Send the result message to the user
-      await this.bot.sendMessage(chatId, result.message, {
+      await this.bot.sendMessage(chatId, result.text, {
         parse_mode: 'Markdown',
-        reply_markup: result.keyboard ? { inline_keyboard: result.keyboard } : undefined
+        reply_markup: result.reply_markup ? result.reply_markup : undefined
       });
       
     } catch (error) {
