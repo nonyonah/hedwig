@@ -77,6 +77,11 @@ export function getWalletConfig(): WalletConfig {
   return isProduction ? BASE_MAINNET_CONFIG : BASE_MAINNET_CONFIG;
 }
 
+// Alias for getCurrentConfig (used by admin API)
+export function getCurrentConfig(): WalletConfig {
+  return getWalletConfig();
+}
+
 // Environment variables documentation
 export const REQUIRED_ENV_VARS = [
   'HEDWIG_PLATFORM_WALLET',
