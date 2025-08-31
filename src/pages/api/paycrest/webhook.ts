@@ -60,27 +60,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data: any;
     };
 
-    const payoutId: string | undefined = payload?.data?.id;
+    const orderId: string | undefined = payload?.data?.id;
     const paycrestStatus = payload?.event;
-    const payoutData = payload?.data || {};
-    const meta = payoutData?.meta || {};
+    const orderData = payload?.data || {};
+    const meta = orderData?.meta || {};
     const chatId = meta?.telegramChatId;
 
-    if (payoutId && paycrestStatus) {
+    if (orderId && paycrestStatus) {
       // Map Paycrest status to our internal status
       let internalStatus: string;
       switch (paycrestStatus) {
-        case 'payout.initiated':
-        case 'payout.processing':
+        case 'order.initiated':
+        case 'order.processing':
           internalStatus = 'processing';
           break;
-        case 'payout.completed':
-        case 'payout.success':
+        case 'order.completed':
+        case 'order.success':
           internalStatus = 'completed';
           break;
-        case 'payout.failed':
-        case 'payout.rejected':
-        case 'payout.cancelled':
+        case 'order.failed':
+        case 'order.rejected':
+        case 'order.cancelled':
           internalStatus = 'failed';
           break;
         default:
@@ -91,7 +91,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { data: transaction } = await supabase
         .from('offramp_transactions')
         .select('*')
-        .eq('payout_id', payoutId)
+        .eq('order_id', orderId)
         .single();
 
       // Update transaction status with additional details
@@ -101,14 +101,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       // Add error message for failed transactions
-      if (internalStatus === 'failed' && payoutData.reason) {
-        updateData.error_message = payoutData.reason;
+      if (internalStatus === 'failed' && orderData.reason) {
+        updateData.error_message = orderData.reason;
       }
 
       await supabase
         .from('offramp_transactions')
         .update(updateData)
-        .eq('payout_id', payoutId);
+        .eq('order_id', orderId);
 
       // Send enhanced Telegram notifications
       if (chatId && transaction) {

@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
+import { offrampService } from '../services/offrampService';
 
 // Load environment variables
 dotenv.config();
@@ -37,7 +38,7 @@ interface OfframpState {
     bankName?: string;
     country?: string;
   };
-  payoutId?: string;
+  orderId?: string;
   payoutStatus?: PayoutStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -57,7 +58,9 @@ interface OfframpTransaction {
     country: string;
   };
   status: PayoutStatus;
-  payoutId?: string;
+  gatewayId?: string;
+  receiveAddress?: string;
+  orderId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -111,7 +114,7 @@ export class OfframpModule {
 
       // Use the new integrated offramp logic from actions.ts
       const { handleOfframp } = await import('../api/actions');
-      const result = await handleOfframp({}, userId);
+      const result = await handleOfframp({ text: '/offramp' }, userId);
       
       // Send the result message to the user
       await this.bot.sendMessage(chatId, result.text, {
@@ -160,8 +163,8 @@ export class OfframpModule {
     const chatId = callbackQuery.message?.chat.id || 0;
     const data = callbackQuery.data || '';
 
-    // Any legacy offramp callbacks should redirect to mini app
-    if (data.startsWith('offramp_')) {
+    // Handle cancel callback properly
+    if (data === 'offramp_cancel') {
       try {
         if (userId) {
           const { supabase } = await import('../lib/supabase');
@@ -174,9 +177,32 @@ export class OfframpModule {
       } catch (e) {
         console.warn('[OfframpModule] Failed clearing legacy state on callback (non-fatal):', e);
       }
-      const url = this.buildOfframpUrl(userId || String(chatId), chatId, 'Base');
-      await this.bot.sendMessage(chatId, '↪️ Please use the Offramp mini app:', {
-        reply_markup: { inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]] }
+      await this.bot.sendMessage(chatId, "❌ Withdrawal cancelled. You can start a new withdrawal anytime by typing 'offramp'.");
+      return true;
+    }
+
+    // Any other legacy offramp callbacks should redirect to mini app
+    // EXCEPT offramp_confirm which should be handled by the new actions-based flow
+    if (data.startsWith('offramp_') && data !== 'offramp_confirm') {
+      try {
+        if (userId) {
+          const { supabase } = await import('../lib/supabase');
+          await supabase
+            .from('user_states')
+            .delete()
+            .eq('user_id', userId)
+            .eq('state_type', 'offramp');
+        }
+      } catch (e) {
+        console.warn('[OfframpModule] Failed clearing legacy state on callback (non-fatal):', e);
+      }
+      // Instead of using web app, redirect to the actions-based offramp flow
+      await this.bot.sendMessage(chatId, '🏦 Starting USDC withdrawal process...\n\nPlease use the /offramp command to begin.', {
+        reply_markup: { 
+          inline_keyboard: [[
+            { text: '🏦 Start Withdrawal', callback_data: 'action_offramp' }
+          ]]
+        }
       });
       return true;
     }
@@ -667,16 +693,30 @@ export class OfframpModule {
         step: 'confirm_transaction'
       });
       
-      // Calculate fiat amount (mock conversion rate for now)
-      const conversionRate = state.token === 'USDC' ? 1.0 : 0.99; // Slightly different rates for different tokens
-      const fiatAmount = state.amount! * conversionRate;
+      // Get real exchange rate
+      let fiatAmount = state.amount! * 1650; // Fallback rate
+      let currency = 'NGN'; // Default currency
+      
+      try {
+        const rates = await offrampService.getExchangeRates(state.token!, state.amount!);
+        if (rates && rates['NGN'] && rates['NGN'] > 0) {
+          fiatAmount = rates['NGN'];
+          currency = 'NGN';
+        }
+      } catch (error) {
+        console.log('[OfframpModule] Using fallback exchange rate:', error);
+      }
+      
+      // Calculate per-unit exchange rate (rates already contains total amount)
+      const exchangeRate = state.amount! > 0 ? (fiatAmount / state.amount!).toFixed(2) : '0';
       
       // Show confirmation
       await this.bot.sendMessage(
         chatId,
         '💰 *Transaction Summary*\n\n' +
         `Amount: ${state.amount} ${state.token}\n` +
-        `Estimated Payout: $${fiatAmount.toFixed(2)} USD\n\n` +
+        `Exchange Rate: 1 ${state.token} = ${exchangeRate} ${currency}\n` +
+        `Estimated Payout: ${currency} ${fiatAmount.toLocaleString()}\n\n` +
         '*Bank Details:*\n' +
         `Account Number: ${accountNumber}\n` +
         `Bank Name: ${bankName}\n` +
@@ -729,16 +769,16 @@ export class OfframpModule {
         throw new Error('Paycrest API token not configured');
       }
       
-      // Calculate fiat amount (mock conversion rate for now)
-      const conversionRate = state.token === 'USDC' ? 1 : 1; // 1:1 for simplicity
-      const fiatAmount = state.amount * conversionRate;
+      // Get real exchange rates from offrampService
+      const rates = await offrampService.getExchangeRates('USDC', state.amount!);
+      const fiatAmount = rates['NGN'] || state.amount! * 1650; // fallback rate
       
       // Call Paycrest API to create payout
       const response = await axios.post(
         `${PAYCREST_API_BASE_URL}/payout`,
         {
           amount: fiatAmount,
-          currency: 'USD',
+          currency: 'NGN', // Use NGN instead of USD
           bankDetails: {
             accountNumber: state.bankDetails.accountNumber,
             bankName: state.bankDetails.bankName,
@@ -754,10 +794,10 @@ export class OfframpModule {
         }
       );
       
-      if (response.data && response.data.payoutId) {
+      if (response.data && response.data.orderId) {
         // Update state
         await this.updateOfframpState(userId, {
-          payoutId: response.data.payoutId,
+          orderId: response.data.orderId,
           payoutStatus: 'pending',
           step: 'payout_processing'
         });
@@ -776,7 +816,7 @@ export class OfframpModule {
             country: state.bankDetails.country!
           },
           status: 'pending',
-          payoutId: response.data.payoutId,
+          orderId: response.data.orderId,
           createdAt: new Date(),
           updatedAt: new Date()
         };
@@ -790,14 +830,14 @@ export class OfframpModule {
           chatId,
           '✅ *Transaction Initiated*\n\n' +
           `Your withdrawal of ${state.amount} ${state.token} has been initiated.\n\n` +
-          `Payout ID: ${response.data.payoutId}\n` +
+          `Order ID: ${response.data.orderId}\n` +
           `Status: Pending\n\n` +
           'We will notify you once the transaction is completed. This usually takes 1-2 business days.',
           { parse_mode: 'Markdown' }
         );
         
         // Start polling for status updates
-        this.pollPayoutStatus(chatId, userId, response.data.payoutId);
+        this.pollPayoutStatus(chatId, userId, response.data.orderId);
       } else {
         throw new Error('Failed to create payout');
       }
@@ -840,7 +880,7 @@ export class OfframpModule {
   /**
    * Poll payout status
    */
-  private async pollPayoutStatus(chatId: number, userId: string, payoutId: string): Promise<void> {
+  private async pollPayoutStatus(chatId: number, userId: string, orderId: string): Promise<void> {
     try {
       // Initial delay
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -854,7 +894,7 @@ export class OfframpModule {
       
       // Check status with Paycrest
       const response = await axios.get(
-        `${PAYCREST_API_BASE_URL}/payout/status/${payoutId}`,
+        `${PAYCREST_API_BASE_URL}/order/status/${orderId}`,
         {
           headers: {
             'Authorization': `Bearer ${this.apiToken}`,
@@ -881,7 +921,7 @@ export class OfframpModule {
         await supabase
           .from('offramp_transactions')
           .update({ status, updated_at: new Date().toISOString() })
-          .eq('payout_id', payoutId);
+          .eq('order_id', orderId);
         
         if (status === 'completed') {
           // Transaction completed
@@ -889,7 +929,7 @@ export class OfframpModule {
             chatId,
             '🎉 *Transaction Completed*\n\n' +
             `Your withdrawal has been successfully processed and the funds have been sent to your bank account.\n\n` +
-            `Payout ID: ${payoutId}\n` +
+            `Order ID: ${orderId}\n` +
             'Thank you for using our service!',
             { parse_mode: 'Markdown' }
           );
@@ -902,7 +942,7 @@ export class OfframpModule {
             chatId,
             '❌ *Transaction Failed*\n\n' +
             `Unfortunately, your withdrawal could not be processed. Please contact support for assistance.\n\n` +
-            `Payout ID: ${payoutId}`,
+            `Order ID: ${orderId}`,
             { parse_mode: 'Markdown' }
           );
           
@@ -910,7 +950,7 @@ export class OfframpModule {
           await this.clearOfframpState(userId);
         } else {
           // Still processing, continue polling
-          setTimeout(() => this.pollPayoutStatus(chatId, userId, payoutId), 60000); // Check again in 1 minute
+          setTimeout(() => this.pollPayoutStatus(chatId, userId, orderId), 60000); // Check again in 1 minute
         }
       } else {
         throw new Error('Failed to get payout status');
@@ -918,7 +958,7 @@ export class OfframpModule {
     } catch (error) {
       console.error('[OfframpModule] Error polling payout status:', error);
       // Continue polling despite error
-      setTimeout(() => this.pollPayoutStatus(chatId, userId, payoutId), 60000); // Try again in 1 minute
+      setTimeout(() => this.pollPayoutStatus(chatId, userId, orderId), 60000); // Try again in 1 minute
     } finally {
       // Invalidate API token after status check
       this.invalidateApiToken();

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 const PAYCREST_API_TOKEN = process.env.PAYCREST_API_TOKEN;
-const PAYCREST_API_BASE_URL = 'https://api.paycrest.com/v1/sender';
+const PAYCREST_API_BASE_URL = 'https://api.paycrest.io/v1';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {

@@ -73,8 +73,8 @@ export default async function handler(
       }
     };
 
-    // Process the offramp
-    const transaction = await offrampService.processOfframp(offrampRequest);
+    // Prepare the offramp
+    const transaction = await offrampService.prepareOfframp(offrampRequest);
 
     res.status(200).json({
       success: true,

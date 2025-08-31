@@ -70,7 +70,9 @@ async function handleGetTransactions(
           bankDetails: transaction.bankDetails,
           status: transaction.status,
           txHash: transaction.txHash,
-          payoutId: transaction.payoutId,
+          gatewayId: transaction.gatewayId,
+          receiveAddress: transaction.receiveAddress,
+          orderId: transaction.orderId,
           errorMessage: transaction.errorMessage,
           createdAt: transaction.createdAt,
           updatedAt: transaction.updatedAt
@@ -92,7 +94,9 @@ async function handleGetTransactions(
         bankDetails: tx.bankDetails,
         status: tx.status,
         txHash: tx.txHash,
-        payoutId: tx.payoutId,
+        gatewayId: tx.gatewayId,
+        receiveAddress: tx.receiveAddress,
+        orderId: tx.orderId,
         errorMessage: tx.errorMessage,
         createdAt: tx.createdAt,
         updatedAt: tx.updatedAt

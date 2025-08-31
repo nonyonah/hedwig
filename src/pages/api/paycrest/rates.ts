@@ -33,7 +33,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       fetchRate('USDC', 1, 'KES', 'base'),
     ]);
 
-    res.status(200).json({ success: true, rates: { NGN: ngnRate, KSH: kesRate } });
+    // Parse rates to numbers since upstream returns strings
+    const parsedRates = {
+      NGN: parseFloat(ngnRate),
+      KSH: parseFloat(kesRate)
+    };
+
+    res.status(200).json({ success: true, rates: parsedRates });
   } catch (error: any) {
     console.error('[api/paycrest/rates] Error:', error?.message || error);
     res.status(500).json({ success: false, error: error?.message || 'Failed to fetch rates' });

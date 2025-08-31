@@ -412,8 +412,22 @@ export class BotIntegration {
       await this.bot.sendMessage(msg.chat.id, '❌ Something went wrong, user not identified.');
       return;
     }
-    // Delegate to the OfframpModule to handle the entire flow
-    await this.offrampModule.handleOfframpStart(msg.chat.id, msg.from.id.toString());
+    // Use the new actions-based offramp flow
+    try {
+      const result = await handleAction('offramp', {
+        chatId: msg.chat.id,
+        chain: 'base' // Default to base chain
+      }, msg.from.id.toString());
+      
+      // Send the result back to Telegram
+      await this.bot.sendMessage(msg.chat.id, result.text, {
+        parse_mode: 'Markdown',
+        reply_markup: result.reply_markup
+      });
+    } catch (error) {
+      console.error('[BotIntegration] Error starting offramp flow:', error);
+      await this.bot.sendMessage(msg.chat.id, '❌ Failed to start offramp flow. Please try again.');
+    }
   }
 
   // Handle business settings
@@ -599,7 +613,7 @@ export class BotIntegration {
         try {
           const evmBalances = await getBalances(evmWallet.address, 'evm');
           
-          response += `🔷 *EVM Wallet (Base Network):*\n`;
+          response += `🔷 *Base Network:*\n`;
           if (evmBalances && Array.isArray(evmBalances) && evmBalances.length > 0) {
             evmBalances.forEach((balance: any) => {
               const amount = balance.amount || balance.balance || '0';
@@ -612,7 +626,7 @@ export class BotIntegration {
           response += `\n`;
         } catch (evmError) {
           console.error('[BotIntegration] Error fetching EVM balances:', evmError);
-          response += `🔷 *EVM Wallet (Base Network):* Error fetching balances\n\n`;
+          response += `🔷 *Base Network:* Error fetching balances\n\n`;
         }
       }
       
@@ -899,7 +913,23 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data.startsWith('offramp_')) {
-        await this.offrampModule.handleOfframpCallback(callbackQuery);
+        // Use the new actions-based offramp callback handling
+        try {
+          const result = await handleAction('offramp_callback', {
+           chatId: chatId,
+           callbackData: data,
+           messageId: callbackQuery.message?.message_id
+         }, userId || callbackQuery.from.id.toString());
+         
+         // Send the result back to Telegram
+         await this.bot.sendMessage(chatId, result.text, {
+           parse_mode: 'Markdown',
+           reply_markup: result.reply_markup
+         });
+        } catch (error) {
+          console.error('[BotIntegration] Error handling offramp callback:', error);
+          await this.bot.sendMessage(chatId, '❌ Failed to process offramp action. Please try again.');
+        }
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
 
@@ -1032,7 +1062,22 @@ export class BotIntegration {
         case '💱 Withdraw':
         case '/offramp':
         case '/withdraw': {
-          await this.offrampModule.handleOfframpStart(chatId, userId);
+          // Use the new actions-based offramp flow
+          try {
+            const result = await handleAction('offramp', {
+             chatId: chatId,
+             chain: 'base' // Default to base chain
+           }, userId);
+           
+           // Send the result back to Telegram
+           await this.bot.sendMessage(chatId, result.text, {
+             parse_mode: 'Markdown',
+             reply_markup: result.reply_markup
+           });
+          } catch (error) {
+            console.error('[BotIntegration] Error starting offramp flow:', error);
+            await this.bot.sendMessage(chatId, '❌ Failed to start offramp flow. Please try again.');
+          }
           return true;
         }
 
@@ -1092,9 +1137,27 @@ export class BotIntegration {
             await this.proposalModule.continueProposalCreation(message.chat.id, userId, ongoingProposal, message.text);
             return true;
           }
+          // Check for active offramp session using the new session service
+          const { offrampSessionService } = await import('../services/offrampSessionService');
+          const activeOfframpSession = await offrampSessionService.getActiveSession(userId);
+          if (activeOfframpSession) {
+            console.log(`[BotIntegration] [FLOW] Continuing active offramp session for user ${userId}`);
+            // Route to the actions-based offramp handler
+            const { handleAction } = await import('../api/actions');
+            const result = await handleAction('offramp', { text: message.text }, userId);
+            if (result) {
+              await this.bot.sendMessage(message.chat.id, result.text, {
+                reply_markup: result.reply_markup as any,
+                parse_mode: 'Markdown',
+              });
+            }
+            return true;
+          }
+          
+          // Also check for legacy offramp state and clean it up
           const ongoingOfframp = await this.getOngoingOfframp(userId);
           if (ongoingOfframp) {
-            console.log(`[BotIntegration] [FLOW] Redirecting legacy offramp state to mini app for user ${userId}`);
+            console.log(`[BotIntegration] [FLOW] Cleaning up legacy offramp state for user ${userId}`);
             try {
               // Clear any lingering legacy state
               await supabase
@@ -1105,8 +1168,6 @@ export class BotIntegration {
             } catch (e) {
               console.warn('[BotIntegration] Failed clearing legacy offramp state (non-fatal):', e);
             }
-            await this.offrampModule.handleOfframpStart(message.chat.id, userId);
-            return true;
           }
           // --- LLM agent and currency conversion integration ---
           if (message.text && this.isNaturalLanguageQuery(message.text)) {

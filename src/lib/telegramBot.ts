@@ -326,6 +326,7 @@ export class TelegramBotService {
     }
 
     console.log('[TelegramBot] Handling callback query:', { chatId, data, fromId: from.id });
+    console.log('[TelegramBot] Callback query data received:', data);
 
     try {
       // Answer the callback query to remove loading state
@@ -388,6 +389,21 @@ export class TelegramBotService {
           await this.sendAboutMessage(chatId);
           break;
         default:
+          // Handle offramp callbacks
+          if (data.startsWith('payout_bank_') || data.startsWith('select_bank_') || data.startsWith('back_to_') || data.startsWith('offramp_') || data === 'action_offramp') {
+            console.log(`[TelegramBot] Routing offramp callback: ${data}`);
+            // Route to actions.ts offramp handler
+            const { handleAction } = await import('../api/actions');
+            const result = await handleAction('offramp', { callback_data: data }, userId);
+            if (result && result.text) {
+              await this.sendMessage(chatId, result.text, {
+                reply_markup: result.reply_markup as any,
+                parse_mode: 'Markdown'
+              });
+            }
+            break;
+          }
+          
           // Handle dynamic callbacks like 'view_invoice_ID' or 'delete_invoice_ID'
           if (data.startsWith('view_invoice_') || data.startsWith('delete_invoice_')) {
             // Delegate to a specific handler in BotIntegration if it exists

@@ -107,8 +107,16 @@ function setupBotHandlers() {
 
       const chatId = msg.chat.id;
       
-      // Send typing indicator immediately
-      await bot?.sendChatAction(chatId, 'typing');
+      // Send typing indicator immediately (non-blocking)
+      try {
+        await Promise.race([
+          bot?.sendChatAction(chatId, 'typing'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Typing indicator timeout')), 3000))
+        ]);
+      } catch (typingError) {
+        console.warn('[Webhook] Typing indicator failed:', typingError.message);
+        // Continue processing even if typing indicator fails
+      }
       
       // Ensure user exists in database (with timeout)
       if (msg.from) {
@@ -185,16 +193,20 @@ function setupBotHandlers() {
         return;
       }
 
-      // Answer callback query immediately to prevent timeout
-      try {
-        await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing...' });
-      } catch (error) {
-        // Ignore errors for expired callback queries
-        if (error instanceof Error && error.message.includes('query is too old')) {
-          console.log(`[Webhook] Callback query ${callbackQuery.id} expired, skipping...`);
-          return;
+      // Answer callback query immediately to prevent timeout (skip for test callbacks)
+      if (callbackQuery.id !== 'test_callback') {
+        try {
+          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing...' });
+        } catch (error) {
+          // Ignore errors for expired callback queries
+          if (error instanceof Error && error.message.includes('query is too old')) {
+            console.log(`[Webhook] Callback query ${callbackQuery.id} expired, skipping...`);
+            return;
+          }
+          throw error; // Re-throw other errors
         }
-        throw error; // Re-throw other errors
+      } else {
+        console.log('[Webhook] Skipping answerCallbackQuery for test callback');
       }
 
       // Check if it's a business feature callback (with timeout)
@@ -236,6 +248,32 @@ function setupBotHandlers() {
           break;
           
         default:
+          // Handle offramp callbacks
+          if (data?.startsWith('payout_bank_') || data?.startsWith('select_bank_') || data?.startsWith('back_to_') || data?.startsWith('offramp_') || data === 'action_offramp') {
+            console.log(`[Webhook] Routing offramp callback: ${data}`);
+            try {
+              // Route to actions.ts offramp handler
+              const { handleAction } = await import('../../api/actions');
+              // Get user ID from chat ID
+              const userId = await botIntegration?.getUserIdByChatId(chatId);
+              if (!userId) {
+                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                return;
+              }
+              const result = await handleAction('offramp', { callback_data: data }, userId);
+              if (result && result.text) {
+                await bot?.sendMessage(chatId, result.text, {
+                  reply_markup: result.reply_markup as any,
+                  parse_mode: 'Markdown'
+                });
+              }
+            } catch (error) {
+              console.error('[Webhook] Error handling offramp callback:', error);
+              await bot?.sendMessage(chatId, '❌ Error processing your request. Please try again.');
+            }
+            return;
+          }
+          
           // Handle confirm_send callback data
           if (data?.startsWith('confirm_')) {
             

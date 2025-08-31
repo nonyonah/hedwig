@@ -2,6 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import { getOrCreateCdpWallet, transferToken, getBalances } from '../lib/cdp';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
+import { getCurrentConfig } from '../lib/envConfig';
+// Removed viem imports - now using CDP SDK for all blockchain operations
+import { erc20Abi, paycrestGatewayAbi } from '../lib/abis';
 
 // Load environment variables
 dotenv.config();
@@ -11,13 +14,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Paycrest API configuration
+// Paycrest API configuration - use direct environment variables
 const PAYCREST_API_BASE_URL = 'https://api.paycrest.io/v1';
 const PAYCREST_API_KEY = process.env.PAYCREST_API_KEY;
+const PAYCREST_API_TOKEN = process.env.PAYCREST_API_TOKEN;
+const PAYCREST_API_SECRET = process.env.PAYCREST_API_SECRET;
+const PAYCREST_GATEWAY_CONTRACT_ADDRESS = '0xYourPaycrestGatewayContractAddressHere'; // TODO: Add the actual contract address
+
+// Validate API credentials on service initialization
+if (!PAYCREST_API_KEY || !PAYCREST_API_TOKEN || !PAYCREST_API_SECRET) {
+  console.warn('[OfframpService] Paycrest API credentials not fully configured - offramp functionality will be limited');
+  console.warn('[OfframpService] Available Paycrest config:', {
+    apiKey: !!PAYCREST_API_KEY,
+    apiToken: !!PAYCREST_API_TOKEN,
+    apiSecret: !!PAYCREST_API_SECRET
+  });
+}
 
 // Supported tokens for offramp (Base network only)
 const SUPPORTED_TOKENS = ['USDC'];
 const SUPPORTED_CURRENCIES = ['NGN', 'KES'];
+const MINIMUM_USD_AMOUNT = 1; // Minimum $1 USD equivalent
 const UNSUPPORTED_TOKENS = ['SOL', 'ETH', 'USDT'];
 const SOLANA_TOKENS = ['SOL', 'USDC-SOL', 'USDT-SOL'];
 
@@ -27,6 +44,7 @@ export interface OfframpRequest {
   amount: number;
   token: string;
   currency: string;
+  chatId?: string;
   bankDetails: {
     accountNumber: string;
     bankName: string;
@@ -50,7 +68,9 @@ export interface OfframpTransaction {
   };
   status: 'pending' | 'processing' | 'completed' | 'failed';
   txHash?: string;
-  payoutId?: string;
+  gatewayId?: string;
+  receiveAddress?: string;
+  orderId?: string;
   errorMessage?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -207,10 +227,11 @@ export class OfframpService {
     try {
       const rates: Record<string, number> = {};
       
+      // Use only supported currencies (NGN, KES)
       for (const currency of SUPPORTED_CURRENCIES) {
         try {
           const response = await axios.get(
-            `${PAYCREST_API_BASE_URL}/rates/${token.toLowerCase()}/${amount}/${currency.toLowerCase()}`,
+            `${PAYCREST_API_BASE_URL}/rates/${token.toUpperCase()}/${amount}/${currency.toUpperCase()}`,
             {
               headers: {
                 'Authorization': `Bearer ${PAYCREST_API_KEY}`
@@ -218,19 +239,23 @@ export class OfframpService {
             }
           );
           
-          rates[currency] = response.data.data.amount;
+          // According to Paycrest API docs, response.data.data contains the rate as a string
+          const rateData = response.data;
+          if (rateData && rateData.status === 'success' && rateData.data && !isNaN(parseFloat(rateData.data))) {
+            rates[currency] = parseFloat(rateData.data);
+          } else {
+            throw new Error(`Invalid rate received: ${JSON.stringify(rateData)}`);
+          }
         } catch (error) {
           console.warn(`[OfframpService] Failed to get rate for ${currency}:`, error);
-          // Use fallback rates
-          rates[currency] = currency === 'NGN' ? 1650 : 150;
+          throw new Error(`Failed to fetch exchange rate for ${currency}`);
         }
       }
       
       return rates;
     } catch (error) {
       console.error('[OfframpService] Error getting exchange rates:', error);
-      // Return fallback rates
-      return { NGN: 1650, KES: 150 };
+      throw error;
     }
   }
 
@@ -275,9 +300,8 @@ export class OfframpService {
       const response = await axios.post(
         `${PAYCREST_API_BASE_URL}/verify-account`,
         {
-          accountNumber,
-          bankCode,
-          currency: currency.toLowerCase()
+          institution: bankCode,
+          accountIdentifier: accountNumber
         },
         {
           headers: {
@@ -287,11 +311,17 @@ export class OfframpService {
         }
       );
 
-      const data = response.data.data;
-      return {
-        isValid: data.valid || false,
-        accountName: data.accountName
-      };
+      const data = response.data;
+      if (data.status === 'success' && data.data) {
+        return {
+          isValid: true,
+          accountName: data.data
+        };
+      } else {
+        return {
+          isValid: false
+        };
+      }
     } catch (error) {
       console.error('[OfframpService] Error verifying bank account:', error);
       return { isValid: false };
@@ -357,245 +387,313 @@ export class OfframpService {
   }
 
   /**
-   * Process offramp transaction with enhanced error handling
+   * Validate offramp request inputs
    */
-  async processOfframp(request: OfframpRequest): Promise<OfframpTransaction> {
-    let transactionId: string | undefined;
-    
+  private validateOfframpRequest(request: OfframpRequest) {
+    const tokenUpper = request.token.toUpperCase();
+
+    if (SOLANA_TOKENS.includes(tokenUpper) || tokenUpper.includes('SOL')) {
+      throw new Error('🚧 Solana network support is coming soon! Currently, we only support USDC on Base network. Please use USDC on Base for withdrawals.');
+    }
+
+    if (UNSUPPORTED_TOKENS.includes(tokenUpper)) {
+      if (tokenUpper === 'ETH') {
+        throw new Error('🚧 ETH withdrawals are not available yet. Currently, we only support USDC on Base network. Please convert your ETH to USDC first.');
+      }
+      if (tokenUpper === 'SOL') {
+        throw new Error('🚧 SOL withdrawals are coming soon! Currently, we only support USDC on Base network.');
+      }
+      if (tokenUpper === 'USDT') {
+        throw new Error('🚧 USDT withdrawals are not available yet. Currently, we only support USDC on Base network. Please convert your USDT to USDC first.');
+      }
+    }
+
+    if (!SUPPORTED_TOKENS.includes(tokenUpper)) {
+      throw new Error(`🚧 ${request.token} withdrawals are not supported yet. Currently, we only support USDC on Base network.`);
+    }
+
+    if (!SUPPORTED_CURRENCIES.includes(request.currency.toUpperCase())) {
+      this.handleOfframpError(new Error(`Unsupported currency: ${request.currency}`), 'validation');
+    }
+  }
+
+  /**
+   * Check wallet balance for a given token
+   */
+  private async checkWalletBalance(userId: string, token: string, amount: number) {
     try {
-      // 1. Validate inputs and network support
-      const tokenUpper = request.token.toUpperCase();
-      
-      // Check for Solana tokens
-      if (SOLANA_TOKENS.includes(tokenUpper) || tokenUpper.includes('SOL')) {
-        throw new Error('🚧 Solana network support is coming soon! Currently, we only support USDC on Base network. Please use USDC on Base for withdrawals.');
-      }
-      
-      // Check for other unsupported tokens
-      if (UNSUPPORTED_TOKENS.includes(tokenUpper)) {
-        if (tokenUpper === 'ETH') {
-          throw new Error('🚧 ETH withdrawals are not available yet. Currently, we only support USDC on Base network. Please convert your ETH to USDC first.');
+      const wallet = await getOrCreateCdpWallet(userId, 'base');
+      const balancesResponse = await getBalances(wallet.address, 'base');
+      console.log(`[OfframpService] Raw balance response:`, JSON.stringify(balancesResponse, null, 2));
+
+      let balances;
+      if (balancesResponse && typeof balancesResponse === 'object') {
+        if (balancesResponse.data && Array.isArray(balancesResponse.data)) {
+          balances = balancesResponse.data;
+        } else if (Array.isArray(balancesResponse)) {
+          balances = balancesResponse;
+        } else {
+          console.error('[OfframpService] Invalid balances response structure:', balancesResponse);
+          this.handleOfframpError(new Error('Invalid balances response'), 'balance_check');
         }
-        if (tokenUpper === 'SOL') {
-          throw new Error('🚧 SOL withdrawals are coming soon! Currently, we only support USDC on Base network.');
-        }
-        if (tokenUpper === 'USDT') {
-          throw new Error('🚧 USDT withdrawals are not available yet. Currently, we only support USDC on Base network. Please convert your USDT to USDC first.');
-        }
-      }
-      
-      // Check for supported tokens
-      if (!SUPPORTED_TOKENS.includes(tokenUpper)) {
-        throw new Error(`🚧 ${request.token} withdrawals are not supported yet. Currently, we only support USDC on Base network.`);
+      } else {
+        console.error('[OfframpService] Invalid balances response:', balancesResponse);
+        this.handleOfframpError(new Error('Invalid balances response'), 'balance_check');
       }
 
-      if (!SUPPORTED_CURRENCIES.includes(request.currency.toUpperCase())) {
-        this.handleOfframpError(new Error(`Unsupported currency: ${request.currency}`), 'validation');
+      const tokenBalance = balances.find(b =>
+        b.asset && b.asset.symbol && b.asset.symbol.toUpperCase() === token.toUpperCase()
+      );
+
+      if (!tokenBalance) {
+        console.error(`[OfframpService] Token ${token} not found in wallet. Available tokens:`,
+          balances.map(b => b.asset?.symbol).filter(Boolean));
+        this.handleOfframpError(new Error(`Token ${token} not found in wallet`), 'balance_check');
       }
 
-      // TODO: Re-enable KYC check once suitable provider is found
-      // 2. Check KYC status
-      // try {
-      //   const kycStatus = await this.checkKYCStatus(request.userId);
-      //   if (kycStatus.status !== 'verified') {
-      //     this.handleOfframpError(new Error('KYC verification required'), 'kyc_check');
-      //   }
-      // } catch (error) {
-      //   this.handleOfframpError(error, 'kyc_check');
-      // }
+      const decimals = tokenBalance.asset.decimals || 18;
+      const balanceInWei = BigInt(tokenBalance.amount || '0');
+      const divisor = BigInt(10 ** decimals);
+      const balanceInTokens = Number(balanceInWei) / Number(divisor);
 
-      // 3. Get user's wallet
-      let wallet;
-      try {
-        wallet = await getOrCreateCdpWallet(request.userId, 'base');
-      } catch (error) {
-        this.handleOfframpError(error, 'wallet_access');
-      }
-      
-      // 4. Check wallet balance
-      try {
-        const balances = await getBalances(wallet.address, 'base');
-        const tokenBalance = balances.find(b => 
-          b.asset.symbol.toUpperCase() === request.token.toUpperCase()
+      console.log(`[OfframpService] Token balance check:`);
+      console.log(`[OfframpService] - Token: ${token}`);
+      console.log(`[OfframpService] - Balance (wei): ${tokenBalance.amount}`);
+      console.log(`[OfframpService] - Balance (tokens): ${balanceInTokens}`);
+      console.log(`[OfframpService] - Requested amount: ${amount}`);
+      console.log(`[OfframpService] - Decimals: ${decimals}`);
+
+      if (balanceInTokens < amount) {
+        this.handleOfframpError(
+          new Error(`Insufficient balance. Available: ${balanceInTokens.toFixed(6)} ${token}, Requested: ${amount} ${token}`),
+          'balance_check'
         );
-        
-        if (!tokenBalance || parseFloat(tokenBalance.amount) < request.amount) {
-          this.handleOfframpError(new Error('Insufficient balance'), 'balance_check');
-        }
-      } catch (error) {
-        this.handleOfframpError(error, 'balance_check');
+      }
+    } catch (error) {
+      console.error('[OfframpService] Balance check error:', error);
+      this.handleOfframpError(error, 'balance_check');
+    }
+  }
+
+  /**
+   * Create a Paycrest order
+   */
+  private async createPaycrestOrder(request: OfframpRequest, returnAddress: string) {
+    try {
+      // First, fetch the current rate as required by Paycrest Sender API
+      const rates = await this.getExchangeRates(request.token, request.amount);
+      const currentRate = rates[request.currency.toUpperCase()];
+      if (!currentRate || currentRate <= 0) {
+        throw new Error(`Unable to get current rate for ${request.currency}`);
       }
 
-      // 5. Verify bank account details
-      try {
-        const bankVerification = await this.verifyBankAccount(
-          request.bankDetails.accountNumber,
-          request.bankDetails.bankCode,
-          request.currency
-        );
-        
-        if (!bankVerification.isValid) {
-          this.handleOfframpError(new Error('Invalid bank account details'), 'bank_verification');
-        }
-      } catch (error) {
-        this.handleOfframpError(error, 'bank_verification');
-      }
-
-      // 6. Get exchange rate
-      let rates, fiatAmount;
-      try {
-        rates = await this.getExchangeRates(request.token, request.amount);
-        fiatAmount = rates[request.currency.toUpperCase()];
-        
-        if (!fiatAmount || fiatAmount <= 0) {
-          this.handleOfframpError(new Error('Unable to get exchange rate'), 'exchange_rate');
-        }
-      } catch (error) {
-        this.handleOfframpError(error, 'exchange_rate');
-      }
-
-      // 7. Create transaction record
-      transactionId = `offramp_${Date.now()}_${request.userId.slice(-8)}`;
-      const transaction: OfframpTransaction = {
-        id: transactionId,
-        userId: request.userId,
+      const orderPayload: {
+        amount: number;
+        token: string;
+        network: string;
+        rate: string;
+        recipient: {
+          institution: string;
+          accountIdentifier: string;
+          accountName: string;
+          currency: string;
+          memo: string;
+        };
+        reference: string;
+        returnAddress: string;
+        meta?: {
+          telegramChatId?: string;
+          telegramUserId?: string;
+        };
+      } = {
         amount: request.amount,
         token: request.token.toUpperCase(),
-        fiatAmount,
-        fiatCurrency: request.currency.toUpperCase(),
-        bankDetails: request.bankDetails,
-        status: 'pending',
-        createdAt: new Date(),
-        updatedAt: new Date()
+        network: 'base', // Currently supporting Base network
+        rate: currentRate.toString(), // Include the fetched rate
+        recipient: {
+          institution: request.bankDetails.bankCode,
+          accountIdentifier: request.bankDetails.accountNumber,
+          accountName: request.bankDetails.accountName,
+          currency: request.currency.toUpperCase(),
+          memo: `Withdrawal for ${request.bankDetails.accountName}`
+        },
+        reference: `offramp_${Date.now()}_${request.userId.slice(-8)}`,
+        returnAddress: returnAddress
       };
 
-      // 8. Store transaction in database
-      try {
-        await supabase
-          .from('offramp_transactions')
-          .insert({
-            id: transaction.id,
-            user_id: transaction.userId,
-            amount: transaction.amount,
-            token: transaction.token,
-            fiat_amount: transaction.fiatAmount,
-            fiat_currency: transaction.fiatCurrency,
-            bank_details: transaction.bankDetails,
-            status: transaction.status,
-            created_at: transaction.createdAt.toISOString(),
-            updated_at: transaction.updatedAt.toISOString()
-          });
-      } catch (error) {
-        this.handleOfframpError(error, 'database_insert', transactionId);
+      if (request.chatId) {
+        orderPayload.meta = {
+          telegramChatId: request.chatId,
+          telegramUserId: request.userId
+        };
       }
 
-      // 9. Create Paycrest sender order to get receive address
-      let senderOrderResponse, receiveAddress;
-      try {
-        senderOrderResponse = await axios.post(
-          `${PAYCREST_API_BASE_URL}/sender/orders`,
-          {
-            amount: request.amount,
-            token: request.token.toLowerCase(),
-            currency: request.currency.toLowerCase()
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${PAYCREST_API_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            timeout: 30000 // 30 second timeout
-          }
-        );
+      console.log(`[OfframpService] Creating Paycrest Sender order:`, JSON.stringify(orderPayload, null, 2));
 
-        receiveAddress = senderOrderResponse.data.data.receiveAddress;
-        if (!receiveAddress) {
-          this.handleOfframpError(new Error('Failed to get receive address from Paycrest'), 'sender_order', transactionId);
+      const orderResponse = await axios.post(
+        `${PAYCREST_API_BASE_URL}/sender/orders`,
+        orderPayload,
+        {
+          headers: {
+            'API-Key': PAYCREST_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000 // 30 second timeout
         }
-      } catch (error) {
-        this.handleOfframpError(error, 'sender_order', transactionId);
+      );
+
+      console.log(`[OfframpService] Paycrest Sender order response:`, JSON.stringify(orderResponse.data, null, 2));
+
+      const orderData = orderResponse.data;
+      if (!orderData || !orderData.id || !orderData.receiveAddress) {
+        this.handleOfframpError(new Error('Failed to create Paycrest Sender order or receiveAddress is missing'), 'order_creation');
       }
 
-      // 10. Transfer tokens to Paycrest address
-      let transferResult;
-      try {
-        const tokenAddress = this.getTokenAddress(request.token, 'base');
-        transferResult = await transferToken(
-          wallet.address,
-          receiveAddress,
-          tokenAddress,
-          request.amount.toString(),
-          18,
-          'base'
-        );
-      } catch (error) {
-        this.handleOfframpError(error, 'blockchain_transfer', transactionId);
-      }
-
-      // 11. Update transaction with tx hash
-      try {
-        transaction.txHash = transferResult.hash;
-        transaction.status = 'processing';
-        transaction.updatedAt = new Date();
-
-        await supabase
-          .from('offramp_transactions')
-          .update({
-            tx_hash: transferResult.hash,
-            status: 'processing',
-            updated_at: transaction.updatedAt.toISOString()
-          })
-          .eq('id', transaction.id);
-      } catch (error) {
-        this.handleOfframpError(error, 'database_update', transactionId);
-      }
-
-      // 12. Create Paycrest payout
-      let payoutResponse;
-      try {
-        payoutResponse = await axios.post(
-          `${PAYCREST_API_BASE_URL}/payouts`,
-          {
-            amount: fiatAmount,
-            currency: request.currency.toLowerCase(),
-            bankCode: request.bankDetails.bankCode,
-            accountNumber: request.bankDetails.accountNumber,
-            accountName: request.bankDetails.accountName,
-            reference: transaction.id,
-            senderOrderId: senderOrderResponse.data.data.id
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${PAYCREST_API_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            timeout: 30000 // 30 second timeout
-          }
-        );
-
-        const payoutId = payoutResponse.data.data.id;
-        transaction.payoutId = payoutId;
-
-        // 13. Update transaction with payout ID
-        await supabase
-          .from('offramp_transactions')
-          .update({
-            payout_id: payoutId,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', transaction.id);
-      } catch (error) {
-        this.handleOfframpError(error, 'payout_creation', transactionId);
-      }
-
-      return transaction;
+      return orderData;
     } catch (error) {
-      // If we have a transaction ID, this error was already handled by handleOfframpError
-      if (transactionId) {
-        throw error;
+      console.error('[OfframpService] Sender order creation error:', error.response?.data || error.message);
+      this.handleOfframpError(error, 'order_creation');
+    }
+  }
+
+  /**
+   * Prepare an off-ramp transaction by creating a Paycrest order (without executing transfer)
+   */
+  async prepareOfframp(request: OfframpRequest): Promise<any> {
+    try {
+      // 1. Validate inputs
+      this.validateOfframpRequest(request);
+
+      // 2. Get user's wallet
+      const wallet = await getOrCreateCdpWallet(request.userId, 'base');
+
+      // 3. Check wallet balance
+      await this.checkWalletBalance(request.userId, request.token, request.amount);
+
+      // 4. Verify bank account
+      await this.verifyBankAccount(
+        request.bankDetails.accountNumber,
+        request.bankDetails.bankCode,
+        request.currency
+      );
+
+      // 5. Get exchange rate
+      const rates = await this.getExchangeRates(request.token, request.amount);
+      const fiatAmount = rates[request.currency.toUpperCase()];
+      if (!fiatAmount || fiatAmount <= 0) {
+        throw new Error('Unable to get exchange rate');
       }
-      // Otherwise, handle it now
-      this.handleOfframpError(error, 'unknown');
+
+      // 6. Create Paycrest order (but don't execute transfer yet)
+      const order = await this.createPaycrestOrder(request, wallet.address);
+
+      // 7. Create database transaction record
+      const { data: transaction, error } = await supabase
+        .from('offramp_transactions')
+        .insert({
+          user_id: request.userId,
+          amount: request.amount,
+          token: request.token.toUpperCase(),
+          fiat_amount: fiatAmount,
+          fiat_currency: request.currency.toUpperCase(),
+          bank_details: request.bankDetails,
+          status: 'pending',
+          order_id: order.id,
+          receive_address: order.receiveAddress,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[OfframpService] Error creating transaction record:', error);
+        throw new Error('Failed to create transaction record');
+      }
+
+      // Return order details for user confirmation
+      return {
+        orderId: order.id,
+        receiveAddress: order.receiveAddress,
+        fiatAmount,
+        walletAddress: wallet.address,
+        transactionId: transaction.id
+      };
+    } catch (error) {
+      this.handleOfframpError(error, 'prepare_offramp');
+    }
+  }
+
+  /**
+   * Execute token transfer after user confirmation
+   */
+  async executeTokenTransfer(params: {
+    userId: string;
+    amount: number;
+    receiveAddress: string;
+    orderId: string;
+  }): Promise<any> {
+    try {
+      // Get user's wallet
+      const wallet = await getOrCreateCdpWallet(params.userId, 'base');
+
+      // Execute token transfer using CDP
+      const tokenAddress = this.getTokenAddress('USDC', 'base');
+      const transferResult = await transferToken(
+        wallet.address,
+        params.receiveAddress,
+        tokenAddress,
+        params.amount.toString(),
+        6, // USDC has 6 decimals
+        'base'
+      );
+
+      const txHash = transferResult.hash;
+
+      // Process the offramp with the transaction hash
+      await this.processOfframp(params.orderId, txHash);
+
+      return {
+        orderId: params.orderId,
+        txHash,
+        transferResult,
+      };
+    } catch (error) {
+      this.handleOfframpError(error, 'execute_transfer');
+    }
+  }
+
+  async processOfframp(orderId: string, txHash: string): Promise<any> {
+    try {
+      // 1. Find the transaction by orderId
+      const { data: transaction, error } = await supabase
+        .from('offramp_transactions')
+        .select('id')
+        .eq('order_id', orderId)
+        .single();
+
+      if (error || !transaction) {
+        this.handleOfframpError(new Error(`Transaction not found for orderId: ${orderId}`), 'process_offramp');
+      }
+
+      const transactionId = transaction.id;
+
+      // 2. Update transaction with txHash and set status to 'processing'
+      await supabase
+        .from('offramp_transactions')
+        .update({
+          tx_hash: txHash,
+          status: 'processing',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', transactionId);
+
+      // 3. (Optional) You might want to start a background job here to monitor the transaction status
+      // For now, we'll just return the updated transaction
+
+      return { id: transactionId, status: 'processing' };
+    } catch (error) {
+      this.handleOfframpError(error, 'process_offramp');
     }
   }
 
@@ -629,8 +727,8 @@ export class OfframpService {
       }
 
       // If transaction is still processing, check with Paycrest
-      if (transaction.status === 'processing' && transaction.payout_id) {
-        const updatedStatus = await this.checkPayoutStatus(transaction.payout_id);
+      if (transaction.status === 'processing' && transaction.order_id) {
+        const updatedStatus = await this.checkOrderStatus(transaction.order_id);
         
         if (updatedStatus !== transaction.status) {
           await supabase
@@ -655,7 +753,9 @@ export class OfframpService {
         bankDetails: transaction.bank_details,
         status: transaction.status,
         txHash: transaction.tx_hash,
-        payoutId: transaction.payout_id,
+        gatewayId: transaction.gateway_id,
+        receiveAddress: transaction.receive_address,
+        orderId: transaction.order_id,
         errorMessage: transaction.error_message,
         createdAt: new Date(transaction.created_at),
         updatedAt: new Date(transaction.updated_at)
@@ -667,19 +767,19 @@ export class OfframpService {
   }
 
   /**
-   * Check payout status with Paycrest
+   * Check order status with Paycrest
    */
-  private async checkPayoutStatus(payoutId: string): Promise<'pending' | 'processing' | 'completed' | 'failed'> {
+  private async checkOrderStatus(orderId: string): Promise<'pending' | 'processing' | 'completed' | 'failed'> {
     try {
       if (!PAYCREST_API_KEY) {
         throw new Error('Paycrest API key not configured');
       }
 
       const response = await axios.get(
-        `${PAYCREST_API_BASE_URL}/payout/status/${payoutId}`,
+        `${PAYCREST_API_BASE_URL}/order/status/${orderId}`,
         {
           headers: {
-            'Authorization': `Bearer ${PAYCREST_API_KEY}`
+            'API-Key': PAYCREST_API_KEY
           }
         }
       );
@@ -730,7 +830,9 @@ export class OfframpService {
         bankDetails: tx.bank_details,
         status: tx.status,
         txHash: tx.tx_hash,
-        payoutId: tx.payout_id,
+        gatewayId: tx.gateway_id,
+        receiveAddress: tx.receive_address,
+        orderId: tx.order_id,
         errorMessage: tx.error_message,
         createdAt: new Date(tx.created_at),
         updatedAt: new Date(tx.updated_at)
@@ -766,12 +868,14 @@ export class OfframpService {
         .update({
           status: 'pending',
           error_message: null,
-          payout_id: null,
+          gateway_id: null,
+          receive_address: null,
+          order_id: null,
           updated_at: new Date().toISOString()
         })
         .eq('id', transactionId);
 
-      // Recreate the offramp request
+      // Re-process the offramp request
       const request: OfframpRequest = {
         userId: transaction.user_id,
         amount: transaction.amount,
@@ -780,8 +884,8 @@ export class OfframpService {
         bankDetails: transaction.bank_details
       };
 
-      // Process the offramp again
-      return await this.processOfframp(request);
+      // Prepare the offramp again
+      return await this.prepareOfframp(request);
     } catch (error) {
       console.error('[OfframpService] Error retrying transaction:', error);
       
@@ -886,6 +990,108 @@ export class OfframpService {
       return { total: 0, completed: 0, pending: 0, failed: 0, totalAmount: 0 };
     }
   }
+
+  /**
+   * Get supported institutions from Paycrest API
+   */
+  async getSupportedInstitutions(currency: string): Promise<Array<{
+    name: string;
+    code: string;
+    country: string;
+  }>> {
+    try {
+      console.log('[OfframpService] getSupportedInstitutions called for currency:', currency);
+      console.log('[OfframpService] API credentials check - Key:', !!PAYCREST_API_KEY, 'Token:', !!PAYCREST_API_TOKEN);
+      
+      if (!PAYCREST_API_KEY || !PAYCREST_API_TOKEN) {
+        console.error('[OfframpService] Paycrest API credentials not configured, using fallback');
+        // Use fallback immediately if credentials not configured
+        if (currency.toUpperCase() === 'NGN') {
+          console.log('[OfframpService] Returning NGN fallback banks');
+          return [
+            { name: "Access Bank", code: "044", country: "Nigeria" },
+            { name: "GTBank", code: "058", country: "Nigeria" },
+            { name: "First Bank", code: "011", country: "Nigeria" },
+            { name: "Zenith Bank", code: "057", country: "Nigeria" },
+            { name: "UBA", code: "033", country: "Nigeria" },
+            { name: "Fidelity Bank", code: "070", country: "Nigeria" },
+            { name: "Union Bank", code: "032", country: "Nigeria" },
+            { name: "Sterling Bank", code: "232", country: "Nigeria" },
+            { name: "Stanbic IBTC", code: "221", country: "Nigeria" },
+            { name: "Polaris Bank", code: "076", country: "Nigeria" }
+          ];
+        } else if (currency.toUpperCase() === 'KES') {
+          console.log('[OfframpService] Returning KES fallback banks');
+          return [
+            { name: "KCB Bank", code: "01", country: "Kenya" },
+            { name: "Equity Bank", code: "68", country: "Kenya" },
+            { name: "Cooperative Bank", code: "11", country: "Kenya" },
+            { name: "NCBA Bank", code: "07", country: "Kenya" },
+            { name: "Standard Chartered", code: "02", country: "Kenya" },
+            { name: "Absa Bank", code: "03", country: "Kenya" },
+            { name: "Diamond Trust Bank", code: "63", country: "Kenya" },
+            { name: "I&M Bank", code: "57", country: "Kenya" }
+          ];
+        }
+        return [];
+      }
+
+      const response = await axios.get(
+        `${PAYCREST_API_BASE_URL}/institutions/${currency.toLowerCase()}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${PAYCREST_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data && response.data.data) {
+        return response.data.data.map((institution: any) => ({
+          name: institution.name,
+          code: institution.code,
+          country: institution.country || (currency === 'NGN' ? 'Nigeria' : 'Kenya')
+        }));
+      }
+
+      return [];
+    } catch (error) {
+      console.error('[OfframpService] Error fetching supported institutions:', error);
+      // Fallback to hardcoded banks if API fails
+      if (currency.toUpperCase() === 'NGN') {
+        return [
+          { name: "Access Bank", code: "044", country: "Nigeria" },
+          { name: "GTBank", code: "058", country: "Nigeria" },
+          { name: "First Bank", code: "011", country: "Nigeria" },
+          { name: "Zenith Bank", code: "057", country: "Nigeria" },
+          { name: "UBA", code: "033", country: "Nigeria" },
+          { name: "Fidelity Bank", code: "070", country: "Nigeria" },
+          { name: "Union Bank", code: "032", country: "Nigeria" },
+          { name: "Sterling Bank", code: "232", country: "Nigeria" },
+          { name: "Stanbic IBTC", code: "221", country: "Nigeria" },
+          { name: "Polaris Bank", code: "076", country: "Nigeria" }
+        ];
+      } else if (currency.toUpperCase() === 'KES') {
+        return [
+          { name: "KCB Bank", code: "01", country: "Kenya" },
+          { name: "Equity Bank", code: "68", country: "Kenya" },
+          { name: "Cooperative Bank", code: "11", country: "Kenya" },
+          { name: "NCBA Bank", code: "07", country: "Kenya" },
+          { name: "Standard Chartered", code: "02", country: "Kenya" },
+          { name: "Absa Bank", code: "03", country: "Kenya" },
+          { name: "Diamond Trust Bank", code: "63", country: "Kenya" },
+          { name: "I&M Bank", code: "57", country: "Kenya" }
+        ];
+      }
+      return [];
+    }
+  }
+
+  // Removed getPaycrestGatewayContract method - using CDP SDK for all blockchain operations
 }
 
 export const offrampService = new OfframpService();
+
+/**
+ * Process the offramp request
+ */

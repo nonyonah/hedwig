@@ -10,6 +10,7 @@ import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
 import { SmartNudgeService } from '@/lib/smartNudgeService';
 import { offrampService } from '../services/offrampService';
+import { offrampSessionService } from '../services/offrampSessionService';
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -42,6 +43,7 @@ export interface ActionParams {
 
 export interface ActionResult {
   text: string;
+  metadata?: any;
   reply_markup?: {
     inline_keyboard: Array<Array<{
       text: string;
@@ -623,11 +625,22 @@ export async function handleAction(
 ): Promise<ActionResult> {
   console.log("[handleAction] Intent:", intent, "Params:", params, "UserId:", userId);
 
-  // Text-based balance intent matching
+  // Text-based balance intent matching (but not during active offramp sessions)
   if (params.text && typeof params.text === 'string') {
     const text = params.text.toLowerCase();
     if (text.includes('balance') || text.includes('wallet balance')) {
-      return await handleGetWalletBalance(params, userId);
+      // Check if user has an active offramp session
+      const actualUserId = await resolveUserId(userId);
+      if (actualUserId) {
+        const activeSession = await offrampSessionService.getActiveSession(actualUserId);
+        if (!activeSession) {
+          return await handleGetWalletBalance(params, userId);
+        }
+        // If there's an active offramp session, route to offramp handler
+        return await handleOfframp(params, actualUserId);
+      } else {
+        return await handleGetWalletBalance(params, userId);
+      }
     }
   }
 
@@ -769,6 +782,16 @@ export async function handleAction(
     
     case "create_proposal":
       return await handleCreateProposal(params, userId);
+    
+    case "offramp":
+    case "withdraw":
+    case "withdrawal":
+      return await handleOfframp(params, userId);
+
+    case "offramp_submit":
+      return handleOfframpSubmit(params, userId);
+
+    
     
     case "earnings":
     case "get_earnings":
@@ -1874,6 +1897,7 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
 }
 
 // Handle offramp intent
+// Handle offramp intent with multi-step guided flow
 async function handleOfframp(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     const actualUserId = await resolveUserId(userId);
@@ -1883,92 +1907,1077 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
       };
     }
 
-    // TODO: Re-enable KYC check once suitable provider is found
-    // Check if user has completed KYC
-    // const { data: kycData } = await supabase
-    //   .from('user_kyc')
-    //   .select('status')
-    //   .eq('user_id', actualUserId)
-    //   .single();
-
-    // if (!kycData || kycData.status !== 'approved') {
-    //   return {
-    //     text: "🔐 **KYC Verification Required**\n\n" +
-    //           "To withdraw crypto to your bank account, you need to complete KYC verification first.\n\n" +
-    //           "This is required for compliance with financial regulations.",
-    //     reply_markup: {
-    //       inline_keyboard: [
-    //         [{ text: "🔐 Start KYC Verification", callback_data: "start_kyc" }],
-    //         [{ text: "❓ Learn More", callback_data: "kyc_info" }]
-    //       ]
-    //     }
-    //   };
-    // }
-
-    // Get user's wallet balances
-    const { data: wallets } = await supabase
-      .from('wallets')
-      .select('address, chain')
-      .eq('user_id', actualUserId);
-
-    if (!wallets || wallets.length === 0) {
-      return {
-        text: "❌ No wallets found. Please create a wallet first.",
-      };
+    // Handle callback data for session navigation
+    if (params.callback_data) {
+      // Check for existing active session only when handling callbacks
+      let session = await offrampSessionService.getActiveSession(actualUserId);
+      return await handleOfframpCallback(params.callback_data, actualUserId, session);
     }
 
-    // Check balances for supported tokens (USDT, USDC)
-    let balanceText = "💰 **Available for Withdrawal:**\n\n";
-    let hasBalance = false;
+    // Check for existing session first
+    let session = await offrampSessionService.getActiveSession(actualUserId);
+    
+    // If there's an existing session, continue with it (for text input like account numbers)
+    // BUT only if the text is not a command to start fresh offramp
+    if (session && params.text && !params.text.toLowerCase().includes('offramp')) {
+      console.log('[handleOfframp] Continuing existing session with text input');
+      return await handleOfframpStep(session, params, actualUserId);
+    }
+    
+    // Clear session only when starting completely fresh (no existing session or explicit new start)
+    if (session) {
+      console.log('[handleOfframp] Clearing existing session to start fresh');
+      await offrampSessionService.clearSession(session.id);
+      session = null;
+    }
 
-    for (const wallet of wallets) {
-      try {
-        const balances = await getBalances(wallet.address, wallet.chain as 'evm' | 'solana');
+    // Parse natural language for amount extraction
+    if (params.text) {
+      const extractedAmount = extractAmountFromText(params.text);
+      if (extractedAmount) {
+        // Start new session with extracted amount
+        session = await offrampSessionService.createSession(actualUserId);
+        await offrampSessionService.updateSession(session.id, 'amount', {
+          amount: extractedAmount,
+          token: 'USDC'
+        });
         
-        // Check if balances is valid and iterable
-        if (!balances || !Array.isArray(balances)) {
-          console.warn(`Invalid balances response for ${wallet.address}:`, balances);
-          continue;
+        // Validate the amount and proceed to payout method
+        const amountValidation = await validateOfframpAmount(extractedAmount, actualUserId);
+        if (!amountValidation.valid) {
+          await offrampSessionService.clearSession(session.id);
+          return amountValidation.response!;
         }
         
-        for (const balance of balances) {
-          if (balance.symbol === 'USDC' && parseFloat(balance.balance) > 0) {
-            balanceText += `• ${balance.balance} ${balance.symbol} (${wallet.chain.toUpperCase()})\n`;
-            hasBalance = true;
+        // Update session to payout method step
+        await offrampSessionService.updateSession(session.id, 'payout_method', {
+          amount: extractedAmount,
+          token: 'USDC'
+        });
+        
+        return {
+          text: `🏦 **USDC Withdrawal - Step 2 of 5**\n\n` +
+                `💰 **Amount:** ${extractedAmount} USDC\n\n` +
+                `💳 **Choose your payout method:**\n\n` +
+                `We support bank account withdrawals to:`,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
+              ],
+              [
+                { text: "🇰🇪 Bank Account (KES)", callback_data: "payout_bank_kes" }
+              ],
+              [
+                { text: "⬅️ Back", callback_data: "offramp_edit" },
+                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              ]
+            ]
+          }
+        };
+      }
+    }
+
+    // Since we cleared any existing session above, always start new offramp flow
+    return await startOfframpFlow(actualUserId);
+    
+  } catch (error) {
+    console.error('[handleOfframp] Unexpected error:', error);
+    return {
+      text: "❌ An unexpected error occurred. Please try again later."
+    };
+  }
+}
+
+// Extract amount from natural language text
+function extractAmountFromText(text: string): number | null {
+  const normalizedText = text.toLowerCase().trim();
+  
+  // Pattern 1: "1 usdc", "5.5 USDC", "10 usdc"
+  let match = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc/i);
+  if (match) {
+    return parseFloat(match[1]);
+  }
+  
+  // Pattern 2: "withdraw 1 usdc", "withdraw 5.5 USDC to my bank"
+  match = normalizedText.match(/withdraw\s+(\d+(?:\.\d+)?)\s*usdc/i);
+  if (match) {
+    return parseFloat(match[1]);
+  }
+  
+  // Pattern 3: "i want to withdraw 1 usdc", "I want to withdraw 5.5 USDC to my bank account"
+  match = normalizedText.match(/(?:i\s+want\s+to\s+withdraw|want\s+to\s+withdraw)\s+(\d+(?:\.\d+)?)\s*usdc/i);
+  if (match) {
+    return parseFloat(match[1]);
+  }
+  
+  return null;
+}
+
+// Validate offramp amount against user balance
+async function validateOfframpAmount(amount: number, userId: string): Promise<{valid: boolean, response?: ActionResult}> {
+  if (isNaN(amount) || amount <= 0) {
+    return {
+      valid: false,
+      response: {
+        text: "❌ Please enter a valid positive number.\n\nExample: 50 or 100.5",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      }
+    };
+  }
+
+  if (amount < 1) {
+    return {
+      valid: false,
+      response: {
+        text: "❌ Minimum withdrawal amount is $1 USD equivalent.\n\nPlease enter a higher amount.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      }
+    };
+  }
+
+  // Check user's USDC balance
+  const { data: wallets } = await supabase
+    .from('wallets')
+    .select('address, chain')
+    .eq('user_id', userId);
+
+  // Map to expected format
+  const userWallets = wallets?.map(wallet => ({
+    wallet_address: wallet.address,
+    network: wallet.chain
+  }));
+
+  let totalUsdcBalance = 0;
+  if (userWallets) {
+    for (const wallet of userWallets) {
+      try {
+        const balances = await getBalances(wallet.wallet_address, wallet.network);
+        let balanceArray = balances?.data || balances || [];
+        
+        for (const balance of balanceArray) {
+          if (balance.asset?.symbol === 'USDC') {
+            const decimals = balance.asset.decimals || 6;
+            // Handle hex string amounts properly
+            let rawAmount: bigint;
+            if (typeof balance.amount === 'string' && balance.amount.startsWith('0x')) {
+              rawAmount = BigInt(balance.amount);
+            } else {
+              rawAmount = BigInt(balance.amount || '0');
+            }
+            const balanceAmount = Number(rawAmount) / Math.pow(10, decimals);
+            totalUsdcBalance += balanceAmount;
           }
         }
       } catch (error) {
-        console.error(`Error fetching balance for ${wallet.address}:`, error);
+        console.error(`Error getting balance for wallet ${wallet.wallet_address}:`, error);
       }
     }
+  }
 
-    if (!hasBalance) {
+  if (amount > totalUsdcBalance) {
+    return {
+      valid: false,
+      response: {
+        text: `❌ Insufficient balance.\n\nRequested: ${amount} USDC\nAvailable: ${totalUsdcBalance.toFixed(6)} USDC\n\nPlease enter a lower amount.`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      }
+    };
+  }
+
+  return { valid: true };
+}
+
+// Start new offramp flow
+async function startOfframpFlow(userId: string): Promise<ActionResult> {
+  try {
+    // Get user wallets and check USDC balance
+    const { data: wallets, error: walletsError } = await supabase
+      .from('wallets')
+      .select('address, chain')
+      .eq('user_id', userId);
+
+    // Map to expected format
+    const userWallets = wallets?.map(wallet => ({
+      wallet_address: wallet.address,
+      network: wallet.chain
+    }));
+
+    if (walletsError || !userWallets || userWallets.length === 0) {
       return {
-        text: "💰 **No Withdrawable Balance**\n\n" +
-              "You don't have any USDC available for withdrawal.\n\n" +
-              "Supported token: USDC\n" +
-              "Supported network: Base",
+        text: "❌ No wallets found. Please create a wallet first using /wallet command."
       };
     }
 
+    let totalUsdcBalance = 0;
+    let balanceMessages: string[] = [];
+
+    // Check balances for each wallet
+    for (const wallet of userWallets) {
+      try {
+        const balances = await getBalances(wallet.wallet_address, wallet.network);
+        
+        // Handle different response structures
+        let balanceArray;
+        if (balances && balances.data && Array.isArray(balances.data)) {
+          balanceArray = balances.data;
+        } else if (Array.isArray(balances)) {
+          balanceArray = balances;
+        } else {
+          console.warn(`Invalid balances response for ${wallet.wallet_address}:`, balances);
+          continue;
+        }
+
+        // Process each balance
+        for (const balance of balanceArray) {
+          if (balance.asset && balance.asset.symbol === 'USDC') {
+            // Convert from wei to human readable format
+            const decimals = balance.asset.decimals || 6;
+            // Handle hex string amounts properly
+            let rawAmount: bigint;
+            if (typeof balance.amount === 'string' && balance.amount.startsWith('0x')) {
+              rawAmount = BigInt(balance.amount);
+            } else {
+              rawAmount = BigInt(balance.amount || '0');
+            }
+            const amount = Number(rawAmount) / Math.pow(10, decimals);
+            
+            if (amount > 0) {
+              totalUsdcBalance += amount;
+              balanceMessages.push(`💰 ${amount.toFixed(6)} USDC on ${wallet.network}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error getting balance for wallet ${wallet.wallet_address}:`, error);
+      }
+    }
+
+    if (totalUsdcBalance === 0) {
+      return {
+        text: "❌ No USDC balance found. Please deposit USDC to your wallet first."
+      };
+    }
+
+    // Check minimum amount (equivalent to $1 USD)
+    if (totalUsdcBalance < 1) {
+      return {
+        text: `❌ Insufficient balance for offramp. Minimum required: $1 USD equivalent.\n\nYour current balance: ${totalUsdcBalance.toFixed(6)} USDC`
+      };
+    }
+
+    // Create new session
+    const session = await offrampSessionService.createSession(userId);
+    
+    const balanceText = balanceMessages.join('\n');
+    
     return {
-      text: balanceText + "\n" +
-            "🏦 **Supported Currencies:** NGN, KES\n\n" +
-            "To proceed with withdrawal, please specify:\n" +
-            "• Amount and token (e.g., \"withdraw 100 USDT\")\n" +
-            "• Your bank details\n\n" +
-            "💡 **Example:** \"withdraw 50 USDC to my NGN account\"",
+      text: `🏦 **USDC Withdrawal - Step 1 of 5**\n\n` +
+            `💰 **Your Available Balance:**\n${balanceText}\n\n` +
+            `**Total:** ${totalUsdcBalance.toFixed(6)} USDC\n\n` +
+            `💡 **How much USDC would you like to withdraw?**\n\n` +
+            `Please enter the amount with token symbol (minimum $1 USD equivalent):\n` +
+            `Example: 50 USDC or 100.5 USDC`,
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🏦 View Supported Banks", callback_data: "view_banks" }],
-          [{ text: "📊 Transaction History", callback_data: "offramp_history" }]
+          [
+            { text: "❌ Cancel", callback_data: "offramp_cancel" }
+          ]
         ]
       }
     };
+    
   } catch (error) {
-    console.error('[handleOfframp] Error:', error);
+    console.error('[startOfframpFlow] Error:', error);
     return {
-      text: "❌ Failed to process offramp request. Please try again later.",
+      text: "❌ Failed to start withdrawal process. Please try again later."
+    };
+  }
+}
+
+// Handle offramp step based on current session
+async function handleOfframpStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    console.log('[handleOfframpStep] Session step:', session.step, 'Callback:', params.callback_data);
+    
+    switch (session.step) {
+      case 'amount':
+        return await handleAmountStep(session, params, userId);
+      case 'payout_method':
+        return await handlePayoutMethodStep(session, params, userId);
+      case 'bank_selection':
+        return await handleBankSelectionStep(session, params, userId);
+      case 'account_number':
+        return await handleAccountNumberStep(session, params, userId);
+      case 'confirmation':
+        return await handleConfirmationStep(session, params, userId);
+      case 'final_confirmation':
+        return await handleFinalConfirmationStep(session, params, userId);
+      default:
+        console.log('[handleOfframpStep] Invalid session state:', session.step);
+        // Invalid session state, restart
+        await offrampSessionService.clearSession(session.id);
+        return await startOfframpFlow(userId);
+    }
+  } catch (error) {
+    console.error('[handleOfframpStep] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again."
+    };
+  }
+}
+
+// Handle callback data for session navigation
+async function handleOfframpCallback(callbackData: string, userId: string, session: any): Promise<ActionResult> {
+  try {
+    console.log(`[handleOfframpCallback] Called with callbackData: ${callbackData}, session step: ${session?.step}`);
+    console.log(`[handleOfframpCallback] Session data:`, JSON.stringify(session?.data, null, 2));
+    
+    if (callbackData === 'offramp_cancel') {
+      if (session) {
+        await offrampSessionService.clearSession(session.id);
+      }
+      return {
+        text: "❌ Withdrawal cancelled. You can start a new withdrawal anytime by typing 'offramp'."
+      };
+    }
+    
+    // Note: offramp_confirm is handled by handleConfirmationStep through step routing
+    
+    if (callbackData === 'offramp_edit' && session) {
+      // Go back to amount step
+      await offrampSessionService.updateSession(session.id, 'amount', {});
+      return await startOfframpFlow(userId);
+    }
+    
+    // Handle step-specific callbacks by routing to appropriate step handler
+    if (session) {
+      const stepParams = { callback_data: callbackData };
+      return await handleOfframpStep(session, stepParams, userId);
+    }
+    
+    return {
+      text: "❌ Invalid action. Please try again."
+    };
+    
+  } catch (error) {
+    console.error('[handleOfframpCallback] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again."
+    };
+  }
+}
+
+// Handle amount input step
+async function handleAmountStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const amountText = params.text?.trim();
+    if (!amountText) {
+      return {
+        text: "❌ Please enter a valid amount with token symbol.\n\nExample: 50 USDC or 100.5 USDC",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    // Parse amount and token from text (e.g., "50 USDC")
+    const normalizedText = amountText.toLowerCase().trim();
+    const match = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc/i);
+    
+    if (!match) {
+      return {
+        text: "❌ Please enter the amount with USDC token symbol.\n\nExample: 50 USDC or 100.5 USDC",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    const amount = parseFloat(match[1]);
+    if (isNaN(amount) || amount <= 0) {
+      return {
+        text: "❌ Please enter a valid positive amount.\n\nExample: 50 USDC or 100.5 USDC",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    if (amount < 1) {
+      return {
+        text: "❌ Minimum withdrawal amount is $1 USD equivalent.\n\nPlease enter a higher amount.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    // Check user's USDC balance
+    const { data: wallets } = await supabase
+      .from('wallets')
+      .select('address, chain')
+      .eq('user_id', userId);
+
+    // Map to expected format
+    const userWallets = wallets?.map(wallet => ({
+      wallet_address: wallet.address,
+      network: wallet.chain
+    }));
+
+    let totalUsdcBalance = 0;
+    if (userWallets) {
+      for (const wallet of userWallets) {
+        try {
+          const balances = await getBalances(wallet.wallet_address, wallet.network);
+          let balanceArray = balances?.data || balances || [];
+          
+          for (const balance of balanceArray) {
+            if (balance.asset?.symbol === 'USDC') {
+              const decimals = balance.asset.decimals || 6;
+              // Handle hex string amounts properly
+              let rawAmount: bigint;
+              if (typeof balance.amount === 'string' && balance.amount.startsWith('0x')) {
+                rawAmount = BigInt(balance.amount);
+              } else {
+                rawAmount = BigInt(balance.amount || '0');
+              }
+              const balanceAmount = Number(rawAmount) / Math.pow(10, decimals);
+              totalUsdcBalance += balanceAmount;
+            }
+          }
+        } catch (error) {
+          console.error(`Error getting balance for wallet ${wallet.wallet_address}:`, error);
+        }
+      }
+    }
+
+    if (amount > totalUsdcBalance) {
+      return {
+        text: `❌ Insufficient balance.\n\nRequested: ${amount} USDC\nAvailable: ${totalUsdcBalance.toFixed(6)} USDC\n\nPlease enter a lower amount.`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    // Update session with amount and move to payout method step
+    await offrampSessionService.updateSession(session.id, 'payout_method', {
+      amount: amount,
+      token: 'USDC'
+    });
+
+    return {
+      text: `🏦 **USDC Withdrawal - Step 2 of 5**\n\n` +
+            `💰 **Amount:** ${amount} USDC\n\n` +
+            `💳 **Choose your payout method:**\n\n` +
+            `We support bank account withdrawals to:`,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
+          ],
+          [
+            { text: "🇰🇪 Bank Account (KES)", callback_data: "payout_bank_kes" }
+          ],
+          [
+            { text: "⬅️ Back", callback_data: "offramp_edit" },
+            { text: "❌ Cancel", callback_data: "offramp_cancel" }
+          ]
+        ]
+      }
+    };
+
+  } catch (error) {
+    console.error('[handleAmountStep] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again."
+    };
+  }
+}
+
+// Handle payout method selection step
+async function handlePayoutMethodStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    console.log('[handlePayoutMethodStep] Called with callback_data:', params.callback_data);
+    
+    // If no callback_data or action_offramp, show payout method selection UI
+    if (!params.callback_data || params.callback_data === 'action_offramp') {
+      return {
+        text: `🏦 **USDC Withdrawal - Step 2 of 5**\n\n` +
+              `💰 **Amount:** ${session.data.amount} USDC\n\n` +
+              `💳 **Choose your payout method:**\n\n` +
+              `We support bank account withdrawals to:`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
+            ],
+            [
+              { text: "🇰🇪 Bank Account (KES)", callback_data: "payout_bank_kes" }
+            ],
+            [
+              { text: "⬅️ Back", callback_data: "offramp_edit" },
+              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+            ]
+          ]
+        }
+      };
+    }
+    
+    let currency: string;
+    let currencyFlag: string;
+    let currencyName: string;
+
+    if (params.callback_data === 'payout_bank_ngn') {
+      currency = 'NGN';
+      currencyFlag = '🇳🇬';
+      currencyName = 'Nigerian Naira';
+    } else if (params.callback_data === 'payout_bank_kes') {
+      currency = 'KES';
+      currencyFlag = '🇰🇪';
+      currencyName = 'Kenyan Shilling';
+    } else {
+      console.log('[handlePayoutMethodStep] Invalid callback_data:', params.callback_data);
+      return {
+        text: "❌ Invalid payout method. Please try again."
+      };
+    }
+
+    console.log('[handlePayoutMethodStep] Processing currency:', currency);
+
+    // Update session and move to bank selection
+    await offrampSessionService.updateSession(session.id, 'bank_selection', {
+      ...session.data,
+      payoutMethod: 'bank_account',
+      currency: currency
+    });
+
+    console.log('[handlePayoutMethodStep] Session updated, fetching banks for:', currency);
+
+    // Get supported banks from Paycrest API
+    const supportedBanks = await offrampService.getSupportedInstitutions(currency);
+    
+    console.log('[handlePayoutMethodStep] Fetched banks:', supportedBanks.length, 'banks');
+
+    if (supportedBanks.length === 0) {
+      return {
+        text: `❌ Unable to load banks for ${currencyName}. Please try again later.`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "⬅️ Back", callback_data: "back_to_payout" },
+              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+            ]
+          ]
+        }
+      };
+    }
+
+    // Create inline keyboard for bank selection
+    const bankButtons = supportedBanks.map(bank => [
+      { text: bank.name, callback_data: `select_bank_${bank.code}_${bank.name}_${currency}` }
+    ]);
+    
+    // Add back and cancel buttons
+    bankButtons.push([
+      { text: "⬅️ Back", callback_data: "back_to_payout" },
+      { text: "❌ Cancel", callback_data: "offramp_cancel" }
+    ]);
+
+    // Store bank mapping in session for later reference
+    const bankMapping = {};
+    supportedBanks.forEach(bank => {
+      bankMapping[bank.name] = { code: bank.code, name: bank.name };
+    });
+    
+    await offrampSessionService.updateSession(session.id, 'bank_selection', {
+      ...session.data,
+      payoutMethod: 'bank_account',
+      currency: currency,
+      bankMapping: bankMapping
+    });
+
+    return {
+      text: `🏦 **USDC Withdrawal - Step 3 of 5**\n\n` +
+            `💰 **Amount:** ${session.data.amount} USDC\n` +
+            `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n\n` +
+            `🏛️ **Select your bank:**`,
+      reply_markup: {
+        inline_keyboard: bankButtons
+      }
+    };
+
+  } catch (error) {
+    console.error('[handlePayoutMethodStep] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again."
+    };
+  }
+}
+
+// Handle bank selection step
+async function handleBankSelectionStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const userInput = params.text?.trim();
+    const callbackData = params.callback_data;
+    
+    // Handle callback data for back/cancel buttons
+    if (callbackData === 'back_to_payout') {
+      // Go back to payout method selection
+      await offrampSessionService.updateSession(session.id, 'payout_method', {
+        amount: session.data.amount,
+        token: session.data.token
+      });
+      return handlePayoutMethodStep(session, { callback_data: undefined }, userId);
+    }
+    
+    if (callbackData === 'offramp_cancel') {
+      await offrampSessionService.clearSession(session.id);
+      return {
+        text: "❌ Withdrawal cancelled."
+      };
+    }
+    
+    // Handle bank selection from callback data
+    if (callbackData && callbackData.startsWith('select_bank_')) {
+      const parts = callbackData.split('_');
+      if (parts.length >= 4) {
+        const bankCode = parts[2];
+        const bankName = parts.slice(3, -1).join('_'); // Handle bank names with underscores
+        const currency = parts[parts.length - 1];
+        const currencyFlag = currency === 'NGN' ? '🇳🇬' : '🇰🇪';
+        
+        // Update session with bank details and move to account number step
+        await offrampSessionService.updateSession(session.id, 'account_number', {
+          ...session.data,
+          bankCode: bankCode,
+          bankName: bankName,
+          currency: currency
+        });
+
+        return {
+          text: `🏦 **USDC Withdrawal - Step 4 of 5**\n\n` +
+                `💰 **Amount:** ${session.data.amount} USDC\n` +
+                `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n` +
+                `🏛️ **Bank:** ${bankName}\n\n` +
+                `🔢 **Please enter your account number:**\n\n` +
+                `We'll automatically verify your account details.`,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "⬅️ Back", callback_data: "back_to_banks" },
+                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              ]
+            ]
+          }
+        };
+      }
+    }
+    
+    // If no valid callback data, return error
+    return {
+      text: "❌ Please select a bank from the options provided."
+    };
+
+  } catch (error) {
+    console.error('[handleBankSelectionStep] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again."
+    };
+  }
+}
+
+// Handle account number input step
+async function handleAccountNumberStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const accountNumber = params.text?.trim();
+    
+    if (params.callback_data === 'back_to_banks') {
+      // Go back to bank selection
+      const currency = session.data.currency || 'NGN';
+      const currencyFlag = currency === 'NGN' ? '🇳🇬' : '🇰🇪';
+      
+      await offrampSessionService.updateSession(session.id, 'bank_selection', {
+        ...session.data,
+        payoutMethod: 'bank_account',
+        currency: currency
+      });
+      
+      // Get supported banks from Paycrest API
+      const supportedBanks = await offrampService.getSupportedInstitutions(currency);
+
+      if (supportedBanks.length === 0) {
+        return {
+          text: `❌ Unable to load banks for ${currency}. Please try again later.`,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "⬅️ Back", callback_data: "back_to_payout" },
+                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              ]
+            ]
+          }
+        };
+      }
+
+      const bankButtons = supportedBanks.map(bank => [
+        { text: bank.name, callback_data: `select_bank_${bank.code}_${bank.name}_${currency}` }
+      ]);
+
+      bankButtons.push([
+        { text: "⬅️ Back", callback_data: "back_to_payout" },
+        { text: "❌ Cancel", callback_data: "offramp_cancel" }
+      ]);
+
+      return {
+        text: `🏦 **USDC Withdrawal - Step 3 of 5**\n\n` +
+              `💰 **Amount:** ${session.data.amount} USDC\n` +
+              `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n\n` +
+              `🏛️ **Select your bank:**`,
+        reply_markup: {
+          inline_keyboard: bankButtons
+        }
+      };
+    }
+    
+    if (!accountNumber) {
+      return {
+        text: "❌ Please enter your account number.\n\nExample: 1234567890",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "⬅️ Back", callback_data: "back_to_banks" },
+              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+            ]
+          ]
+        }
+      };
+    }
+
+    // Validate account number format (10 digits for Nigerian banks)
+    if (!/^\d{10}$/.test(accountNumber)) {
+      return {
+        text: "❌ Invalid account number format.\n\nPlease enter a 10-digit account number.\n\nExample: 1234567890",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "⬅️ Back", callback_data: "back_to_banks" },
+              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+            ]
+          ]
+        }
+      };
+    }
+
+    // Verify account with Paycrest API
+     try {
+       const accountDetails = await offrampService.verifyBankAccount(
+         accountNumber,
+         session.data.bankCode,
+         'NGN'
+       );
+
+       if (!accountDetails || !accountDetails.isValid || !accountDetails.accountName) {
+        return {
+          text: "❌ Unable to verify account details.\n\nPlease check your account number and try again.",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "⬅️ Back", callback_data: "back_to_banks" },
+                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              ]
+            ]
+          }
+        };
+      }
+
+      // Get exchange rate directly from Paycrest API
+      let exchangeRate;
+      let fiatAmount;
+      
+      try {
+        // Use the offrampService to get exchange rates - this returns the actual rate per USDC
+        const rates = await offrampService.getExchangeRates("USDC", 1); // Get rate for 1 USDC
+        if (rates.NGN) {
+          exchangeRate = rates.NGN; // This is the actual rate per USDC from Paycrest
+          fiatAmount = exchangeRate * session.data.amount; // Calculate total fiat amount
+          console.log(`[handleAccountNumberStep] Exchange rate from Paycrest: ₦${exchangeRate.toFixed(2)} per USDC`);
+          console.log(`[handleAccountNumberStep] Calculated amount: ${session.data.amount} USDC = ₦${fiatAmount.toFixed(2)}`);
+        } else {
+          throw new Error('NGN rate not available');
+        }
+      } catch (error) {
+        console.error('[handleAccountNumberStep] Could not fetch exchange rate:', error);
+        return {
+          text: "❌ We couldn't fetch the current exchange rate. Please try again in a moment.",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "⬅️ Back", callback_data: "back_to_banks" },
+                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              ]
+            ]
+          }
+        };
+      }
+
+      const fee = fiatAmount * 0.01; // 1% fee
+      const finalAmount = fiatAmount - fee;
+
+      // Update session with account details and move to confirmation
+      await offrampSessionService.updateSession(session.id, 'confirmation', {
+        ...session.data,
+        accountNumber: accountNumber,
+        accountName: accountDetails.accountName,
+        exchangeRate: exchangeRate,
+        fiatAmount: fiatAmount,
+        fee: fee,
+        finalAmount: finalAmount
+      });
+
+      return {
+        text: `✅ **USDC Withdrawal - Step 5 of 5**\n\n` +
+              `📋 **Transaction Summary:**\n\n` +
+              `💰 **Amount:** ${session.data.amount} USDC\n` +
+              `💱 **Rate:** ₦${exchangeRate.toFixed(2)} per USDC\n` +
+              `💵 **Gross Amount:** ₦${fiatAmount.toLocaleString()}\n` +
+              `💸 **Fee (1%):** ₦${fee.toLocaleString()}\n` +
+              `💳 **Net Amount:** ₦${finalAmount.toLocaleString()}\n\n` +
+              `🏛️ **Bank Details:**\n` +
+              `• Bank: ${session.data.bankName}\n` +
+              `• Account: ${accountNumber}\n` +
+              `• Name: ${accountDetails.accountName}\n\n` +
+              `⚠️ **Please confirm this transaction. This action cannot be undone.**`,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "✅ Confirm Withdrawal", callback_data: "offramp_confirm" }
+            ],
+            [
+              { text: "✏️ Edit Details", callback_data: "offramp_edit" },
+              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+            ]
+          ]
+        }
+      };
+
+    } catch (error) {
+      console.error('[handleAccountNumberStep] Account verification error:', error);
+      return {
+        text: "❌ Unable to verify account details.\n\nPlease check your account number and try again.",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "⬅️ Back", callback_data: "back_to_banks" },
+              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+            ]
+          ]
+        }
+      };
+    }
+
+  } catch (error) {
+    console.error('[handleAccountNumberStep] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again."
+    };
+  }
+}
+
+// Handle confirmation step
+async function handleConfirmationStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    console.log(`[handleConfirmationStep] Called with callback_data: ${params.callback_data}`);
+    console.log(`[handleConfirmationStep] Session data:`, JSON.stringify(session.data, null, 2));
+    
+    if (params.callback_data === 'offramp_confirm') {
+      console.log(`[handleConfirmationStep] Processing offramp_confirm for user ${userId}`);
+      
+      // First, create the Paycrest order to get the receive address
+      try {
+        const result = await offrampService.prepareOfframp({
+          userId,
+          amount: session.data.amount,
+          token: 'USDC',
+          currency: 'NGN',
+          bankDetails: {
+            accountNumber: session.data.accountNumber,
+            bankName: session.data.bankName,
+            bankCode: session.data.bankCode,
+            accountName: session.data.accountName,
+          },
+        });
+
+        console.log(`[handleConfirmationStep] prepareOfframp result:`, JSON.stringify(result, null, 2));
+
+        // Store the order details in session for final confirmation
+        await offrampSessionService.updateSession(session.id, 'final_confirmation', {
+          ...session.data,
+          orderId: result.orderId,
+          receiveAddress: result.receiveAddress,
+          fiatAmount: result.fiatAmount,
+        });
+
+        // Show final confirmation with receive address
+        return {
+          text: `🔐 **Final Confirmation Required**\n\n` +
+                `You are about to transfer **${session.data.amount} USDC** to:\n` +
+                `📍 **Receive Address:** \`${result.receiveAddress}\`\n\n` +
+                `💰 **You will receive:** ${result.fiatAmount} ${session.data.currency}\n` +
+                `🏦 **Bank Account:** ${session.data.accountName} (${session.data.accountNumber})\n\n` +
+                `⚠️ **This action cannot be undone. Please verify the receive address carefully.**\n\n` +
+                `Do you want to proceed with the token transfer?`,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "✅ Yes, Transfer Tokens", callback_data: "offramp_final_confirm" },
+                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              ]
+            ]
+          }
+        };
+      } catch (error) {
+        console.error('[handleConfirmationStep] Error preparing off-ramp:', error);
+        return {
+          text: `❌ An error occurred while preparing your transaction: ${error.message}`
+        };
+      }
+    }
+
+    if (params.callback_data === 'offramp_cancel') {
+      await offrampSessionService.clearSession(session.id);
+      return {
+        text: "❌ Withdrawal cancelled. You can start a new withdrawal anytime by typing 'offramp'.",
+      };
+    }
+
+    if (params.callback_data === 'offramp_edit') {
+      // Go back to amount step
+      await offrampSessionService.updateSession(session.id, 'amount', {});
+      return await startOfframpFlow(userId);
+    }
+
+    // For any other case, show error message
+    return {
+      text: "❌ Please use the buttons to confirm or cancel your withdrawal.",
+    };
+  } catch (error) {
+    console.error('[handleConfirmationStep] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again.",
+    };
+  }
+}
+
+// Handle final confirmation step
+async function handleFinalConfirmationStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    console.log(`[handleFinalConfirmationStep] Called with callback_data: ${params.callback_data}`);
+    console.log(`[handleFinalConfirmationStep] Session data:`, JSON.stringify(session.data, null, 2));
+    
+    if (params.callback_data === 'offramp_final_confirm') {
+      console.log(`[handleFinalConfirmationStep] Processing final confirmation for user ${userId}`);
+      
+      // Give immediate feedback that the transaction is being processed
+      await offrampSessionService.updateSession(session.id, 'processing', {
+        ...session.data,
+        status: 'processing',
+      });
+
+      // Execute the token transfer using the stored order details
+      try {
+        // The order was already created in the previous step, now just execute the transfer
+        const transferResult = await offrampService.executeTokenTransfer({
+          userId,
+          amount: session.data.amount,
+          receiveAddress: session.data.receiveAddress,
+          orderId: session.data.orderId
+        });
+
+        console.log(`[handleFinalConfirmationStep] Transfer executed:`, JSON.stringify(transferResult, null, 2));
+
+        // Let the user know the transaction is processing
+        return {
+          text: `✅ Your transaction is being processed. You will receive a notification shortly.\n\n` +
+                `📋 **Transaction ID:** ${session.data.orderId}\n` +
+                `🔗 **Transaction Hash:** ${transferResult.txHash}`,
+          metadata: { orderId: session.data.orderId, txHash: transferResult.txHash, step: 'transaction_processing' }
+        };
+      } catch (error) {
+        console.error('[handleFinalConfirmationStep] Error executing transfer:', error);
+        // Update the session to reflect the error
+        await offrampSessionService.updateSession(session.id, 'completed', {
+          ...session.data,
+          status: 'error',
+          error: error.message,
+        });
+        return {
+          text: `❌ An error occurred while executing your transfer: ${error.message}`
+        };
+      }
+    }
+
+    if (params.callback_data === 'offramp_cancel') {
+      await offrampSessionService.clearSession(session.id);
+      return {
+        text: "❌ Withdrawal cancelled. You can start a new withdrawal anytime by typing 'offramp'.",
+      };
+    }
+
+    // For any other case, show error message
+    return {
+      text: "❌ Please use the buttons to confirm or cancel your withdrawal.",
+    };
+  } catch (error) {
+    console.error('[handleFinalConfirmationStep] Error:', error);
+    return {
+      text: "❌ An error occurred. Please try again.",
+    };
+  }
+}
+
+async function handleOfframpSubmit(params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    const { orderId, txHash } = params;
+
+    if (!orderId || !txHash) {
+      return {
+        text: 'Missing orderId or txHash',
+      };
+    }
+
+    await offrampService.processOfframp(orderId, txHash);
+
+    return {
+      text: 'Transaction submitted and is being processed.',
+    };
+  } catch (error) {
+    console.error('[handleOfframpSubmit] error', error);
+    return {
+      text: 'An error occurred while submitting your transaction. Please try again.',
     };
   }
 }
