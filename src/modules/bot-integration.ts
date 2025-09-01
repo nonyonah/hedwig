@@ -713,11 +713,11 @@ export class BotIntegration {
          .from('user_states')
          .select('state_data')
          .eq('user_id', userId)
-         .eq('state_type', 'creating_proposal')
+         .eq('state_type', 'editing_user_info')
          .single();
 
-       if (proposalState?.state_data?.editing_user_info && proposalState.state_data.step?.startsWith('edit_user_')) {
-         const field = proposalState.state_data.step.replace('edit_user_', '');
+       if (proposalState?.state_data?.context === 'proposal' && proposalState.state_data.field) {
+         const field = proposalState.state_data.field;
          const result = await this.proposalModule.handleUserInfoEditInput(chatId, userId, field, text);
          
          // If result is a string, it means there was an error or validation issue
@@ -1420,8 +1420,11 @@ export class BotIntegration {
       else if (data.startsWith('proposal_') || data.startsWith('view_proposal_') || 
                data.startsWith('send_proposal_') || data.startsWith('pdf_proposal_') ||
                data.startsWith('edit_proposal_') || data.startsWith('delete_proposal_') ||
-               data.startsWith('cancel_proposal_')) {
-        await this.proposalModule.handleProposalCallback(callbackQuery);
+               data.startsWith('cancel_proposal_') || data === 'continue_proposal' ||
+               data === 'edit_user_info' || data === 'edit_user_field_name' ||
+               data === 'edit_user_field_email' || data === 'back_to_proposal' ||
+               data === 'cancel_user_edit' || data === 'cancel_proposal_creation') {
+        await this.proposalModule.handleProposalCallback(callbackQuery, userId);
         return true;
       }
       // USDC payment callbacks

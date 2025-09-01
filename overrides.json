@@ -1,7 +1,0 @@
-{
-  "overrides": {
-    "jose": {
-      "type": "module"
-    }
-  }
-}

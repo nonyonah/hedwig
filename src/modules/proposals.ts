@@ -91,8 +91,8 @@ export class ProposalModule {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '✅ Continue with Proposal', callback_data: `continue_proposal_creation_${userId}` }],
-            [{ text: '✏️ Edit My Info', callback_data: `edit_user_info_${userId}` }]
+            [{ text: '✅ Continue with Proposal', callback_data: 'continue_proposal' }],
+            [{ text: '✏️ Edit My Info', callback_data: 'edit_user_info' }]
           ]
         }
       });
@@ -510,6 +510,105 @@ export class ProposalModule {
           actualUserId = user?.id || chatId.toString();
         }
         await this.cancelProposalCreation(chatId, proposalId, actualUserId);
+      } else if (data === 'continue_proposal') {
+        // Handle continue proposal button
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        await this.continueProposalCreationFlow(chatId, actualUserId as string);
+      } else if (data === 'edit_user_info') {
+        // Handle edit user info button
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        await this.handleEditUserInfo(chatId, actualUserId as string);
+      } else if (data === 'edit_user_field_name') {
+        // Handle edit name field
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        await this.handleEditUserField(chatId, actualUserId as string, 'name');
+      } else if (data === 'edit_user_field_email') {
+        // Handle edit email field
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        await this.handleEditUserField(chatId, actualUserId as string, 'email');
+      } else if (data === 'back_to_proposal') {
+        // Handle back to proposal button
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        await this.continueProposalCreationFlow(chatId, actualUserId as string);
+      } else if (data === 'cancel_user_edit') {
+        // Handle cancel user edit button
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        await this.clearUserState(actualUserId as string);
+        await this.bot.sendMessage(chatId, '❌ Edit cancelled. What would you like to do next?', {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📝 Edit User Info', callback_data: 'edit_user_info' }],
+              [{ text: '📄 Continue Proposal', callback_data: 'continue_proposal' }]
+            ]
+          }
+        });
+      } else if (data === 'cancel_proposal_creation') {
+        // Handle cancel proposal creation button
+        let actualUserId = userId;
+        if (!actualUserId) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single();
+          actualUserId = user?.id || chatId.toString();
+        }
+        
+        // Get ongoing proposal to cancel
+        const ongoingProposal = await this.getOngoingProposal(actualUserId as string);
+        if (ongoingProposal) {
+          await this.cancelProposalCreation(chatId, ongoingProposal.id, actualUserId as string);
+        } else {
+          await this.bot.sendMessage(chatId, '❌ No ongoing proposal found to cancel.');
+        }
       }
 
       await this.bot.answerCallbackQuery(callbackQuery.id);
