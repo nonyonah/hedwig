@@ -539,7 +539,8 @@ export class BotIntegration {
         `You can now receive payments, check balances, and send crypto using these wallets!`,
       );
 
-      // Check if user needs to provide email address
+      // Check if user needs to provide name and email address
+      await this.checkAndRequestNameForNewUser(chatId, actualUserId);
       await this.checkAndRequestEmailForNewUser(chatId, actualUserId);
 
     } catch (error) {
@@ -681,6 +682,209 @@ export class BotIntegration {
        return false;
      }
    }
+
+   /**
+    * Handle user info editing input
+    */
+   async handleUserInfoEditInput(chatId: number, userId: string, text: string): Promise<boolean> {
+     try {
+       // Check if user is in user info editing state
+       const { data: userState } = await supabase
+         .from('user_states')
+         .select('state_data')
+         .eq('user_id', userId)
+         .eq('state_type', 'creating_invoice')
+         .single();
+
+       if (userState?.state_data?.editing_user_info && userState.state_data.step?.startsWith('edit_user_')) {
+         const field = userState.state_data.step.replace('edit_user_', '');
+         const result = await this.invoiceModule.handleUserInfoEditInput(chatId, userId, field, text);
+         
+         // If result is a string, it means there was an error or validation issue
+         if (typeof result === 'string') {
+           await this.bot.sendMessage(chatId, result);
+         }
+         
+         return true;
+       }
+
+       return false;
+     } catch (error) {
+       console.error('[BotIntegration] Error handling user info edit input:', error);
+       return false;
+     }
+   }
+
+    /**
+     * Handle name collection from user input
+     */
+    async handleNameCollection(chatId: number, messageText: string): Promise<boolean> {
+      try {
+        // Check if user is in name collection state
+        const { data: session, error: sessionError } = await supabase
+          .from('sessions')
+          .select('context')
+          .eq('user_id', chatId.toString())
+          .single();
+
+        if (sessionError || !session?.context?.awaiting_name) {
+          return false; // Not in name collection state
+        }
+
+        // Validate name (basic validation - not empty and reasonable length)
+        const name = messageText.trim();
+        if (name.length < 2 || name.length > 50) {
+          await this.bot.sendMessage(chatId, '❌ Please enter a valid name (2-50 characters):');
+          return true; // Handled, but invalid
+        }
+
+        // Update user with name
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ name })
+          .eq('telegram_chat_id', chatId);
+
+        if (updateError) {
+          console.error('[BotIntegration] Error updating user name:', updateError);
+          await this.bot.sendMessage(chatId, '❌ Failed to save your name. Please try again.');
+          return true;
+        }
+
+        // Clear session state
+        await supabase
+          .from('sessions')
+          .update({ context: {} })
+          .eq('user_id', chatId.toString());
+
+        // Send confirmation message
+        await this.bot.sendMessage(chatId,
+          `✅ *Name Saved Successfully!*\n\n` +
+          `Hello ${name}! Your name has been saved.\n\n` +
+          `This will be used for:\n` +
+          `• Invoice creation\n` +
+          `• Professional communications\n` +
+          `• Personalized experience\n\n` +
+          `You can now continue using Hedwig! 🎉`,
+          { parse_mode: 'Markdown' }
+        );
+
+        return true;
+      } catch (error) {
+        console.error('[BotIntegration] Error handling name collection:', error);
+        return false;
+      }
+    }
+
+    /**
+     * Check if user needs to provide name before using features
+     */
+    async checkNameRequiredForUser(chatId: number, userId: string, messageText: string): Promise<boolean> {
+      try {
+        // Skip name check for basic commands that don't require name
+        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance'];
+        if (basicCommands.includes(messageText)) {
+          return false;
+        }
+
+        // Get user data to check if name exists
+        const { data: user, error } = await supabase
+          .from('users')
+          .select('id, name, email, telegram_first_name, created_at')
+          .eq('telegram_chat_id', chatId)
+          .single();
+
+        if (error || !user) {
+          console.error('[BotIntegration] Error fetching user for name check:', error);
+          return false;
+        }
+
+        // If user has name, no need to request it
+        if (user.name && user.name.trim() !== '') {
+          return false;
+        }
+
+        // Check if user has been using the bot for a while (has wallets or invoices)
+        const { data: wallets } = await supabase
+          .from('wallets')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+
+        // If user has wallets but no name, request name for advanced features
+        if (wallets && wallets.length > 0) {
+          await this.requestUserName(chatId, user.telegram_first_name);
+          return true;
+        }
+
+        // For advanced features like invoices and proposals, require name
+        const advancedFeatures = ['📄 Invoice', '📋 Proposal', '📊 Business Dashboard', '🔗 Payment Link'];
+        if (advancedFeatures.includes(messageText)) {
+          await this.requestUserName(chatId, user.telegram_first_name);
+          return true;
+        }
+
+        return false;
+      } catch (error) {
+        console.error('[BotIntegration] Error checking name requirement:', error);
+        return false;
+      }
+    }
+
+    /**
+     * Request user name
+     */
+    async requestUserName(chatId: number, telegramFirstName?: string): Promise<void> {
+      try {
+        // Set session state to awaiting name
+        await supabase
+          .from('sessions')
+          .upsert({
+            user_id: chatId.toString(),
+            context: { awaiting_name: true }
+          });
+
+        const greeting = telegramFirstName ? `Hi ${telegramFirstName}!` : 'Hello!';
+        
+        await this.bot.sendMessage(chatId,
+          `${greeting} 👋\n\n` +
+          `To use advanced features like invoices and proposals, I need to know your full name.\n\n` +
+          `This will be used for professional communications and invoice creation.\n\n` +
+          `*Please enter your full name:*`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (error) {
+        console.error('[BotIntegration] Error requesting user name:', error);
+      }
+    }
+
+    /**
+     * Check and request name for new users
+     */
+    async checkAndRequestNameForNewUser(chatId: number, userId: string): Promise<void> {
+      try {
+        // Get user data to check if name exists
+        const { data: user, error } = await supabase
+          .from('users')
+          .select('name, telegram_first_name')
+          .eq('id', userId)
+          .single();
+
+        if (error || !user) {
+          console.error('[BotIntegration] Error fetching user for name check:', error);
+          return;
+        }
+
+        // If user already has a name, no need to request it
+        if (user.name && user.name.trim() !== '') {
+          return;
+        }
+
+        // Request name for new user
+        await this.requestUserName(chatId, user.telegram_first_name);
+      } catch (error) {
+        console.error('[BotIntegration] Error checking name for new user:', error);
+      }
+    }
 
     /**
      * Check if existing user needs to provide email before using features
@@ -1248,6 +1452,24 @@ export class BotIntegration {
       // Check if user is in email collection state
       const emailHandled = await this.handleEmailCollection(chatId, text);
       if (emailHandled) {
+        return true;
+      }
+
+      // Check if user is in name collection state
+      const nameHandled = await this.handleNameCollection(chatId, text);
+      if (nameHandled) {
+        return true;
+      }
+
+      // Check if user is in user info editing state
+      const userInfoEditHandled = await this.handleUserInfoEditInput(chatId, userId, text);
+      if (userInfoEditHandled) {
+        return true;
+      }
+
+      // Check if user needs to provide name before using features
+      const nameRequired = await this.checkNameRequiredForUser(chatId, userId, text);
+      if (nameRequired) {
         return true;
       }
 

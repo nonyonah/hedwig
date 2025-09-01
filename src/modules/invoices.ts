@@ -759,7 +759,7 @@ export class InvoiceModule {
   }
 
   // Handle user info edit input
-  private async handleUserInfoEditInput(chatId: number, userId: string, field: string, userInput: string) {
+  public async handleUserInfoEditInput(chatId: number, userId: string, field: string, userInput: string) {
     try {
       const updateData: any = {};
       let message = '';
