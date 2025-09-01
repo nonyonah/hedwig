@@ -688,17 +688,37 @@ export class BotIntegration {
     */
    async handleUserInfoEditInput(chatId: number, userId: string, text: string): Promise<boolean> {
      try {
-       // Check if user is in user info editing state
-       const { data: userState } = await supabase
+       // Check if user is in user info editing state for invoices
+       const { data: invoiceState } = await supabase
          .from('user_states')
          .select('state_data')
          .eq('user_id', userId)
          .eq('state_type', 'creating_invoice')
          .single();
 
-       if (userState?.state_data?.editing_user_info && userState.state_data.step?.startsWith('edit_user_')) {
-         const field = userState.state_data.step.replace('edit_user_', '');
+       if (invoiceState?.state_data?.editing_user_info && invoiceState.state_data.step?.startsWith('edit_user_')) {
+         const field = invoiceState.state_data.step.replace('edit_user_', '');
          const result = await this.invoiceModule.handleUserInfoEditInput(chatId, userId, field, text);
+         
+         // If result is a string, it means there was an error or validation issue
+         if (typeof result === 'string') {
+           await this.bot.sendMessage(chatId, result);
+         }
+         
+         return true;
+       }
+
+       // Check if user is in user info editing state for proposals
+       const { data: proposalState } = await supabase
+         .from('user_states')
+         .select('state_data')
+         .eq('user_id', userId)
+         .eq('state_type', 'creating_proposal')
+         .single();
+
+       if (proposalState?.state_data?.editing_user_info && proposalState.state_data.step?.startsWith('edit_user_')) {
+         const field = proposalState.state_data.step.replace('edit_user_', '');
+         const result = await this.proposalModule.handleUserInfoEditInput(chatId, userId, field, text);
          
          // If result is a string, it means there was an error or validation issue
          if (typeof result === 'string') {

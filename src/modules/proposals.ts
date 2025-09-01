@@ -72,11 +72,55 @@ export class ProposalModule {
         return this.continueProposalCreation(chatId, userId, ongoingProposal, initialMessage);
       }
 
+      // Get user info for personalization
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', userId)
+        .single();
+
+      // Show personalization with user info and edit option
+      const personalizationMessage = 
+        `📋 *Proposal from ${userData?.name || 'Unknown User'}*\n\n` +
+        `👤 *Your Information:*\n` +
+        `Name: ${userData?.name || 'Not set'}\n` +
+        `Email: ${userData?.email || 'Not set'}\n\n` +
+        `This information will be used in your proposal. Would you like to edit it or continue?`;
+
+      await this.bot.sendMessage(chatId, personalizationMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✅ Continue with Proposal', callback_data: `continue_proposal_creation_${userId}` }],
+            [{ text: '✏️ Edit My Info', callback_data: `edit_user_info_${userId}` }]
+          ]
+        }
+      });
+
+      return 'Proposal personalization shown';
+    } catch (error) {
+      console.error('Error creating proposal:', error);
+      return '❌ Failed to start proposal creation. Please try again.';
+    }
+  }
+
+  // Continue with actual proposal creation after personalization
+  async continueProposalCreationFlow(chatId: number, userId: string) {
+    try {
+      // Get user info for required fields
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', userId)
+        .single();
+
       // Start new proposal creation
       const proposalData: Partial<ProposalData> = {
         user_id: userId,
         user_identifier: userId,
         proposal_number: generateProposalNumber(),
+        freelancer_name: userData?.name || 'Unknown User',
+        freelancer_email: userData?.email || 'noreply@hedwigbot.xyz',
         status: 'draft',
         currency: 'USD',
         service_type: 'Custom Service',
@@ -97,12 +141,12 @@ export class ProposalModule {
 
       if (error) throw error;
 
-      // Start the creation flow
+      // Start the creation flow with client information
       await this.bot.sendMessage(chatId, 
         `📋 *Creating New Proposal ${proposal.proposal_number}*\n\n` +
         `Let's create a personalized, professional proposal for your client.\n\n` +
         `This will generate a natural language proposal that invites discussion and negotiation.\n\n` +
-        `*Step 1/12:* What's your name (freelancer/service provider)?`,
+        `*Step 1/9:* Who is the client? (Enter their name)`,
         { 
           parse_mode: 'Markdown',
           reply_markup: {
@@ -116,13 +160,13 @@ export class ProposalModule {
       // Set user state
       await this.setUserState(userId, 'creating_proposal', {
         proposal_id: proposal.id,
-        step: 'freelancer_name'
+        step: 'client_name'
       });
 
       return `Proposal creation started for ${proposal.proposal_number}`;
     } catch (error) {
-      console.error('Error creating proposal:', error);
-      return '❌ Failed to start proposal creation. Please try again.';
+      console.error('Error continuing proposal creation:', error);
+      return '❌ Failed to continue proposal creation. Please try again.';
     }
   }
 
@@ -141,31 +185,10 @@ export class ProposalModule {
       let responseMessage = '';
 
       switch (step) {
-        case 'freelancer_name':
-          updateData.freelancer_name = userInput.trim();
-          nextStep = 'freelancer_title';
-          responseMessage = `✅ Freelancer name: ${userInput}\n\n*Step 2/12:* What's your professional title? (e.g., "Full-Stack Developer", "UI/UX Designer", "Digital Marketing Specialist")`;
-          break;
-
-        case 'freelancer_title':
-          updateData.freelancer_title = userInput.trim();
-          nextStep = 'freelancer_email';
-          responseMessage = `✅ Title: ${userInput}\n\n*Step 3/12:* What's your email address?`;
-          break;
-
-        case 'freelancer_email':
-          if (!this.isValidEmail(userInput)) {
-            return '❌ Please enter a valid email address.';
-          }
-          updateData.freelancer_email = userInput.trim();
-          nextStep = 'client_name';
-          responseMessage = `✅ Email: ${userInput}\n\n*Step 4/12:* Who is the client? (Enter their name)`;
-          break;
-
         case 'client_name':
           updateData.client_name = userInput.trim();
           nextStep = 'client_company';
-          responseMessage = `✅ Client name: ${userInput}\n\n*Step 5/12:* What's the client's company name? (Type "skip" if individual client)`;
+          responseMessage = `✅ Client name: ${userInput}\n\n*Step 2/9:* What's the client's company name? (Type "skip" if individual client)`;
           break;
 
         case 'client_company':
@@ -173,7 +196,7 @@ export class ProposalModule {
             updateData.client_company = userInput.trim();
           }
           nextStep = 'client_industry';
-          responseMessage = `✅ Company info saved\n\n*Step 6/12:* What industry is the client in? (e.g., "E-commerce", "Healthcare", "Education", or "skip")`;
+          responseMessage = `✅ Company info saved\n\n*Step 3/9:* What industry is the client in? (e.g., "E-commerce", "Healthcare", "Education", or "skip")`;
           break;
 
         case 'client_industry':
@@ -181,7 +204,7 @@ export class ProposalModule {
             updateData.client_industry = userInput.trim();
           }
           nextStep = 'client_email';
-          responseMessage = `✅ Industry info saved\n\n*Step 7/12:* What's the client's email address?`;
+          responseMessage = `✅ Industry info saved\n\n*Step 4/9:* What's the client's email address?`;
           break;
 
         case 'client_email':
@@ -190,19 +213,19 @@ export class ProposalModule {
           }
           updateData.client_email = userInput.trim();
           nextStep = 'project_description';
-          responseMessage = `✅ Client email: ${userInput}\n\n*Step 8/12:* What's the project title? (e.g., "Website Redesign" or "Mobile App Development")`;
+          responseMessage = `✅ Client email: ${userInput}\n\n*Step 5/9:* What's the project title? (e.g., "Website Redesign" or "Mobile App Development")`;
           break;
 
         case 'project_description':
           updateData.project_description = userInput.trim();
           nextStep = 'scope_of_work';
-          responseMessage = `✅ Project title saved\n\n*Step 9/12:* What are the deliverables? (List what you'll provide, separated by commas)`;
+          responseMessage = `✅ Project title saved\n\n*Step 6/9:* What are the deliverables? (List what you'll provide, separated by commas)`;
           break;
 
         case 'scope_of_work':
           updateData.scope_of_work = userInput.trim();
           nextStep = 'project_complexity';
-          responseMessage = `✅ Deliverables saved\n\n*Step 10/12:* How would you rate the project complexity?\n\n🟢 Type "simple" - Basic tasks, straightforward requirements\n🟡 Type "moderate" - Standard complexity, some challenges\n🔴 Type "complex" - Advanced requirements, significant challenges`;
+          responseMessage = `✅ Deliverables saved\n\n*Step 7/9:* How would you rate the project complexity?\n\n🟢 Type "simple" - Basic tasks, straightforward requirements\n🟡 Type "moderate" - Standard complexity, some challenges\n🔴 Type "complex" - Advanced requirements, significant challenges`;
           break;
 
         case 'project_complexity':
@@ -212,13 +235,13 @@ export class ProposalModule {
           }
           updateData.project_complexity = complexity as 'simple' | 'moderate' | 'complex';
           nextStep = 'timeline';
-          responseMessage = `✅ Complexity set to ${complexity}\n\n*Step 11/12:* What's the timeline? (e.g., "2 weeks", "1 month", "by March 15th")`;
+          responseMessage = `✅ Complexity set to ${complexity}\n\n*Step 8/9:* What's the timeline? (e.g., "2 weeks", "1 month", "by March 15th")`;
           break;
 
         case 'timeline':
           updateData.timeline = userInput.trim();
           nextStep = 'amount';
-          responseMessage = `✅ Timeline saved\n\n*Step 12/12:* What's the budget? (e.g., 1500 USD or 600000 NGN)`;
+          responseMessage = `✅ Timeline saved\n\n*Step 9/9:* What's the budget? (e.g., 1500 USD or 600000 NGN)`;
           break;
 
         case 'amount':
@@ -942,5 +965,114 @@ export class ProposalModule {
         ]]
       }
     });
+  }
+
+  /**
+   * Handle editing user information during proposal creation
+   */
+  async handleEditUserInfo(chatId: number, userId: string) {
+    try {
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+
+      const message = `📝 *Edit Your Information*\n\n` +
+        `👤 **Name:** ${user.name || 'Not set'}\n` +
+        `📧 **Email:** ${user.email || 'Not set'}\n\n` +
+        `What would you like to edit?`;
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '👤 Edit Name', callback_data: `edit_user_field_name` }],
+            [{ text: '📧 Edit Email', callback_data: `edit_user_field_email` }],
+            [{ text: '↩️ Back to Proposal', callback_data: 'back_to_proposal' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error handling edit user info:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading user information. Please try again.');
+    }
+  }
+
+  /**
+   * Handle editing a specific user field
+   */
+  async handleEditUserField(chatId: number, userId: string, field: 'name' | 'email') {
+    try {
+      const fieldName = field === 'name' ? 'Name' : 'Email';
+      const prompt = field === 'name' 
+        ? 'Please enter your new name:'
+        : 'Please enter your new email address:';
+
+      await this.setUserState(userId, 'editing_user_info', {
+        field: field,
+        context: 'proposal'
+      });
+
+      await this.bot.sendMessage(chatId, `📝 *Edit ${fieldName}*\n\n${prompt}`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: 'cancel_user_edit' }
+          ]]
+        }
+      });
+    } catch (error) {
+      console.error('Error handling edit user field:', error);
+      await this.bot.sendMessage(chatId, '❌ Error setting up field editing. Please try again.');
+    }
+  }
+
+  /**
+   * Handle user info edit input
+   */
+  public async handleUserInfoEditInput(chatId: number, userId: string, field: string, userInput: string) {
+    try {
+      // Validate email if editing email
+      if (field === 'email' && !this.isValidEmail(userInput)) {
+        return '❌ Please enter a valid email address.';
+      }
+
+      // Update user in database
+      const updateData = { [field]: userInput.trim() };
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      // Clear user state
+      await this.clearUserState(userId);
+
+      // Send confirmation message
+      const fieldName = field === 'name' ? 'Name' : 'Email';
+      const message = `✅ *${fieldName} Updated Successfully!*\n\n` +
+        `Your ${field} has been updated to: **${userInput.trim()}**\n\n` +
+        `What would you like to do next?`;
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📝 Edit More Info', callback_data: 'edit_user_info' }],
+            [{ text: '📄 Continue Proposal', callback_data: 'continue_proposal' }],
+            [{ text: '❌ Cancel Proposal', callback_data: 'cancel_proposal_creation' }]
+          ]
+        }
+      });
+
+      return 'User info updated successfully';
+    } catch (error) {
+      console.error('Error updating user info:', error);
+      return '❌ Error updating your information. Please try again.';
+    }
   }
 }
