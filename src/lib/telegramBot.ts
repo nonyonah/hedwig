@@ -277,6 +277,18 @@ export class TelegramBotService {
         await this.ensureUserExists(msg.from, chatId);
       }
 
+      // Track session_started event for user activity analysis
+      try {
+        const { trackEvent } = await import('./posthog');
+        await trackEvent('session_started', {
+          user_id: userId?.toString() || chatId.toString(),
+          feature: 'bot_interaction',
+          timestamp: new Date().toISOString()
+        });
+      } catch (trackingError) {
+        console.error('[TelegramBot] Error tracking session_started event:', trackingError);
+      }
+
       // Log incoming message
       console.log('[TelegramBot] Logging incoming message');
       await this.logMessage(chatId, 'incoming', messageText, userId);
@@ -284,6 +296,12 @@ export class TelegramBotService {
       // Send typing indicator
       console.log('[TelegramBot] Sending typing indicator');
       await this.sendChatAction(chatId, 'typing');
+
+      // Check if user is in email collection state
+      const emailHandled = await this.handleEmailCollection(chatId, messageText);
+      if (emailHandled) {
+        return;
+      }
 
       // Handle commands
       if (messageText.startsWith('/')) {
@@ -530,6 +548,18 @@ export class TelegramBotService {
    * Send welcome message with inline keyboard
    */
   private async sendWelcomeMessage(chatId: number, userName: string): Promise<void> {
+    // Track bot_started event for PostHog analytics
+    try {
+      const { trackEvent } = await import('./posthog');
+      await trackEvent('bot_started', {
+        user_id: chatId.toString(),
+        feature: 'bot_interaction',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[TelegramBot] Error tracking bot_started event:', error);
+    }
+
     const welcomeText = `👋 Hello ${userName}! Welcome to Hedwig AI Assistant!
 
 I'm here to help you with:
@@ -747,6 +777,14 @@ Choose an action below:`;
     try {
       const { supabase } = await import('./supabase');
       
+      // Check if user already exists
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telegram_chat_id', chatId)
+        .single();
+      
+      // Create or get user
       const { error } = await supabase.rpc('get_or_create_telegram_user', {
         p_telegram_chat_id: chatId,
         p_telegram_username: from?.username || null,
@@ -757,9 +795,144 @@ Choose an action below:`;
 
       if (error) {
         console.error('[TelegramBot] Error ensuring user exists:', error);
+        return;
       }
+
+      // If this is a new user, identify them in PostHog
+      if (!existingUser) {
+        try {
+          const { identifyUser } = await import('./posthog');
+          await identifyUser(chatId.toString(), {
+            first_name: from?.first_name || null,
+            username: from?.username || null,
+            telegram_user_id: chatId,
+            language_code: from?.language_code || null,
+            context: 'telegram',
+            user_type: 'new_telegram_user',
+            created_via: 'telegram_bot'
+          });
+          console.log('[TelegramBot] Identified new user in PostHog:', chatId);
+        } catch (posthogError) {
+          console.error('[TelegramBot] Error identifying user in PostHog:', posthogError);
+        }
+      }
+
+      // Check if user has email
+      await this.checkAndRequestEmail(chatId);
     } catch (error) {
       console.error('[TelegramBot] Error in ensureUserExists:', error);
+    }
+  }
+
+  /**
+   * Check if user has email and request it if missing
+   */
+  private async checkAndRequestEmail(chatId: number): Promise<void> {
+    try {
+      const { supabase } = await import('./supabase');
+      
+      // Get user data
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('id, email, name, telegram_first_name')
+        .eq('telegram_chat_id', chatId)
+        .single();
+
+      if (error || !user) {
+        console.error('[TelegramBot] Error fetching user for email check:', error);
+        return;
+      }
+
+      // If email is missing, request it
+      if (!user.email) {
+        const userName = user.name || user.telegram_first_name || 'there';
+        await this.requestUserEmail(chatId, userName);
+      }
+    } catch (error) {
+      console.error('[TelegramBot] Error checking user email:', error);
+    }
+  }
+
+  /**
+   * Request email from user
+   */
+  private async requestUserEmail(chatId: number, userName: string): Promise<void> {
+    try {
+      const { supabase } = await import('./supabase');
+      
+      // Set session state to expect email
+      await supabase
+        .from('sessions')
+        .upsert({
+          user_id: chatId.toString(),
+          context: { awaiting_email: true },
+          updated_at: new Date().toISOString()
+        });
+
+      const message = `👋 Hi ${userName}! To personalize your invoices and proposals, I need your email address.
+
+📧 Please reply with your email address:`;
+      
+      await this.sendMessage(chatId, message);
+    } catch (error) {
+      console.error('[TelegramBot] Error requesting user email:', error);
+    }
+  }
+
+  /**
+   * Handle email collection from user input
+   */
+  private async handleEmailCollection(chatId: number, messageText: string): Promise<boolean> {
+    try {
+      const { supabase } = await import('./supabase');
+      
+      // Check if user is in email collection state
+      const { data: session, error: sessionError } = await supabase
+        .from('sessions')
+        .select('context')
+        .eq('user_id', chatId.toString())
+        .single();
+
+      if (sessionError || !session?.context?.awaiting_email) {
+        return false; // Not in email collection state
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(messageText.trim())) {
+        await this.sendMessage(chatId, '❌ Please enter a valid email address (e.g., john@example.com):');
+        return true; // Handled, but invalid
+      }
+
+      const email = messageText.trim().toLowerCase();
+
+      // Update user with email
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ email })
+        .eq('telegram_chat_id', chatId);
+
+      if (updateError) {
+        console.error('[TelegramBot] Error updating user email:', updateError);
+        await this.sendMessage(chatId, '❌ Failed to save your email. Please try again.');
+        return true;
+      }
+
+      // Clear session state
+      await supabase
+        .from('sessions')
+        .update({ context: {} })
+        .eq('user_id', chatId.toString());
+
+      // Confirm email saved
+      await this.sendMessage(chatId, `✅ Great! Your email (${email}) has been saved.
+
+Now you can create personalized invoices and proposals. Type /help to see what I can do for you!`);
+      
+      return true; // Successfully handled
+    } catch (error) {
+      console.error('[TelegramBot] Error handling email collection:', error);
+      return false;
     }
   }
 

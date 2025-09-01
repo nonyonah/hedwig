@@ -207,6 +207,20 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
       : (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz');
     const invoiceLink = `${resolvedBaseUrl}/invoice/${data.id}`;
 
+    // Track invoice creation event
+    try {
+      const { HedwigEvents } = await import('./posthog');
+      await HedwigEvents.invoiceCreated(
+        userId || 'anonymous',
+        data.id,
+        amount,
+        token
+      );
+      console.log('✅ Invoice created event tracked successfully');
+    } catch (trackingError) {
+      console.error('Error tracking invoice_created event:', trackingError);
+    }
+
     // Send email if recipientEmail is provided
     if (recipientEmail) {
       try {
@@ -335,6 +349,20 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
 
   if (result.error) {
     throw new Error(`Failed to send email: ${result.error.message}`);
+  }
+
+  // Track invoice sent event
+  try {
+    const { HedwigEvents } = await import('./posthog');
+    await HedwigEvents.invoiceSent('system', {
+      invoice_number: invoiceNumber,
+      recipient_email: recipientEmail,
+      amount: amount,
+      currency: token
+    });
+    console.log('✅ Invoice sent event tracked successfully');
+  } catch (trackingError) {
+    console.error('Error tracking invoice_sent event:', trackingError);
   }
 }
 

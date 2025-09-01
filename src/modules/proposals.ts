@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import { NaturalProposalGenerator } from '../lib/naturalProposalGenerator';
+import { trackEvent } from '../lib/posthog';
 // Generate proposal number function moved here
 function generateProposalNumber(): string {
   const date = new Date();
@@ -277,6 +278,15 @@ export class ProposalModule {
 
       if (error) throw error;
 
+      // Track proposal_created event
+      try {
+        const { HedwigEvents } = await import('../lib/posthog');
+        await HedwigEvents.proposalCreated(userId, proposalId, proposal.project_description || 'Untitled Project', proposal.amount || 0, proposal.currency || 'USD');
+        console.log('PostHog: Proposal created event tracked successfully');
+      } catch (trackingError) {
+        console.error('PostHog tracking error for proposal_created:', trackingError);
+      }
+
       // Clear user state
       await this.clearUserState(userId);
 
@@ -292,7 +302,10 @@ export class ProposalModule {
               { text: '📄 Generate PDF', callback_data: `pdf_proposal_${proposalId}` }
             ],
             [
-              { text: '✏️ Edit Proposal', callback_data: `edit_proposal_${proposalId}` },
+              { text: '📄 Generate Invoice', callback_data: `generate_invoice_${proposalId}` },
+              { text: '✏️ Edit Proposal', callback_data: `edit_proposal_${proposalId}` }
+            ],
+            [
               { text: '🗑️ Delete', callback_data: `delete_proposal_${proposalId}` }
             ]
           ]
@@ -313,6 +326,122 @@ export class ProposalModule {
     return naturalGenerator.generateTelegramPreview(naturalInputs);
   }
 
+  // Generate invoice from proposal
+  private async generateInvoiceFromProposal(chatId: number, proposalId: string, userId?: string) {
+    try {
+      // Get proposal data
+      const { data: proposal, error: proposalError } = await supabase
+        .from('proposals')
+        .select('*')
+        .eq('id', proposalId)
+        .single();
+
+      if (proposalError || !proposal) {
+        await this.bot.sendMessage(chatId, '❌ Proposal not found.');
+        return;
+      }
+
+      // Get user ID if not provided
+      let actualUserId = userId;
+      if (!actualUserId) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', chatId)
+          .single();
+        actualUserId = user?.id;
+      }
+
+      if (!actualUserId) {
+        await this.bot.sendMessage(chatId, '❌ User not found.');
+        return;
+      }
+
+      // Generate invoice number
+      const generateInvoiceNumber = (): string => {
+        const date = new Date();
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        return `INV-${year}${month}${day}-${random}`;
+      };
+
+      // Create invoice data from proposal
+      const invoiceData = {
+        user_id: actualUserId,
+        user_identifier: actualUserId,
+        invoice_number: generateInvoiceNumber(),
+        freelancer_name: proposal.freelancer_name,
+        freelancer_email: proposal.freelancer_email,
+        client_name: proposal.client_name,
+        client_email: proposal.client_email,
+        project_description: proposal.project_description,
+        quantity: 1,
+        rate: proposal.amount,
+        amount: proposal.amount,
+        currency: proposal.currency || 'USD',
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
+        status: 'draft',
+        payment_methods: {
+          usdc_base: proposal.payment_methods?.usdc_base || ''
+        },
+        linked_proposal_id: proposalId
+      };
+
+      // Create invoice
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert([invoiceData])
+        .select()
+        .single();
+
+      if (invoiceError) {
+        console.error('Error creating invoice:', invoiceError);
+        await this.bot.sendMessage(chatId, '❌ Error creating invoice. Please try again.');
+        return;
+      }
+
+      // Update proposal with linked invoice ID
+      await supabase
+        .from('proposals')
+        .update({ linked_invoice_id: invoice.id })
+        .eq('id', proposalId);
+
+      // Send success message with invoice preview
+      const previewMessage = 
+        `✅ *Invoice Generated Successfully!*\n\n` +
+        `📄 **Invoice ${invoice.invoice_number}**\n` +
+        `🔗 Linked to Proposal ${proposal.proposal_number}\n\n` +
+        `**Details:**\n` +
+        `• Client: ${invoice.client_name}\n` +
+        `• Project: ${invoice.project_description}\n` +
+        `• Amount: ${invoice.amount} ${invoice.currency}\n` +
+        `• Due Date: ${invoice.due_date}\n\n` +
+        `The invoice is ready for review and sending.`;
+
+      await this.bot.sendMessage(chatId, previewMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📧 Send Invoice', callback_data: `send_invoice_${invoice.id}` },
+              { text: '📄 Generate PDF', callback_data: `pdf_invoice_${invoice.id}` }
+            ],
+            [
+              { text: '✏️ Edit Invoice', callback_data: `edit_invoice_${invoice.id}` },
+              { text: '🔙 Back to Proposal', callback_data: `view_proposal_${proposalId}` }
+            ]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error generating invoice from proposal:', error);
+      await this.bot.sendMessage(chatId, '❌ Error generating invoice. Please try again.');
+    }
+  }
+
   // Handle callback queries for proposal actions
   async handleProposalCallback(callbackQuery: TelegramBot.CallbackQuery, userId?: string) {
     const chatId = callbackQuery.message?.chat.id;
@@ -327,6 +456,9 @@ export class ProposalModule {
       } else if (data.startsWith('pdf_proposal_')) {
         const proposalId = data.replace('pdf_proposal_', '');
         await this.generateAndSendPDF(chatId, proposalId);
+      } else if (data.startsWith('generate_invoice_')) {
+        const proposalId = data.replace('generate_invoice_', '');
+        await this.generateInvoiceFromProposal(chatId, proposalId, userId);
       } else if (data.startsWith('edit_proposal_')) {
         const proposalId = data.replace('edit_proposal_', '');
         await this.editProposal(chatId, proposalId);

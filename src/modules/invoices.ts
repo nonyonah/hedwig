@@ -57,6 +57,47 @@ export class InvoiceModule {
       const userData = userResult.data;
       const walletData = walletResult.data;
 
+      // Show personalization with user info and edit option
+      const personalizationMessage = 
+        `📋 *Invoice from ${userData?.name || 'Unknown User'}*\n\n` +
+        `👤 *Your Information:*\n` +
+        `Name: ${userData?.name || 'Not set'}\n` +
+        `Email: ${userData?.email || 'Not set'}\n\n` +
+        `ℹ️ *Note:* A 1% platform fee will be deducted from payments to support our services.\n\n` +
+        `Ready to create your professional invoice?`;
+
+      await this.bot.sendMessage(chatId, personalizationMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✏️ Edit Info', callback_data: `edit_user_info_${userId}` }],
+            [{ text: '✅ Continue', callback_data: `continue_invoice_creation_${userId}` }],
+            [{ text: '❌ Cancel', callback_data: 'cancel_invoice_creation' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in handleInvoiceCreation:', error);
+      await this.bot.sendMessage(chatId, '❌ An error occurred. Please try again.');
+    }
+  }
+
+  // Continue with actual invoice creation after personalization
+  async continueInvoiceCreationFlow(chatId: number, userId: string) {
+    try {
+      // Get user info and wallet for required fields
+      const [userResult, walletResult] = await Promise.all([
+        supabase.from('users').select('name, email').eq('id', userId).single(),
+        supabase.from('wallets').select('address').eq('user_id', userId).eq('chain', 'evm').single()
+      ]);
+
+      const userData = userResult.data;
+      const walletData = walletResult.data;
+
+      // Generate invoice number
+      const invoiceNumber = `INV-${Date.now()}`;
+
       // Create new invoice record with required fields
       const { data: invoice, error } = await supabase
         .from('invoices')
@@ -91,10 +132,10 @@ export class InvoiceModule {
       // Set user state for invoice creation
       await this.setUserState(userId, {
         invoice_id: invoice.id,
-        step: 'freelancer_name'
+        step: 'client_name'
       });
 
-      await this.sendStepPrompt(chatId, 'freelancer_name', invoice.id);
+      await this.sendStepPrompt(chatId, 'client_name', invoice.id);
     } catch (error) {
       console.error('Error in handleInvoiceCreation:', error);
       await this.bot.sendMessage(chatId, '❌ An error occurred. Please try again.');
@@ -138,6 +179,12 @@ export class InvoiceModule {
       if (userState.editing && step.startsWith('edit_')) {
         const editField = step.replace('edit_', '');
         return await this.handleEditInput(chatId, userId, invoice_id, editField, userInput);
+      }
+
+      // Handle user info editing states
+      if (userState.editing_user_info && step.startsWith('edit_user_')) {
+        const field = step.replace('edit_user_', '');
+        return await this.handleUserInfoEditInput(chatId, userId, field, userInput);
       }
 
       switch (step) {
@@ -313,6 +360,20 @@ export class InvoiceModule {
         return 'Invoice data not found';
       }
 
+      // Track invoice_created event for PostHog analytics
+      try {
+        const { HedwigEvents } = await import('../lib/posthog');
+        await HedwigEvents.invoiceCreated(
+          userId,
+          invoice.id,
+          invoice.amount,
+          invoice.currency
+        );
+        console.log('[InvoiceModule] Tracked invoice_created event for invoice:', invoice.id);
+      } catch (error) {
+        console.error('[InvoiceModule] Error tracking invoice_created event:', error);
+      }
+
       // Clear user state
       await this.clearUserState(userId);
 
@@ -408,6 +469,23 @@ export class InvoiceModule {
       } else if (data.startsWith('confirm_delete_')) {
         const invoiceId = data.replace('confirm_delete_', '');
         await this.confirmDeleteInvoice(chatId, invoiceId);
+      } else if (data.startsWith('edit_user_info_')) {
+        const userId = data.replace('edit_user_info_', '');
+        await this.handleEditUserInfo(chatId, userId);
+      } else if (data.startsWith('continue_invoice_creation_')) {
+        const userId = data.replace('continue_invoice_creation_', '');
+        await this.continueInvoiceCreationFlow(chatId, userId);
+      } else if (data === 'cancel_invoice_creation') {
+        await this.bot.sendMessage(chatId, '❌ Invoice creation cancelled.');
+      } else if (data.startsWith('edit_user_name_')) {
+        const userId = data.replace('edit_user_name_', '');
+        await this.handleEditUserField(chatId, userId, 'name');
+      } else if (data.startsWith('edit_user_email_')) {
+        const userId = data.replace('edit_user_email_', '');
+        await this.handleEditUserField(chatId, userId, 'email');
+      } else if (data.startsWith('edit_user_info_back_')) {
+        const userId = data.replace('edit_user_info_back_', '');
+        await this.continueInvoiceCreationFlow(chatId, userId);
       }
 
       await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -451,6 +529,20 @@ export class InvoiceModule {
         .from('invoices')
         .update({ status: 'sent' })
         .eq('id', invoiceId);
+
+      // Track invoice sent event
+      try {
+        const { HedwigEvents } = await import('../lib/posthog');
+        await HedwigEvents.invoiceSent(chatId.toString(), {
+          invoice_id: invoiceId,
+          client_email: invoice.client_email,
+          amount: invoice.amount,
+          currency: invoice.currency
+        });
+        console.log('PostHog: Invoice sent event tracked successfully');
+      } catch (trackingError) {
+        console.error('PostHog tracking error for invoice_sent:', trackingError);
+      }
 
       await this.bot.sendMessage(chatId, `✅ Invoice sent to ${invoice.client_email}`);
     } catch (error) {
@@ -590,6 +682,143 @@ export class InvoiceModule {
         ]]
       }
     });
+  }
+
+  // Handle edit user info
+  private async handleEditUserInfo(chatId: number, userId: string) {
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', userId)
+        .single();
+
+      const message = 
+        `✏️ *Edit Your Information*\n\n` +
+        `👤 *Current Information:*\n` +
+        `Name: ${userData?.name || 'Not set'}\n` +
+        `Email: ${userData?.email || 'Not set'}\n\n` +
+        `What would you like to edit?`;
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📝 Edit Name', callback_data: `edit_user_name_${userId}` }],
+            [{ text: '📧 Edit Email', callback_data: `edit_user_email_${userId}` }],
+            [{ text: '🔙 Back', callback_data: `edit_user_info_back_${userId}` }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error handling edit user info:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading user information.');
+    }
+  }
+
+  // Handle edit user field
+  private async handleEditUserField(chatId: number, userId: string, field: string) {
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', userId)
+        .single();
+
+      let message = '';
+      if (field === 'name') {
+        message = 
+          `📝 *Edit Name*\n\n` +
+          `Current name: ${userData?.name || 'Not set'}\n\n` +
+          `Please send your new name:`;
+      } else if (field === 'email') {
+        message = 
+          `📧 *Edit Email*\n\n` +
+          `Current email: ${userData?.email || 'Not set'}\n\n` +
+          `Please send your new email address:`;
+      }
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: `edit_user_info_${userId}` }
+          ]]
+        }
+      });
+
+      // Set user state for editing
+      await this.setUserState(userId, {
+        step: `edit_user_${field}`,
+        editing_user_info: true
+      });
+    } catch (error) {
+      console.error('Error handling edit user field:', error);
+      await this.bot.sendMessage(chatId, '❌ Error processing request.');
+    }
+  }
+
+  // Handle user info edit input
+  private async handleUserInfoEditInput(chatId: number, userId: string, field: string, userInput: string) {
+    try {
+      const updateData: any = {};
+      let message = '';
+
+      if (field === 'name') {
+        updateData.name = userInput.trim();
+        message = `✅ Name updated to: ${userInput.trim()}`;
+      } else if (field === 'email') {
+        if (!this.isValidEmail(userInput)) {
+          return '❌ Please enter a valid email address';
+        }
+        updateData.email = userInput.trim();
+        message = `✅ Email updated to: ${userInput.trim()}`;
+      }
+
+      // Update user data
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Error updating user info:', error);
+        return '❌ Error updating information. Please try again.';
+      }
+
+      // Clear user state
+      await this.clearUserState(userId);
+
+      // Show updated info and continue with invoice creation
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', userId)
+        .single();
+
+      const updatedMessage = 
+        `${message}\n\n` +
+        `📋 *Updated Information:*\n` +
+        `Name: ${userData?.name || 'Not set'}\n` +
+        `Email: ${userData?.email || 'Not set'}\n\n` +
+        `Ready to create your invoice?`;
+
+      await this.bot.sendMessage(chatId, updatedMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✅ Continue', callback_data: `continue_invoice_creation_${userId}` }],
+            [{ text: '✏️ Edit More', callback_data: `edit_user_info_${userId}` }],
+            [{ text: '❌ Cancel', callback_data: 'cancel_invoice_creation' }]
+          ]
+        }
+      });
+
+      return 'User info updated successfully';
+    } catch (error) {
+      console.error('Error handling user info edit input:', error);
+      return '❌ Error processing update. Please try again.';
+    }
   }
 
   // Validate email

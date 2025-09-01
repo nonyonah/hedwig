@@ -955,6 +955,21 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
     if (!existingUser && userId) {
       const userName = from?.first_name || from?.username || 'there';
       
+      // Identify new user in PostHog
+      try {
+        const { identifyUser } = await import('../../lib/posthog');
+        await identifyUser(chatId.toString(), {
+          first_name: from?.first_name || null,
+          username: from?.username || null,
+          telegram_user_id: chatId,
+          context: 'telegram',
+          user_type: 'new_telegram_user'
+        });
+        console.log('[Webhook] Identified new user in PostHog:', chatId);
+      } catch (posthogError) {
+        console.error('[Webhook] Error identifying user in PostHog:', posthogError);
+      }
+      
       // Send initial welcome message
       const welcomeMessage = `🦉 Welcome to Hedwig, ${userName}! 
 

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from './serverEnv';
 import { Resend } from 'resend';
+import { trackEvent } from './posthog';
 
 // Load environment variables
 loadServerEnvironment();
@@ -135,6 +136,23 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     
     const paymentLink = `${resolvedBaseUrl}/payment-link/${data.id}`;
     console.log('Payment link generated:', paymentLink);
+
+    // Track payment_link_created event
+    try {
+      const { HedwigEvents } = await import('./posthog');
+      await HedwigEvents.paymentLinkCreated(userId, {
+        amount: amount,
+        token: token.toUpperCase(),
+        network: network.toLowerCase(),
+        payment_reason: paymentReason,
+        recipient_email: recipientEmail || null,
+        payment_link_id: data.id,
+        wallet_address: walletAddress.toLowerCase()
+      });
+      console.log('✅ Payment link created event tracked successfully');
+    } catch (trackingError) {
+      console.error('Error tracking payment_link_created event:', trackingError);
+    }
 
     // Send email if recipientEmail is provided
     if (recipientEmail) {

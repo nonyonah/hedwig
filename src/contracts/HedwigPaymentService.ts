@@ -201,6 +201,7 @@ export class HedwigPaymentService {
       const paymentEvent: PaymentReceivedEvent = {
         payer,
         freelancer,
+        token,
         amount,
         fee,
         invoiceId,

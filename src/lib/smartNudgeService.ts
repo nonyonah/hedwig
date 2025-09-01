@@ -98,7 +98,7 @@ export class SmartNudgeService {
               lastNudgeAt: link.last_nudge_at,
               nudgeDisabled: link.nudge_disabled,
               createdAt: link.created_at,
-              senderName: link.users?.name || 'Unknown Sender'
+              senderName: (link.users as any)?.name || 'Unknown Sender'
             });
           }
         }
@@ -149,7 +149,7 @@ export class SmartNudgeService {
               lastNudgeAt: invoice.last_nudge_at,
               nudgeDisabled: invoice.nudge_disabled,
               createdAt: invoice.date_created,
-              senderName: invoice.users?.name || 'Unknown Sender'
+              senderName: (invoice.users as any)?.name || 'Unknown Sender'
             });
           }
         }

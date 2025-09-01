@@ -72,6 +72,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .update({ status: 'sent' })
       .eq('id', proposalId);
 
+    // Track proposal sent event
+    try {
+      const { HedwigEvents } = await import('@/lib/posthog');
+      await HedwigEvents.proposalSent('system', {
+        proposal_id: proposalId,
+        proposal_title: proposal.project_title || proposal.description,
+        recipient_email: recipientEmail,
+        amount: proposal.budget || 0,
+        currency: proposal.currency || 'USD'
+      });
+      console.log('✅ Proposal sent event tracked successfully');
+    } catch (trackingError) {
+      console.error('Error tracking proposal_sent event:', trackingError);
+    }
+
     res.status(200).json({ success: true, message: 'Proposal sent successfully' });
   } catch (error) {
     console.error('Error sending proposal:', error);

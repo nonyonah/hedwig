@@ -199,6 +199,21 @@ export async function createProposal(params: CreateProposalParams): Promise<Crea
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
     const proposalLink = `${baseUrl}/proposal/${data.id}`;
 
+    // Track proposal creation event
+    try {
+      const { HedwigEvents } = await import('./posthog');
+      await HedwigEvents.proposalCreated(
+        userIdentifier,
+        data.id,
+        title,
+        amount || 0,
+        token || 'USD'
+      );
+      console.log('✅ Proposal created event tracked successfully');
+    } catch (trackingError) {
+      console.error('Error tracking proposal_created event:', trackingError);
+    }
+
     // Send email if recipientEmail is provided
     if (recipientEmail) {
       try {
@@ -365,6 +380,20 @@ async function sendProposalEmail(params: SendProposalEmailParams): Promise<void>
 
   if (result.error) {
     throw new Error(`Failed to send email: ${result.error.message}`);
+  }
+
+  // Track proposal sent event
+  try {
+    const { HedwigEvents } = await import('./posthog');
+    await HedwigEvents.proposalSent('system', {
+      proposal_title: title,
+      recipient_email: recipientEmail,
+      amount: amount || 0,
+      currency: token || 'USD'
+    });
+    console.log('✅ Proposal sent event tracked successfully');
+  } catch (trackingError) {
+    console.error('Error tracking proposal_sent event:', trackingError);
   }
 }
 

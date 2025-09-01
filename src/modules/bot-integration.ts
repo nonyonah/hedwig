@@ -500,6 +500,20 @@ export class BotIntegration {
           
           actualUserId = newUserId;
           console.log(`[BotIntegration] Created new user with UUID: ${actualUserId}`);
+          
+          // Identify new user in PostHog
+          try {
+            const { identifyUser } = await import('../lib/posthog');
+            await identifyUser(userId, {
+              telegram_user_id: parseInt(userId),
+              context: 'telegram',
+              user_type: 'new_telegram_user',
+              created_via: 'wallet_creation'
+            });
+            console.log(`[BotIntegration] Identified new user in PostHog: ${userId}`);
+          } catch (posthogError) {
+            console.error(`[BotIntegration] Error identifying user in PostHog:`, posthogError);
+          }
         }
       }
 
@@ -525,6 +539,9 @@ export class BotIntegration {
         `You can now receive payments, check balances, and send crypto using these wallets!`,
       );
 
+      // Check if user needs to provide email address
+      await this.checkAndRequestEmailForNewUser(chatId, actualUserId);
+
     } catch (error) {
       console.error('[BotIntegration] Error creating wallets:', error);
       
@@ -544,8 +561,196 @@ export class BotIntegration {
     }
    }
 
-  // Handle balance check
-  async handleCheckBalance(chatId: number, userId: string) {
+  // Handle balance check}
+
+  /**
+   * Check if user has email and request it if missing (for new users after wallet creation)
+   */
+  async checkAndRequestEmailForNewUser(chatId: number, userId: string) {
+    try {
+      // Get user data to check if email exists
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('id, email, name, telegram_first_name')
+        .eq('id', userId)
+        .single();
+
+      if (error || !user) {
+        console.error('[BotIntegration] Error fetching user for email check:', error);
+        return;
+      }
+
+      // If email is missing, request it
+      if (!user.email) {
+        const userName = user.name || user.telegram_first_name || 'there';
+        await this.requestUserEmail(chatId, userName);
+      }
+    } catch (error) {
+      console.error('[BotIntegration] Error checking user email:', error);
+    }
+  }
+
+  /**
+   * Request email from user
+   */
+  async requestUserEmail(chatId: number, userName: string) {
+    try {
+      // Set user state to awaiting email
+      await supabase
+        .from('sessions')
+        .upsert({
+          user_id: chatId.toString(),
+          context: { awaiting_email: true },
+          updated_at: new Date().toISOString()
+        });
+
+      // Send email request message
+      await this.bot.sendMessage(chatId,
+        `📧 *Email Setup Required*\n\n` +
+        `Hi ${userName}! To get the most out of Hedwig, please provide your email address.\n\n` +
+        `This will allow you to:\n` +
+        `• Receive invoice notifications\n` +
+        `• Get payment confirmations\n` +
+        `• Access your payment history\n\n` +
+        `Please enter your email address:`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      console.error('[BotIntegration] Error requesting user email:', error);
+    }
+   }
+
+   /**
+    * Handle email collection from user input
+    */
+   async handleEmailCollection(chatId: number, messageText: string): Promise<boolean> {
+     try {
+       // Check if user is in email collection state
+       const { data: session, error: sessionError } = await supabase
+         .from('sessions')
+         .select('context')
+         .eq('user_id', chatId.toString())
+         .single();
+
+       if (sessionError || !session?.context?.awaiting_email) {
+         return false; // Not in email collection state
+       }
+
+       // Validate email format
+       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+       if (!emailRegex.test(messageText.trim())) {
+         await this.bot.sendMessage(chatId, '❌ Please enter a valid email address (e.g., john@example.com):');
+         return true; // Handled, but invalid
+       }
+
+       const email = messageText.trim().toLowerCase();
+
+       // Update user with email
+       const { error: updateError } = await supabase
+         .from('users')
+         .update({ email })
+         .eq('telegram_chat_id', chatId);
+
+       if (updateError) {
+         console.error('[BotIntegration] Error updating user email:', updateError);
+         await this.bot.sendMessage(chatId, '❌ Failed to save your email. Please try again.');
+         return true;
+       }
+
+       // Clear session state
+       await supabase
+         .from('sessions')
+         .update({ context: {} })
+         .eq('user_id', chatId.toString());
+
+       // Send confirmation message
+       await this.bot.sendMessage(chatId,
+         `✅ *Email Saved Successfully!*\n\n` +
+         `Your email address \`${email}\` has been saved.\n\n` +
+         `You'll now receive:\n` +
+         `• Invoice notifications\n` +
+         `• Payment confirmations\n` +
+         `• Important updates\n\n` +
+         `You can now use all of Hedwig's features! 🎉`,
+         { parse_mode: 'Markdown' }
+       );
+
+       return true;
+     } catch (error) {
+       console.error('[BotIntegration] Error handling email collection:', error);
+       return false;
+     }
+   }
+
+    /**
+     * Check if existing user needs to provide email before using features
+     */
+    async checkEmailRequiredForExistingUser(chatId: number, messageText: string): Promise<boolean> {
+      try {
+        // Skip email check for basic commands that don't require email
+        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance'];
+        if (basicCommands.includes(messageText)) {
+          return false;
+        }
+
+        // Get user data to check if email exists
+        const { data: user, error } = await supabase
+          .from('users')
+          .select('id, email, name, telegram_first_name, created_at')
+          .eq('telegram_chat_id', chatId)
+          .single();
+
+        if (error || !user) {
+          console.error('[BotIntegration] Error fetching user for email check:', error);
+          return false;
+        }
+
+        // If user has email, no need to request it
+        if (user.email) {
+          return false;
+        }
+
+        // Check if user has been using the bot for a while (has wallets or invoices)
+        const { data: wallets } = await supabase
+          .from('wallets')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+
+        // If user has wallets but no email, request email for advanced features
+        if (wallets && wallets.length > 0) {
+          const userName = user.name || user.telegram_first_name || 'there';
+          await this.bot.sendMessage(chatId,
+            `📧 *Email Required*\n\n` +
+            `Hi ${userName}! To use this feature, please provide your email address first.\n\n` +
+            `This helps us:\n` +
+            `• Send you important notifications\n` +
+            `• Keep your account secure\n` +
+            `• Provide better support\n\n` +
+            `Please enter your email address:`,
+            { parse_mode: 'Markdown' }
+          );
+
+          // Set user state to awaiting email
+          await supabase
+            .from('sessions')
+            .upsert({
+              user_id: chatId.toString(),
+              context: { awaiting_email: true },
+              updated_at: new Date().toISOString()
+            });
+
+          return true;
+        }
+
+        return false;
+      } catch (error) {
+        console.error('[BotIntegration] Error checking email requirement:', error);
+        return false;
+      }
+    }
+
+    async handleCheckBalance(chatId: number, userId: string) {
     try {
       // Send "checking balance" message
       await this.bot.sendMessage(chatId, 
@@ -601,6 +806,15 @@ export class BotIntegration {
       
       // Import balance checking function
       const { getBalances } = await import('../lib/cdp');
+      
+      // Track wallet balance check event
+      try {
+        const { HedwigEvents } = await import('../lib/posthog');
+        await HedwigEvents.walletBalanceChecked(actualUserId);
+        console.log('✅ Wallet balance checked event tracked successfully');
+      } catch (trackingError) {
+        console.error('Error tracking wallet_balance_checked event:', trackingError);
+      }
       
       // Find EVM and Solana wallets
       const evmWallet = wallets.find(w => w.chain === 'evm');
@@ -966,7 +1180,9 @@ export class BotIntegration {
                data.startsWith('edit_invoice_') || data.startsWith('delete_invoice_') ||
                data.startsWith('edit_client_') || data.startsWith('edit_project_') ||
                data.startsWith('edit_amount_') || data.startsWith('edit_due_date_') ||
-               data.startsWith('confirm_delete_')) {
+               data.startsWith('confirm_delete_') || data.startsWith('edit_user_info_') ||
+               data.startsWith('edit_user_name_') || data.startsWith('edit_user_email_') ||
+               data.startsWith('continue_invoice_creation_') || data === 'cancel_invoice_creation') {
         // Get proper userId for cancel operations
         if (data.startsWith('cancel_invoice_')) {
           const properUserId = await this.getUserIdByChatId(chatId);
@@ -1029,6 +1245,18 @@ export class BotIntegration {
     if (!text) return false;
 
     try {
+      // Check if user is in email collection state
+      const emailHandled = await this.handleEmailCollection(chatId, text);
+      if (emailHandled) {
+        return true;
+      }
+
+      // Check if existing user needs to provide email before using features
+      const emailRequired = await this.checkEmailRequiredForExistingUser(chatId, text);
+      if (emailRequired) {
+        return true;
+      }
+
       switch (text) {
         case '📄 Invoice':
           await this.invoiceModule.handleInvoiceCreation(chatId, userId);

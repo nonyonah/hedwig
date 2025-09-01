@@ -104,8 +104,17 @@ export function WalletProviderWrapper({ children }: { children: ReactNode }) {
 
       // Setup event listeners
       baseAccountService.setupEventListeners({
-        onConnect: (info) => {
+        onConnect: async (info) => {
           console.log('Base Account connected:', info);
+          
+          // Track wallet connection event
+          try {
+            const { HedwigEvents } = await import('../lib/posthog');
+            await HedwigEvents.walletConnected('base_account', 'base_account');
+            console.log('✅ Wallet connected event tracked successfully');
+          } catch (trackingError) {
+            console.error('Error tracking wallet_connected event:', trackingError);
+          }
         },
         onDisconnect: (error) => {
           console.log('Base Account disconnected:', error);

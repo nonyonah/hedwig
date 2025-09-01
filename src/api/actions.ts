@@ -1184,6 +1184,21 @@ async function handleSend(params: ActionParams, userId: string) {
           (selectedNetwork === 'evm' ? 'ETH' : 'SOL') : 
           (token?.toUpperCase() || 'TOKEN');
 
+        // Track token_sent event
+        try {
+          const { HedwigEvents } = await import('@/lib/posthog');
+          await HedwigEvents.tokensSent(userId, {
+            amount: parseFloat(amount),
+            token: tokenSymbol,
+            recipient: recipientAddress,
+            network: networkName.toLowerCase(),
+            transaction_hash: result.hash
+          });
+          console.log('PostHog: Tokens sent event tracked successfully');
+        } catch (trackingError) {
+          console.error('PostHog tracking error for tokens_sent:', trackingError);
+        }
+
         return {
           text: `✅ **Transfer Successful!**\n\n` +
                 `💰 **Amount**: ${amount} ${tokenSymbol}\n` +
