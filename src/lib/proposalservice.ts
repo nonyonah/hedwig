@@ -278,15 +278,17 @@ async function sendProposalEmail(params: SendProposalEmailParams): Promise<void>
     throw new Error('RESEND_API_KEY is not configured');
   }
 
-  // Get user data for personalized sender email
+  // Get user data for personalized display name
   const { data: userData } = await supabase
     .from('users')
     .select('email, name')
     .eq('name', freelancerName)
     .single();
 
-  const senderEmail = userData?.email || 'noreply@hedwigbot.xyz';
+  // Always use verified domain for 'from' address to avoid domain verification issues
+  const senderEmail = process.env.EMAIL_FROM || 'noreply@hedwigbot.xyz';
   const displayName = userData?.name || freelancerName;
+  const userEmail = userData?.email; // Keep user email for display purposes
 
   const deliverablesHtml = deliverables && deliverables.length > 0 
     ? `<div class="section">
@@ -338,7 +340,7 @@ async function sendProposalEmail(params: SendProposalEmailParams): Promise<void>
       <div class="content">
         <div class="proposal-details">
           <h3>Proposal Details</h3>
-          <p><strong>From:</strong> ${displayName} (${senderEmail})</p>
+          <p><strong>From:</strong> ${displayName}${userEmail ? ` (${userEmail})` : ''}</p>
           <p><strong>Project:</strong> ${title}</p>
           <div class="section">
             <h4>Description:</h4>
@@ -379,7 +381,8 @@ async function sendProposalEmail(params: SendProposalEmailParams): Promise<void>
   });
 
   if (result.error) {
-    throw new Error(`Failed to send email: ${result.error.message}`);
+    const errorMessage = result.error.message || JSON.stringify(result.error) || 'Unknown email error';
+    throw new Error(`Failed to send email: ${errorMessage}`);
   }
 
   // Track proposal sent event

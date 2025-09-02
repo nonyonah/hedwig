@@ -1591,7 +1591,27 @@ export class BotIntegration {
       .eq('telegram_chat_id', chatId)
       .single();
     
-    return data?.id || chatId.toString(); // Fallback to chatId if not found
+    if (data?.id) {
+      return data.id;
+    }
+    
+    // User doesn't exist, create one using the RPC function
+    try {
+      const { data: newUserData, error } = await supabase
+        .rpc('get_or_create_telegram_user', {
+          telegram_chat_id_param: chatId
+        });
+      
+      if (error) {
+        console.error('[BotIntegration] Error creating user:', error);
+        throw error;
+      }
+      
+      return newUserData;
+    } catch (error) {
+      console.error('[BotIntegration] Failed to create user for chatId:', chatId, error);
+      throw error;
+    }
   }
 
   async handleBusinessMessage(message: TelegramBot.Message, userId: string) {

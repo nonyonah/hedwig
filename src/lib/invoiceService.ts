@@ -276,15 +276,17 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
     throw new Error('RESEND_API_KEY is not configured');
   }
 
-  // Get user data for personalized sender email
+  // Get user data for personalized display name
   const { data: userData } = await supabase
     .from('users')
     .select('email, name')
     .eq('name', freelancerName)
     .single();
 
-  const senderEmail = userData?.email || 'noreply@hedwigbot.xyz';
+  // Always use verified domain for 'from' address to avoid domain verification issues
+  const senderEmail = process.env.EMAIL_FROM || 'noreply@hedwigbot.xyz';
   const displayName = userData?.name || freelancerName;
+  const userEmail = userData?.email; // Keep user email for display purposes
 
   const emailHtml = `
     <!DOCTYPE html>
@@ -312,7 +314,7 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
       <div class="content">
         <div class="invoice-details">
           <h3>Invoice Details</h3>
-          <p><strong>From:</strong> ${displayName} (${senderEmail})</p>
+          <p><strong>From:</strong> ${displayName}${userEmail ? ` (${userEmail})` : ''}</p>
           <p><strong>Invoice Number:</strong> ${invoiceNumber}</p>
           <p><strong>Description:</strong> ${description}</p>
           <p><strong>Network:</strong> ${network.toUpperCase()}</p>
@@ -348,7 +350,8 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
   });
 
   if (result.error) {
-    throw new Error(`Failed to send email: ${result.error.message}`);
+    const errorMessage = result.error.message || JSON.stringify(result.error) || 'Unknown email error';
+    throw new Error(`Failed to send email: ${errorMessage}`);
   }
 
   // Track invoice sent event
