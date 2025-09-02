@@ -1,12 +1,12 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 import { createClient } from "@supabase/supabase-js";
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-if (!OPENROUTER_API_KEY) {
-  throw new Error('OPENROUTER_API_KEY environment variable is required');
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY) {
+  throw new Error('GEMINI_API_KEY environment variable is required');
 }
 
-// const gemini = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -18,7 +18,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const MODEL_NAME = "moonshotai/kimi-k2:free";
+// Using Gemini 2.0/2.5 Flash Lite models based on task complexity
 
 export async function getUserContext(userId: string) {
   const { data } = await supabase
@@ -50,7 +50,7 @@ export async function runLLM({
     context = context ? [context] : [];
   }
 
-  // 2. Compose prompt in OpenRouter API format (system message retained)
+  // 2. Compose prompt in chat format for conversion to Gemini
   const systemMessage = `
 You are Hedwig, a helpful crypto assistant for Telegram.
 Always respond ONLY with a JSON object in this format:
@@ -475,40 +475,56 @@ For unknown requests that are clearly not blockchain-related, use intent "unknow
     // The bot integration should check for this and prompt the user
   }
 
-  // 3. Call OpenRouter
-  console.log(`[LLM] Attempting to generate content with OpenRouter model: ${MODEL_NAME}`);
+  // 3. Call Gemini with appropriate model based on task complexity
+  const isComplexTask = message.length > 200 || 
+    message.toLowerCase().includes('create') || 
+    message.toLowerCase().includes('generate') || 
+    message.toLowerCase().includes('analyze') || 
+    message.toLowerCase().includes('proposal') || 
+    message.toLowerCase().includes('invoice') || 
+    context.length > 5;
+  
+  const modelName = isComplexTask ? "gemini-2.5-flash-lite" : "gemini-2.0-flash-lite";
+  console.log(`[LLM] Attempting to generate content with Gemini model: ${modelName}`);
+  
   let llmResponse = "Sorry, I couldn't process your request.";
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://your-app-url.com", // Replace with your actual app URL
-        "X-Title": "Hedwig Telegram Bot" // Replace with your app name
-      },
-      body: JSON.stringify({
-        model: MODEL_NAME,
-        messages: prompt,
-        temperature: 0.2,
-        max_tokens: 1024,
-      }),
+    const model = genAI.getGenerativeModel({ 
+      model: modelName,
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        },
+      ],
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[LLM] OpenRouter API error:", response.status, errorText);
-      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+    // Convert chat format to Gemini format
+    const systemMessage = prompt.find(msg => msg.role === 'system')?.content || '';
+    const conversationHistory = prompt.filter(msg => msg.role !== 'system');
+    
+    // Build the prompt for Gemini
+    let geminiPrompt = systemMessage;
+    if (conversationHistory.length > 0) {
+      geminiPrompt += '\n\nConversation History:\n';
+      conversationHistory.forEach(msg => {
+        geminiPrompt += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
+      });
     }
+    geminiPrompt += `\nUser: ${message}\nAssistant:`;
 
-    const data = await response.json();
-    llmResponse = data.choices[0]?.message?.content || llmResponse;
-    console.log("[LLM] OpenRouter response received.");
+    const result = await model.generateContent(geminiPrompt);
+    const response = result.response;
+    llmResponse = response.text() || llmResponse;
+    console.log("[LLM] Gemini response received.");
 
   } catch (error) {
-    console.error("[LLM] OpenRouter call failed:", error);
-    // Gemini fallback is commented out as per request
-    // throw error; // Or handle it gracefully
+    console.error("[LLM] Gemini call failed:", error);
+    // Handle gracefully - keep default response
   }
 
   // 4. Update context

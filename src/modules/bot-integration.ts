@@ -44,6 +44,281 @@ export class BotIntegration {
         }
       }
 
+      // Get user's wallets to create filter
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('address, chain')
+        .eq('user_id', actualUserId)
+        .limit(1);
+      
+      if (!wallets || wallets.length === 0) {
+        await this.bot.sendMessage(chatId, 
+          `💡 *No wallets found*\n\nYou need a wallet to view earnings. Create one first!`,
+          { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+              ]
+            }
+          }
+        );
+        return;
+      }
+      
+      // Import earnings service
+      const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
+      
+      // Create filter object
+      const filter = {
+        walletAddress: wallets[0].address,
+        timeframe: timeframe as 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime'
+      };
+      
+      const summary = await getEarningsSummary(filter, true);
+      const formattedSummary = formatEarningsForAgent(summary);
+      
+      await this.bot.sendMessage(chatId, formattedSummary, {
+        parse_mode: 'Markdown'
+      });
+      
+    } catch (error) {
+      console.error('[BotIntegration] Error fetching earnings summary:', error);
+      await this.bot.sendMessage(chatId, 
+        `❌ *Error fetching earnings summary*\n\nPlease try again later.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  async handleCheckBalance(chatId: number, userId: string) {
+    try {
+      // Send "checking balance" message
+      await this.bot.sendMessage(chatId, 
+        `💰 *Checking your wallet balances...*\n\n` +
+        `Please wait while I fetch your current balances.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // First, get the actual user ID if this is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        // This looks like a chatId, get the user UUID
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        } else {
+          // User doesn't exist yet, show wallet creation prompt
+          await this.bot.sendMessage(chatId, 
+            `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+                ]
+              }
+            }
+          );
+          return;
+        }
+      }
+      
+      // Get user's wallets from database
+      const { data: wallets, error } = await supabase
+        .from('wallets')
+        .select('address, chain')
+        .eq('user_id', actualUserId);
+      
+      if (error) {
+        console.error('[BotIntegration] Error fetching wallets:', error);
+        await this.bot.sendMessage(chatId, 
+          `❌ *Failed to fetch wallet information*\n\nPlease try again later.`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+      
+      if (!wallets || wallets.length === 0) {
+        await this.bot.sendMessage(chatId, 
+          `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
+          { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      // Display wallet balances
+      let balanceMessage = `💰 *Your Wallet Balances*\n\n`;
+      
+      for (const wallet of wallets) {
+        try {
+          const balance = await this.getWalletBalance(wallet.address, wallet.chain);
+          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} *${wallet.chain.toUpperCase()} Wallet:*\n`;
+          balanceMessage += `Address: \`${wallet.address}\`\n`;
+          balanceMessage += `Balance: ${balance}\n\n`;
+        } catch (error) {
+          console.error(`[BotIntegration] Error fetching balance for ${wallet.chain} wallet:`, error);
+          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} *${wallet.chain.toUpperCase()} Wallet:*\n`;
+          balanceMessage += `Address: \`${wallet.address}\`\n`;
+          balanceMessage += `Balance: Error fetching balance\n\n`;
+        }
+      }
+      
+      await this.bot.sendMessage(chatId, balanceMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Refresh', callback_data: 'refresh_balance' }],
+            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }]
+          ]
+        }
+      });
+      
+    } catch (error) {
+      console.error('[BotIntegration] Error checking balance:', error);
+      await this.bot.sendMessage(chatId, 
+        `❌ *Error checking balance*\n\nPlease try again later.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  // Handle viewing wallet addresses
+  async handleViewWallet(chatId: number, userId: string) {
+    try {
+      // Send "fetching wallet info" message
+      await this.bot.sendMessage(chatId, 
+        `👛 *Fetching your wallet information...*\n\n` +
+        `Please wait while I retrieve your wallet addresses.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // First, get the actual user ID if this is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        // This looks like a chatId, get the user UUID
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        } else {
+          // User doesn't exist yet, show wallet creation prompt
+          await this.bot.sendMessage(chatId, 
+            `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+                ]
+              }
+            }
+          );
+          return;
+        }
+      }
+      
+      // Get user's wallets from database
+      const { data: wallets, error } = await supabase
+        .from('wallets')
+        .select('address, chain')
+        .eq('user_id', actualUserId);
+      
+      if (error) {
+        console.error('[BotIntegration] Error fetching wallets:', error);
+        await this.bot.sendMessage(chatId, 
+          `❌ *Failed to fetch wallet information*\n\nPlease try again later.`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+      
+      if (!wallets || wallets.length === 0) {
+        await this.bot.sendMessage(chatId, 
+          `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
+          { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      // Display wallet addresses
+      let walletMessage = `👛 *Your Wallet Addresses*\n\n`;
+      
+      for (const wallet of wallets) {
+        walletMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} *${wallet.chain.toUpperCase()} Wallet:*\n`;
+        walletMessage += `\`${wallet.address}\`\n\n`;
+      }
+      
+      walletMessage += `💡 *Tip:* You can use these addresses to receive crypto payments!`;
+      
+      await this.bot.sendMessage(chatId, walletMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💰 Check Balance', callback_data: 'check_balance' }],
+            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }]
+          ]
+        }
+      });
+      
+    } catch (error) {
+      console.error('[BotIntegration] Error viewing wallet:', error);
+      await this.bot.sendMessage(chatId, 
+        `❌ *Error fetching wallet information*\n\nPlease try again later.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  // Handle earnings summary with wallet-based filtering
+  async handleEarningsWithWallet(chatId: number, userId: string, timeframe: 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime' = 'lastMonth') {
+    try {
+      // First, get the actual user ID if this is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        } else {
+          await this.bot.sendMessage(chatId,
+            '💡 You don\'t have a wallet yet. Create one to start tracking your earnings.',
+            {
+              parse_mode: 'Markdown',
+              reply_markup: { inline_keyboard: [[{ text: '🔐 Create Wallet', callback_data: 'create_wallet' }]] }
+            }
+          );
+          return;
+        }
+      }
+
       // Find user's wallets
       const { data: wallets, error: walletsError } = await supabase
         .from('wallets')
@@ -95,9 +370,86 @@ export class BotIntegration {
           ]
         }
       });
+      
     } catch (error) {
-      console.error('[BotIntegration] Error in handleEarningsSummary:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to fetch earnings summary. Please try again later.');
+      console.error('[BotIntegration] Error fetching earnings with wallet:', error);
+      await this.bot.sendMessage(chatId, 
+        `❌ *Error fetching earnings*\n\nPlease try again later.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+   }
+
+  // Handle create wallet flow
+  async handleCreateWallet(chatId: number, userId: string) {
+    try {
+      // Send "wallet being created" message
+      await this.bot.sendMessage(chatId, 
+        `🏦 *Creating your wallet...*\n\n` +
+        `Please wait while I set up your new crypto wallet.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Resolve to actual user UUID if we received a numeric chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        // This looks like a chatId, check if user exists
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (existingUser) {
+          actualUserId = existingUser.id;
+        } else {
+          // Create new user
+          const { data: newUser } = await supabase.rpc('get_or_create_telegram_user', {
+            telegram_user_id: parseInt(userId),
+            telegram_chat_id: parseInt(userId)
+          });
+          
+          if (newUser) {
+            actualUserId = newUser.id;
+            
+            // Track user creation in PostHog
+            await trackEvent('user_created', {
+              user_id: actualUserId,
+              telegram_user_id: parseInt(userId),
+              context: 'wallet_creation',
+              user_type: 'telegram',
+              created_via: 'bot_integration'
+            });
+          }
+        }
+      }
+
+      // Create wallets using the actual user UUID
+      const result = await handleAction('create_wallet', {}, actualUserId);
+      
+      if (result && result.text) {
+        await this.bot.sendMessage(chatId, result.text, {
+          parse_mode: 'Markdown',
+          reply_markup: result.reply_markup || {
+            inline_keyboard: [
+              [{ text: '💰 Check Balance', callback_data: 'check_balance' }],
+              [{ text: '👛 View Wallet', callback_data: 'view_wallet' }]
+            ]
+          }
+        });
+      } else {
+        await this.bot.sendMessage(chatId, 
+          `❌ *Wallet creation failed*\n\n${result?.text || 'Unknown error'}`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+      
+    } catch (error) {
+      console.error('[BotIntegration] Error creating wallet:', error);
+      await this.bot.sendMessage(chatId, 
+        `❌ *Error creating wallet*\n\nPlease try again later.`,
+        { parse_mode: 'Markdown' }
+      );
     }
   }
 
@@ -118,11 +470,41 @@ export class BotIntegration {
           parse_mode: 'Markdown',
         });
       }
+       
     } catch (error) {
-      console.error('Error processing with AI:', error);
-      await this.bot.sendMessage(chatId, 'An error occurred while processing your request.');
+      console.error('[BotIntegration] Error processing with AI:', error);
+      await this.bot.sendMessage(chatId, 
+        `❌ *Error processing your request*\n\nPlease try again later.`,
+        { parse_mode: 'Markdown' }
+      );
     }
   }
+
+  // Helper method to get wallet balance
+  private async getWalletBalance(address: string, chain: string): Promise<string> {
+    try {
+      // Import the balance checking functions
+      const { getBalances } = await import('../lib/cdp');
+      
+      if (chain === 'evm') {
+        const balances = await getBalances(address, 'evm');
+        if (balances && Array.isArray(balances) && balances.length > 0) {
+          return balances.map((b: any) => `${b.amount || b.balance || '0'} ${b.asset?.symbol || b.symbol || 'ETH'}`).join(', ');
+        }
+        return '0 ETH';
+      } else if (chain === 'solana') {
+        // For now, return a placeholder for Solana
+        return 'Solana balance check coming soon';
+      }
+      
+      return 'Unknown chain';
+    } catch (error) {
+      console.error(`[BotIntegration] Error fetching balance for ${chain}:`, error);
+      return 'Error fetching balance';
+    }
+  }
+
+
 
   // Get persistent keyboard for all messages
   getPersistentKeyboard() {
@@ -458,111 +840,7 @@ export class BotIntegration {
   }
 
   // Handle wallet creation
-  async handleCreateWallet(chatId: number, userId: string) {
-    try {
-      // Send "wallet being created" message
-      await this.bot.sendMessage(chatId, 
-        `🏦 *Creating your wallets...*\n\n` +
-        `Please wait while I set up your EVM and Solana wallets. This may take a few moments.`,
-        { parse_mode: 'Markdown' }
-      );
 
-      // Ensure user exists in database first
-      let actualUserId = userId;
-      
-      // If userId is just a chatId (numeric string), we need to ensure the user exists
-      if (/^\d+$/.test(userId)) {
-        console.log(`[BotIntegration] UserId ${userId} appears to be a chatId, ensuring user exists...`);
-        
-        // Check if user already exists
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', parseInt(userId))
-          .single();
-        
-        if (existingUser) {
-          actualUserId = existingUser.id;
-          console.log(`[BotIntegration] Found existing user with UUID: ${actualUserId}`);
-        } else {
-          // Create user using the get_or_create_telegram_user function
-          console.log(`[BotIntegration] Creating new user for chatId: ${userId}`);
-          const { data: newUserId, error: createError } = await supabase.rpc('get_or_create_telegram_user', {
-            p_telegram_chat_id: parseInt(userId),
-            p_telegram_username: null,
-            p_name: null
-          });
-          
-          if (createError || !newUserId) {
-            console.error(`[BotIntegration] Failed to create user:`, createError);
-            throw new Error('Failed to create user account');
-          }
-          
-          actualUserId = newUserId;
-          console.log(`[BotIntegration] Created new user with UUID: ${actualUserId}`);
-          
-          // Identify new user in PostHog
-          try {
-            const { identifyUser } = await import('../lib/posthog');
-            await identifyUser(userId, {
-              telegram_user_id: parseInt(userId),
-              context: 'telegram',
-              user_type: 'new_telegram_user',
-              created_via: 'wallet_creation'
-            });
-            console.log(`[BotIntegration] Identified new user in PostHog: ${userId}`);
-          } catch (posthogError) {
-            console.error(`[BotIntegration] Error identifying user in PostHog:`, posthogError);
-          }
-        }
-      }
-
-      // Import createWallet function
-      const { createWallet } = await import('../lib/cdp');
-
-      // Create EVM wallet
-      const evmWallet = await createWallet(actualUserId, 'evm');
-      console.log(`[BotIntegration] EVM wallet created for user ${actualUserId}: ${evmWallet.address}`);
-
-      // Create Solana wallet
-      const solanaWallet = await createWallet(actualUserId, 'solana');
-      console.log(`[BotIntegration] Solana wallet created for user ${actualUserId}: ${solanaWallet.address}`);
-
-      // Send confirmation message with wallet addresses
-      await this.bot.sendMessage(chatId, 
-        `🎉 *Wallets Created Successfully!*\n\n` +
-        `Your crypto wallets have been created and are ready to use:\n\n` +
-        `🔷 *EVM Wallet:*\n` +
-        `\`${evmWallet.address}\`\n\n` +
-        `🟣 *Solana Wallet:*\n` +
-        `\`${solanaWallet.address}\`\n\n` +
-        `You can now receive payments, check balances, and send crypto using these wallets!`,
-      );
-
-      // Check if user needs to provide name and email address
-      await this.checkAndRequestNameForNewUser(chatId, actualUserId);
-      await this.checkAndRequestEmailForNewUser(chatId, actualUserId);
-
-    } catch (error) {
-      console.error('[BotIntegration] Error creating wallets:', error);
-      
-      await this.bot.sendMessage(chatId, 
-        `❌ *Wallet Creation Failed*\n\n` +
-        `Sorry, there was an error creating your wallets. Please try again later or contact support.\n\n` +
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        { 
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'create_wallet' }]
-            ]
-          }
-        }
-      );
-    }
-   }
-
-  // Handle balance check}
 
   /**
    * Check if user has email and request it if missing (for new users after wallet creation)
@@ -974,155 +1252,7 @@ export class BotIntegration {
       }
     }
 
-    async handleCheckBalance(chatId: number, userId: string) {
-    try {
-      // Send "checking balance" message
-      await this.bot.sendMessage(chatId, 
-        `💰 *Checking your wallet balances...*\n\n` +
-        `Please wait while I fetch your current balances.`,
-        { parse_mode: 'Markdown' }
-      );
 
-      // First, get the actual user ID if this is a chatId
-      let actualUserId = userId;
-      if (/^\d+$/.test(userId)) {
-        // This looks like a chatId, get the user UUID
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', parseInt(userId))
-          .single();
-        
-        if (user) {
-          actualUserId = user.id;
-        }
-      }
-      
-      // Get user's wallets from database
-      const { data: wallets, error } = await supabase
-        .from('wallets')
-        .select('address, chain')
-        .eq('user_id', actualUserId);
-      
-      if (error) {
-        console.error('[BotIntegration] Error fetching wallets:', error);
-        await this.bot.sendMessage(chatId, 
-          `❌ *Failed to fetch wallet information*\n\nPlease try again later.`,
-          { parse_mode: 'Markdown' }
-        );
-        return;
-      }
-      
-      if (!wallets || wallets.length === 0) {
-        await this.bot.sendMessage(chatId, 
-          `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
-          { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
-              ]
-            }
-          }
-        );
-        return;
-      }
-      
-      // Import balance checking function
-      const { getBalances } = await import('../lib/cdp');
-      
-      // Track wallet balance check event
-      try {
-        const { HedwigEvents } = await import('../lib/posthog');
-        await HedwigEvents.walletBalanceChecked(actualUserId);
-        console.log('✅ Wallet balance checked event tracked successfully');
-      } catch (trackingError) {
-        console.error('Error tracking wallet_balance_checked event:', trackingError);
-      }
-      
-      // Find EVM and Solana wallets
-      const evmWallet = wallets.find(w => w.chain === 'evm');
-      const solanaWallet = wallets.find(w => w.chain === 'solana');
-      
-      let response = `💰 *Your Wallet Balances*\n\n`;
-      
-      // Get EVM balances if wallet exists
-      if (evmWallet) {
-        try {
-          const evmBalances = await getBalances(evmWallet.address, 'evm');
-          
-          response += `🔷 *Base Network:*\n`;
-          if (evmBalances && Array.isArray(evmBalances) && evmBalances.length > 0) {
-            evmBalances.forEach((balance: any) => {
-              const amount = balance.amount || balance.balance || '0';
-              const symbol = balance.asset?.symbol || balance.symbol || 'Unknown';
-              response += `• ${amount} ${symbol}\n`;
-            });
-          } else {
-            response += `• No balances found\n`;
-          }
-          response += `\n`;
-        } catch (evmError) {
-          console.error('[BotIntegration] Error fetching EVM balances:', evmError);
-          response += `🔷 *Base Network:* Error fetching balances\n\n`;
-        }
-      }
-      
-      // Get Solana balances if wallet exists
-      if (solanaWallet) {
-        try {
-          const solanaBalances = await getBalances(solanaWallet.address, 'solana');
-          
-          response += `🟣 *Solana Wallet:*\n`;
-          if (solanaBalances && Array.isArray(solanaBalances) && solanaBalances.length > 0) {
-            solanaBalances.forEach((balance: any) => {
-              const amount = balance.amount || balance.balance || '0';
-              const symbol = balance.asset?.symbol || balance.symbol || 'Unknown';
-              response += `• ${amount} ${symbol}\n`;
-            });
-          } else {
-            response += `• No balances found\n`;
-          }
-        } catch (solanaError) {
-          console.error('[BotIntegration] Error fetching Solana balances:', solanaError);
-          response += `🟣 *Solana Wallet:* Error fetching balances\n`;
-        }
-      }
-      
-      if (!evmWallet && !solanaWallet) {
-        response = `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`;
-      } else {
-        response += `\nUse the menu below to send crypto or manage your wallets.`;
-      }
-      
-      // Send balance information
-      await this.bot.sendMessage(chatId, response, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }]
-          ]
-        }
-      });
-
-    } catch (error) {
-      console.error('[BotIntegration] Error checking balance:', error);
-      
-      await this.bot.sendMessage(chatId, 
-        `❌ *Balance Check Failed*\n\n` +
-        `Sorry, there was an error checking your wallet balances. Please try again later.\n\n` +
-        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        { 
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '🔄 Try Again', callback_data: 'check_balance' }]
-            ]
-          }
-        }
-      );
-    }
-  }
 
   // Handle send crypto
   async handleSendCrypto(chatId: number, userId: string) {
@@ -1397,6 +1527,10 @@ export class BotIntegration {
         await this.handleHelp(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data === 'refresh_balance' || data === 'check_balance') {
+        await this.handleCheckBalance(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       }
       // Invoice module callbacks
       else if (data.startsWith('invoice_') || data.startsWith('view_invoice_') || data.startsWith('cancel_invoice_') || 
@@ -1520,7 +1654,7 @@ export class BotIntegration {
           return true;
 
         case '👛 Wallet':
-          await this.handleCreateWallet(chatId, userId);
+          await this.handleViewWallet(chatId, userId);
           return true;
 
         case '💸 Send Crypto':

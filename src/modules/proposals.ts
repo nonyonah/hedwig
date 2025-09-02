@@ -985,7 +985,7 @@ export class ProposalModule {
       .from('user_states')
       .delete()
       .eq('user_id', userId)
-      .eq('state_type', 'creating_proposal');
+      .in('state_type', ['creating_proposal', 'editing_user_info']);
   }
 
   private isValidEmail(email: string): boolean {
@@ -1126,6 +1126,34 @@ export class ProposalModule {
     } catch (error) {
       console.error('Error handling edit user field:', error);
       await this.bot.sendMessage(chatId, '❌ Error setting up field editing. Please try again.');
+    }
+  }
+
+  /**
+   * Handle user input during proposal creation flow
+   */
+  public async handleUserInput(chatId: number, userId: string, userInput: string) {
+    try {
+      // Get user's current state
+      const { data: userState } = await supabase
+        .from('user_states')
+        .select('state_type, state_data')
+        .eq('user_id', userId)
+        .single();
+
+      if (!userState) {
+        return 'No active proposal creation found.';
+      }
+
+      // Handle proposal creation flow
+      if (userState.state_type === 'creating_proposal') {
+        return await this.continueProposalCreation(chatId, userId, userState.state_data, userInput);
+      }
+
+      return 'Unknown state for proposal creation.';
+    } catch (error) {
+      console.error('Error handling user input:', error);
+      return '❌ Error processing your input. Please try again.';
     }
   }
 
