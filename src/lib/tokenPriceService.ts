@@ -4,6 +4,23 @@ import { loadServerEnvironment } from './serverEnv';
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
+// Alchemy API configuration
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
+const ALCHEMY_ETH_URL = process.env.ALCHEMY_URL_ETH || `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+const ALCHEMY_SOLANA_URL = process.env.ALCHEMY_SOLANA_URL;
+
+// Token contract addresses for Ethereum mainnet
+const TOKEN_ADDRESSES: Record<string, string> = {
+  'USDC': '0xA0b86a33E6441b8C4505E2c52C6b6046d5b0b6e6', // USDC on Ethereum
+  'ETH': '0x0000000000000000000000000000000000000000', // Native ETH
+};
+
+// Solana token mint addresses
+const SOLANA_TOKEN_MINTS: Record<string, string> = {
+  'SOL': 'So11111111111111111111111111111111111111112', // Wrapped SOL
+  'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC on Solana
+};
+
 export interface TokenPrice {
   symbol: string;
   price: number;

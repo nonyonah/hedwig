@@ -1450,7 +1450,7 @@ export class BotIntegration {
     
     // Get userId if not provided
     if (!userId) {
-      userId = chatId.toString();
+      userId = await this.getUserIdByChatId(chatId);
     }
 
     try {
@@ -1599,7 +1599,11 @@ export class BotIntegration {
     try {
       const { data: newUserData, error } = await supabase
         .rpc('get_or_create_telegram_user', {
-          telegram_chat_id_param: chatId
+          p_telegram_chat_id: chatId,
+          p_telegram_username: null,
+          p_telegram_first_name: null,
+          p_telegram_last_name: null,
+          p_telegram_language_code: null
         });
       
       if (error) {
