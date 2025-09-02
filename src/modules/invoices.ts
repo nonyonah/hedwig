@@ -687,10 +687,40 @@ export class InvoiceModule {
   // Handle edit user info
   private async handleEditUserInfo(chatId: number, userId: string) {
     try {
+      // First check if userId is a valid UUID, if not, get proper user ID
+      let actualUserId = userId;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+        // userId is likely a Telegram chat ID, get proper user ID
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (!user?.id) {
+          // Create user if doesn't exist
+          const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
+            p_telegram_chat_id: parseInt(userId),
+            p_telegram_username: null,
+            p_telegram_first_name: null,
+            p_telegram_last_name: null,
+            p_telegram_language_code: null,
+          });
+          if (error) {
+            console.error('Error creating user:', error);
+            await this.bot.sendMessage(chatId, '❌ Error accessing user information. Please try again.');
+            return;
+          }
+          actualUserId = newUserId;
+        } else {
+          actualUserId = user.id;
+        }
+      }
+
       const { data: userData } = await supabase
         .from('users')
         .select('name, email')
-        .eq('id', userId)
+        .eq('id', actualUserId)
         .single();
 
       const message = 
@@ -704,9 +734,9 @@ export class InvoiceModule {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '📝 Edit Name', callback_data: `edit_user_name_${userId}` }],
-            [{ text: '📧 Edit Email', callback_data: `edit_user_email_${userId}` }],
-            [{ text: '🔙 Back', callback_data: `edit_user_info_back_${userId}` }]
+            [{ text: '📝 Edit Name', callback_data: `edit_user_name_${actualUserId}` }],
+            [{ text: '📧 Edit Email', callback_data: `edit_user_email_${actualUserId}` }],
+            [{ text: '🔙 Back', callback_data: `edit_user_info_back_${actualUserId}` }]
           ]
         }
       });
@@ -719,10 +749,40 @@ export class InvoiceModule {
   // Handle edit user field
   private async handleEditUserField(chatId: number, userId: string, field: string) {
     try {
+      // First check if userId is a valid UUID, if not, get proper user ID
+      let actualUserId = userId;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+        // userId is likely a Telegram chat ID, get proper user ID
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (!user?.id) {
+          // Create user if doesn't exist
+          const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
+            p_telegram_chat_id: parseInt(userId),
+            p_telegram_username: null,
+            p_telegram_first_name: null,
+            p_telegram_last_name: null,
+            p_telegram_language_code: null,
+          });
+          if (error) {
+            console.error('Error creating user:', error);
+            await this.bot.sendMessage(chatId, '❌ Error accessing user information. Please try again.');
+            return;
+          }
+          actualUserId = newUserId;
+        } else {
+          actualUserId = user.id;
+        }
+      }
+
       const { data: userData } = await supabase
         .from('users')
         .select('name, email')
-        .eq('id', userId)
+        .eq('id', actualUserId)
         .single();
 
       let message = '';
@@ -742,13 +802,13 @@ export class InvoiceModule {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
-            { text: '❌ Cancel', callback_data: `edit_user_info_${userId}` }
+            { text: '❌ Cancel', callback_data: `edit_user_info_${actualUserId}` }
           ]]
         }
       });
 
       // Set user state for editing
-      await this.setUserState(userId, {
+      await this.setUserState(actualUserId, {
         step: `edit_user_${field}`,
         editing_user_info: true
       });

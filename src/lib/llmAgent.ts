@@ -60,6 +60,7 @@ Valid intents:
 - create_wallets: For creating new wallets
 - balance: For checking wallet balance
 - get_wallet_address: For showing wallet addresses or deposit instructions
+- instruction_send: For providing send/transfer instructions when user asks how to send crypto
 - send: For sending crypto or tokens
 - swap: For swapping between tokens
 - bridge: For bridging tokens between chains
@@ -146,7 +147,20 @@ IMPORTANT INTENT RECOGNITION RULES:
      * "balance on Solana" → {"network": "Solana"}
      * "my Base balance" → {"network": "Base"}
 
-4. PARAMETER EXTRACTION for "send" intent:
+4. SEND INTENT RECOGNITION: Choose between "instruction_send" and "send":
+   - Use "instruction_send" for:
+     * "how to send", "how do I send", "send instructions"
+     * "how to transfer", "transfer instructions", "how to withdraw"
+     * "where to send", "how can I send", "send help"
+     * General questions about sending without specific transaction details
+     * When user just types "/send" or "send" without parameters
+   - Use "send" for:
+     * Actual transaction requests with specific details
+     * "send 0.01 ETH to 0x123...", "transfer 100 USDC"
+     * Confirmation requests: "confirm send", "yes send it"
+     * When amount, token, or recipient is specified
+
+4a. PARAMETER EXTRACTION for "send" intent:
    - amount: Extract numerical value (e.g., "0.01", "5", "100")
    - token: Extract token symbol (e.g., "ETH", "USDC", "BTC")
    - recipient: Extract wallet address (0x...) or ENS name (.eth)
@@ -317,6 +331,12 @@ IMPORTANT INTENT RECOGNITION RULES:
     // NOTE: Currency conversion feature has been disabled.
 
 EXAMPLES:
+User: "/send" or "send" or "how to send" or "how do I send crypto"
+Response: {"intent": "instruction_send", "params": {}}
+
+User: "send instructions" or "how to transfer" or "where to send"
+Response: {"intent": "instruction_send", "params": {}}
+
 User: "send 0.01 ETH to 0x1234567890123456789012345678901234567890"
 Response: {"intent": "send", "params": {"amount": "0.01", "token": "ETH", "recipient": "0x1234567890123456789012345678901234567890"}}
 

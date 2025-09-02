@@ -519,7 +519,24 @@ export class ProposalModule {
             .select('id')
             .eq('telegram_chat_id', chatId)
             .single();
-          actualUserId = user?.id || chatId.toString();
+          if (!user?.id) {
+            // Create user if doesn't exist
+            const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
+              p_telegram_chat_id: chatId,
+              p_telegram_username: null,
+              p_telegram_first_name: null,
+              p_telegram_last_name: null,
+              p_telegram_language_code: null,
+            });
+            if (error) {
+              console.error('Error creating user:', error);
+              await this.bot.sendMessage(chatId, '❌ Error accessing user information. Please try again.');
+              return;
+            }
+            actualUserId = newUserId;
+          } else {
+            actualUserId = user.id;
+          }
         }
         await this.continueProposalCreationFlow(chatId, actualUserId as string);
       } else if (data === 'edit_user_info') {
@@ -531,7 +548,24 @@ export class ProposalModule {
             .select('id')
             .eq('telegram_chat_id', chatId)
             .single();
-          actualUserId = user?.id || chatId.toString();
+          if (!user?.id) {
+            // Create user if doesn't exist
+            const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
+              p_telegram_chat_id: chatId,
+              p_telegram_username: null,
+              p_telegram_first_name: null,
+              p_telegram_last_name: null,
+              p_telegram_language_code: null,
+            });
+            if (error) {
+              console.error('Error creating user:', error);
+              await this.bot.sendMessage(chatId, '❌ Error accessing user information. Please try again.');
+              return;
+            }
+            actualUserId = newUserId;
+          } else {
+            actualUserId = user.id;
+          }
         }
         await this.handleEditUserInfo(chatId, actualUserId as string);
       } else if (data === 'edit_user_field_name') {
@@ -543,7 +577,24 @@ export class ProposalModule {
             .select('id')
             .eq('telegram_chat_id', chatId)
             .single();
-          actualUserId = user?.id || chatId.toString();
+          if (!user?.id) {
+            // Create user if doesn't exist
+            const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
+              p_telegram_chat_id: chatId,
+              p_telegram_username: null,
+              p_telegram_first_name: null,
+              p_telegram_last_name: null,
+              p_telegram_language_code: null,
+            });
+            if (error) {
+              console.error('Error creating user:', error);
+              await this.bot.sendMessage(chatId, '❌ Error accessing user information. Please try again.');
+              return;
+            }
+            actualUserId = newUserId;
+          } else {
+            actualUserId = user.id;
+          }
         }
         await this.handleEditUserField(chatId, actualUserId as string, 'name');
       } else if (data === 'edit_user_field_email') {
@@ -555,7 +606,24 @@ export class ProposalModule {
             .select('id')
             .eq('telegram_chat_id', chatId)
             .single();
-          actualUserId = user?.id || chatId.toString();
+          if (!user?.id) {
+            // Create user if doesn't exist
+            const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
+              p_telegram_chat_id: chatId,
+              p_telegram_username: null,
+              p_telegram_first_name: null,
+              p_telegram_last_name: null,
+              p_telegram_language_code: null,
+            });
+            if (error) {
+              console.error('Error creating user:', error);
+              await this.bot.sendMessage(chatId, '❌ Error accessing user information. Please try again.');
+              return;
+            }
+            actualUserId = newUserId;
+          } else {
+            actualUserId = user.id;
+          }
         }
         await this.handleEditUserField(chatId, actualUserId as string, 'email');
       } else if (data === 'back_to_proposal') {

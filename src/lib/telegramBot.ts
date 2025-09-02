@@ -305,6 +305,18 @@ export class TelegramBotService {
 
       // Handle commands
       if (messageText.startsWith('/')) {
+        const commandName = messageText.split(' ')[0].toLowerCase();
+        const baseCmd = commandName.includes('@') ? commandName.split('@')[0] : commandName;
+        
+        // Allow certain commands to be processed by AI instead of handleCommand
+        if (baseCmd === '/send' || baseCmd === '/balance' || baseCmd === '/swap' || baseCmd === '/bridge' || baseCmd === '/price') {
+          console.log('[TelegramBot] Processing AI-handled command:', baseCmd);
+          const response = await this.processWithAI(messageText, chatId);
+          console.log('[TelegramBot] AI response received, sending to user');
+          await this.sendMessage(chatId, response);
+          return;
+        }
+        
         console.log('[TelegramBot] Processing command:', messageText ? messageText.split(' ')[0] : 'unknown');
         await this.handleCommand(msg);
         return;
@@ -522,7 +534,7 @@ export class TelegramBotService {
       case '/proposal':
       case '/support': {
         // Resolve userId from from.id or fallback via chatId
-        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
         console.log('[TelegramBot] Business command user resolution:', { resolvedUserId });
         await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
         break;
@@ -747,7 +759,15 @@ Choose an action below:`;
         return 'I encountered an error processing your request. Please try again.';
       }
       
-      // Format the response for Telegram
+      // Handle the action result - if it has reply_markup, send it directly
+      if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+        await this.sendMessage(chatId, actionResult.text || 'Request processed', {
+          reply_markup: actionResult.reply_markup
+        });
+        return 'Message sent with interactive options';
+      }
+      
+      // Format the response for Telegram (simple text response)
       let responseMessage = 'Request processed successfully';
       
       if (actionResult) {

@@ -232,7 +232,7 @@ function setupBotHandlers() {
           
         case 'start_send_token_flow':
         case 'send_crypto':
-          const sendResponse = await processWithAI('send crypto template', chatId);
+          const sendResponse = await processWithAI('send', chatId);
           if (sendResponse && sendResponse.trim() !== '') {
             await bot?.sendMessage(chatId, sendResponse);
           }
@@ -505,7 +505,7 @@ async function handleCommand(msg: TelegramBot.Message) {
       break;
 
     case '/send':
-      const sendResponse = await processWithAI('send crypto template', chatId);
+      const sendResponse = await processWithAI(msg.text || '/send', chatId);
       if (sendResponse && sendResponse.trim() !== '') {
         await bot.sendMessage(chatId, sendResponse);
       }
@@ -798,6 +798,7 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
       case 'get_wallet_balance':
       case 'get_wallet_address':
       case 'send':
+      case 'instruction_send':
       case 'create_payment_link':
       case 'earnings':
       case 'create_wallets':

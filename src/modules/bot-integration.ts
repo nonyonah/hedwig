@@ -1441,9 +1441,8 @@ export class BotIntegration {
   if (callbackQuery.data && callbackQuery.message) {
     trackEvent('bot_callback', {
       callback_data: callbackQuery.data,
-      userId: userId || callbackQuery.message.chat.id,
       chatId: callbackQuery.message.chat.id
-    });
+    }, (userId || callbackQuery.message.chat.id).toString());
   }
     const data = callbackQuery.data;
     const chatId = callbackQuery.message?.chat.id;
@@ -1598,7 +1597,7 @@ export class BotIntegration {
   async handleBusinessMessage(message: TelegramBot.Message, userId: string) {
   // PostHog: Track every message command
   if (message.text) {
-    trackEvent('bot_command', { command: message.text, userId, chatId: message.chat.id });
+    trackEvent('bot_command', { command: message.text, chatId: message.chat.id }, userId);
   }
     const chatId = message.chat.id;
     const text = message.text;
