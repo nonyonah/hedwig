@@ -788,6 +788,15 @@ export async function handleAction(
     case "withdrawal":
       return await handleOfframp(params, userId);
 
+    case "offramp_callback":
+      // Handle offramp callback actions (like confirm, cancel, etc.)
+      if (params.callbackData === 'offramp_confirm') {
+        return await handleOfframpSubmit(params, userId);
+      } else {
+        // For other callback data, route to main offramp handler
+        return await handleOfframp(params, userId);
+      }
+
     case "offramp_submit":
       return handleOfframpSubmit(params, userId);
 
@@ -1993,8 +2002,16 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
       }
     }
 
-    // Since we cleared any existing session above, always start new offramp flow
-    return await startOfframpFlow(actualUserId);
+    // Only start new offramp flow if no callback data was provided
+    // If callback_data exists, it means we're handling a button press, not starting fresh
+    if (!params.callback_data) {
+      return await startOfframpFlow(actualUserId);
+    }
+    
+    // If we reach here with callback_data but no session, something went wrong
+    return {
+      text: "❌ Session expired. Please start a new withdrawal by typing 'offramp' or using the /offramp command."
+    };
     
   } catch (error) {
     console.error('[handleOfframp] Unexpected error:', error);
@@ -2240,6 +2257,14 @@ async function handleOfframpStep(session: any, params: ActionParams, userId: str
         return await handleConfirmationStep(session, params, userId);
       case 'final_confirmation':
         return await handleFinalConfirmationStep(session, params, userId);
+      case 'creating_order':
+      case 'awaiting_transfer':
+      case 'transferring_tokens':
+      case 'transfer_completed':
+        // These steps are handled by callbacks, show current status
+        return {
+          text: `⏳ Your transaction is being processed. Current status: ${session.step.replace('_', ' ')}`
+        };
       default:
         console.log('[handleOfframpStep] Invalid session state:', session.step);
         // Invalid session state, restart
@@ -2261,8 +2286,13 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
     console.log(`[handleOfframpCallback] Session data:`, JSON.stringify(session?.data, null, 2));
     
     if (callbackData === 'offramp_cancel') {
+      console.log(`[handleOfframpCallback] Processing cancel request for user ${userId}`);
       if (session) {
+        console.log(`[handleOfframpCallback] Clearing session ${session.id}`);
         await offrampSessionService.clearSession(session.id);
+        console.log(`[handleOfframpCallback] Session cleared successfully`);
+      } else {
+        console.log(`[handleOfframpCallback] No active session found for cancel`);
       }
       return {
         text: "❌ Withdrawal cancelled. You can start a new withdrawal anytime by typing 'offramp'."
@@ -2916,41 +2946,163 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
     if (params.callback_data === 'offramp_final_confirm') {
       console.log(`[handleFinalConfirmationStep] Processing final confirmation for user ${userId}`);
       
-      // Give immediate feedback that the transaction is being processed
+      // Update session to show order creation in progress
       await offrampSessionService.updateSession(session.id, 'processing', {
         ...session.data,
-        status: 'processing',
+        status: 'creating_order',
       });
 
-      // Execute the token transfer using the stored order details
+      // Execute the offramp using the new Paycrest Sender API flow
       try {
-        // The order was already created in the previous step, now just execute the transfer
-        const transferResult = await offrampService.executeTokenTransfer({
+        // Step 1: Create order via Paycrest Sender API
+        const offrampRequest = {
           userId,
           amount: session.data.amount,
-          receiveAddress: session.data.receiveAddress,
-          orderId: session.data.orderId
+          currency: session.data.currency,
+          token: 'USDC',
+          bankDetails: {
+            accountNumber: session.data.accountNumber,
+            bankCode: session.data.bankCode,
+            accountName: session.data.accountName,
+            bankName: session.data.bankName || 'Unknown Bank'
+          }
+        };
+
+        const orderResult = await offrampService.processTelegramOfframp(offrampRequest);
+
+        console.log(`[handleFinalConfirmationStep] Order created:`, JSON.stringify(orderResult, null, 2));
+
+        // Update session with order details and move to token transfer confirmation
+        await offrampSessionService.updateSession(session.id, 'awaiting_transfer', {
+          ...session.data,
+          orderId: orderResult.orderId,
+          receiveAddress: orderResult.receiveAddress,
+          expectedAmount: orderResult.expectedAmount,
+          status: 'awaiting_transfer',
         });
 
-        console.log(`[handleFinalConfirmationStep] Transfer executed:`, JSON.stringify(transferResult, null, 2));
-
-        // Let the user know the transaction is processing
+        // Show user the receive address and ask for transfer confirmation
         return {
-          text: `✅ Your transaction is being processed. You will receive a notification shortly.\n\n` +
-                `📋 **Transaction ID:** ${session.data.orderId}\n` +
-                `🔗 **Transaction Hash:** ${transferResult.txHash}`,
-          metadata: { orderId: session.data.orderId, txHash: transferResult.txHash, step: 'transaction_processing' }
+          text: `🎯 **Order Created Successfully!**\n\n` +
+                `📋 **Order ID:** ${orderResult.orderId}\n` +
+                `💰 **Amount to Send:** ${orderResult.expectedAmount} USDC\n` +
+                `📍 **Send To:** \`${orderResult.receiveAddress}\`\n\n` +
+                `⚠️ **Important:** Please send exactly **${orderResult.expectedAmount} USDC** to the address above.\n\n` +
+                `Click "Send Tokens" below to proceed with the transfer.`,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "💸 Send Tokens", callback_data: "offramp_send_tokens" },
+                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              ]
+            ]
+          },
+          metadata: { 
+            orderId: orderResult.orderId, 
+            receiveAddress: orderResult.receiveAddress,
+            expectedAmount: orderResult.expectedAmount,
+            step: 'awaiting_transfer' 
+          }
         };
       } catch (error) {
-        console.error('[handleFinalConfirmationStep] Error executing transfer:', error);
+        console.error('[handleFinalConfirmationStep] Error creating order:', error);
+        
+        // Check for specific error types
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
         // Update the session to reflect the error
         await offrampSessionService.updateSession(session.id, 'completed', {
           ...session.data,
           status: 'error',
-          error: error.message,
+          error: errorMessage,
         });
+        
         return {
-          text: `❌ An error occurred while executing your transfer: ${error.message}`
+          text: `❌ An error occurred while creating your order: ${errorMessage}\n\n` +
+                `Please try again or contact support if the issue persists.`
+        };
+      }
+    }
+
+    if (params.callback_data === 'offramp_send_tokens') {
+      console.log(`[handleFinalConfirmationStep] Processing token transfer for user ${userId}`);
+      
+      // Update session to show transfer in progress
+      await offrampSessionService.updateSession(session.id, 'processing', {
+        ...session.data,
+        status: 'transferring_tokens',
+      });
+
+      try {
+        // Execute the token transfer
+        const transferRequest = {
+          userId,
+          orderId: session.data.orderId,
+          receiveAddress: session.data.receiveAddress,
+          amount: session.data.expectedAmount,
+          token: 'USDC'
+        };
+
+        const transferResult = await offrampService.executeTokenTransfer(transferRequest);
+
+        console.log(`[handleFinalConfirmationStep] Token transfer completed:`, JSON.stringify(transferResult, null, 2));
+
+        // Update session with transfer details
+        await offrampSessionService.updateSession(session.id, 'completed', {
+          ...session.data,
+          transactionHash: transferResult.transactionHash,
+          status: 'transfer_completed',
+        });
+
+        // Start monitoring the order status
+        setTimeout(async () => {
+          try {
+            await offrampService.monitorOrderStatus(session.data.orderId);
+          } catch (monitorError) {
+            console.error('[handleFinalConfirmationStep] Error monitoring order:', monitorError);
+          }
+        }, 5000); // Start monitoring after 5 seconds
+
+        return {
+          text: `✅ **Tokens Sent Successfully!**\n\n` +
+                `📋 **Order ID:** ${session.data.orderId}\n` +
+                `🔗 **Transaction Hash:** ${transferResult.transactionHash}\n\n` +
+                `🔄 Your withdrawal is now being processed by Paycrest. ` +
+                `You will receive updates as the status changes.\n\n` +
+                `💡 **Tip:** You can check the status anytime by typing 'status'.`,
+          metadata: { 
+            orderId: session.data.orderId, 
+            txHash: transferResult.transactionHash, 
+            step: 'transfer_completed' 
+          }
+        };
+      } catch (error) {
+        console.error('[handleFinalConfirmationStep] Error executing token transfer:', error);
+        
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        // Update the session to reflect the error
+        await offrampSessionService.updateSession(session.id, 'completed', {
+          ...session.data,
+          status: 'transfer_error',
+          error: errorMessage,
+        });
+        
+        // Handle insufficient ETH balance error
+        if (errorMessage.toLowerCase().includes('insufficient') && 
+            (errorMessage.toLowerCase().includes('eth') || errorMessage.toLowerCase().includes('gas'))) {
+          return {
+            text: `❌ Insufficient ETH balance for gas fees.\n\n` +
+                  `You need ETH in your wallet to pay for transaction fees when sending USDC. ` +
+                  `Please add some ETH to your wallet and try again.\n\n` +
+                  `💡 **Tip:** Even small amounts of ETH (like $1-2 worth) are usually sufficient for gas fees.`
+          };
+        }
+        
+        return {
+          text: `❌ An error occurred while sending tokens: ${errorMessage}\n\n` +
+                `Your order (${session.data.orderId}) is still active. ` +
+                `Please try the transfer again or contact support.`
         };
       }
     }
@@ -2976,19 +3128,25 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
 
 async function handleOfframpSubmit(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
-    const { orderId, txHash } = params;
-
-    if (!orderId || !txHash) {
+    console.log('[handleOfframpSubmit] Called with params:', params);
+    
+    // Get the active offramp session
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
       return {
-        text: 'Missing orderId or txHash',
+        text: "❌ User not found. Please make sure you're registered with the bot.",
       };
     }
 
-    await offrampService.processOfframp(orderId, txHash);
+    const session = await offrampSessionService.getActiveSession(actualUserId);
+    if (!session) {
+      return {
+        text: "❌ No active withdrawal session found. Please start a new withdrawal.",
+      };
+    }
 
-    return {
-      text: 'Transaction submitted and is being processed.',
-    };
+    // Route to the final confirmation step
+    return await handleFinalConfirmationStep(session, { callback_data: 'offramp_final_confirm' }, actualUserId);
   } catch (error) {
     console.error('[handleOfframpSubmit] error', error);
     return {

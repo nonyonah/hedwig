@@ -8,7 +8,7 @@ const supabase = createClient(
 export interface OfframpSession {
   id: string;
   userId: string;
-  step: 'amount' | 'payout_method' | 'bank_selection' | 'account_number' | 'confirmation' | 'final_confirmation' | 'processing' | 'completed';
+  step: 'amount' | 'payout_method' | 'bank_selection' | 'account_number' | 'confirmation' | 'final_confirmation' | 'processing' | 'completed' | 'creating_order' | 'awaiting_transfer' | 'transferring_tokens' | 'transfer_completed';
   data: {
     amount?: number;
     token?: string;
@@ -21,6 +21,10 @@ export interface OfframpSession {
     fiatAmount?: number;
     netAmount?: number;
     transactionId?: string;
+    orderId?: string;
+    receiveAddress?: string;
+    expectedAmount?: string;
+    status?: string;
   };
   createdAt: Date;
   updatedAt: Date;

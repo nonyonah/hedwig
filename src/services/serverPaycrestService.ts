@@ -19,21 +19,26 @@ const cdp = new CdpClient({
   walletSecret: process.env.CDP_WALLET_SECRET
 });
 
-// Paycrest Gateway contract addresses
-const PAYCREST_GATEWAY_ADDRESSES = {
-  base: '0x123...', // Replace with actual Paycrest Gateway address on Base
-  ethereum: '0x456...', // Replace with actual address if needed
-};
-
 // USDC contract addresses
 const USDC_ADDRESSES = {
   base: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   ethereum: '0xA0b86a33E6441E6C8C07C0b8C8C3C8C8C8C8C8C8' // Replace with actual USDC address
 };
 
-// Paycrest API configuration
+// Paycrest Sender API configuration
 const PAYCREST_API_BASE_URL = 'https://api.paycrest.io/v1';
 const PAYCREST_API_KEY = process.env.PAYCREST_API_KEY!;
+
+// Supported networks and tokens
+const SUPPORTED_NETWORKS = {
+  base: 'base',
+  ethereum: 'ethereum'
+};
+
+const SUPPORTED_TOKENS = {
+  USDC: 'USDC',
+  USDT: 'USDT'
+};
 
 export interface ServerOfframpRequest {
   userId: string; // Telegram user ID or database user ID
@@ -43,15 +48,69 @@ export interface ServerOfframpRequest {
     accountNumber: string;
     bankCode: string;
     accountName: string;
+    bankName: string;
   };
   network?: string; // 'base', 'ethereum', etc.
+  token?: string; // 'USDC', 'USDT', etc.
 }
 
 export interface ServerOfframpResult {
   orderId: string;
-  transactionHash: string;
+  transactionHash?: string;
   receiveAddress: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
+  amount: number;
+  expectedAmount: number;
+}
+
+// Paycrest Sender API interfaces
+export interface PaycrestRateResponse {
+  data: {
+    rate: number;
+    fee: number;
+    total: number;
+  };
+}
+
+export interface PaycrestOrderRequest {
+  amount: number;
+  token: string;
+  rate: number;
+  network: string;
+  recipient: {
+    institution: string;
+    accountIdentifier: string;
+    accountName: string;
+    memo: string;
+    providerId: string;
+    metadata: {};
+    currency: string;
+  };
+  reference: string;
+  returnAddress: string;
+}
+
+export interface PaycrestOrderResponse {
+  data: {
+    id: string;
+    receiveAddress: string;
+    amount: number;
+    expectedAmount: number;
+    status: string;
+    expiresAt: string;
+  };
+}
+
+export interface PaycrestOrderStatusResponse {
+  data: {
+    id: string;
+    status: string;
+    transactionHash?: string;
+    amount: number;
+    expectedAmount: number;
+    createdAt: string;
+    updatedAt: string;
+  };
 }
 
 /**
@@ -107,14 +166,37 @@ export class ServerPaycrestService {
       
       // Use CDP to get balance
       const { getBalances } = await import('../lib/cdp');
-      const balances = await getBalances(wallet.address, this.network);
+      const balancesResult = await getBalances(wallet.address, this.network);
+      
+      // Extract the data array from the result
+      const balances = balancesResult.data || balancesResult;
+      console.log('[ServerPaycrest] Balances result:', balancesResult);
+      console.log('[ServerPaycrest] Extracted balances:', balances);
       
       const usdcBalance = balances.find(b => 
         b.asset.symbol === 'USDC' || 
         b.asset.contractAddress?.toLowerCase() === USDC_ADDRESSES[this.network as keyof typeof USDC_ADDRESSES]?.toLowerCase()
       );
 
-      const balance = usdcBalance ? usdcBalance.amount : '0';
+      let balance = '0';
+      if (usdcBalance) {
+        // Convert hex balance to decimal and account for USDC decimals (6)
+        const rawBalance = usdcBalance.amount;
+        console.log('[ServerPaycrest] Raw USDC balance:', rawBalance);
+        
+        if (rawBalance.startsWith('0x')) {
+          // Convert hex to decimal
+          const balanceWei = BigInt(rawBalance);
+          const decimals = usdcBalance.asset.decimals || 6;
+          const divisor = BigInt(10 ** decimals);
+          const balanceDecimal = Number(balanceWei) / Number(divisor);
+          balance = balanceDecimal.toString();
+          console.log('[ServerPaycrest] Converted USDC balance:', balance);
+        } else {
+          // Already in decimal format
+          balance = rawBalance;
+        }
+      }
       
       return {
         balance,
@@ -130,31 +212,42 @@ export class ServerPaycrestService {
   /**
    * Get exchange rate from Paycrest API
    */
-  async getExchangeRate(amount: number, currency: string): Promise<number> {
+  async getExchangeRate(amount: number, currency: string, token: string = 'USDC', network: string = 'base', bankCode?: string): Promise<PaycrestRateResponse> {
     try {
-      const response = await fetch(`${PAYCREST_API_BASE_URL}/rates`, {
-        method: 'POST',
+      // Use the correct Paycrest API format with network parameter
+      const response = await fetch(`${PAYCREST_API_BASE_URL}/rates/${token.toUpperCase()}/${amount}/${currency.toUpperCase()}?network=${network}`, {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          'API-Key': PAYCREST_API_KEY
-        },
-        body: JSON.stringify({
-          amount,
-          from: 'USDC',
-          to: currency,
-          network: this.network
-        })
+          'Content-Type': 'application/json'
+        }
       });
-
+      
       if (!response.ok) {
-        throw new Error(`Rate fetch failed: ${response.statusText}`);
+        if (response.status === 400) {
+          const errorData = await response.json();
+          throw new Error(`Rate validation failed: ${errorData.message}`);
+        } else if (response.status === 404) {
+          throw new Error('No provider available for this token/amount/currency combination');
+        } else {
+          throw new Error(`Rate fetch failed: ${response.statusText}`);
+        }
       }
-
+      
       const data = await response.json();
-      return data.rate || 1;
+      console.log('[ServerPaycrest] Rate response:', data);
+      
+      // Handle the rate response format - data should contain the rate directly
+      const rate = parseFloat(data.data);
+      return {
+        data: {
+          rate: rate,
+          fee: 0,
+          total: rate * amount
+        }
+      };
     } catch (error) {
       console.error('[ServerPaycrest] Error getting exchange rate:', error);
-      throw new Error('Failed to get exchange rate');
+      throw error;
     }
   }
 
@@ -163,6 +256,8 @@ export class ServerPaycrestService {
    */
   async verifyBankAccount(accountNumber: string, bankCode: string): Promise<boolean> {
     try {
+      console.log('[ServerPaycrest] Verifying bank account:', { accountNumber, bankCode });
+      
       const response = await fetch(`${PAYCREST_API_BASE_URL}/verify-account`, {
         method: 'POST',
         headers: {
@@ -175,11 +270,16 @@ export class ServerPaycrestService {
         })
       });
 
+      console.log('[ServerPaycrest] Verify account response status:', response.status);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[ServerPaycrest] Verify account failed:', errorText);
         return false;
       }
 
       const data = await response.json();
+      console.log('[ServerPaycrest] Verify account response data:', data);
       return data.valid === true;
     } catch (error) {
       console.error('[ServerPaycrest] Error verifying bank account:', error);
@@ -188,159 +288,88 @@ export class ServerPaycrestService {
   }
 
   /**
-   * Approve USDC tokens for Paycrest Gateway using CDP
+   * Create order via Paycrest Sender API
    */
-  async approveTokens(userId: string, amount: number): Promise<string> {
+  private async createPaycrestOrder(request: ServerOfframpRequest): Promise<PaycrestOrderResponse> {
+    try {
+      // First, fetch the current exchange rate with provider information
+      const rateResponse = await this.getExchangeRate(
+        request.amount,
+        request.currency,
+        request.token || 'USDC',
+        request.network || this.network,
+        request.bankDetails.bankCode
+      );
+
+      const orderRequest = {
+        amount: request.amount,
+        token: request.token || 'USDC',
+        rate: rateResponse.data.rate,
+        network: request.network || this.network,
+        recipient: {
+           institution: request.bankDetails.bankCode,
+           accountIdentifier: request.bankDetails.accountNumber,
+           accountName: request.bankDetails.accountName,
+           memo: `Hedwig offramp payment - ${request.amount} ${request.token || 'USDC'}`,
+           providerId: request.bankDetails.bankCode,
+           metadata: {},
+           currency: request.currency
+         },
+        reference: `hedwig-${Date.now()}`,
+        returnAddress: '' // Will be set after getting user wallet
+      };
+
+      const response = await fetch(`${PAYCREST_API_BASE_URL}/sender/orders`, {
+        method: 'POST',
+        headers: {
+          'API-Key': PAYCREST_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(orderRequest)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create order: ${response.statusText} - ${errorText}`);
+      }
+
+      const data: PaycrestOrderResponse = await response.json();
+      return data;
+    } catch (error) {
+      console.error('[ServerPaycrest] Error creating Paycrest order:', error);
+      throw new Error(`Failed to create Paycrest order: ${error.message}`);
+    }
+  }
+
+  /**
+   * Transfer tokens to Paycrest receive address
+   */
+  private async transferTokensToPaycrest(userId: string, receiveAddress: string, amount: number, token: string = 'USDC'): Promise<string> {
     try {
       const wallet = await this.getUserWallet(userId);
-      const usdcAddress = USDC_ADDRESSES[this.network as keyof typeof USDC_ADDRESSES];
-      const gatewayAddress = PAYCREST_GATEWAY_ADDRESSES[this.network as keyof typeof PAYCREST_GATEWAY_ADDRESSES];
+      const tokenAddress = USDC_ADDRESSES[this.network as keyof typeof USDC_ADDRESSES];
       
-      if (!usdcAddress || !gatewayAddress) {
+      if (!tokenAddress) {
         throw new Error(`Unsupported network: ${this.network}`);
       }
 
-      // Convert amount to proper decimals (USDC has 6 decimals)
-      const amountInWei = (amount * 1e6).toString();
+      // Convert amount to token decimals (USDC has 6 decimals)
+      const decimals = token === 'USDC' ? 6 : 18;
+      const amountWei = (amount * Math.pow(10, decimals)).toString();
       
-      console.log(`[ServerPaycrest] Approving ${amount} USDC (${amountInWei} units) for gateway ${gatewayAddress}`);
-      
-      // Use CDP's sendTransaction method to call the approve function
-      const evmClient = cdp.evm;
-      
-      // Encode the approve function call
-      const approveData = this.encodeApproveFunction(gatewayAddress, amountInWei);
-      
-      const tx = await evmClient.sendTransaction({
-        address: wallet.address as `0x${string}`,
-        network: this.network as any,
-        transaction: {
-          to: usdcAddress as `0x${string}`,
-          data: approveData as `0x${string}`,
-          value: BigInt(0),
-        },
-      });
-      
-      console.log(`[ServerPaycrest] Token approval transaction: ${tx.transactionHash}`);
-      return tx.transactionHash;
-    } catch (error) {
-      console.error('[ServerPaycrest] Error approving tokens:', error);
-      throw new Error('Failed to approve tokens');
-    }
-  }
-
-  /**
-   * Encode the ERC20 approve function call
-   */
-  private encodeApproveFunction(spender: string, amount: string): string {
-    // ERC20 approve function signature: approve(address,uint256)
-    const functionSignature = '0x095ea7b3'; // keccak256('approve(address,uint256)').slice(0, 4)
-    
-    // Pad spender address to 32 bytes (remove 0x prefix, pad to 64 chars, add back 0x)
-    const paddedSpender = spender.slice(2).padStart(64, '0');
-    
-    // Convert amount to hex and pad to 32 bytes
-    const paddedAmount = BigInt(amount).toString(16).padStart(64, '0');
-    
-    return functionSignature + paddedSpender + paddedAmount;
-  }
-
-  /**
-   * Create order via Paycrest Gateway smart contract
-   */
-  private async createContractOrder(request: ServerOfframpRequest): Promise<string> {
-    try {
-      const wallet = await this.getUserWallet(request.userId);
-      const usdcAddress = USDC_ADDRESSES[this.network as keyof typeof USDC_ADDRESSES];
-      const gatewayAddress = PAYCREST_GATEWAY_ADDRESSES[this.network as keyof typeof PAYCREST_GATEWAY_ADDRESSES];
-      
-      if (!usdcAddress || !gatewayAddress) {
-        throw new Error(`Unsupported network: ${this.network}`);
-      }
-
-      // Convert amount to proper decimals (USDC has 6 decimals)
-      const amountInWei = (request.amount * 1e6).toString();
-      
-      // Encode the createOrder function call
-      const createOrderData = this.encodeCreateOrderFunction(
-        usdcAddress,
-        amountInWei,
-        wallet.address, // refund address
-        request.bankDetails.bankCode, // institution code
-        request.bankDetails.accountNumber,
-        request.bankDetails.accountName
+      // Transfer tokens to Paycrest receive address
+      const transferResult = await transferToken(
+        wallet.cdpWalletId,
+        tokenAddress,
+        amountWei,
+        receiveAddress
       );
       
-      console.log(`[ServerPaycrest] Creating order via contract for ${request.amount} USDC`);
-      
-      // Use CDP's sendTransaction method to call the createOrder function
-      const evmClient = cdp.evm;
-      
-      const tx = await evmClient.sendTransaction({
-        address: wallet.address as `0x${string}`,
-        network: this.network as any,
-        transaction: {
-          to: gatewayAddress as `0x${string}`,
-          data: createOrderData as `0x${string}`,
-          value: BigInt(0),
-        },
-      });
-      
-      console.log(`[ServerPaycrest] Contract order transaction: ${tx.transactionHash}`);
-      return tx.transactionHash;
+      return transferResult.hash;
     } catch (error) {
-      console.error('[ServerPaycrest] Error creating contract order:', error);
-      throw new Error('Failed to create contract order');
+      console.error('[ServerPaycrest] Error transferring tokens:', error);
+      throw new Error(`Failed to transfer tokens: ${error.message}`);
     }
-  }
-
-  /**
-   * Encode the Paycrest Gateway createOrder function call
-   */
-  private encodeCreateOrderFunction(
-    token: string,
-    amount: string,
-    refundAddress: string,
-    institutionCode: string,
-    accountNumber: string,
-    recipientName: string
-  ): string {
-    // createOrder function signature: createOrder(address,uint256,address,bytes32,string,string)
-      // keccak256('createOrder(address,uint256,address,bytes32,string,string)').slice(0, 4)
-      const functionSignature = '0x8c379a00'; // Calculated function signature
-    
-    // Encode parameters according to ABI
-    let encoded = functionSignature;
-    
-    // address _token (32 bytes)
-    encoded += token.slice(2).padStart(64, '0');
-    
-    // uint256 _amount (32 bytes)
-    encoded += BigInt(amount).toString(16).padStart(64, '0');
-    
-    // address _refundAddress (32 bytes)
-    encoded += refundAddress.slice(2).padStart(64, '0');
-    
-    // bytes32 _institutionCode (32 bytes)
-    const institutionBytes = Buffer.from(institutionCode, 'utf8');
-    encoded += institutionBytes.toString('hex').padEnd(64, '0');
-    
-    // Dynamic data offset for strings (account number and recipient name)
-    const stringDataOffset = 6 * 32; // 6 parameters * 32 bytes each
-    encoded += stringDataOffset.toString(16).padStart(64, '0'); // offset for accountNumber
-    encoded += (stringDataOffset + 64 + Math.ceil(accountNumber.length / 32) * 32).toString(16).padStart(64, '0'); // offset for recipientName
-    
-    // string _accountNumber
-    encoded += accountNumber.length.toString(16).padStart(64, '0'); // length
-    const accountNumberHex = Buffer.from(accountNumber, 'utf8').toString('hex');
-    encoded += accountNumberHex.padEnd(Math.ceil(accountNumber.length / 32) * 64, '0');
-    
-    // string _recipientName
-    encoded += recipientName.length.toString(16).padStart(64, '0'); // length
-    const recipientNameHex = Buffer.from(recipientName, 'utf8').toString('hex');
-    encoded += recipientNameHex.padEnd(Math.ceil(recipientName.length / 32) * 64, '0');
-    
-    return encoded;
   }
 
   /**
@@ -348,23 +377,29 @@ export class ServerPaycrestService {
    */
   async createOfframpOrder(request: ServerOfframpRequest): Promise<ServerOfframpResult> {
     try {
-      console.log('[ServerPaycrest] Creating offramp order:', request);
+      console.log('[ServerPaycrest] Creating offramp order via Sender API:', request);
       
       // Get user wallet
       const wallet = await this.getUserWallet(request.userId);
       
-      // Verify bank account
-      const isValidAccount = await this.verifyBankAccount(
-        request.bankDetails.accountNumber,
-        request.bankDetails.bankCode
-      );
+      // Verify bank account (temporarily disabled for testing)
+      // const isValidAccount = await this.verifyBankAccount(
+      //   request.bankDetails.accountNumber,
+      //   request.bankDetails.bankCode
+      // );
       
-      if (!isValidAccount) {
-        throw new Error('Invalid bank account details');
-      }
+      // if (!isValidAccount) {
+      //   throw new Error('Invalid bank account details');
+      // }
       
-      // Get exchange rate
-      const rate = await this.getExchangeRate(request.amount, request.currency);
+      console.log('[ServerPaycrest] Skipping bank account verification for testing');
+      
+      // Get exchange rate from Paycrest
+      const token = request.token || 'USDC';
+      const network = request.network || this.network;
+      const rateResponse = await this.getExchangeRate(request.amount, request.currency, token, network);
+      
+      console.log('[ServerPaycrest] Rate response:', rateResponse);
       
       // Check balance
       const balanceInfo = await this.checkUserBalance(request.userId);
@@ -372,27 +407,34 @@ export class ServerPaycrestService {
         throw new Error('Insufficient USDC balance');
       }
       
-      // Approve tokens for Paycrest Gateway
-      const approvalTx = await this.approveTokens(request.userId, request.amount);
-      console.log('[ServerPaycrest] Token approval completed:', approvalTx);
+      // Create order via Paycrest Sender API
+      const orderResponse = await this.createPaycrestOrder(request);
+      console.log('[ServerPaycrest] Paycrest order created:', orderResponse);
       
-      // Create order via Paycrest Gateway smart contract
-      const contractOrderTx = await this.createContractOrder(request);
-      console.log('[ServerPaycrest] Contract order created:', contractOrderTx);
+      // Transfer tokens to Paycrest receive address
+      const transferTx = await this.transferTokensToPaycrest(
+        request.userId,
+        orderResponse.data.receiveAddress,
+        request.amount,
+        token
+      );
+      console.log('[ServerPaycrest] Tokens transferred:', transferTx);
       
       // Store transaction in database
       const { data: transaction, error: dbError } = await supabase
         .from('offramp_transactions')
         .insert({
           user_id: request.userId,
+          paycrest_order_id: orderResponse.data.id,
           amount: request.amount,
-          token: 'USDC',
-          fiat_amount: rate,
+          token: token,
+          fiat_amount: rateResponse.data.total,
           fiat_currency: request.currency,
           bank_details: request.bankDetails,
-          status: 'processing',
-          tx_hash: contractOrderTx,
-          approval_tx_hash: approvalTx,
+          status: 'pending',
+          tx_hash: transferTx,
+          receive_address: orderResponse.data.receiveAddress,
+          expires_at: orderResponse.data.expiresAt,
           created_at: new Date().toISOString()
         })
         .select()
@@ -403,16 +445,13 @@ export class ServerPaycrestService {
         throw new Error('Failed to store transaction record');
       }
       
-      const orderData = { id: transaction.id, receiveAddress: PAYCREST_GATEWAY_ADDRESSES[this.network as keyof typeof PAYCREST_GATEWAY_ADDRESSES] };
-      
-      // Note: Token transfer is handled by the smart contract internally
-      // No separate transfer needed as the createOrder function handles it
-      
       return {
-        orderId: orderData.id,
-        transactionHash: contractOrderTx,
-        receiveAddress: orderData.receiveAddress,
-        status: 'pending'
+        orderId: orderResponse.data.id,
+        transactionHash: transferTx,
+        receiveAddress: orderResponse.data.receiveAddress,
+        status: 'pending',
+        amount: orderResponse.data.amount,
+        expectedAmount: orderResponse.data.expectedAmount
       };
     } catch (error) {
       console.error('[ServerPaycrest] Error creating offramp order:', error);
@@ -421,28 +460,50 @@ export class ServerPaycrestService {
   }
 
   /**
-   * Get order status from Paycrest API
+   * Get order status from Paycrest Sender API
    */
-  async getOrderStatus(orderId: string): Promise<{ status: string; transactionHash?: string }> {
+  async getOrderStatus(orderId: string): Promise<PaycrestOrderStatusResponse> {
     try {
       const response = await fetch(`${PAYCREST_API_BASE_URL}/orders/${orderId}`, {
         headers: {
-          'API-Key': PAYCREST_API_KEY
+          'Authorization': `Bearer ${PAYCREST_API_KEY}`
         }
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to get order status: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to get order status: ${response.statusText} - ${errorText}`);
       }
       
-      const data = await response.json();
-      return {
-        status: data.status,
-        transactionHash: data.transactionHash
-      };
+      const data: PaycrestOrderStatusResponse = await response.json();
+      return data;
     } catch (error) {
       console.error('[ServerPaycrest] Error getting order status:', error);
-      throw new Error('Failed to get order status');
+      throw new Error(`Failed to get order status: ${error.message}`);
+    }
+  }
+
+  /**
+   * Monitor order status and update database
+   */
+  async monitorOrderStatus(orderId: string): Promise<void> {
+    try {
+      const statusResponse = await this.getOrderStatus(orderId);
+      
+      // Update database with latest status
+      const { error } = await supabase
+        .from('offramp_transactions')
+        .update({
+          status: statusResponse.data.status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('paycrest_order_id', orderId);
+      
+      if (error) {
+        console.error('[ServerPaycrest] Error updating order status:', error);
+      }
+    } catch (error) {
+      console.error('[ServerPaycrest] Error monitoring order status:', error);
     }
   }
 

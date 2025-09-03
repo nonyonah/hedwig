@@ -604,37 +604,58 @@ export class OfframpService {
    */
   async executeTokenTransfer(params: {
     userId: string;
-    amount: number;
-    receiveAddress: string;
     orderId: string;
-  }): Promise<any> {
+    receiveAddress: string;
+    amount: string;
+    token: string;
+  }): Promise<{ transactionHash: string; orderId: string }> {
     try {
       // Get user's wallet
       const wallet = await getOrCreateCdpWallet(params.userId, 'base');
 
       // Execute token transfer using CDP
-      const tokenAddress = this.getTokenAddress('USDC', 'base');
+      const tokenAddress = this.getTokenAddress(params.token, 'base');
       const transferResult = await transferToken(
         wallet.address,
         params.receiveAddress,
         tokenAddress,
-        params.amount.toString(),
+        params.amount,
         6, // USDC has 6 decimals
         'base'
       );
 
       const txHash = transferResult.hash;
 
-      // Process the offramp with the transaction hash
-      await this.processOfframp(params.orderId, txHash);
+      // Update the transaction in database with the transaction hash
+      const { error: updateError } = await supabase
+        .from('offramp_transactions')
+        .update({ 
+          tx_hash: txHash,
+          status: 'processing',
+          updated_at: new Date().toISOString()
+        })
+        .eq('order_id', params.orderId);
+
+      if (updateError) {
+        console.error('[OfframpService] Error updating transaction with tx hash:', updateError);
+      }
 
       return {
-        orderId: params.orderId,
-        txHash,
-        transferResult,
+        transactionHash: txHash,
+        orderId: params.orderId
       };
     } catch (error) {
       this.handleOfframpError(error, 'execute_transfer');
+    }
+  }
+
+  async monitorOrderStatus(orderId: string): Promise<void> {
+    try {
+      // Use the serverPaycrestService to monitor order status
+      await serverPaycrestService.monitorOrderStatus(orderId);
+    } catch (error) {
+      console.error('[OfframpService] Error monitoring order status:', error);
+      throw error;
     }
   }
 
@@ -1103,7 +1124,12 @@ export class OfframpService {
   /**
    * Process offramp request for Telegram bot users using server-managed wallets
    */
-  async processTelegramOfframp(request: OfframpRequest): Promise<OfframpTransaction> {
+  async processTelegramOfframp(request: OfframpRequest): Promise<{
+    orderId: string;
+    receiveAddress: string;
+    expectedAmount: string;
+    status: string;
+  }> {
     try {
       console.log('[OfframpService] Processing Telegram offramp request:', request);
       
@@ -1115,37 +1141,28 @@ export class OfframpService {
         userId: request.userId,
         amount: request.amount,
         currency: request.currency,
+        token: request.token || 'USDC',
         bankDetails: {
           accountNumber: request.bankDetails.accountNumber,
           bankCode: request.bankDetails.bankCode,
-          accountName: request.bankDetails.accountName
+          accountName: request.bankDetails.accountName,
+          bankName: request.bankDetails.bankName
         },
         network: 'base' // Default to Base network for USDC
       };
       
-      // Use server wallet service to process the offramp
+      // Use server wallet service to create the order
       const result = await serverPaycrestService.createOfframpOrder(serverRequest);
       
       console.log('[OfframpService] Telegram offramp result:', result);
       
-      // Create transaction record in our format
-      const transaction: OfframpTransaction = {
-        id: result.orderId,
-        userId: request.userId,
-        amount: request.amount,
-        token: request.token,
-        fiatAmount: 0, // Will be updated when we get the actual rate
-        fiatCurrency: request.currency,
-        bankDetails: request.bankDetails,
-        status: result.status as 'pending' | 'processing' | 'completed' | 'failed',
-        txHash: result.transactionHash,
-        receiveAddress: result.receiveAddress,
+      // Return the format expected by the callback flow
+      return {
         orderId: result.orderId,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        receiveAddress: result.receiveAddress,
+        expectedAmount: (result.amount || request.amount).toString(),
+        status: result.status
       };
-      
-      return transaction;
     } catch (error) {
       console.error('[OfframpService] Error processing Telegram offramp:', error);
       throw error;

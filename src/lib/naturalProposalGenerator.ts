@@ -33,108 +33,108 @@ export class NaturalProposalGenerator {
   private greetingTemplates = {
     formal: [
       "Dear {clientName},",
-      "Dear {clientName}, I hope this message finds you well.",
-      "Hello {clientName}, thank you for reaching out about {projectTitle}."
+      "Hello {clientName},",
+      "Dear {clientName}, thank you for considering me for {projectTitle}."
     ],
     professional: [
       "Hi {clientName},",
-      "Hello {clientName}, it's great to connect with you!",
-      "Hi {clientName}, thanks for considering me for {projectTitle}.",
-      "Hello {clientName}, I'm excited about the opportunity to work on {projectTitle}."
+      "Hello {clientName},",
+      "Hi {clientName}, thanks for reaching out about {projectTitle}.",
+      "Hello {clientName}, I'm excited to discuss {projectTitle} with you."
     ],
     casual: [
       "Hey {clientName}!",
-      "Hi {clientName}, hope you're doing well!",
+      "Hi {clientName}!",
       "Hello {clientName}, thanks for reaching out!"
     ]
   };
 
   private introductionTemplates = [
-    "I'm {freelancerName}, a {freelancerTitle} with a passion for creating exceptional digital experiences.",
-    "My name is {freelancerName}, and I specialize in {freelancerTitle} with {freelancerExperience} helping businesses achieve their goals.",
-    "I'm {freelancerName}, a dedicated {freelancerTitle} who loves turning ideas into reality.",
-    "As a {freelancerTitle}, I've had the privilege of working with various clients to bring their visions to life."
+    "I'm {freelancerName}, a {freelancerTitle} specializing in delivering high-quality results.",
+    "As a {freelancerTitle}, I help businesses achieve their goals through strategic solutions.",
+    "I'm {freelancerName}, and I focus on turning your ideas into successful outcomes.",
+    "With expertise as a {freelancerTitle}, I deliver projects that exceed expectations."
   ];
 
   private understandingTemplates = {
     simple: [
-      "From our conversation, I understand you're looking for {projectDescription}. This sounds like a straightforward project that I'd be happy to take on.",
-      "Based on what you've shared, you need {projectDescription}. I can definitely help you achieve this goal.",
-      "I see that you're seeking {projectDescription}. This aligns perfectly with my expertise."
+      "I understand you need {projectDescription}. This is a straightforward project I can deliver efficiently.",
+      "Based on your requirements, you're looking for {projectDescription}. I can help you achieve this goal.",
+      "You need {projectDescription}, which aligns perfectly with my expertise."
     ],
     moderate: [
-      "After reviewing your requirements, I understand you need {projectDescription}. This is an interesting challenge that requires careful planning and execution.",
-      "From our discussion, it's clear you're looking for {projectDescription}. I appreciate the complexity of what you're trying to achieve.",
-      "Based on your needs, you require {projectDescription}. This project presents some exciting opportunities to create something truly valuable."
+      "I understand you need {projectDescription}. This project requires careful planning and execution.",
+      "Your requirements for {projectDescription} present an interesting challenge I'm well-equipped to handle.",
+      "You need {projectDescription}, and I have the experience to deliver exceptional results."
     ],
     complex: [
-      "Having analyzed your requirements thoroughly, I understand you need {projectDescription}. This is a sophisticated project that demands both technical expertise and strategic thinking.",
-      "From our detailed conversation, it's evident you're seeking {projectDescription}. The scope and complexity of this project is exactly the kind of challenge I thrive on.",
-      "After careful consideration of your needs, I see you require {projectDescription}. This multifaceted project will benefit from a methodical and experienced approach."
+      "I understand you need {projectDescription}. This sophisticated project requires both technical expertise and strategic thinking.",
+      "Your requirements for {projectDescription} represent exactly the kind of complex challenge I excel at.",
+      "You need {projectDescription}, and this multifaceted project will benefit from my methodical approach."
     ]
   };
 
   private approachTemplates = {
     simple: [
-      "My approach will be straightforward and efficient:",
-      "Here's how I plan to tackle this project:",
-      "I'll take a direct approach to ensure we meet your goals:"
+      "My approach is straightforward and efficient:",
+      "Here's how I'll deliver this project:",
+      "I'll use a direct approach to meet your goals:"
     ],
     moderate: [
-      "My methodology for this project involves several key phases:",
-      "I'll approach this project with a structured plan that ensures quality and efficiency:",
-      "Here's my strategic approach to delivering exactly what you need:"
+      "My approach involves key phases:",
+      "I'll use a structured plan to ensure quality delivery:",
+      "Here's my strategic approach:"
     ],
     complex: [
-      "Given the complexity of this project, I'll employ a comprehensive methodology:",
-      "My approach combines strategic planning with agile execution:",
-      "I'll leverage a multi-phase approach that addresses every aspect of your requirements:"
+      "I'll use a comprehensive methodology:",
+      "My approach combines strategic planning with efficient execution:",
+      "I'll employ a multi-phase approach:"
     ]
   };
 
   private timelineTemplates = [
-    "I can complete this project within {timeline}, ensuring each phase receives the attention it deserves.",
-    "The timeline for this project is {timeline}, which allows for thorough development and testing.",
-    "I estimate {timeline} for completion, including time for revisions and refinements.",
-    "Based on the scope, I can deliver this project in {timeline} while maintaining high quality standards."
+    "I can complete this project within {timeline}.",
+    "Timeline: {timeline}, including development and testing.",
+    "Estimated completion: {timeline}, with time for revisions.",
+    "Delivery timeline: {timeline} while maintaining quality standards."
   ];
 
   private investmentTemplates = {
     withBudget: [
-      "For a project of this scope and quality, my rate is {budget}. This investment covers all aspects of development, testing, and delivery.",
-      "The total investment for this project would be {budget}, which includes everything needed to bring your vision to life.",
-      "I propose a rate of {budget} for this project, reflecting the value and expertise I'll bring to your business.",
-      "My fee for this comprehensive project is {budget}, ensuring you receive exceptional value for your investment."
+      "Project rate: {budget}. This covers development, testing, and delivery.",
+      "Total investment: {budget}, including everything needed to complete the project.",
+      "My rate for this project is {budget}, reflecting the value and expertise provided.",
+      "Project fee: {budget}, ensuring exceptional value for your investment."
     ],
     withoutBudget: [
-      "I'd be happy to discuss the investment for this project based on your specific requirements and budget considerations.",
-      "The investment will depend on the final scope and any additional features you'd like to include. I'm flexible and can work within your budget.",
-      "I believe in transparent pricing and would love to discuss a rate that works for both of us based on the project's complexity."
+      "I'd be happy to discuss pricing based on your specific requirements and budget.",
+      "Investment will depend on the final scope. I'm flexible and can work within your budget.",
+      "I believe in transparent pricing and would love to discuss a rate that works for both of us."
     ]
   };
 
   private nextStepsTemplates = [
-    "If this proposal resonates with you, I'd love to schedule a brief call to discuss any questions you might have and finalize the details.",
-    "I'm excited about the possibility of working together. If you'd like to move forward, please let me know and we can discuss the next steps.",
-    "If you're interested in proceeding, I'd be happy to answer any questions and discuss how we can get started.",
-    "Should you decide to work with me, I can begin immediately. Feel free to reach out with any questions or to discuss modifications to this proposal.",
-    "I'm confident we can create something amazing together. If you'd like to adjust anything in this proposal or have questions, please don't hesitate to reach out."
+    "If this proposal works for you, let's schedule a call to discuss details.",
+    "I'm excited about working together. Let me know if you'd like to move forward.",
+    "If you're interested in proceeding, I'm happy to answer any questions.",
+    "I can begin immediately. Feel free to reach out with questions or modifications.",
+    "Let's create something amazing together. Reach out with any questions or adjustments."
   ];
 
   private closingTemplates = {
     formal: [
-      "Thank you for your time and consideration. I look forward to the opportunity to work with you.",
-      "I appreciate you considering my proposal and look forward to hearing from you soon.",
-      "Thank you for the opportunity to propose on this project. I'm excited about the potential collaboration."
+      "Thank you for your consideration. I look forward to working with you.",
+      "I appreciate you considering my proposal and look forward to hearing from you.",
+      "Thank you for this opportunity. I'm excited about the potential collaboration."
     ],
     professional: [
-      "Thanks for considering me for this project. I'm looking forward to potentially working together!",
+      "Thanks for considering me for this project. Looking forward to working together!",
       "I'm excited about this opportunity and hope we can collaborate soon.",
-      "Thank you for your time, and I hope to hear from you soon!"
+      "Thank you for your time. I hope to hear from you soon!"
     ],
     casual: [
       "Thanks for checking out my proposal! Hope to work with you soon.",
-      "Looking forward to potentially collaborating with you!",
+      "Looking forward to collaborating with you!",
       "Thanks again, and I hope we can work together!"
     ]
   };
