@@ -41,6 +41,14 @@ export class OfframpSessionService {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + OfframpSessionService.SESSION_TIMEOUT);
     
+    // Clear any existing active sessions for this user to prevent multiple sessions
+    console.log(`[OfframpSession] Clearing existing sessions for user: ${userId}`);
+    await supabase
+      .from('offramp_sessions')
+      .delete()
+      .eq('user_id', userId)
+      .gt('expires_at', now.toISOString());
+    
     const sessionData = {
       user_id: userId,
       step: 'amount',
@@ -60,6 +68,7 @@ export class OfframpSessionService {
       throw new Error(`Failed to create offramp session: ${error.message}`);
     }
 
+    console.log(`[OfframpSession] Created new session: ${data.id} for user: ${userId}`);
     return this.mapDbToSession(data);
   }
 
@@ -93,19 +102,52 @@ export class OfframpSessionService {
   ): Promise<OfframpSession> {
     const now = new Date();
     
-    // Get current session data
+    console.log(`[OfframpSession] Updating session: ${sessionId} to step: ${step}`);
+    
+    // Validate sessionId is provided
+    if (!sessionId || sessionId.trim() === '') {
+      throw new Error('Session ID is required for update');
+    }
+    
+    // Get current session data and validate it exists
     const { data: currentData, error: fetchError } = await supabase
       .from('offramp_sessions')
-      .select('data')
+      .select('data, user_id, expires_at')
       .eq('id', sessionId)
       .single();
 
     if (fetchError) {
+      console.error(`[OfframpSession] Error fetching session ${sessionId}:`, fetchError);
+      if (fetchError.code === 'PGRST116') {
+        throw new Error(`Session not found: ${sessionId}`);
+      }
       throw new Error(`Failed to fetch session: ${fetchError.message}`);
+    }
+
+    // Check if session is still valid (not expired)
+    if (new Date(currentData.expires_at) <= now) {
+      throw new Error(`Session expired: ${sessionId}`);
     }
 
     // Merge current data with new data
     const mergedData = { ...currentData.data, ...data };
+
+    // First check how many rows would be affected
+    const { count: affectedCount } = await supabase
+      .from('offramp_sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('id', sessionId);
+
+    console.log(`[OfframpSession] Sessions found with ID ${sessionId}: ${affectedCount}`);
+    
+    if (affectedCount === 0) {
+      throw new Error(`No session found with ID: ${sessionId}`);
+    }
+    
+    if (affectedCount && affectedCount > 1) {
+      console.error(`[OfframpSession] Multiple sessions found with same ID: ${sessionId}, count: ${affectedCount}`);
+      throw new Error(`Multiple sessions found with ID: ${sessionId}`);
+    }
 
     const { data: updatedData, error } = await supabase
       .from('offramp_sessions')
@@ -119,17 +161,52 @@ export class OfframpSessionService {
       .single();
 
     if (error) {
+      if (error.code === 'PGRST116') {
+        throw new Error(`Session update failed - multiple or no rows affected for session: ${sessionId}`);
+      }
       throw new Error(`Failed to update session: ${error.message}`);
     }
 
+    if (!updatedData) {
+      throw new Error(`Session update returned no data for session: ${sessionId}`);
+    }
+
+    console.log(`[OfframpSession] Successfully updated session: ${sessionId}`);
     return this.mapDbToSession(updatedData);
+  }
+
+  /**
+   * Get session by ID with validation
+   */
+  async getSessionById(sessionId: string): Promise<OfframpSession | null> {
+    const { data, error } = await supabase
+      .from('offramp_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null; // Session not found
+      }
+      throw new Error(`Failed to fetch session: ${error.message}`);
+    }
+
+    // Check if session is still valid (not expired)
+    if (new Date(data.expires_at) <= new Date()) {
+      return null; // Session expired
+    }
+
+    return this.mapDbToSession(data);
   }
 
   /**
    * Clear/delete session
    */
   async clearSession(sessionId: string): Promise<void> {
-    const { error } = await supabase
+    console.log(`[OfframpSession] Clearing session: ${sessionId}`);
+    
+    const { error, count } = await supabase
       .from('offramp_sessions')
       .delete()
       .eq('id', sessionId);
@@ -137,6 +214,8 @@ export class OfframpSessionService {
     if (error) {
       throw new Error(`Failed to clear session: ${error.message}`);
     }
+
+    console.log(`[OfframpSession] Successfully cleared session: ${sessionId}`);
   }
 
   /**

@@ -573,7 +573,7 @@ export class OfframpService {
           fiat_currency: request.currency.toUpperCase(),
           bank_details: request.bankDetails,
           status: 'pending',
-          order_id: order.id,
+          paycrest_order_id: order.id,
           receive_address: order.receiveAddress,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -665,7 +665,7 @@ export class OfframpService {
       const { data: transaction, error } = await supabase
         .from('offramp_transactions')
         .select('id')
-        .eq('order_id', orderId)
+        .eq('paycrest_order_id', orderId)
         .single();
 
       if (error || !transaction) {
@@ -723,8 +723,8 @@ export class OfframpService {
       }
 
       // If transaction is still processing, check with Paycrest
-      if (transaction.status === 'processing' && transaction.order_id) {
-        const updatedStatus = await this.checkOrderStatus(transaction.order_id);
+      if (transaction.status === 'processing' && transaction.paycrest_order_id) {
+        const updatedStatus = await this.checkOrderStatus(transaction.paycrest_order_id);
         
         if (updatedStatus !== transaction.status) {
           await supabase
@@ -751,7 +751,7 @@ export class OfframpService {
         txHash: transaction.tx_hash,
         gatewayId: transaction.gateway_id,
         receiveAddress: transaction.receive_address,
-        orderId: transaction.order_id,
+        orderId: transaction.paycrest_order_id,
         errorMessage: transaction.error_message,
         createdAt: new Date(transaction.created_at),
         updatedAt: new Date(transaction.updated_at)
@@ -828,7 +828,7 @@ export class OfframpService {
         txHash: tx.tx_hash,
         gatewayId: tx.gateway_id,
         receiveAddress: tx.receive_address,
-        orderId: tx.order_id,
+        orderId: tx.paycrest_order_id,
         errorMessage: tx.error_message,
         createdAt: new Date(tx.created_at),
         updatedAt: new Date(tx.updated_at)
@@ -866,7 +866,7 @@ export class OfframpService {
           error_message: null,
           gateway_id: null,
           receive_address: null,
-          order_id: null,
+          paycrest_order_id: null,
           updated_at: new Date().toISOString()
         })
         .eq('id', transactionId);
@@ -1113,7 +1113,7 @@ export class OfframpService {
           status,
           updated_at: new Date().toISOString()
         })
-        .eq('order_id', orderId);
+        .eq('paycrest_order_id', orderId);
 
       console.log(`[OfframpService] Transaction ${orderId} status updated to ${status}`);
     } catch (error) {

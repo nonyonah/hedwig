@@ -2946,6 +2946,12 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
     if (params.callback_data === 'offramp_final_confirm') {
       console.log(`[handleFinalConfirmationStep] Processing final confirmation for user ${userId}`);
       
+      // Validate session before updating
+      if (!session || !session.id) {
+        console.error('[handleFinalConfirmationStep] Invalid session object:', session);
+        throw new Error('Invalid session - cannot proceed with order creation');
+      }
+      
       // Update session to show order creation in progress
       await offrampSessionService.updateSession(session.id, 'processing', {
         ...session.data,
@@ -2973,6 +2979,11 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
         console.log(`[handleFinalConfirmationStep] Order created:`, JSON.stringify(orderResult, null, 2));
 
         // Update session with order details and move to token transfer confirmation
+        if (!session || !session.id) {
+          console.error('[handleFinalConfirmationStep] Invalid session object for order update:', session);
+          throw new Error('Invalid session - cannot update with order details');
+        }
+        
         await offrampSessionService.updateSession(session.id, 'awaiting_transfer', {
           ...session.data,
           orderId: orderResult.orderId,
@@ -3011,11 +3022,15 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
         const errorMessage = error instanceof Error ? error.message : String(error);
         
         // Update the session to reflect the error
-        await offrampSessionService.updateSession(session.id, 'completed', {
-          ...session.data,
-          status: 'error',
-          error: errorMessage,
-        });
+        if (session && session.id) {
+          await offrampSessionService.updateSession(session.id, 'completed', {
+            ...session.data,
+            status: 'error',
+            error: errorMessage,
+          });
+        } else {
+          console.error('[handleFinalConfirmationStep] Cannot update session with error - invalid session:', session);
+        }
         
         return {
           text: `❌ An error occurred while creating your order: ${errorMessage}\n\n` +

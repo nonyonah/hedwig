@@ -82,8 +82,6 @@ export interface PaycrestOrderRequest {
     accountIdentifier: string;
     accountName: string;
     memo: string;
-    providerId: string;
-    metadata: {};
     currency: string;
   };
   reference: string;
@@ -214,10 +212,15 @@ export class ServerPaycrestService {
    */
   async getExchangeRate(amount: number, currency: string, token: string = 'USDC', network: string = 'base', bankCode?: string): Promise<PaycrestRateResponse> {
     try {
-      // Use the correct Paycrest API format with network parameter
-      const response = await fetch(`${PAYCREST_API_BASE_URL}/rates/${token.toUpperCase()}/${amount}/${currency.toUpperCase()}?network=${network}`, {
+      // Use default provider by not specifying provider parameter
+      const url = `${PAYCREST_API_BASE_URL}/rates/${token.toUpperCase()}/${amount}/${currency.toUpperCase()}?network=${network}`;
+      
+      console.log('[ServerPaycrest] Fetching rate from:', url);
+      
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
+          'API-Key': PAYCREST_API_KEY,
           'Content-Type': 'application/json'
         }
       });
@@ -311,8 +314,6 @@ export class ServerPaycrestService {
            accountIdentifier: request.bankDetails.accountNumber,
            accountName: request.bankDetails.accountName,
            memo: `Hedwig offramp payment - ${request.amount} ${request.token || 'USDC'}`,
-           providerId: request.bankDetails.bankCode,
-           metadata: {},
            currency: request.currency
          },
         reference: `hedwig-${Date.now()}`,
@@ -353,16 +354,20 @@ export class ServerPaycrestService {
         throw new Error(`Unsupported network: ${this.network}`);
       }
 
-      // Convert amount to token decimals (USDC has 6 decimals)
+      // Get token decimals (USDC has 6 decimals)
       const decimals = token === 'USDC' ? 6 : 18;
-      const amountWei = (amount * Math.pow(10, decimals)).toString();
+      
+      console.log(`[ServerPaycrest] Transferring ${amount} ${token} from ${wallet.address} to ${receiveAddress}`);
       
       // Transfer tokens to Paycrest receive address
+      // Note: transferToken expects human-readable amount, it will handle the conversion internally
       const transferResult = await transferToken(
-        wallet.cdpWalletId,
+        wallet.address,
+        receiveAddress,
         tokenAddress,
-        amountWei,
-        receiveAddress
+        amount.toString(),
+        decimals,
+        this.network
       );
       
       return transferResult.hash;
@@ -381,6 +386,7 @@ export class ServerPaycrestService {
       
       // Get user wallet
       const wallet = await this.getUserWallet(request.userId);
+      console.log(`[ServerPaycrest] User wallet: ${wallet.address} (CDP ID: ${wallet.cdpWalletId})`);
       
       // Verify bank account (temporarily disabled for testing)
       // const isValidAccount = await this.verifyBankAccount(
@@ -403,46 +409,67 @@ export class ServerPaycrestService {
       
       // Check balance
       const balanceInfo = await this.checkUserBalance(request.userId);
+      console.log(`[ServerPaycrest] Balance check: User balance = ${balanceInfo.balance} USDC, Required = ${request.amount} USDC`);
+      
       if (parseFloat(balanceInfo.balance) < request.amount) {
-        throw new Error('Insufficient USDC balance');
+        throw new Error(`Insufficient USDC balance. Available: ${balanceInfo.balance} USDC, Required: ${request.amount} USDC`);
       }
+      
+      console.log(`[ServerPaycrest] Balance check passed: ${balanceInfo.balance} >= ${request.amount}`);
       
       // Create order via Paycrest Sender API
       const orderResponse = await this.createPaycrestOrder(request);
       console.log('[ServerPaycrest] Paycrest order created:', orderResponse);
       
       // Transfer tokens to Paycrest receive address
-      const transferTx = await this.transferTokensToPaycrest(
-        request.userId,
-        orderResponse.data.receiveAddress,
-        request.amount,
-        token
-      );
-      console.log('[ServerPaycrest] Tokens transferred:', transferTx);
+      console.log(`[ServerPaycrest] Initiating token transfer to ${orderResponse.data.receiveAddress}`);
+      let transferTx;
+      try {
+        transferTx = await this.transferTokensToPaycrest(
+          request.userId,
+          orderResponse.data.receiveAddress,
+          request.amount,
+          token
+        );
+        console.log('[ServerPaycrest] Tokens transferred successfully:', transferTx);
+      } catch (transferError) {
+        console.error('[ServerPaycrest] Token transfer failed:', transferError);
+        throw new Error(`Token transfer failed: ${transferError.message}`);
+      }
       
       // Store transaction in database
-      const { data: transaction, error: dbError } = await supabase
-        .from('offramp_transactions')
-        .insert({
-          user_id: request.userId,
-          paycrest_order_id: orderResponse.data.id,
-          amount: request.amount,
-          token: token,
-          fiat_amount: rateResponse.data.total,
-          fiat_currency: request.currency,
-          bank_details: request.bankDetails,
-          status: 'pending',
-          tx_hash: transferTx,
-          receive_address: orderResponse.data.receiveAddress,
-          expires_at: orderResponse.data.expiresAt,
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-      
-      if (dbError) {
-        console.error('[ServerPaycrest] Database error:', dbError);
-        throw new Error('Failed to store transaction record');
+      console.log('[ServerPaycrest] Storing transaction in database');
+      let transaction;
+      try {
+        const { data, error: dbError } = await supabase
+          .from('offramp_transactions')
+          .insert({
+            user_id: request.userId,
+            paycrest_order_id: orderResponse.data.id,
+            amount: request.amount,
+            token: token,
+            fiat_amount: rateResponse.data.total,
+            fiat_currency: request.currency,
+            bank_details: request.bankDetails,
+            status: 'pending',
+            tx_hash: transferTx,
+            receive_address: orderResponse.data.receiveAddress,
+            expires_at: orderResponse.data.expiresAt,
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        
+        if (dbError) {
+          console.error('[ServerPaycrest] Database error:', dbError);
+          throw new Error(`Failed to store transaction record: ${dbError.message}`);
+        }
+        
+        transaction = data;
+        console.log('[ServerPaycrest] Transaction stored successfully:', transaction?.id);
+      } catch (dbError) {
+        console.error('[ServerPaycrest] Database operation failed:', dbError);
+        throw new Error(`Database operation failed: ${dbError.message}`);
       }
       
       return {

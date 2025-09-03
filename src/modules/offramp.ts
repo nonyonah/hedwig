@@ -803,22 +803,22 @@ export class OfframpModule {
         });
         
         // Store transaction in database
-        const transaction: OfframpTransaction = {
+        const transaction = {
           id: `offramp_${Date.now()}`,
-          userId,
+          user_id: userId,
           amount: state.amount,
           token: state.token,
-          fiatAmount,
-          fiatCurrency: 'USD',
-          bankDetails: {
+          fiat_amount: fiatAmount,
+          fiat_currency: 'USD',
+          bank_details: {
             accountNumber: state.bankDetails.accountNumber!,
             bankName: state.bankDetails.bankName!,
             country: state.bankDetails.country!
           },
           status: 'pending',
-          orderId: response.data.orderId,
-          createdAt: new Date(),
-          updatedAt: new Date()
+          paycrest_order_id: response.data.orderId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
         
         await supabase
@@ -921,7 +921,7 @@ export class OfframpModule {
         await supabase
           .from('offramp_transactions')
           .update({ status, updated_at: new Date().toISOString() })
-          .eq('order_id', orderId);
+          .eq('paycrest_order_id', orderId);
         
         if (status === 'completed') {
           // Transaction completed
