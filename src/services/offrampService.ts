@@ -5,7 +5,6 @@ import * as dotenv from 'dotenv';
 import { getCurrentConfig } from '../lib/envConfig';
 // Removed viem imports - now using CDP SDK for all blockchain operations
 import { erc20Abi, paycrestGatewayAbi } from '../lib/abis';
-import { PaycrestContractService } from './paycrestContractService';
 import { ServerPaycrestService } from './serverPaycrestService';
 
 // Load environment variables
@@ -16,7 +15,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const paycrestContractService = new PaycrestContractService();
 const serverPaycrestService = new ServerPaycrestService();
 
 // Paycrest API configuration - use direct environment variables
@@ -485,9 +483,6 @@ export class OfframpService {
    */
   private async createPaycrestOrder(request: OfframpRequest, returnAddress: string) {
     try {
-      // Initialize Paycrest contract service
-      await paycrestContractService.initialize();
-
       // First, fetch the current rate as required by Paycrest Sender API
       const rates = await this.getExchangeRates(request.token, request.amount);
       const currentRate = rates[request.currency.toUpperCase()];
@@ -495,39 +490,43 @@ export class OfframpService {
         throw new Error(`Unable to get current rate for ${request.currency}`);
       }
 
-      // Check and approve token allowance if needed
-      const hasAllowance = await paycrestContractService.checkTokenAllowance(
-        returnAddress,
-        request.amount
+      // Calculate fiat amount
+      const fiatAmount = request.amount * currentRate;
+
+      // Create order using Paycrest API
+      const orderData = {
+        amount: fiatAmount,
+        currency: request.currency.toUpperCase(),
+        recipient: {
+          account_number: request.bankDetails.accountNumber,
+          bank_code: request.bankDetails.bankCode,
+          account_name: request.bankDetails.accountName
+        },
+        reference: `hedwig_${Date.now()}_${request.userId}`,
+        callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/offramp/webhook`
+      };
+
+      const response = await axios.post(
+        `${PAYCREST_API_BASE_URL}/transfers`,
+        orderData,
+        {
+          headers: {
+            'Authorization': `Bearer ${PAYCREST_API_TOKEN}`,
+            'Content-Type': 'application/json',
+            'X-API-Key': PAYCREST_API_KEY
+          }
+        }
       );
 
-      if (!hasAllowance) {
-        await paycrestContractService.approveToken(request.amount);
-      }
-
-      // Create order using smart contract
-      const orderResult = await paycrestContractService.createOffRampOrder(
-        request.amount,
-        request.currency,
-        request.bankDetails
-      );
-
-      console.log(`[OfframpService] Paycrest contract order created:`, JSON.stringify(orderResult, null, 2));
-
-      // Set up event listeners for this order
-      paycrestContractService.watchOrderEvents(orderResult.orderId, (event) => {
-        console.log('Order event received:', event);
-        // Update transaction status in real-time
-        this.updateTransactionStatusFromEvent(orderResult.orderId, event);
-      });
+      console.log(`[OfframpService] Paycrest API order created:`, JSON.stringify(response.data, null, 2));
 
       return {
-        id: orderResult.orderId,
-        receiveAddress: orderResult.receiveAddress,
-        transactionHash: orderResult.transactionHash
+        id: response.data.id || response.data.reference,
+        receiveAddress: returnAddress,
+        transactionHash: null // Will be set when user executes the transfer
       };
     } catch (error) {
-      console.error('[OfframpService] Contract order creation error:', error);
+      console.error('[OfframpService] API order creation error:', error);
       this.handleOfframpError(error, 'order_creation');
     }
   }

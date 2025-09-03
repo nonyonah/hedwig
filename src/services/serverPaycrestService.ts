@@ -216,7 +216,7 @@ export class ServerPaycrestService {
         network: this.network as any,
         transaction: {
           to: usdcAddress as `0x${string}`,
-          data: approveData,
+          data: approveData as `0x${string}`,
           value: BigInt(0),
         },
       });
@@ -281,7 +281,7 @@ export class ServerPaycrestService {
         network: this.network as any,
         transaction: {
           to: gatewayAddress as `0x${string}`,
-          data: createOrderData,
+          data: createOrderData as `0x${string}`,
           value: BigInt(0),
         },
       });
