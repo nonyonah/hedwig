@@ -5,6 +5,8 @@ import * as dotenv from 'dotenv';
 import { getCurrentConfig } from '../lib/envConfig';
 // Removed viem imports - now using CDP SDK for all blockchain operations
 import { erc20Abi, paycrestGatewayAbi } from '../lib/abis';
+import { PaycrestContractService } from './paycrestContractService';
+import { ServerPaycrestService } from './serverPaycrestService';
 
 // Load environment variables
 dotenv.config();
@@ -13,6 +15,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const paycrestContractService = new PaycrestContractService();
+const serverPaycrestService = new ServerPaycrestService();
 
 // Paycrest API configuration - use direct environment variables
 const PAYCREST_API_BASE_URL = 'https://api.paycrest.io/v1';
@@ -476,10 +481,13 @@ export class OfframpService {
   }
 
   /**
-   * Create a Paycrest order
+   * Create a Paycrest order using smart contract
    */
   private async createPaycrestOrder(request: OfframpRequest, returnAddress: string) {
     try {
+      // Initialize Paycrest contract service
+      await paycrestContractService.initialize();
+
       // First, fetch the current rate as required by Paycrest Sender API
       const rates = await this.getExchangeRates(request.token, request.amount);
       const currentRate = rates[request.currency.toUpperCase()];
@@ -487,71 +495,39 @@ export class OfframpService {
         throw new Error(`Unable to get current rate for ${request.currency}`);
       }
 
-      const orderPayload: {
-        amount: number;
-        token: string;
-        network: string;
-        rate: string;
-        recipient: {
-          institution: string;
-          accountIdentifier: string;
-          accountName: string;
-          currency: string;
-          memo: string;
-        };
-        reference: string;
-        returnAddress: string;
-        meta?: {
-          telegramChatId?: string;
-          telegramUserId?: string;
-        };
-      } = {
-        amount: request.amount,
-        token: request.token.toUpperCase(),
-        network: 'base', // Currently supporting Base network
-        rate: currentRate.toString(), // Include the fetched rate
-        recipient: {
-          institution: request.bankDetails.bankCode,
-          accountIdentifier: request.bankDetails.accountNumber,
-          accountName: request.bankDetails.accountName,
-          currency: request.currency.toUpperCase(),
-          memo: `Withdrawal for ${request.bankDetails.accountName}`
-        },
-        reference: `offramp_${Date.now()}_${request.userId.slice(-8)}`,
-        returnAddress: returnAddress
-      };
-
-      if (request.chatId) {
-        orderPayload.meta = {
-          telegramChatId: request.chatId,
-          telegramUserId: request.userId
-        };
-      }
-
-      console.log(`[OfframpService] Creating Paycrest Sender order:`, JSON.stringify(orderPayload, null, 2));
-
-      const orderResponse = await axios.post(
-        `${PAYCREST_API_BASE_URL}/sender/orders`,
-        orderPayload,
-        {
-          headers: {
-            'API-Key': PAYCREST_API_KEY,
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000 // 30 second timeout
-        }
+      // Check and approve token allowance if needed
+      const hasAllowance = await paycrestContractService.checkTokenAllowance(
+        returnAddress,
+        request.amount
       );
 
-      console.log(`[OfframpService] Paycrest Sender order response:`, JSON.stringify(orderResponse.data, null, 2));
-
-      const orderData = orderResponse.data;
-      if (!orderData || !orderData.id || !orderData.receiveAddress) {
-        this.handleOfframpError(new Error('Failed to create Paycrest Sender order or receiveAddress is missing'), 'order_creation');
+      if (!hasAllowance) {
+        await paycrestContractService.approveToken(request.amount);
       }
 
-      return orderData;
+      // Create order using smart contract
+      const orderResult = await paycrestContractService.createOffRampOrder(
+        request.amount,
+        request.currency,
+        request.bankDetails
+      );
+
+      console.log(`[OfframpService] Paycrest contract order created:`, JSON.stringify(orderResult, null, 2));
+
+      // Set up event listeners for this order
+      paycrestContractService.watchOrderEvents(orderResult.orderId, (event) => {
+        console.log('Order event received:', event);
+        // Update transaction status in real-time
+        this.updateTransactionStatusFromEvent(orderResult.orderId, event);
+      });
+
+      return {
+        id: orderResult.orderId,
+        receiveAddress: orderResult.receiveAddress,
+        transactionHash: orderResult.transactionHash
+      };
     } catch (error) {
-      console.error('[OfframpService] Sender order creation error:', error.response?.data || error.message);
+      console.error('[OfframpService] Contract order creation error:', error);
       this.handleOfframpError(error, 'order_creation');
     }
   }
@@ -1084,6 +1060,96 @@ export class OfframpService {
         ];
       }
       return [];
+    }
+  }
+
+  /**
+   * Update transaction status based on contract events
+   */
+  private async updateTransactionStatusFromEvent(orderId: string, event: any) {
+    try {
+      let status: 'pending' | 'processing' | 'completed' | 'failed';
+      
+      switch (event.type) {
+        case 'OrderCreated':
+          status = 'pending';
+          break;
+        case 'OrderProcessing':
+          status = 'processing';
+          break;
+        case 'OrderCompleted':
+          status = 'completed';
+          break;
+        case 'OrderFailed':
+          status = 'failed';
+          break;
+        default:
+          return;
+      }
+
+      await supabase
+        .from('offramp_transactions')
+        .update({
+          status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('order_id', orderId);
+
+      console.log(`[OfframpService] Transaction ${orderId} status updated to ${status}`);
+    } catch (error) {
+      console.error('[OfframpService] Error updating transaction status from event:', error);
+    }
+  }
+
+  /**
+   * Process offramp request for Telegram bot users using server-managed wallets
+   */
+  async processTelegramOfframp(request: OfframpRequest): Promise<OfframpTransaction> {
+    try {
+      console.log('[OfframpService] Processing Telegram offramp request:', request);
+      
+      // Validate request
+      this.validateOfframpRequest(request);
+      
+      // Convert to server offramp request format
+      const serverRequest = {
+        userId: request.userId,
+        amount: request.amount,
+        currency: request.currency,
+        bankDetails: {
+          accountNumber: request.bankDetails.accountNumber,
+          bankCode: request.bankDetails.bankCode,
+          accountName: request.bankDetails.accountName
+        },
+        network: 'base' // Default to Base network for USDC
+      };
+      
+      // Use server wallet service to process the offramp
+      const result = await serverPaycrestService.createOfframpOrder(serverRequest);
+      
+      console.log('[OfframpService] Telegram offramp result:', result);
+      
+      // Create transaction record in our format
+      const transaction: OfframpTransaction = {
+        id: result.orderId,
+        userId: request.userId,
+        amount: request.amount,
+        token: request.token,
+        fiatAmount: 0, // Will be updated when we get the actual rate
+        fiatCurrency: request.currency,
+        bankDetails: request.bankDetails,
+        status: result.status as 'pending' | 'processing' | 'completed' | 'failed',
+        txHash: result.transactionHash,
+        receiveAddress: result.receiveAddress,
+        orderId: result.orderId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      return transaction;
+    } catch (error) {
+      console.error('[OfframpService] Error processing Telegram offramp:', error);
+      throw error;
     }
   }
 
