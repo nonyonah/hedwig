@@ -78,7 +78,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             transactionHash,
             status: 'paid',
             payerWallet: senderAddress || 'unknown',
-            chain: chain || 'base'
+            chain: chain || 'base',
+            // Add payment link specific data for proper notification handling
+            recipientUserId: data[0].created_by,
+            userName: data[0].user_name,
+            paymentReason: data[0].payment_reason
           }),
           // Add timeout to prevent hanging
           signal: AbortSignal.timeout(5000)

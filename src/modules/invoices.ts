@@ -51,11 +51,18 @@ export class InvoiceModule {
       // Get user info and wallet for required fields
       const [userResult, walletResult] = await Promise.all([
         supabase.from('users').select('name, email').eq('id', userId).single(),
-        supabase.from('wallets').select('address').eq('user_id', userId).eq('chain', 'evm').single()
+        supabase.from('wallets').select('address, chain').eq('user_id', userId)
       ]);
 
       const userData = userResult.data;
-      const walletData = walletResult.data;
+      const wallets = walletResult.data || [];
+      
+      // Find the best wallet address (prefer EVM/Base, fallback to any wallet)
+      let walletAddress = null;
+      if (wallets.length > 0) {
+        const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
+        walletAddress = evmWallet?.address || wallets[0]?.address;
+      }
 
       // Show personalization with user info and edit option
       const personalizationMessage = 
@@ -89,11 +96,18 @@ export class InvoiceModule {
       // Get user info and wallet for required fields
       const [userResult, walletResult] = await Promise.all([
         supabase.from('users').select('name, email').eq('id', userId).single(),
-        supabase.from('wallets').select('address').eq('user_id', userId).eq('chain', 'evm').single()
+        supabase.from('wallets').select('address, chain').eq('user_id', userId)
       ]);
 
       const userData = userResult.data;
-      const walletData = walletResult.data;
+      const wallets = walletResult.data || [];
+      
+      // Find the best wallet address (prefer EVM/Base, fallback to any wallet)
+      let walletAddress = null;
+      if (wallets.length > 0) {
+        const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
+        walletAddress = evmWallet?.address || wallets[0]?.address;
+      }
 
       // Generate invoice number
       const invoiceNumber = `INV-${Date.now()}`;
@@ -112,7 +126,7 @@ export class InvoiceModule {
           rate: 0,
           price: 0,
           amount: 0,
-          wallet_address: walletData?.address || '0x0000000000000000000000000000000000000000',
+          wallet_address: walletAddress || null,
           status: 'draft',
           currency: 'USD',
           payment_methods: {

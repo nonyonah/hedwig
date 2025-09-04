@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import * as crypto from 'crypto';
+import { NetworkConfig, getCurrentNetworkEnvironment } from '../../../lib/envConfig';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -49,6 +50,7 @@ interface InvoiceData {
   status: string;
   freelancer_name: string;
   client_name: string;
+  created_by: string;
 }
 
 interface PaymentLinkData {
@@ -58,6 +60,7 @@ interface PaymentLinkData {
   status: string;
   user_name: string;
   payment_reason: string;
+  recipient_email: string;
 }
 
 function isValidSignatureForStringBody(
@@ -73,7 +76,8 @@ function isValidSignatureForStringBody(
 
 // Verify Alchemy auth token
 function verifyAuthToken(token: string): boolean {
-  const expectedToken = process.env.ALCHEMY_AUTH_TOKEN;
+  const currentNetwork = getCurrentNetworkEnvironment();
+  const expectedToken = NetworkConfig.alchemy.authToken(currentNetwork);
   return Boolean(expectedToken && token === expectedToken);
 }
 
@@ -112,9 +116,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const signature = req.headers['x-alchemy-signature'] as string;
     
     // Verify webhook signature
-      const signingKey = process.env.ALCHEMY_SIGNING_KEY;
+      const currentNetwork = getCurrentNetworkEnvironment();
+      const signingKey = NetworkConfig.alchemy.signingKey(currentNetwork);
       if (!signingKey) {
-        console.error('ALCHEMY_SIGNING_KEY not configured');
+        console.error(`ALCHEMY_SIGNING_KEY not configured for ${currentNetwork}`);
         return res.status(500).json({ error: 'Signing key not configured' });
       }
       // Verify webhook signature
@@ -238,7 +243,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Check for matching invoice
       const { data: invoiceData } = await supabase
         .from('invoices')
-        .select('id, amount, currency, status, freelancer_name, client_name')
+        .select('id, amount, currency, status, freelancer_name, client_name, created_by')
         .eq('wallet_address', transfer.toAddress.toLowerCase())
         .eq('status', 'sent')
         .eq('currency', currency) // Match currency
@@ -275,7 +280,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Check for matching payment link
         const { data: paymentLinkData } = await supabase
           .from('payment_links')
-          .select('id, amount, token, status, user_name, payment_reason')
+          .select('id, amount, token, status, user_name, payment_reason, recipient_email')
           .eq('wallet_address', transfer.toAddress.toLowerCase())
           .eq('status', 'pending')
           .eq('token', 'USDC')
@@ -336,9 +341,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } else if (paymentType === 'invoice' && relatedItem && 'freelancer_name' in relatedItem) {
           notificationPayload.freelancerName = relatedItem.freelancer_name;
           notificationPayload.clientName = relatedItem.client_name;
+          notificationPayload.recipientUserId = relatedItem.created_by;
         } else if (paymentType === 'payment_link' && relatedItem && 'user_name' in relatedItem) {
           notificationPayload.userName = relatedItem.user_name;
           notificationPayload.paymentReason = relatedItem.payment_reason;
+          // Add the payment link data for proper notification handling
+          notificationPayload.itemData = {
+            id: relatedItem.id,
+            title: relatedItem.user_name,
+            description: relatedItem.payment_reason,
+            recipientName: relatedItem.user_name,
+            recipientEmail: relatedItem.recipient_email || null,
+            user_name: relatedItem.user_name
+          };
         }
 
         // Send HTTP request to payment-notifications webhook

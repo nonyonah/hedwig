@@ -84,8 +84,37 @@ export default async function handler(
 
     // Send notification to user if needed
     if (newStatus === 'completed' || newStatus === 'failed') {
-      // TODO: Implement user notification (email, push, etc.)
-      console.log(`[Webhook] Transaction ${transaction.id} ${newStatus}`);
+      try {
+        // Send notification via payment-notifications webhook
+        const notificationPayload = {
+          type: 'offramp' as const,
+          id: transaction.id,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          transactionHash: payload.transactionHash,
+          status: newStatus,
+          recipientUserId: transaction.user_id,
+          orderId: payload.orderId,
+          liquidityProvider: payload.liquidityProvider
+        };
+
+        const notificationResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/payment-notifications`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(notificationPayload)
+        });
+
+        if (!notificationResponse.ok) {
+          console.error('[Webhook] Failed to send notification:', await notificationResponse.text());
+        } else {
+          console.log(`[Webhook] Notification sent for transaction ${transaction.id} ${newStatus}`);
+        }
+      } catch (notificationError) {
+        console.error('[Webhook] Error sending notification:', notificationError);
+        // Don't fail the webhook if notification fails
+      }
     }
 
     res.status(200).json({ success: true, message: 'Webhook processed successfully' });

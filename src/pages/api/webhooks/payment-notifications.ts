@@ -17,14 +17,14 @@ const bot = process.env.TELEGRAM_BOT_TOKEN
   : null;
 
 interface PaymentNotificationData {
-  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer';
+  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp';
   id: string;
   amount: number;
   currency: string;
   transactionHash?: string;
   payerWallet?: string;
   recipientWallet?: string;
-  status: 'paid' | 'completed';
+  status: 'paid' | 'completed' | 'failed';
   chain?: string;
   senderAddress?: string;
   recipientUserId?: string;
@@ -33,6 +33,9 @@ interface PaymentNotificationData {
   clientName?: string;
   userName?: string;
   paymentReason?: string;
+  // Additional fields for offramp notifications
+  orderId?: string;
+  liquidityProvider?: string;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -208,6 +211,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         recipientWallet: req.body.recipientWallet,
         chain: req.body.chain
       };
+    } else if (type === 'offramp') {
+      // For offramp transactions, get the user from the transaction
+      if (!req.body.recipientUserId) {
+        console.error('No recipient user ID provided for offramp');
+        return res.status(400).json({ error: 'Recipient user ID required for offramp' });
+      }
+
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email, telegram_chat_id')
+        .eq('id', req.body.recipientUserId)
+        .single();
+
+      if (userError || !user) {
+        console.error('Error fetching user for offramp:', userError);
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      recipientUser = user;
+      itemData = {
+        orderId: req.body.orderId,
+        liquidityProvider: req.body.liquidityProvider,
+        transactionId: id,
+        status: status
+      };
     }
 
     if (!recipientUser) {
@@ -267,7 +295,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function sendTelegramNotification(
   chatId: number,
-  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer',
+  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp',
   itemData: any,
   amount: number,
   currency: string,
@@ -308,6 +336,18 @@ async function sendTelegramNotification(
       itemType = 'Direct Transfer';
       itemIdentifier = 'Received';
       customTitle = `💸 <b>Direct Transfer Received!</b>`;
+    } else if (type === 'offramp') {
+      if (itemData.status === 'completed') {
+        emoji = '🏦';
+        itemType = 'Offramp';
+        itemIdentifier = 'Completed';
+        customTitle = `🏦 <b>Offramp Completed!</b>`;
+      } else {
+        emoji = '❌';
+        itemType = 'Offramp';
+        itemIdentifier = 'Failed';
+        customTitle = `❌ <b>Offramp Failed!</b>`;
+      }
     } else {
       emoji = '💰';
       itemType = 'Payment Link';
@@ -322,6 +362,14 @@ async function sendTelegramNotification(
       message += `👤 <b>From:</b> ${itemData.senderAddress}\n`;
       message += `📱 <b>To:</b> ${itemData.recipientWallet}\n`;
       message += `⛓️ <b>Chain:</b> ${itemData.chain}\n`;
+    } else if (type === 'offramp') {
+      message += `🆔 <b>Transaction ID:</b> ${itemData.transactionId}\n`;
+      message += `💰 <b>Amount:</b> ${amount} ${currency}\n`;
+      message += `📋 <b>Order ID:</b> ${itemData.orderId}\n`;
+      if (itemData.liquidityProvider) {
+        message += `🏢 <b>Provider:</b> ${itemData.liquidityProvider}\n`;
+      }
+      message += `📊 <b>Status:</b> ${itemData.status === 'completed' ? '✅ Completed' : '❌ Failed'}\n`;
     } else {
       if (type === 'invoice' || type === 'proposal') {
         // Add specific ID for tracking
@@ -382,6 +430,12 @@ async function sendTelegramNotification(
       message += `\n🎉 Your payment link has been successfully paid!`;
     } else if (type === 'proposal') {
       message += `\n🎉 Your proposal has been accepted and paid!`;
+    } else if (type === 'offramp') {
+      if (itemData.status === 'completed') {
+        message += `\n🎉 Your crypto has been successfully converted to fiat!`;
+      } else {
+        message += `\n😞 Your offramp transaction failed. Please try again or contact support.`;
+      }
     } else {
       message += `\n💰 Direct payment received in your wallet!`;
     }
@@ -476,7 +530,7 @@ async function sendTelegramNotification(
 async function sendEmailNotification(
   email: string,
   name: string,
-  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer',
+  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp',
   itemData: any,
   amount: number,
   currency: string,
@@ -499,31 +553,43 @@ async function sendEmailNotification(
     } else if (type === 'direct_transfer') {
       itemType = 'Direct Transfer';
       itemIdentifier = 'Received';
+    } else if (type === 'offramp') {
+      itemType = 'Offramp Transaction';
+      itemIdentifier = itemData.status === 'completed' ? 'Completed' : 'Failed';
     } else {
       itemType = 'Payment Link';
       itemIdentifier = itemData.title;
     }
     
-    const subject = `🎉 Payment Received - ${itemType} ${itemIdentifier}`;
+    const subject = type === 'offramp' && itemData.status === 'failed' 
+      ? `❌ Offramp Failed - ${itemType} ${itemIdentifier}`
+      : `🎉 ${type === 'offramp' ? 'Offramp Completed' : 'Payment Received'} - ${itemType} ${itemIdentifier}`;
     
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-          <h1 style="margin: 0; font-size: 28px;">🎉 Payment Received!</h1>
+        <div style="background: linear-gradient(135deg, ${type === 'offramp' && itemData.status === 'failed' ? '#dc3545 0%, #c82333 100%' : '#667eea 0%, #764ba2 100%'}); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+          <h1 style="margin: 0; font-size: 28px;">${type === 'offramp' && itemData.status === 'failed' ? '❌ Offramp Failed!' : type === 'offramp' ? '🏦 Offramp Completed!' : '🎉 Payment Received!'}</h1>
         </div>
         
         <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;">
           <p style="font-size: 18px; margin-bottom: 20px;">Hi ${name},</p>
           
           <p style="font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-            Great news! You've received a payment for your ${itemType.toLowerCase()}.
+            ${type === 'offramp' && itemData.status === 'failed' 
+              ? 'We\'re sorry, but your offramp transaction has failed.' 
+              : type === 'offramp' 
+                ? 'Great news! Your crypto has been successfully converted to fiat currency.' 
+                : `Great news! You've received a payment for your ${itemType.toLowerCase()}.`}
           </p>
           
-          <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #28a745; margin-bottom: 25px;">
-            <h3 style="margin: 0 0 15px 0; color: #333;">Payment Details</h3>
+          <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid ${type === 'offramp' && itemData.status === 'failed' ? '#dc3545' : '#28a745'}; margin-bottom: 25px;">
+            <h3 style="margin: 0 0 15px 0; color: #333;">${type === 'offramp' ? 'Offramp Details' : 'Payment Details'}</h3>
             <p style="margin: 5px 0;"><strong>${itemType}:</strong> ${itemIdentifier}</p>
             <p style="margin: 5px 0;"><strong>Amount:</strong> ${amount} ${currency}</p>
-            ${type === 'invoice' || type === 'proposal' ? `
+            ${type === 'offramp' ? `
+              <p style="margin: 5px 0;"><strong>Order ID:</strong> ${itemData.orderId}</p>
+              ${itemData.liquidityProvider ? `<p style="margin: 5px 0;"><strong>Provider:</strong> ${itemData.liquidityProvider}</p>` : ''}
+            ` : type === 'invoice' || type === 'proposal' ? `
               <p style="margin: 5px 0;"><strong>Client:</strong> ${itemData.clientName}</p>
               <p style="margin: 5px 0;"><strong>Project:</strong> ${itemData.description}</p>
             ` : `
@@ -532,7 +598,7 @@ async function sendEmailNotification(
             ${senderWallet ? `<p style="margin: 5px 0;"><strong>Sender Wallet:</strong> <code style="background: #f1f3f4; padding: 2px 4px; border-radius: 3px;">${senderWallet}</code></p>` : ''}
             ${chain ? `<p style="margin: 5px 0;"><strong>Chain:</strong> ${chain}</p>` : ''}
             ${transactionHash ? `<p style="margin: 5px 0;"><strong>Transaction Hash:</strong> <code style="background: #f1f3f4; padding: 2px 4px; border-radius: 3px;">${transactionHash}</code></p>` : ''}
-            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">✅ Confirmed</span></p>
+            <p style="margin: 5px 0;"><strong>Status:</strong> <span style="color: ${type === 'offramp' && itemData.status === 'failed' ? '#dc3545' : '#28a745'}; font-weight: bold;">${type === 'offramp' && itemData.status === 'failed' ? '❌ Failed' : '✅ Confirmed'}</span></p>
             <p style="margin: 5px 0;"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
           </div>
           

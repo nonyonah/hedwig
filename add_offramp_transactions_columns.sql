@@ -1,5 +1,9 @@
--- Add missing columns to offramp_transactions table
--- This script adds columns that are referenced in the code but missing from the actual database schema
+-- Migration script to add missing columns to offramp_transactions table
+-- This script adds columns that are referenced in the code but missing from the database schema
+
+-- First, ensure the table has a proper primary key (id column)
+ALTER TABLE offramp_transactions 
+ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;
 
 -- Add paycrest_order_id column if it doesn't exist
 ALTER TABLE offramp_transactions 

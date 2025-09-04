@@ -110,11 +110,20 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
         if (!currentInvoice.project_description) {
           updateData.project_description = 'Blockchain payment processing';
         }
-        if (!currentInvoice.freelancer_name) {
-          updateData.freelancer_name = 'Freelancer';
-        }
-        if (!currentInvoice.freelancer_email) {
-          updateData.freelancer_email = 'freelancer@hedwig.com';
+        if (!currentInvoice.freelancer_name || !currentInvoice.freelancer_email) {
+          // Fetch user's actual name and email instead of using placeholders
+          const { data: userData } = await supabase
+            .from('users')
+            .select('name, email')
+            .eq('id', currentInvoice.user_id)
+            .single();
+          
+          if (!currentInvoice.freelancer_name) {
+            updateData.freelancer_name = userData?.name || 'Freelancer';
+          }
+          if (!currentInvoice.freelancer_email) {
+            updateData.freelancer_email = userData?.email || 'freelancer@hedwig.com';
+          }
         }
         if (!currentInvoice.client_name) {
           updateData.client_name = 'Client';
@@ -123,7 +132,18 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
           updateData.client_email = 'client@hedwig.com';
         }
         if (!currentInvoice.wallet_address) {
-          updateData.wallet_address = '0x0000000000000000000000000000000000000000';
+          // Fetch user's actual wallet address instead of using zero address
+          const { data: wallets } = await supabase
+            .from('wallets')
+            .select('address, chain')
+            .eq('user_id', currentInvoice.created_by);
+          
+          if (wallets && wallets.length > 0) {
+            const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
+            updateData.wallet_address = evmWallet?.address || wallets[0]?.address || null;
+          } else {
+            updateData.wallet_address = null;
+          }
         }
         if (!currentInvoice.blockchain) {
           updateData.blockchain = 'base';
@@ -174,21 +194,40 @@ async function processPaymentEvent(event: PaymentReceivedEvent): Promise<void> {
           
           // Send webhook notification for payment link
           try {
+            // Fetch payment link data for notification
+            const { data: paymentLinkData } = await supabase
+              .from('payment_links')
+              .select(`
+                *,
+                users!payment_links_created_by_fkey(id, name, email, telegram_chat_id)
+              `)
+              .eq('id', event.invoiceId)
+              .single();
+
             const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+            const notificationPayload: any = {
+              type: 'payment_link',
+              id: event.invoiceId,
+              amount: parseFloat(event.amount.toString()) / 1000000,
+              currency: 'USDC',
+              transactionHash: event.transactionHash,
+              payerWallet: event.payer,
+              status: 'paid'
+            };
+
+            // Add payment link specific data if available
+            if (paymentLinkData) {
+              notificationPayload.recipientUserId = paymentLinkData.created_by;
+              notificationPayload.userName = paymentLinkData.user_name;
+              notificationPayload.paymentReason = paymentLinkData.payment_reason;
+            }
+
             await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                type: 'payment_link',
-                id: event.invoiceId,
-                amount: parseFloat(event.amount.toString()) / 1000000,
-                currency: 'USDC',
-                transactionHash: event.transactionHash,
-                payerWallet: event.payer,
-                status: 'paid'
-              }),
+              body: JSON.stringify(notificationPayload),
               signal: AbortSignal.timeout(5000)
             });
           } catch (webhookError) {

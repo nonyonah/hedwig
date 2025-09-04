@@ -139,11 +139,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             if (!currentInvoice.project_description) {
               invoiceUpdateData.project_description = 'Blockchain payment processing';
             }
-            if (!currentInvoice.freelancer_name) {
-              invoiceUpdateData.freelancer_name = 'Freelancer';
-            }
-            if (!currentInvoice.freelancer_email) {
-              invoiceUpdateData.freelancer_email = 'freelancer@hedwig.com';
+            if (!currentInvoice.freelancer_name || !currentInvoice.freelancer_email) {
+              // Fetch user's actual name and email instead of using placeholders
+              const { data: userData } = await supabase
+                .from('users')
+                .select('name, email')
+                .eq('id', currentInvoice.user_id)
+                .single();
+              
+              if (!currentInvoice.freelancer_name) {
+                invoiceUpdateData.freelancer_name = userData?.name || 'Freelancer';
+              }
+              if (!currentInvoice.freelancer_email) {
+                invoiceUpdateData.freelancer_email = userData?.email || 'freelancer@hedwig.com';
+              }
             }
             if (!currentInvoice.client_name) {
               invoiceUpdateData.client_name = 'Client';
@@ -152,7 +161,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               invoiceUpdateData.client_email = 'client@hedwig.com';
             }
             if (!currentInvoice.wallet_address) {
-              invoiceUpdateData.wallet_address = '0x0000000000000000000000000000000000000000';
+              // Fetch user's actual wallet address instead of using zero address
+              const { data: wallets } = await supabase
+                .from('wallets')
+                .select('address, chain')
+                .eq('user_id', currentInvoice.created_by);
+              
+              if (wallets && wallets.length > 0) {
+                const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
+                invoiceUpdateData.wallet_address = evmWallet?.address || wallets[0]?.address || null;
+              } else {
+                invoiceUpdateData.wallet_address = null;
+              }
             }
             if (!currentInvoice.blockchain) {
               invoiceUpdateData.blockchain = 'base';
@@ -194,7 +214,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         currency: data.currency || 'USDC',
         transactionHash,
         payerWallet: data.payer_wallet_address,
-        status: dbStatus
+        status: dbStatus,
+        // Add payment link specific data for proper notification handling
+        recipientUserId: data.created_by,
+        userName: data.user_name,
+        paymentReason: data.payment_reason
       };
 
       // Call internal webhook
@@ -230,6 +254,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // If there's a linked invoice, also send invoice notification
       if (dbStatus === 'paid' && data.invoice_id) {
+        // Fetch invoice details for notification
+        const { data: invoiceData } = await supabase
+          .from('invoices')
+          .select('created_by, freelancer_name, client_name')
+          .eq('id', data.invoice_id)
+          .single();
+
         await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
           method: 'POST',
           headers: {
@@ -242,7 +273,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             currency: data.currency || 'USDC',
             transactionHash,
             payerWallet: data.payer_wallet_address,
-            status: 'paid'
+            status: 'paid',
+            recipientUserId: invoiceData?.created_by,
+            freelancerName: invoiceData?.freelancer_name,
+            clientName: invoiceData?.client_name
           }),
           signal: AbortSignal.timeout(5000)
         });

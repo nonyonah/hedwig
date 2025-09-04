@@ -1553,10 +1553,11 @@ export class BotIntegration {
       else if (data.startsWith('proposal_') || data.startsWith('view_proposal_') || 
                data.startsWith('send_proposal_') || data.startsWith('pdf_proposal_') ||
                data.startsWith('edit_proposal_') || data.startsWith('delete_proposal_') ||
-               data.startsWith('cancel_proposal_') || data === 'continue_proposal' ||
-               data === 'edit_user_info' || data === 'edit_user_field_name' ||
-               data === 'edit_user_field_email' || data === 'back_to_proposal' ||
-               data === 'cancel_user_edit' || data === 'cancel_proposal_creation') {
+               data.startsWith('generate_invoice_') || data.startsWith('cancel_proposal_') || 
+               data === 'continue_proposal' || data === 'edit_user_info' || 
+               data === 'edit_user_field_name' || data === 'edit_user_field_email' || 
+               data === 'back_to_proposal' || data === 'cancel_user_edit' || 
+               data === 'cancel_proposal_creation') {
         await this.proposalModule.handleProposalCallback(callbackQuery, userId);
         return true;
       }

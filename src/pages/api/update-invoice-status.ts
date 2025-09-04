@@ -125,7 +125,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         transactionHash,
         payerWallet,
         recipientWallet: freelancerAddress,
-        status: 'paid' as const
+        status: 'paid' as const,
+        recipientUserId: data.created_by,
+        freelancerName: data.freelancer_name,
+        clientName: data.client_name
       };
 
       // Call internal webhook
