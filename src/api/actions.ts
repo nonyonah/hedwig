@@ -836,7 +836,7 @@ export async function handleAction(
         const { parseEarningsQuery } = await import('../lib/earningsService');
         
         // Parse natural language query if text is provided
-        let parsedFilter = null;
+        let parsedFilter: any = null;
         if (params.text) {
           parsedFilter = parseEarningsQuery(params.text);
         }
