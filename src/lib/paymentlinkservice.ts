@@ -196,6 +196,7 @@ interface SendPaymentLinkEmailParams {
   paymentLink: string;
   senderName: string;
   reason: string;
+  customMessage?: string;
 }
 
 export async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): Promise<void> {

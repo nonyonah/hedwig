@@ -267,6 +267,7 @@ interface SendInvoiceEmailParams {
   description: string;
   invoiceNumber: string;
   dueDate?: string;
+  customMessage?: string;
 }
 
 export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<void> {

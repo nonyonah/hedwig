@@ -464,11 +464,30 @@ export class SmartNudgeService {
 
       if (target.clientEmail) {
         try {
-          console.log(`Sending manual reminder to ${target.clientEmail}:`);
-          console.log(`Subject: Payment Reminder - ${target.title}`);
-          console.log(`Message: ${message}`);
-          
-          // TODO: Implement actual email sending
+          if (target.type === 'invoice') {
+            await sendInvoiceEmail({
+              recipientEmail: target.clientEmail!,
+              amount: target.amount,
+              token: 'USDC', // TODO: fetch real token if needed
+              network: 'base', // TODO: fetch real network if needed
+              invoiceLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/invoice/${target.id}`,
+              freelancerName: target.senderName || 'Unknown Sender',
+              description: target.title,
+              invoiceNumber: target.title.replace('Invoice ', ''), // crude fallback
+              customMessage: customMessage
+            });
+          } else if (target.type === 'payment_link') {
+            await sendPaymentLinkEmail({
+              recipientEmail: target.clientEmail!,
+              amount: target.amount,
+              token: 'USDC', // TODO: fetch real token if needed
+              network: 'base', // TODO: fetch real network if needed
+              paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/payment-link/${target.id}`,
+              senderName: target.senderName || 'Unknown Sender',
+              reason: target.title,
+              customMessage: customMessage
+            });
+          }
           success = true;
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : 'Email send failed';

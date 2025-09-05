@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { InvoiceData } from './invoices';
 import { NaturalProposalGenerator } from '../lib/naturalProposalGenerator';
+import { EarningsSummaryResponse } from '../lib/earningsService';
 
 export async function generateInvoicePDF(invoice: InvoiceData): Promise<Buffer> {
   return new Promise((resolve, reject) => {

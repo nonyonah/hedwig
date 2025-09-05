@@ -247,6 +247,93 @@ function setupBotHandlers() {
           await bot?.sendMessage(chatId, '❌ Transfer cancelled.');
           break;
           
+        case 'generate_earnings_pdf':
+        case 'earnings_pdf':
+          try {
+            // Get user ID from chat ID
+            const userId = await botIntegration?.getUserIdByChatId(chatId);
+            if (!userId) {
+              await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+              return;
+            }
+            
+            // Send processing message
+            await bot?.sendMessage(chatId, '📄 Generating your earnings PDF report... Please wait.');
+            
+            // Import required functions
+             const { getEarningsSummary } = await import('../../lib/earningsService');
+             const { generateEarningsPDF } = await import('../../modules/pdf-generator-earnings');
+             const { createClient } = await import('@supabase/supabase-js');
+             
+             // Get user's wallet addresses
+             const supabase = createClient(
+               process.env.NEXT_PUBLIC_SUPABASE_URL!,
+               process.env.SUPABASE_SERVICE_ROLE_KEY!
+             );
+             const { data: wallets } = await supabase
+               .from('wallets')
+               .select('address')
+               .eq('user_id', userId)
+               .eq('is_active', true);
+             
+             const walletAddresses = wallets?.map(w => w.address) || [];
+            if (!walletAddresses || walletAddresses.length === 0) {
+              await bot?.sendMessage(chatId, '❌ Your wallet is being set up automatically. Please try again in a moment.');
+              return;
+            }
+            
+            // Use the first wallet address for earnings summary
+            const walletAddress = walletAddresses[0];
+            
+            // Get earnings summary
+             const filter = {
+               walletAddress,
+               timeframe: 'allTime' as const,
+               token: undefined,
+               network: undefined,
+               startDate: undefined,
+               endDate: undefined
+             };
+            
+            const summary = await getEarningsSummary(filter, true);
+            if (summary && summary.totalPayments > 0) {
+              // Transform summary data for PDF generation
+              const earningsData = {
+                walletAddress: summary.walletAddress,
+                timeframe: summary.timeframe,
+                totalEarnings: summary.totalEarnings,
+                totalFiatValue: summary.totalFiatValue,
+                totalPayments: summary.totalPayments,
+                earnings: summary.earnings,
+                period: summary.period,
+                insights: summary.insights ? {
+                  largestPayment: summary.insights.largestPayment,
+                  topToken: summary.insights.topToken,
+                  motivationalMessage: summary.insights.motivationalMessage
+                } : undefined
+              };
+              
+              // Generate PDF
+              const pdfBuffer = await generateEarningsPDF(earningsData);
+              
+              // Send PDF as document
+               await bot?.sendDocument(chatId, pdfBuffer, {
+                 caption: '📄 **Your Earnings Report is Ready!**\n\n🎨 This creative PDF includes:\n• Visual insights and charts\n• Motivational content\n• Professional formatting\n• Complete transaction breakdown\n\n💡 Keep building your financial future! 🚀',
+                 parse_mode: 'Markdown'
+               }, {
+                 filename: `earnings-report-${new Date().toISOString().split('T')[0]}.pdf`
+               });
+            } else {
+              await bot?.sendMessage(chatId, '📄 **No Data for PDF Generation**\n\nYou need some earnings data to generate a PDF report. Start receiving payments first!\n\n💡 Create payment links or invoices to begin tracking your earnings.', {
+                parse_mode: 'Markdown'
+              });
+            }
+          } catch (error) {
+            console.error('[Webhook] Error handling earnings PDF callback:', error);
+            await bot?.sendMessage(chatId, '❌ Error generating PDF report. Please try again later.');
+          }
+          return;
+          
         default:
           // Handle offramp callbacks
           if (data?.startsWith('payout_bank_') || data?.startsWith('select_bank_') || data?.startsWith('back_to_') || data?.startsWith('offramp_') || data === 'action_offramp') {
@@ -364,7 +451,7 @@ function setupBotHandlers() {
                   .from('users')
                   .select('id, telegram_username')
                   .eq('telegram_chat_id', chatId)
-                  .single();
+                  .single() as { data: { id: string; telegram_username: string | null } | null };
 
                 if (!user) {
                   await bot?.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
@@ -542,7 +629,7 @@ async function handleCommand(msg: TelegramBot.Message) {
             .from('users')
             .select('id')
             .eq('telegram_chat_id', chatId)
-            .single();
+            .single() as { data: { id: string } | null };
           
           if (user) {
             // Use bot integration for proposal creation
@@ -575,7 +662,7 @@ async function handleCommand(msg: TelegramBot.Message) {
             .from('users')
             .select('id')
             .eq('telegram_chat_id', chatId)
-            .single();
+            .single() as { data: { id: string } | null };
           
           if (user) {
             // Use bot integration for invoice creation
@@ -668,7 +755,7 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
       .from('users')
       .select('id, telegram_username, name')
       .eq('telegram_chat_id', chatId)
-      .single();
+      .single() as { data: { id: string; telegram_username: string | null; name: string | null } | null };
 
     if (!user) {
       return "❌ User not found. Please try /start to initialize your account.";
@@ -679,7 +766,7 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
       .from('sessions')
       .select('context')
       .eq('user_id', user.id)
-      .single();
+      .single() as { data: { context: any[] | null } | null };
 
     // Handle pending name collection for proposals/invoices
     if (session?.context && Array.isArray(session.context)) {
@@ -694,16 +781,16 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
           // If waiting for name and user provided a name
           if (contextData.waiting_for === 'name' && message.trim().length > 0) {
             // Update user's name
-            await supabase
+            await (supabase as any)
               .from('users')
               .update({ name: message.trim() })
-              .eq('id', user.id);
+              .eq('id', user!.id);
 
             // Clear the waiting context
-            await supabase
+            await (supabase as any)
               .from('sessions')
               .update({ context: [] })
-              .eq('user_id', user.id);
+              .eq('user_id', user!.id);
 
             // Process the original pending request
             if (contextData.pending_proposal_message) {
@@ -849,7 +936,7 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             .select('*')
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
-            .limit(5);
+            .limit(5) as { data: { project_title: string | null; service_type: string | null; client_name: string | null; status: string; budget: number | null }[] | null };
           
           if (!proposals || proposals.length === 0) {
             return "📋 You don't have any proposals yet. Type 'create proposal' to get started!";
@@ -877,7 +964,7 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
             .select('*')
             .eq('freelancer_email', userId) // Assuming userId is used as email identifier
             .order('date_created', { ascending: false })
-            .limit(5);
+            .limit(5) as { data: { invoice_number: string; client_name: string; amount: number; status: string }[] | null };
           
           if (!invoices || invoices.length === 0) {
             return "📋 You don't have any invoices yet. Type 'create invoice' to get started!";
@@ -937,9 +1024,9 @@ async function ensureUserExists(from: TelegramBot.User, chatId: number): Promise
       .from('users')
       .select('id')
       .eq('telegram_chat_id', chatId)
-      .single();
+      .single() as { data: { id: string } | null };
 
-    const { data: userId, error } = await supabase.rpc('get_or_create_telegram_user', {
+    const { data: userId, error } = await (supabase as any).rpc('get_or_create_telegram_user', {
       p_telegram_chat_id: chatId,
       p_telegram_username: from?.username || null,
       p_telegram_first_name: from?.first_name || null,

@@ -206,7 +206,9 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "nudge", "follow up", "chase", "contact client"
    - "remind client", "payment reminder", "send nudge"
    - "follow up on payment", "chase payment", "remind about invoice"
-   - Any request to manually send reminders to clients
+   - "due date reminder", "overdue reminder", "payment due reminder"
+   - "remind about due date", "send due date reminder", "overdue notice"
+   - Any request to manually send reminders to clients about payments or due dates
 
 8.5. SPENDING REQUESTS: Always use "get_spending" intent for:
    - "spending", "how much have I spent", "money sent", "payments made"

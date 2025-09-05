@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
 import { SmartNudgeService } from '@/lib/smartNudgeService';
+import { InvoiceReminderService } from '@/lib/invoiceReminderService';
 import { offrampService } from '../services/offrampService';
 import { offrampSessionService } from '../services/offrampSessionService';
 
@@ -385,10 +386,13 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
         let solAmount = '0';
         let usdcAmount = '0';
         
+        let usdtAmount = '0';
+        
         if (Array.isArray(balances)) {
           // New format from getSolanaBalances function
           const solToken = balances.find((b: any) => b.asset?.symbol === 'SOL');
           const usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC');
+          const usdtToken = balances.find((b: any) => b.asset?.symbol === 'USDT');
           
           if (solToken) {
             // SOL balance is already in lamports, convert to SOL
@@ -399,12 +403,17 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             // USDC balance from SPL token
             usdcAmount = formatBalance(usdcToken.amount, usdcToken.asset.decimals);
           }
+          
+          if (usdtToken) {
+            // USDT balance from SPL token
+            usdtAmount = formatBalance(usdtToken.amount, usdtToken.asset.decimals);
+          }
         }
         
         // Get token prices for USD conversion
         let tokenPrices: any = {};
         try {
-          const prices = await getTokenPricesBySymbol(['SOL', 'USDC']);
+          const prices = await getTokenPricesBySymbol(['SOL', 'USDC', 'USDT']);
           tokenPrices = prices.reduce((acc: any, price: any) => {
             acc[price.symbol] = price.price;
             return acc;
@@ -416,9 +425,11 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
         // Format balances with USD equivalents
         const solBalanceNum = parseFloat(solAmount);
         const usdcBalanceNum = parseFloat(usdcAmount);
+        const usdtBalanceNum = parseFloat(usdtAmount);
         
         let solDisplay = `${solBalanceNum.toFixed(4)} SOL`;
         let usdcDisplay = `${usdcBalanceNum.toFixed(2)} USDC`;
+        let usdtDisplay = `${usdtBalanceNum.toFixed(2)} USDT`;
         
         if (tokenPrices.SOL && solBalanceNum > 0) {
           const solUsd = (solBalanceNum * tokenPrices.SOL).toFixed(2);
@@ -430,10 +441,15 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
           usdcDisplay += ` ($${usdcUsd})`;
         }
         
-        solanaBalances = `🌸 **Solana**\n• ${usdcDisplay}\n• ${solDisplay}\n\n`;
+        if (tokenPrices.USDT && usdtBalanceNum > 0) {
+          const usdtUsd = (usdtBalanceNum * tokenPrices.USDT).toFixed(2);
+          usdtDisplay += ` ($${usdtUsd})`;
+        }
+        
+        solanaBalances = `🌸 **Solana**\n• ${usdcDisplay}\n• ${usdtDisplay}\n• ${solDisplay}\n\n`;
       } catch (balanceError) {
         console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, balanceError);
-        solanaBalances = `🌸 **Solana**\n• Error fetching USDC\n• Error fetching SOL\n\n`;
+        solanaBalances = `🌸 **Solana**\n• Error fetching USDC\n• Error fetching USDT\n• Error fetching SOL\n\n`;
       }
     }
 
@@ -816,6 +832,59 @@ export async function handleAction(
         // Use the first wallet address for earnings summary
         const walletAddress = walletAddresses[0];
         
+        // Import earnings service functions dynamically
+        const { parseEarningsQuery } = await import('../lib/earningsService');
+        
+        // Parse natural language query if text is provided
+        let parsedFilter = null;
+        if (params.text) {
+          parsedFilter = parseEarningsQuery(params.text);
+        }
+        
+        // Extract parameters for filtering, prioritizing parsed natural language
+        const filter = {
+          walletAddress,
+          timeframe: parsedFilter?.timeframe || params.timeframe || 'allTime',
+          token: parsedFilter?.token || params.token,
+          network: parsedFilter?.network || params.network,
+          startDate: parsedFilter?.startDate || params.startDate,
+          endDate: parsedFilter?.endDate || params.endDate
+        };
+
+        // Import earnings service functions dynamically
+        const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
+        
+        const summary = await getEarningsSummary(filter, true); // Include insights
+        if (summary && summary.totalPayments > 0) {
+          const formatted = formatEarningsForAgent(summary, 'earnings');
+          return { 
+            text: formatted,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf" }
+              ]]
+            }
+          };
+        } else {
+          return { text: "💰 **Earnings Summary**\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 **Ways to earn:**\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 **What you'll see:**\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
+        }
+      } catch (error) {
+        console.error('[handleAction] Earnings error:', error);
+        return { text: "❌ Failed to fetch earnings data. Please try again later." };
+      }
+
+    case "generate_earnings_pdf":
+    case "earnings_pdf":
+      try {
+        // Get user's wallet addresses
+        const walletAddresses = await getUserWalletAddresses(userId);
+        if (!walletAddresses || walletAddresses.length === 0) {
+          return { text: "Your wallet is being set up automatically. Please try again in a moment." };
+        }
+
+        // Use the first wallet address for earnings summary
+        const walletAddress = walletAddresses[0];
+        
         // Extract parameters for filtering
         const filter = {
           walletAddress,
@@ -826,16 +895,51 @@ export async function handleAction(
           endDate: params.endDate
         };
 
-        // const summary = await getEarningsSummary(filter, true); // Include insights
-        // if (summary && summary.totalPayments > 0) {
-        //   const formatted = formatEarningsForAgent(summary, 'earnings');
-        //   return { text: formatted };
-        // } else {
-          return { text: "💰 **Earnings Summary**\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 **Ways to earn:**\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 **What you'll see:**\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
-        // }
+        // Import earnings service functions dynamically
+        const { getEarningsSummary } = await import('../lib/earningsService');
+        const { generateEarningsPDF } = await import('../modules/pdf-generator-earnings');
+        
+        const summary = await getEarningsSummary(filter, true); // Include insights
+        if (summary && summary.totalPayments > 0) {
+          // Transform summary data for PDF generation
+          const earningsData = {
+            walletAddress: summary.walletAddress,
+            timeframe: summary.timeframe,
+            totalEarnings: summary.totalEarnings,
+            totalFiatValue: summary.totalFiatValue,
+            totalPayments: summary.totalPayments,
+            earnings: summary.earnings,
+            period: summary.period,
+            insights: summary.insights ? {
+              largestPayment: summary.insights.largestPayment,
+              topToken: summary.insights.topToken,
+              motivationalMessage: summary.insights.motivationalMessage
+            } : undefined
+          };
+
+          // Generate PDF
+          const pdfBuffer = await generateEarningsPDF(earningsData);
+          
+          // For now, return success message with file info
+          // In a real implementation, you'd upload to storage and provide download link
+          return { 
+            text: "📄 **PDF Report Generated Successfully!**\n\n" +
+                  "🎨 Your creative earnings summary has been generated with:\n" +
+                  "• Visual charts and insights\n" +
+                  "• Motivational content\n" +
+                  "• Professional formatting\n" +
+                  "• Transaction breakdown\n\n" +
+                  `📊 Report covers: ${earningsData.timeframe}\n` +
+                  `💰 Total earnings: ${earningsData.totalEarnings} tokens\n` +
+                  `📈 Payments: ${earningsData.totalPayments}\n\n` +
+                  "💡 The PDF contains creative elements like emojis, color coding, and motivational messages to make your financial data engaging!"
+          };
+        } else {
+          return { text: "📄 **No Data for PDF Generation**\n\nYou need some earnings data to generate a PDF report. Start receiving payments first!\n\n💡 Create payment links or invoices to begin tracking your earnings." };
+        }
       } catch (error) {
-        console.error('[handleAction] Earnings error:', error);
-        return { text: "❌ Failed to fetch earnings data. Please try again later." };
+        console.error('[handleAction] PDF generation error:', error);
+        return { text: "❌ Failed to generate PDF report. Please try again later." };
       }
 
     case "business_dashboard":
@@ -1684,6 +1788,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
     let targetId = params.targetId || params.id;
     const customMessage = params.message || params.text || params.customMessage;
     const clientEmail = params.clientEmail;
+    const reminderType = params.reminderType || 'standard'; // 'standard' or 'due_date'
     
     // If we have a targetId but no targetType, try to determine the type
     if (targetId && !targetType) {
@@ -1776,8 +1881,34 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
       };
     }
     
-    // Send the reminder
-    const result = await SmartNudgeService.sendManualReminder(targetType as 'payment_link' | 'invoice', targetId, customMessage);
+    // Send the reminder - use appropriate service based on type and target
+    let result;
+    if (reminderType === 'due_date' && targetType === 'invoice') {
+      // Use InvoiceReminderService for due date reminders on invoices
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', targetId)
+        .eq('user_id', userId)
+        .single();
+      
+      if (!invoice) {
+        return {
+          text: "❌ Invoice not found or you don't have permission to send reminders for it."
+        };
+      }
+      
+      result = await InvoiceReminderService.sendDueDateReminder(invoice, 'manual');
+      
+      if (result.success) {
+        result.message = `Due date reminder sent to ${invoice.client_email} for invoice ${invoice.invoice_number}`;
+      } else {
+        result.message = result.error || 'Failed to send due date reminder';
+      }
+    } else {
+      // Use SmartNudgeService for standard reminders
+      result = await SmartNudgeService.sendManualReminder(targetType as 'payment_link' | 'invoice', targetId, customMessage);
+    }
     
     if (result.success) {
       return {

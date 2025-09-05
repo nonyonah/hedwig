@@ -341,6 +341,20 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
           params.clientEmail = emailMatch[1];
         }
         
+        // Detect due date reminder type
+        if (text.includes('due date') || 
+            text.includes('overdue') || 
+            text.includes('past due') || 
+            text.includes('payment due') ||
+            text.includes('due today') ||
+            text.includes('due soon') ||
+            text.includes('deadline') ||
+            (text.includes('due') && (text.includes('remind') || text.includes('reminder')))) {
+          params.reminderType = 'due_date';
+        } else {
+          params.reminderType = 'standard';
+        }
+        
         const result = { intent: 'send_reminder', params };
         console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
         return result;

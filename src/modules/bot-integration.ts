@@ -79,7 +79,12 @@ export class BotIntegration {
       const formattedSummary = formatEarningsForAgent(summary);
       
       await this.bot.sendMessage(chatId, formattedSummary, {
-        parse_mode: 'Markdown'
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf" }
+          ]]
+        }
       });
       
     } catch (error) {
@@ -361,6 +366,9 @@ export class BotIntegration {
         reply_markup: {
           inline_keyboard: [
             [
+              { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf" }
+            ],
+            [
               { text: '🗓️ 7d', callback_data: 'earnings_tf_last7days' },
               { text: '📅 30d', callback_data: 'earnings_tf_lastMonth' },
               { text: '🗂️ 3m', callback_data: 'earnings_tf_last3months' },
@@ -548,6 +556,9 @@ export class BotIntegration {
           { text: '📋 My Proposals', callback_data: 'business_proposals' }
         ],
         [
+          { text: '🔗 Payment Links', callback_data: 'business_payment_links' }
+        ],
+        [
           { text: '💰 Payment Stats', callback_data: 'business_stats' }
         ]
       ]
@@ -610,8 +621,12 @@ export class BotIntegration {
         const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency || 'USD' }).format(invoice.total_amount);
         
         let invoiceMessage = `${status} *${invoice.invoice_number}* - ${amount}\n`;
-        invoiceMessage += `   Client: ${invoice.client_name}\n`;
-        invoiceMessage += `   Created: ${new Date(invoice.created_at).toLocaleDateString()}`;
+        invoiceMessage += `   📧 Client: ${invoice.client_name}`;
+        if (invoice.client_email) {
+          invoiceMessage += ` (${invoice.client_email})`;
+        }
+        invoiceMessage += `\n`;
+        invoiceMessage += `   📅 Created: ${new Date(invoice.created_at).toLocaleDateString()}`;
 
         // Add buttons for each invoice
         keyboard.push([
@@ -686,14 +701,24 @@ export class BotIntegration {
 
       for (const proposal of proposals) {
         const status = this.getStatusEmoji(proposal.status);
+        const createdDate = new Date(proposal.created_at).toLocaleDateString();
+        
         message += `${status} *${proposal.proposal_number}*\n`;
-        message += `   Client: ${proposal.client_name}\n`;
-        message += `   Amount: ${proposal.amount} ${proposal.currency}\n`;
-        message += `   Status: ${proposal.status}\n\n`;
+        message += `   📧 Client: ${proposal.client_name}`;
+        if (proposal.client_email) {
+          message += ` (${proposal.client_email})`;
+        }
+        message += `\n`;
+        message += `   💰 Amount: ${proposal.amount} ${proposal.currency}\n`;
+        message += `   📅 Created: ${createdDate}\n`;
+        message += `   📊 Status: ${proposal.status}\n\n`;
 
         keyboard.push([{
           text: `📋 ${proposal.proposal_number}`,
           callback_data: `view_proposal_${proposal.id}`
+        }, {
+          text: '❌ Delete',
+          callback_data: `delete_proposal_${proposal.id}`
         }]);
       }
 
@@ -707,6 +732,142 @@ export class BotIntegration {
     } catch (error) {
       console.error('Error fetching proposals:', error);
       await this.bot.sendMessage(chatId, '❌ Error fetching proposals. Please try again.');
+    }
+  }
+
+  // Handle payment links list
+  async handlePaymentLinksList(chatId: number, userId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      const { data: paymentLinks, error } = await supabase
+        .from('payment_links')
+        .select('*')
+        .eq('created_by', actualUserId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      if (!paymentLinks || paymentLinks.length === 0) {
+        await this.bot.sendMessage(chatId, 
+          '🔗 *No payment links found*\n\nYou haven\'t created any payment links yet. Use the "Payment Link" button to create your first payment link!',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      let message = '🔗 *Your Recent Payment Links*\n\n';
+      const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
+
+      for (const link of paymentLinks) {
+        const status = this.getStatusEmoji(link.status || 'pending');
+        const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: link.currency || 'USD' }).format(link.amount);
+        
+        let linkMessage = `${status} *${link.title || 'Payment Link'}* - ${amount}\n`;
+        linkMessage += `   Description: ${link.description || 'No description'}\n`;
+        linkMessage += `   Created: ${new Date(link.created_at).toLocaleDateString()}`;
+
+        // Add buttons for each payment link
+        keyboard.push([
+          {
+            text: `View Details`,
+            callback_data: `view_payment_link_${link.id}`
+          },
+          {
+            text: `❌ Delete`,
+            callback_data: `delete_payment_link_${link.id}`
+          }
+        ]);
+
+        message += linkMessage + '\n\n';
+      }
+
+      // Add a back button
+      keyboard.push([{
+        text: '🔙 Back to Dashboard',
+        callback_data: 'business_dashboard'
+      }]);
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      });
+
+    } catch (error) {
+      console.error('Error handling payment links list:', error);
+      await this.bot.sendMessage(chatId, '❌ An error occurred while fetching your payment links. Please try again later.');
+    }
+  }
+
+  // Handle payment link deletion
+  async handleDeletePaymentLink(chatId: number, userId: string, linkId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      // First, get the payment link to verify ownership
+      const { data: paymentLink, error: fetchError } = await supabase
+        .from('payment_links')
+        .select('*')
+        .eq('id', linkId)
+        .eq('user_id', actualUserId)
+        .single();
+
+      if (fetchError || !paymentLink) {
+        await this.bot.sendMessage(chatId, '❌ Payment link not found or you don\'t have permission to delete it.');
+        return;
+      }
+
+      // Delete the payment link
+      const { error: deleteError } = await supabase
+        .from('payment_links')
+        .delete()
+        .eq('id', linkId)
+        .eq('user_id', actualUserId);
+
+      if (deleteError) {
+        console.error('Error deleting payment link:', deleteError);
+        await this.bot.sendMessage(chatId, '❌ Error deleting payment link. Please try again.');
+        return;
+      }
+
+      await this.bot.sendMessage(chatId, 
+        `✅ *Payment link deleted successfully*\n\nThe payment link "${paymentLink.description || 'Untitled'}" has been removed.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Refresh the payment links list
+      await this.handlePaymentLinksList(chatId, userId);
+
+    } catch (error) {
+      console.error('Error handling payment link deletion:', error);
+      await this.bot.sendMessage(chatId, '❌ Error deleting payment link. Please try again.');
     }
   }
 
@@ -748,6 +909,13 @@ export class BotIntegration {
         `   Rejected: ${stats.proposals.rejected}\n` +
         `   Total Value: $${stats.proposals.value.toFixed(2)}\n` +
         `   Revenue: $${stats.proposals.revenue.toFixed(2)}\n\n` +
+        `🔗 *Payment Links:*\n` +
+        `   Total: ${stats.paymentLinks.total}\n` +
+        `   Paid: ${stats.paymentLinks.paid}\n` +
+        `   Pending: ${stats.paymentLinks.pending}\n` +
+        `   Draft: ${stats.paymentLinks.draft}\n` +
+        `   Expired: ${stats.paymentLinks.expired}\n` +
+        `   Revenue: $${stats.paymentLinks.revenue.toFixed(2)}\n\n` +
         `💵 *Total Revenue: $${stats.totalRevenue.toFixed(2)}*`
       );
 
@@ -766,7 +934,121 @@ export class BotIntegration {
     }
   }
 
+  // Handle natural language business queries
+  async handleBusinessQuery(chatId: number, userId: string, query: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
 
+      // Use the enhanced business stats service
+      const { getBusinessStats } = await import('../lib/earningsService');
+      const stats = await getBusinessStats(actualUserId);
+
+      const lowerQuery = query.toLowerCase();
+      let response = '';
+
+      // Handle invoice queries
+      if (lowerQuery.includes('invoice')) {
+        if (lowerQuery.includes('paid')) {
+          response = `📄 You have **${stats.invoices.paid}** paid invoices out of **${stats.invoices.total}** total invoices.`;
+          if (stats.invoices.revenue > 0) {
+            response += ` Your invoice revenue is **$${stats.invoices.revenue.toFixed(2)}**.`;
+          }
+        } else if (lowerQuery.includes('unpaid') || lowerQuery.includes('pending')) {
+          const unpaid = stats.invoices.pending + stats.invoices.overdue;
+          response = `📄 You have **${unpaid}** unpaid invoices (${stats.invoices.pending} pending, ${stats.invoices.overdue} overdue) out of **${stats.invoices.total}** total invoices.`;
+        } else {
+          response = `📄 **Invoice Summary:**\n` +
+            `• Total: **${stats.invoices.total}**\n` +
+            `• Paid: **${stats.invoices.paid}**\n` +
+            `• Pending: **${stats.invoices.pending}**\n` +
+            `• Overdue: **${stats.invoices.overdue}**\n` +
+            `• Draft: **${stats.invoices.draft}**\n` +
+            `• Revenue: **$${stats.invoices.revenue.toFixed(2)}**`;
+        }
+      }
+      // Handle payment link queries
+      else if (lowerQuery.includes('payment link')) {
+        if (lowerQuery.includes('paid')) {
+          response = `🔗 You have **${stats.paymentLinks.paid}** paid payment links out of **${stats.paymentLinks.total}** total payment links.`;
+          if (stats.paymentLinks.revenue > 0) {
+            response += ` Your payment link revenue is **$${stats.paymentLinks.revenue.toFixed(2)}**.`;
+          }
+        } else if (lowerQuery.includes('unpaid') || lowerQuery.includes('pending')) {
+          response = `🔗 You have **${stats.paymentLinks.pending}** pending payment links out of **${stats.paymentLinks.total}** total payment links.`;
+        } else {
+          response = `🔗 **Payment Links Summary:**\n` +
+            `• Total: **${stats.paymentLinks.total}**\n` +
+            `• Paid: **${stats.paymentLinks.paid}**\n` +
+            `• Pending: **${stats.paymentLinks.pending}**\n` +
+            `• Draft: **${stats.paymentLinks.draft}**\n` +
+            `• Expired: **${stats.paymentLinks.expired}**\n` +
+            `• Revenue: **$${stats.paymentLinks.revenue.toFixed(2)}**`;
+        }
+      }
+      // Handle proposal queries
+      else if (lowerQuery.includes('proposal')) {
+        if (lowerQuery.includes('accepted')) {
+          response = `📋 You have **${stats.proposals.accepted}** accepted proposals out of **${stats.proposals.total}** total proposals.`;
+          if (stats.proposals.revenue > 0) {
+            response += ` Your proposal revenue is **$${stats.proposals.revenue.toFixed(2)}**.`;
+          }
+        } else if (lowerQuery.includes('pending')) {
+          response = `📋 You have **${stats.proposals.pending}** pending proposals out of **${stats.proposals.total}** total proposals.`;
+        } else if (lowerQuery.includes('rejected')) {
+          response = `📋 You have **${stats.proposals.rejected}** rejected proposals out of **${stats.proposals.total}** total proposals.`;
+        } else {
+          response = `📋 **Proposals Summary:**\n` +
+            `• Total: **${stats.proposals.total}**\n` +
+            `• Accepted: **${stats.proposals.accepted}**\n` +
+            `• Pending: **${stats.proposals.pending}**\n` +
+            `• Draft: **${stats.proposals.draft}**\n` +
+            `• Rejected: **${stats.proposals.rejected}**\n` +
+            `• Total Value: **$${stats.proposals.value.toFixed(2)}**\n` +
+            `• Revenue: **$${stats.proposals.revenue.toFixed(2)}**`;
+        }
+      }
+      // Handle general business queries
+      else if (lowerQuery.includes('business') || lowerQuery.includes('revenue') || lowerQuery.includes('total')) {
+        response = `💰 **Business Overview:**\n\n` +
+          `📄 **Invoices:** ${stats.invoices.total} total (${stats.invoices.paid} paid)\n` +
+          `📋 **Proposals:** ${stats.proposals.total} total (${stats.proposals.accepted} accepted)\n` +
+          `🔗 **Payment Links:** ${stats.paymentLinks.total} total (${stats.paymentLinks.paid} paid)\n\n` +
+          `💵 **Total Revenue: $${stats.totalRevenue.toFixed(2)}**`;
+      }
+      else {
+        response = `I can help you with information about your invoices, payment links, and proposals. Try asking:\n\n` +
+          `• "How many invoices do I have?"\n` +
+          `• "How many paid payment links?"\n` +
+          `• "Show me my proposal status"\n` +
+          `• "What's my total revenue?"`;
+      }
+
+      await this.bot.sendMessage(chatId, response, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📊 Business Dashboard', callback_data: 'business_dashboard' }
+          ]]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error handling business query:', error);
+      await this.bot.sendMessage(chatId, '❌ Sorry, I encountered an error while fetching your business information.');
+    }
+  }
 
   // Get status emoji
   private getStatusEmoji(status: string): string {
@@ -1471,12 +1753,32 @@ export class BotIntegration {
         await this.handleProposalList(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data === 'business_payment_links') {
+        await this.handlePaymentLinksList(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       } else if (data === 'business_stats') {
         await this.handlePaymentStats(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'business_settings') {
         await this.handleBusinessSettings(chatId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'create_proposal_flow') {
+        await this.proposalModule.handleProposalCreation(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'create_invoice_flow') {
+        await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'create_payment_link_flow') {
+        await this.handlePaymentLink(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'view_earnings') {
+        await this.handleEarningsWithWallet(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data.startsWith('offramp_')) {
@@ -1559,6 +1861,13 @@ export class BotIntegration {
                data === 'back_to_proposal' || data === 'cancel_user_edit' || 
                data === 'cancel_proposal_creation') {
         await this.proposalModule.handleProposalCallback(callbackQuery, userId);
+        return true;
+      }
+      // Payment link deletion callbacks
+      else if (data.startsWith('delete_payment_link_')) {
+        const linkId = data.replace('delete_payment_link_', '');
+        await this.handleDeletePaymentLink(chatId, userId, linkId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
       // USDC payment callbacks
@@ -1803,6 +2112,21 @@ export class BotIntegration {
           // --- LLM agent and currency conversion integration ---
           if (message.text && this.isNaturalLanguageQuery(message.text)) {
             try {
+              const lowerText = message.text.toLowerCase();
+              
+              // Check for business queries first
+              const businessPatterns = [
+                /(how many|how much|what['']?s my|show me my|tell me about my).*(invoice|proposal|payment link|earning|revenue)/i,
+                /(invoice|proposal|payment link).*(paid|unpaid|pending|draft|expired|count|total)/i,
+                /my (business|earning|revenue|income|invoice|proposal|payment)/i,
+                /(total|sum|amount).*(earned|made|received|invoice|proposal|payment)/i
+              ];
+              
+              if (businessPatterns.some(pattern => pattern.test(lowerText))) {
+                await this.handleBusinessQuery(message.chat.id, userId, message.text);
+                return true;
+              }
+              
               const { runLLM } = await import('../lib/llmAgent');
               const { parseIntentAndParams } = await import('../lib/intentParser');
               const llmResponse = await runLLM({ userId, message: message.text });
@@ -1924,6 +2248,18 @@ export class BotIntegration {
     ];
     
     if (currencyPatterns.some(pattern => pattern.test(lowerText))) {
+      return true;
+    }
+    
+    // Check for business query patterns
+    const businessPatterns = [
+      /(how many|how much|what['']?s my|show me my|tell me about my).*(invoice|proposal|payment link|earning|revenue)/i,
+      /(invoice|proposal|payment link).*(paid|unpaid|pending|draft|expired|count|total)/i,
+      /my (business|earning|revenue|income|invoice|proposal|payment)/i,
+      /(total|sum|amount).*(earned|made|received|invoice|proposal|payment)/i
+    ];
+    
+    if (businessPatterns.some(pattern => pattern.test(lowerText))) {
       return true;
     }
     

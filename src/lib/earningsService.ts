@@ -104,14 +104,15 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
     // Fetch all earnings sources
-    const [paymentLinks, invoices, proposals, paymentEvents] = await Promise.all([
+    const [paymentLinks, invoices, proposals, paymentEvents, offrampTransactions] = await Promise.all([
       fetchPaymentLinks(filter, startDate, endDate),
       fetchPaidInvoices(filter, startDate, endDate),
       fetchAcceptedProposals(filter, startDate, endDate),
-      fetchPaymentEvents(filter, startDate, endDate)
+      fetchPaymentEvents(filter, startDate, endDate),
+      fetchOfframpTransactions(filter, startDate, endDate)
     ]);
 
-    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events`);
+    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events, ${offrampTransactions.length} offramp transactions`);
 
     // Combine all earnings sources
     const allEarnings = [
@@ -142,6 +143,13 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         paid_amount: e.amount,
         title: e.payment_reason || 'Direct Transfer',
         description: `Transaction: ${e.transaction_hash}`
+      })),
+      ...offrampTransactions.map(o => ({
+        ...o,
+        source: 'offramp' as const,
+        paid_amount: o.amount,
+        title: 'Crypto Withdrawal',
+        description: `Offramp to ${o.fiat_currency || 'USD'}`
       }))
     ];
 
@@ -359,11 +367,25 @@ function getTokenSymbol(tokenAddress: string): string {
  */
 async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
   try {
-    // Build the query
+    // First get the user_id from the wallet address
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .eq('address', filter.walletAddress)
+      .limit(1);
+
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchPaymentLinks] No user found for wallet address:', filter.walletAddress);
+      return [];
+    }
+
+    const userId = userWallets[0].user_id;
+
+    // Build the query using created_by (user_id)
     let query = supabase
       .from('payment_links')
       .select('*')
-      .eq('wallet_address', filter.walletAddress)
+      .eq('created_by', userId)
       .eq('status', 'paid')
       .not('paid_at', 'is', null)
       .not('paid_amount', 'is', null);
@@ -408,11 +430,25 @@ async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | nul
  */
 async function fetchPaidInvoices(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
   try {
-    // First try with paid_at column, fallback to created_at if it doesn't exist
+    // First get the user_id from the wallet address
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .eq('address', filter.walletAddress)
+      .limit(1);
+
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchPaidInvoices] No user found for wallet address:', filter.walletAddress);
+      return [];
+    }
+
+    const userId = userWallets[0].user_id;
+
+    // Build the query using user_id
     let query = supabase
       .from('invoices')
       .select('*')
-      .eq('wallet_address', filter.walletAddress)
+      .eq('user_id', userId)
       .eq('status', 'paid')
       .not('amount', 'is', null);
 
@@ -463,6 +499,73 @@ async function fetchPaidInvoices(filter: EarningsFilter, startDate: string | nul
     return invoices || [];
   } catch (error) {
     console.error('[fetchPaidInvoices] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch offramp transactions from database
+ */
+async function fetchOfframpTransactions(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
+  try {
+    // First get the user_id from the wallet address
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .eq('address', filter.walletAddress)
+      .limit(1);
+
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchOfframpTransactions] No user found for wallet address:', filter.walletAddress);
+      return [];
+    }
+
+    const userId = userWallets[0].user_id;
+
+    // Build the query for completed offramp transactions
+    let query = supabase
+      .from('offramp_transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .not('amount', 'is', null);
+
+    // Add time filtering
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate);
+    }
+
+    // Add token filtering
+    if (filter.token) {
+      query = query.eq('token', filter.token.toUpperCase());
+    }
+
+    // Order by created_at descending
+    query = query.order('created_at', { ascending: false });
+
+    const { data: transactions, error } = await query;
+
+    if (error) {
+      console.error('[fetchOfframpTransactions] Database error:', error);
+      throw new Error(`Failed to fetch offramp transactions: ${error.message}`);
+    }
+
+    // Transform offramp transactions to match earnings format
+    return (transactions || []).map(tx => ({
+      id: tx.id,
+      amount: parseFloat(tx.amount) || 0,
+      token: tx.token || 'USDC',
+      network: 'Base', // Offramp transactions are typically on Base
+      paid_at: tx.created_at,
+      fiat_amount: tx.fiat_amount,
+      fiat_currency: tx.fiat_currency || 'USD',
+      category: 'offramp'
+    }));
+  } catch (error) {
+    console.error('[fetchOfframpTransactions] Error:', error);
     return [];
   }
 }
@@ -631,15 +734,25 @@ export async function getBusinessStats(userId: string) {
       .select('status, amount, currency')
       .eq('user_id', userId);
 
+    // Get all payment links for the user
+    const { data: paymentLinks, error: paymentLinkError } = await supabase
+      .from('payment_links')
+      .select('status, amount, token')
+      .eq('created_by', userId);
+
     if (invoiceError) {
       console.error('[getBusinessStats] Invoice error:', invoiceError);
     }
     if (proposalError) {
       console.error('[getBusinessStats] Proposal error:', proposalError);
     }
+    if (paymentLinkError) {
+      console.error('[getBusinessStats] Payment link error:', paymentLinkError);
+    }
 
     const allInvoices = invoices || [];
     const allProposals = proposals || [];
+    const allPaymentLinks = paymentLinks || [];
 
     // Calculate invoice stats
     const invoiceStats = {
@@ -675,10 +788,26 @@ export async function getBusinessStats(userId: string) {
         }, 0)
     };
 
+    // Calculate payment link stats
+    const paymentLinkStats = {
+      total: allPaymentLinks.length,
+      paid: allPaymentLinks.filter(p => p.status === 'paid').length,
+      pending: allPaymentLinks.filter(p => ['sent', 'pending', 'active'].includes(p.status)).length,
+      draft: allPaymentLinks.filter(p => p.status === 'draft').length,
+      expired: allPaymentLinks.filter(p => p.status === 'expired').length,
+      revenue: allPaymentLinks
+        .filter(p => p.status === 'paid')
+        .reduce((sum, p) => {
+          const amount = parseFloat(p.amount) || 0;
+          return sum + (p.token === 'USDC' ? amount : amount * 0.0012); // Simple conversion for non-USDC
+        }, 0)
+    };
+
     return {
       invoices: invoiceStats,
       proposals: proposalStats,
-      totalRevenue: invoiceStats.revenue + proposalStats.revenue
+      paymentLinks: paymentLinkStats,
+      totalRevenue: invoiceStats.revenue + proposalStats.revenue + paymentLinkStats.revenue
     };
 
   } catch (error) {
