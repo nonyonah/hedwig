@@ -806,15 +806,23 @@ async function getSolanaBalances(address: string, networkId: string) {
       const tokenAmount = accountData.info.tokenAmount;
       const mint = accountData.info.mint;
 
-      // Check if this is USDC (different mint addresses for devnet/mainnet)
-      const usdcMints = {
-        devnet: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', // USDC devnet mint (updated)
-        mainnet: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' // USDC mainnet mint
+      // Check if this is USDC or USDT (different mint addresses for devnet/mainnet)
+      const tokenMints = {
+        usdc: {
+          devnet: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', // USDC devnet mint (updated)
+          mainnet: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' // USDC mainnet mint
+        },
+        usdt: {
+          devnet: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT Solana mainnet (also works for devnet)
+          mainnet: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' // USDT Solana mainnet
+        }
       };
 
       let symbol = 'UNKNOWN';
-      if (mint === usdcMints.devnet || mint === usdcMints.mainnet) {
+      if (mint === tokenMints.usdc.devnet || mint === tokenMints.usdc.mainnet) {
         symbol = 'USDC';
+      } else if (mint === tokenMints.usdt.devnet || mint === tokenMints.usdt.mainnet) {
+        symbol = 'USDT';
       } else {
         // Try to get token metadata for other tokens
         try {
@@ -825,8 +833,8 @@ async function getSolanaBalances(address: string, networkId: string) {
         }
       }
 
-      // Include all tokens, even with 0 balance for USDC
-      if (symbol === 'USDC' || (tokenAmount.uiAmount && tokenAmount.uiAmount > 0)) {
+      // Include all tokens, even with 0 balance for USDC and USDT
+      if (symbol === 'USDC' || symbol === 'USDT' || (tokenAmount.uiAmount && tokenAmount.uiAmount > 0)) {
         balances.push({
           asset: { 
             symbol: symbol, 
@@ -843,6 +851,15 @@ async function getSolanaBalances(address: string, networkId: string) {
     if (!hasUsdc) {
       balances.push({
         asset: { symbol: 'USDC', decimals: 6, mint: 'none' },
+        amount: '0'
+      });
+    }
+
+    // If no USDT found, add it with 0 balance for consistency
+    const hasUsdt = balances.some(b => b.asset.symbol === 'USDT');
+    if (!hasUsdt) {
+      balances.push({
+        asset: { symbol: 'USDT', decimals: 6, mint: 'none' },
         amount: '0'
       });
     }

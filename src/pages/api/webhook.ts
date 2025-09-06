@@ -257,8 +257,17 @@ function setupBotHandlers() {
               return;
             }
             
+            // Extract timeframe from callback data if present
+            let timeframe: 'last7days' | 'lastMonth' | 'last3months' | 'allTime' = 'allTime';
+            if (data?.startsWith('generate_earnings_pdf_')) {
+              const extractedTimeframe = data.replace('generate_earnings_pdf_', '') as typeof timeframe;
+              if (['last7days', 'lastMonth', 'last3months', 'allTime'].includes(extractedTimeframe)) {
+                timeframe = extractedTimeframe;
+              }
+            }
+            
             // Send processing message
-            await bot?.sendMessage(chatId, '📄 Generating your earnings PDF report... Please wait.');
+            await bot?.sendMessage(chatId, `📄 Generating your ${timeframe} earnings PDF report... Please wait.`);
             
             // Import required functions
              const { getEarningsSummary } = await import('../../lib/earningsService');
@@ -288,7 +297,7 @@ function setupBotHandlers() {
             // Get earnings summary
              const filter = {
                walletAddress,
-               timeframe: 'allTime' as const,
+               timeframe,
                token: undefined,
                network: undefined,
                startDate: undefined,
@@ -335,6 +344,104 @@ function setupBotHandlers() {
           return;
           
         default:
+          // Handle PDF generation callbacks with timeframe
+           if (data?.startsWith('generate_earnings_pdf_')) {
+             await setupBotHandlers();
+            
+            // Process as PDF generation callback
+            try {
+              // Get user ID from chat ID
+              const userId = await botIntegration?.getUserIdByChatId(chatId);
+              if (!userId) {
+                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                return;
+              }
+              
+              // Extract timeframe from callback data
+              let timeframe: 'last7days' | 'lastMonth' | 'last3months' | 'allTime' = 'allTime';
+              const extractedTimeframe = data.replace('generate_earnings_pdf_', '') as typeof timeframe;
+              if (['last7days', 'lastMonth', 'last3months', 'allTime'].includes(extractedTimeframe)) {
+                timeframe = extractedTimeframe;
+              }
+              
+              // Send processing message
+              await bot?.sendMessage(chatId, `📄 Generating your ${timeframe} earnings PDF report... Please wait.`);
+              
+              // Import required functions
+               const { getEarningsSummary } = await import('../../lib/earningsService');
+               const { generateEarningsPDF } = await import('../../modules/pdf-generator-earnings');
+               const { createClient } = await import('@supabase/supabase-js');
+               
+               // Get user's wallet addresses
+               const supabase = createClient(
+                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                 process.env.SUPABASE_SERVICE_ROLE_KEY!
+               );
+               const { data: wallets } = await supabase
+                 .from('wallets')
+                 .select('address')
+                 .eq('user_id', userId)
+                 .eq('is_active', true);
+               
+               const walletAddresses = wallets?.map(w => w.address) || [];
+              if (!walletAddresses || walletAddresses.length === 0) {
+                await bot?.sendMessage(chatId, '❌ Your wallet is being set up automatically. Please try again in a moment.');
+                return;
+              }
+              
+              // Use the first wallet address for earnings summary
+              const walletAddress = walletAddresses[0];
+              
+              // Get earnings summary
+               const filter = {
+                 walletAddress,
+                 timeframe,
+                 token: undefined,
+                 network: undefined,
+                 startDate: undefined,
+                 endDate: undefined
+               };
+              
+              const summary = await getEarningsSummary(filter, true);
+              if (summary && summary.totalPayments > 0) {
+                // Transform summary data for PDF generation
+                const earningsData = {
+                  walletAddress: summary.walletAddress,
+                  timeframe: summary.timeframe,
+                  totalEarnings: summary.totalEarnings,
+                  totalFiatValue: summary.totalFiatValue,
+                  totalPayments: summary.totalPayments,
+                  earnings: summary.earnings,
+                  period: summary.period,
+                  insights: summary.insights ? {
+                    largestPayment: summary.insights.largestPayment,
+                    topToken: summary.insights.topToken,
+                    motivationalMessage: summary.insights.motivationalMessage
+                  } : undefined
+                };
+                
+                // Generate PDF
+                const pdfBuffer = await generateEarningsPDF(earningsData);
+                
+                // Send PDF as document
+                 await bot?.sendDocument(chatId, pdfBuffer, {
+                   caption: `📄 **Your ${timeframe} Earnings Report is Ready!**\n\n🎨 This creative PDF includes:\n• Visual insights and charts\n• Motivational content\n• Professional formatting\n• Complete transaction breakdown\n\n💡 Keep building your financial future! 🚀`,
+                   parse_mode: 'Markdown'
+                 }, {
+                   filename: `earnings-report-${timeframe}-${new Date().toISOString().split('T')[0]}.pdf`
+                 });
+              } else {
+                await bot?.sendMessage(chatId, `📄 **No Data for ${timeframe} PDF Generation**\n\nYou need some earnings data to generate a PDF report. Start receiving payments first!\n\n💡 Create payment links or invoices to begin tracking your earnings.`, {
+                  parse_mode: 'Markdown'
+                });
+              }
+            } catch (error) {
+              console.error('[Webhook] Error handling earnings PDF callback:', error);
+              await bot?.sendMessage(chatId, '❌ Error generating PDF report. Please try again later.');
+            }
+            return;
+          }
+          
           // Handle offramp callbacks
           if (data?.startsWith('payout_bank_') || data?.startsWith('select_bank_') || data?.startsWith('back_to_') || data?.startsWith('offramp_') || data === 'action_offramp') {
             console.log(`[Webhook] Routing offramp callback: ${data}`);

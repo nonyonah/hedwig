@@ -366,7 +366,7 @@ export class BotIntegration {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf" }
+              { text: "📄 Generate PDF Report", callback_data: `generate_earnings_pdf_${timeframe}` }
             ],
             [
               { text: '🗓️ 7d', callback_data: 'earnings_tf_last7days' },
