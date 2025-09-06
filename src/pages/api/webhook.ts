@@ -125,6 +125,20 @@ function setupBotHandlers() {
             ensureUserExists(msg.from, chatId),
             new Promise((_, reject) => setTimeout(() => reject(new Error('User creation timeout')), 8000))
           ]);
+          
+          // Track user activity for DAU/WAU/MAU metrics
+          try {
+            const { trackUserActivity } = await import('../../lib/posthog');
+            await trackUserActivity(chatId.toString(), 'message_received', {
+              username: msg.from.username,
+              firstName: msg.from.first_name,
+              lastName: msg.from.last_name,
+              languageCode: msg.from.language_code,
+              isPremium: msg.from.is_premium || false
+            });
+          } catch (trackingError) {
+            console.warn('[Webhook] User activity tracking failed:', trackingError.message);
+          }
         } catch (userError) {
           console.error('[Webhook] Error ensuring user exists:', userError);
           // Continue processing even if user creation fails
@@ -567,6 +581,22 @@ async function handleCommand(msg: any) {
 
   const chatId = msg.chat.id;
   const command = msg.text ? msg.text.split(' ')[0].toLowerCase() : '';
+  
+  // Track command usage for analytics
+  if (msg.from) {
+    try {
+      const { trackUserActivity } = await import('../../lib/posthog');
+      await trackUserActivity(chatId.toString(), `command_${command.replace('/', '')}`, {
+        username: msg.from.username,
+        firstName: msg.from.first_name,
+        lastName: msg.from.last_name,
+        languageCode: msg.from.language_code,
+        isPremium: msg.from.is_premium || false
+      });
+    } catch (trackingError) {
+      console.warn('[Webhook] Command tracking failed:', trackingError.message);
+    }
+  }
 
   switch (command) {
     case '/start':

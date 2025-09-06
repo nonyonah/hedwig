@@ -897,13 +897,13 @@ export async function handleAction(
 
         // Import earnings service functions dynamically
         const { getEarningsSummary } = await import('../lib/earningsService');
-        const { generateEarningsPDF } = await import('../modules/pdf-generator-earnings');
+        const { generateEarningsPDF } = await import('../modules/pdf-generator');
         
         const summary = await getEarningsSummary(filter, true); // Include insights
         if (summary && summary.totalPayments > 0) {
           // Transform summary data for PDF generation
           const earningsData = {
-            walletAddress: summary.walletAddress,
+            walletAddress: summary.walletAddress || 'N/A',
             timeframe: summary.timeframe,
             totalEarnings: summary.totalEarnings,
             totalFiatValue: summary.totalFiatValue,

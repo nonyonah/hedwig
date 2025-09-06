@@ -7,6 +7,7 @@ import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
 import { OfframpModule } from './offramp';
+import { generateEarningsPDF } from './pdf-generator-earnings';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,12 +45,11 @@ export class BotIntegration {
         }
       }
 
-      // Get user's wallets to create filter
+      // Get all user's wallets to create filter
       const { data: wallets } = await supabase
         .from('wallets')
         .select('address, chain')
-        .eq('user_id', actualUserId)
-        .limit(1);
+        .eq('user_id', actualUserId);
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
@@ -69,9 +69,9 @@ export class BotIntegration {
       // Import earnings service
       const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
       
-      // Create filter object
+      // Create filter object with all wallet addresses (supports both EVM and Solana)
       const filter = {
-        walletAddress: wallets[0].address,
+        walletAddresses: wallets.map(w => w.address),
         timeframe: timeframe as 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime'
       };
       
@@ -347,15 +347,11 @@ export class BotIntegration {
         return;
       }
 
-      // Prefer EVM wallet if present, else use the first wallet
-      const evm = wallets.find(w => w.chain === 'evm');
-      const walletAddress = (evm || wallets[0]).address;
-
       // Import earnings service dynamically
       const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
 
-      // Build filter and fetch summary with insights
-      const filter = { walletAddress, timeframe } as const;
+      // Build filter with all wallet addresses (supports both EVM and Solana) and fetch summary with insights
+      const filter = { walletAddresses: wallets.map(w => w.address), timeframe } as const;
       const summary = await getEarningsSummary(filter, true);
 
       // Format message
@@ -1822,6 +1818,99 @@ export class BotIntegration {
           text: '/earnings_summary',
         } as any;
         await this.processWithAI(fakeMessage, 'earnings_summary');
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'generate_earnings_pdf' || data.startsWith('generate_earnings_pdf_')) {
+        // Handle PDF generation callbacks - use the webhook logic that actually sends PDF files
+        try {
+          // Extract timeframe from callback data if present
+          let timeframe: 'last7days' | 'lastMonth' | 'last3months' | 'allTime' = 'allTime';
+          if (data?.startsWith('generate_earnings_pdf_')) {
+            const extractedTimeframe = data.replace('generate_earnings_pdf_', '') as typeof timeframe;
+            if (['last7days', 'lastMonth', 'last3months', 'allTime'].includes(extractedTimeframe)) {
+              timeframe = extractedTimeframe;
+            }
+          }
+          
+          // Send processing message
+          await this.bot.sendMessage(chatId, `📄 Generating your ${timeframe} earnings PDF report... Please wait.`);
+          
+          // Import required functions
+          const { getEarningsSummary } = await import('../lib/earningsService');
+          const { generateEarningsPDF } = await import('../modules/pdf-generator');
+          const { createClient } = await import('@supabase/supabase-js');
+          
+          // Get user's wallet addresses (both EVM and Solana)
+          const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+          );
+          const { data: wallets } = await supabase
+            .from('wallets')
+            .select('address, chain')
+            .eq('user_id', userId)
+            .limit(1);
+          
+          if (!wallets || wallets.length === 0) {
+            await this.bot.sendMessage(chatId, '💡 *No wallets found*\n\nYou need a wallet to generate earnings reports. Create one first!', {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '🏦 Create Wallet', callback_data: 'create_wallet' }
+                ]]
+              }
+            });
+            await this.bot.answerCallbackQuery(callbackQuery.id);
+            return true;
+          }
+          
+          // Use the first wallet for earnings summary
+          const walletAddress = wallets[0].address;
+          
+          // Create filter object
+          const filter = {
+            walletAddress,
+            timeframe: timeframe as 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime'
+          };
+          
+          const summary = await getEarningsSummary(filter, true);
+          
+          if (summary && summary.totalPayments > 0) {
+            // Transform summary data for PDF generation
+            const earningsData = {
+              walletAddress: summary.walletAddress || walletAddress || 'N/A',
+              timeframe: summary.timeframe,
+              totalEarnings: summary.totalEarnings,
+              totalFiatValue: summary.totalFiatValue,
+              totalPayments: summary.totalPayments,
+              earnings: summary.earnings,
+              period: summary.period,
+              insights: summary.insights ? {
+                largestPayment: summary.insights.largestPayment,
+                topToken: summary.insights.topToken,
+                motivationalMessage: summary.insights.motivationalMessage
+              } : undefined
+            };
+            
+            // Generate PDF
+            const pdfBuffer = await generateEarningsPDF(earningsData);
+            
+            // Send PDF as document
+            await this.bot.sendDocument(chatId, pdfBuffer, {
+              caption: '📄 **Your Earnings Report is Ready!**\n\n🎨 This creative PDF includes:\n• Visual insights and charts\n• Motivational content\n• Professional formatting\n• Complete transaction breakdown\n• Multi-wallet earnings (EVM + Solana)\n\n💡 Keep building your financial future!',
+              parse_mode: 'Markdown'
+            }, {
+              filename: `earnings-report-${timeframe}-${new Date().toISOString().split('T')[0]}.pdf`
+            });
+          } else {
+            await this.bot.sendMessage(chatId, '📄 **No Data for PDF Generation**\n\nYou need some earnings data to generate a PDF report. Start receiving payments first!\n\n💡 Create payment links or invoices to begin tracking your earnings.', {
+              parse_mode: 'Markdown'
+            });
+          }
+        } catch (error) {
+          console.error('[BotIntegration] Error handling PDF generation:', error);
+          await this.bot.sendMessage(chatId, '❌ Error generating PDF report. Please try again later.');
+        }
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'help') {

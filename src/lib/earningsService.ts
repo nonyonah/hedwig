@@ -11,10 +11,11 @@ const supabase = createClient(
 );
 
 export interface EarningsFilter {
-  walletAddress: string;
+  walletAddress?: string; // For backward compatibility
+  walletAddresses?: string[]; // Support multiple wallet addresses
   token?: string;
   network?: string;
-  timeframe?: 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime' | 'custom';
+  timeframe?: 'today' | 'yesterday' | 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime' | 'custom';
   startDate?: string; // ISO date string
   endDate?: string; // ISO date string
   category?: string; // earnings category filter
@@ -64,7 +65,8 @@ export interface EarningsInsights {
 }
 
 export interface EarningsSummaryResponse {
-  walletAddress: string;
+  walletAddress?: string; // For backward compatibility
+  walletAddresses?: string[]; // Multiple wallet addresses
   timeframe: string;
   totalEarnings: number;
   totalFiatValue?: number;
@@ -99,6 +101,12 @@ export interface UserPreferences {
 export async function getEarningsSummary(filter: EarningsFilter, includeInsights = false): Promise<EarningsSummaryResponse> {
   try {
     console.log('[getEarningsSummary] Fetching earnings for:', filter);
+
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
+      throw new Error('No wallet addresses provided');
+    }
 
     // Calculate date range based on timeframe
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
@@ -155,7 +163,8 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
 
     if (allEarnings.length === 0) {
       return {
-        walletAddress: filter.walletAddress,
+        walletAddress: filter.walletAddress, // For backward compatibility
+        walletAddresses: walletAddresses,
         timeframe: filter.timeframe || 'allTime',
         totalEarnings: 0,
         totalFiatValue: 0,
@@ -263,7 +272,8 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     earnings.sort((a, b) => b.total - a.total);
 
     const result: EarningsSummaryResponse = {
-    walletAddress: filter.walletAddress,
+    walletAddress: filter.walletAddress, // For backward compatibility
+    walletAddresses: walletAddresses,
     timeframe: filter.timeframe || 'allTime',
     totalEarnings: Math.round(totalEarnings * 100000000) / 100000000,
     totalFiatValue: Math.round(totalFiatValue * 100) / 100,
@@ -367,25 +377,30 @@ function getTokenSymbol(tokenAddress: string): string {
  */
 async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
   try {
-    // First get the user_id from the wallet address
-    const { data: userWallets, error: walletError } = await supabase
-      .from('wallets')
-      .select('user_id')
-      .eq('address', filter.walletAddress)
-      .limit(1);
-
-    if (walletError || !userWallets || userWallets.length === 0) {
-      console.log('[fetchPaymentLinks] No user found for wallet address:', filter.walletAddress);
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
       return [];
     }
 
-    const userId = userWallets[0].user_id;
+    // Get user_ids from all wallet addresses
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .in('address', walletAddresses);
+
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchPaymentLinks] No users found for wallet addresses:', walletAddresses);
+      return [];
+    }
+
+    const userIds = [...new Set(userWallets.map(w => w.user_id))]; // Remove duplicates
 
     // Build the query using created_by (user_id)
     let query = supabase
       .from('payment_links')
       .select('*')
-      .eq('created_by', userId)
+      .in('created_by', userIds)
       .eq('status', 'paid')
       .not('paid_at', 'is', null)
       .not('paid_amount', 'is', null);
@@ -430,25 +445,30 @@ async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | nul
  */
 async function fetchPaidInvoices(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
   try {
-    // First get the user_id from the wallet address
-    const { data: userWallets, error: walletError } = await supabase
-      .from('wallets')
-      .select('user_id')
-      .eq('address', filter.walletAddress)
-      .limit(1);
-
-    if (walletError || !userWallets || userWallets.length === 0) {
-      console.log('[fetchPaidInvoices] No user found for wallet address:', filter.walletAddress);
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
       return [];
     }
 
-    const userId = userWallets[0].user_id;
+    // Get user_ids from all wallet addresses
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .in('address', walletAddresses);
+
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchPaidInvoices] No users found for wallet addresses:', walletAddresses);
+      return [];
+    }
+
+    const userIds = [...new Set(userWallets.map(w => w.user_id))]; // Remove duplicates
 
     // Build the query using user_id
     let query = supabase
       .from('invoices')
       .select('*')
-      .eq('user_id', userId)
+      .in('user_id', userIds)
       .eq('status', 'paid')
       .not('amount', 'is', null);
 
@@ -575,26 +595,30 @@ async function fetchOfframpTransactions(filter: EarningsFilter, startDate: strin
  */
 async function fetchAcceptedProposals(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
   try {
-    // Build the query - we need to match by user_identifier since proposals don't have wallet_address
-    // We'll need to get the user's wallets first, then match proposals by user_identifier
-    const { data: userWallets, error: walletError } = await supabase
-      .from('wallets')
-      .select('user_id')
-      .eq('address', filter.walletAddress)
-      .limit(1);
-
-    if (walletError || !userWallets || userWallets.length === 0) {
-      console.log('[fetchAcceptedProposals] No user found for wallet address:', filter.walletAddress);
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
       return [];
     }
 
-    const userId = userWallets[0].user_id;
+    // Get user_ids from all wallet addresses
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .in('address', walletAddresses);
+
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchAcceptedProposals] No users found for wallet addresses:', walletAddresses);
+      return [];
+    }
+
+    const userIds = [...new Set(userWallets.map(w => w.user_id))]; // Remove duplicates
 
     // First try with paid_at column, fallback to created_at if it doesn't exist
     let query = supabase
       .from('proposals')
       .select('*')
-      .eq('user_identifier', userId)
+      .in('user_identifier', userIds)
       .eq('status', 'accepted')
       .not('amount', 'is', null);
 
@@ -1145,6 +1169,26 @@ function getDateRange(timeframe?: string, startDate?: string, endDate?: string):
   let startDateTime: Date | null = null;
 
   switch (timeframe) {
+    case 'today':
+      startDateTime = new Date(now);
+      startDateTime.setHours(0, 0, 0, 0); // Start of today
+      const endOfToday = new Date(now);
+      endOfToday.setHours(23, 59, 59, 999); // End of today
+      return {
+        startDate: startDateTime.toISOString(),
+        endDate: endOfToday.toISOString()
+      };
+    case 'yesterday':
+      startDateTime = new Date(now);
+      startDateTime.setDate(startDateTime.getDate() - 1);
+      startDateTime.setHours(0, 0, 0, 0); // Start of yesterday
+      const endOfYesterday = new Date(now);
+      endOfYesterday.setDate(endOfYesterday.getDate() - 1);
+      endOfYesterday.setHours(23, 59, 59, 999); // End of yesterday
+      return {
+        startDate: startDateTime.toISOString(),
+        endDate: endOfYesterday.toISOString()
+      };
     case 'last7days':
       startDateTime = new Date(endDateTime);
       startDateTime.setDate(startDateTime.getDate() - 7);
@@ -1280,8 +1324,15 @@ export function parseEarningsQuery(query: string): EarningsFilter | null {
   let startDate: string | undefined;
   let endDate: string | undefined;
   
+  // Today/Yesterday patterns
+  if (lowerQuery.includes('today') || lowerQuery.includes('this day')) {
+    timeframe = 'today';
+  }
+  else if (lowerQuery.includes('yesterday')) {
+    timeframe = 'yesterday';
+  }
   // Week patterns
-  if (lowerQuery.includes('this week') || lowerQuery.includes('last 7 days') || 
+  else if (lowerQuery.includes('this week') || lowerQuery.includes('last 7 days') || 
       lowerQuery.includes('past week') || lowerQuery.includes('last week')) {
     timeframe = 'last7days';
   }
