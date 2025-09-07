@@ -237,7 +237,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Check if this transfer is for a specific invoice or payment link
       let paymentType = 'direct_transfer';
-      let relatedId = event.id;
+      let relatedId = `direct_${transfer.hash}`; // Use transaction hash as unique ID for direct transfers
       let relatedItem: InvoiceData | PaymentLinkData | null = null;
 
       // Check for matching invoice

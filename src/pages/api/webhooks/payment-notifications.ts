@@ -44,12 +44,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    console.log('Payment notification webhook received:', JSON.stringify(req.body, null, 2));
+    
     const { 
       type, id, amount, currency, transactionHash, payerWallet, recipientWallet, status,
       senderAddress, recipientUserId, chain, freelancerName, clientName, userName, paymentReason
     } = req.body as PaymentNotificationData;
 
+    console.log('Parsed notification data:', { type, id, amount, currency, recipientUserId, status });
+
     if (!type || !id || !amount || !status) {
+      console.error('Missing required fields:', { type, id, amount, status });
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -189,6 +194,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     } else if (type === 'direct_transfer') {
       // For direct transfers, we get the recipient user ID directly
+      console.log('Processing direct transfer notification for recipientUserId:', req.body.recipientUserId);
+      
       if (!req.body.recipientUserId) {
         console.error('No recipient user ID provided for direct transfer');
         return res.status(400).json({ error: 'Recipient user ID required for direct transfer' });
@@ -202,15 +209,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (userError || !user) {
         console.error('Error fetching user for direct transfer:', userError);
+        console.error('User lookup failed for ID:', req.body.recipientUserId);
         return res.status(404).json({ error: 'User not found' });
       }
 
+      console.log('Found user for direct transfer:', { id: user.id, name: user.name, hasTelegramChatId: !!user.telegram_chat_id });
+      
       recipientUser = user;
       itemData = {
         senderAddress: req.body.senderAddress,
         recipientWallet: req.body.recipientWallet,
         chain: req.body.chain
       };
+      
+      console.log('Direct transfer itemData:', itemData);
     } else if (type === 'offramp') {
       // For offramp transactions, get the user from the transaction
       if (!req.body.recipientUserId) {
@@ -522,8 +534,40 @@ async function sendTelegramNotification(
       parse_mode: 'HTML',
       reply_markup: keyboard
     });
-  } catch (error) {
-    console.error('Error sending Telegram notification:', error);
+    
+    console.log(`✅ Telegram notification sent successfully to chat ID: ${chatId}`);
+  } catch (error: any) {
+    console.error(`❌ Failed to send Telegram notification to chat ID ${chatId}:`, {
+      error: error.message,
+      code: error.code,
+      response: error.response?.body
+    });
+    
+    // Handle specific Telegram API errors
+    if (error.code === 'ETELEGRAM') {
+      const telegramError = error.response?.body;
+      if (telegramError?.error_code === 400 && telegramError?.description?.includes('chat not found')) {
+        console.error(`🚫 Chat not found for chat ID ${chatId}. User may need to start a conversation with the bot first.`);
+        
+        // Update user record to mark Telegram as inactive
+        try {
+          await supabase
+            .from('users')
+            .update({ telegram_active: false })
+            .eq('telegram_chat_id', chatId);
+          console.log(`📝 Marked Telegram as inactive for chat ID ${chatId}`);
+        } catch (updateError) {
+          console.error('Error updating user telegram_active status:', updateError);
+        }
+      } else if (telegramError?.error_code === 403) {
+        console.error(`🚫 Bot was blocked by user with chat ID ${chatId}`);
+      } else {
+        console.error(`🚫 Telegram API error for chat ID ${chatId}:`, telegramError);
+      }
+    }
+    
+    // Re-throw the error so the caller knows the notification failed
+    throw error;
   }
 }
 

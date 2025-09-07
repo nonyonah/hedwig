@@ -3,7 +3,7 @@
 
 -- First, ensure the table has a proper primary key (id column)
 ALTER TABLE offramp_transactions 
-ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY;
+ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid() PRIMARY KEY;
 
 -- Add paycrest_order_id column if it doesn't exist
 ALTER TABLE offramp_transactions 

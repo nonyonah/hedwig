@@ -454,8 +454,7 @@ export class ServerPaycrestService {
             status: 'pending',
             tx_hash: transferTx,
             receive_address: orderResponse.data.receiveAddress,
-            expires_at: orderResponse.data.expiresAt,
-            created_at: new Date().toISOString()
+            expires_at: orderResponse.data.expiresAt
           })
           .select()
           .single();
