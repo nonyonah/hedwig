@@ -49,7 +49,7 @@ function initializeConfig(): PostHogConfig | null {
   }
 
   const apiKey = process.env.POSTHOG_API_KEY;
-  const host = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
+  const host = process.env.POSTHOG_HOST || 'https://eu.i.posthog.com';
   const debug = process.env.NODE_ENV === 'development';
 
   if (!apiKey) {
