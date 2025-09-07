@@ -7,12 +7,14 @@ interface PostHogEvent {
   api_key: string;
   event: string;
   distinct_id: string;
+  project_id?: string;
   properties?: Record<string, any>;
   timestamp?: string;
 }
 
 interface PostHogBatchEvent {
   api_key: string;
+  project_id?: string;
   batch: PostHogEvent[];
 }
 
@@ -20,6 +22,7 @@ interface PostHogIdentifyEvent {
   api_key: string;
   event: '$identify';
   distinct_id: string;
+  project_id?: string;
   properties?: Record<string, any>;
   $set?: Record<string, any>;
 }
@@ -181,6 +184,7 @@ async function sendBatchToPostHog(events: PostHogEvent[]): Promise<boolean> {
 
   const payload: PostHogBatchEvent = {
     api_key: cfg.apiKey,
+    project_id: process.env.POSTHOG_PROJECT_ID,
     batch: events
   };
 
@@ -268,6 +272,7 @@ export async function trackEvent(
       api_key: cfg.apiKey,
       event: event.trim(),
       distinct_id: userId,
+      project_id: process.env.POSTHOG_PROJECT_ID,
       properties: {
         ...properties,
         // Standard context properties
@@ -340,6 +345,7 @@ export async function identifyUser(
       api_key: cfg.apiKey,
       event: '$identify',
       distinct_id: userId,
+      project_id: process.env.POSTHOG_PROJECT_ID,
       properties: {
         $lib: 'hedwig-telegram-bot',
         $lib_version: '1.0.0',
