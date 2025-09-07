@@ -187,8 +187,26 @@ export function formatPaymentAmount(amount: bigint, decimals: number = 6): strin
 // Helper function to get token symbol from address
 export function getTokenSymbol(tokenAddress: string): string {
   const tokens: { [key: string]: string } = {
+    // Base
     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913': 'USDC',
-    '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA': 'USDbC'
+    '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb': 'USDT',
+    '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA': 'USDbC',
+    // Ethereum
+    '0xA0b86a33E6441b8C4505E2c52C6b6046d5b0b6e6': 'USDC',
+    '0xdAC17F958D2ee523a2206206994597C13D831ec7': 'USDT',
+    // BSC
+    '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d': 'USDC',
+    '0x55d398326f99059fF775485246999027B3197955': 'USDT',
+    '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c': 'WBNB',
+    // Arbitrum One
+    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
+    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',
+    '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1': 'WETH',
+    // Celo
+    '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e': 'USDT',
+    '0x471EcE3750Da237f93B8E339c536989b8978a438': 'CELO',
+    // Lisk
+    '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f': 'LSK'
   };
   
   return tokens[tokenAddress] || 'Unknown';

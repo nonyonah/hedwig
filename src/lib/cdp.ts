@@ -187,7 +187,7 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'solana',
     networkId: 'mainnet-beta',
   },
-  // DISABLED NETWORKS - BEP20 and Asset Chain are defined but not active
+  // DISABLED NETWORKS - These chains are defined but not active
   'bsc': {
     name: 'bsc',
     chainId: 56,
@@ -195,6 +195,18 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
   'bsc-testnet': {
     name: 'bsc-testnet',
     chainId: 97,
+  },
+  'lisk': {
+    name: 'lisk',
+    chainId: 1135,
+  },
+  'celo': {
+    name: 'celo',
+    chainId: 42220,
+  },
+  'arbitrum-one': {
+    name: 'arbitrum-one',
+    chainId: 42161,
   },
   'asset-chain': {
     name: 'asset-chain',
@@ -223,10 +235,65 @@ export const ACTIVE_NETWORKS = [
  */
 export const DISABLED_NETWORKS = [
   'bsc',
-  'bsc-testnet', 
+  'bsc-testnet',
+  'lisk',
+  'celo', 
+  'arbitrum-one',
   'asset-chain',
   'asset-chain-testnet'
 ];
+
+/**
+ * Token contract addresses for supported networks
+ * Based on official sources and verified contract addresses
+ */
+export const TOKEN_CONTRACTS = {
+  // Base Mainnet
+  'base': {
+    'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    'USDT': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
+    'ETH': 'native' // Native ETH
+  },
+  // Ethereum Mainnet
+  'ethereum': {
+    'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+    'ETH': 'native' // Native ETH
+  },
+  // BSC (Binance Smart Chain) - DISABLED
+  'bsc': {
+    'USDC': '0x8AC76a51cc950d9822D68b83fE1Ad97B32CD580d', // Binance-Peg USDC
+    'USDT': '0x55d398326f99059fF775485246999027B3197955', // Binance-Peg BSC-USD (USDT)
+    'BNB': 'native', // Native BNB
+    'WBNB': '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' // Wrapped BNB
+  },
+  // Arbitrum One - DISABLED
+  'arbitrum-one': {
+    'USDC': '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Native USDC by Circle
+    'USDT': '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', // Bridged USDT
+    'ETH': 'native', // Native ETH
+    'WETH': '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' // Wrapped ETH on Arbitrum
+  },
+  // Celo Mainnet - DISABLED
+  'celo': {
+    'USDC': '0xcebA9300f2b948710d2653dD7B07f33A8B32118C', // USDC on Celo
+    'USDT': '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e', // Native USDT by Tether
+    'CELO': '0x471EcE3750Da237f93B8E339c536989b8978a438' // CELO token contract
+  },
+  // Lisk L2 - DISABLED (Note: Limited token support initially)
+  'lisk': {
+    'USDC': '', // To be added when available
+    'USDT': '', // To be added when available
+    'ETH': 'native', // Native ETH (L2)
+    'LSK': '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f' // LSK token contract (from Ethereum L1)
+  },
+  // Solana
+  'solana': {
+    'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC SPL Token
+    'USDT': 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT SPL Token
+    'SOL': 'native' // Native SOL
+  }
+};
 
 /**
  * Format network name for CDP API
@@ -265,6 +332,14 @@ export function getBlockExplorerUrl(txHash: string, network: string): string {
       return `https://etherscan.io/tx/${txHash}`;
     case 'optimism-sepolia':
       return `https://sepolia-optimism.etherscan.io/tx/${txHash}`;
+    case 'bsc':
+      return `https://bscscan.com/tx/${txHash}`;
+    case 'arbitrum-one':
+      return `https://arbiscan.io/tx/${txHash}`;
+    case 'celo':
+      return `https://celoscan.io/tx/${txHash}`;
+    case 'lisk':
+      return `https://blockscout.lisk.com/tx/${txHash}`;
     case 'solana':
       return `https://explorer.solana.com/tx/${txHash}`;
     default:
@@ -869,6 +944,46 @@ async function getSolanaBalances(address: string, networkId: string) {
     console.error('[CDP] Failed to get Solana balances:', error);
     throw error;
   }
+}
+
+/**
+ * Get BSC balances (disabled - placeholder function)
+ * @param address - Wallet address
+ * @returns Empty balances array
+ */
+async function getBSCBalances(address: string): Promise<Balance[]> {
+  console.log(`[CDP] BSC is disabled - returning empty balances for ${address}`);
+  return [];
+}
+
+/**
+ * Get Arbitrum One balances (disabled - placeholder function)
+ * @param address - Wallet address
+ * @returns Empty balances array
+ */
+async function getArbitrumOneBalances(address: string): Promise<Balance[]> {
+  console.log(`[CDP] Arbitrum One is disabled - returning empty balances for ${address}`);
+  return [];
+}
+
+/**
+ * Get Celo balances (disabled - placeholder function)
+ * @param address - Wallet address
+ * @returns Empty balances array
+ */
+async function getCeloBalances(address: string): Promise<Balance[]> {
+  console.log(`[CDP] Celo is disabled - returning empty balances for ${address}`);
+  return [];
+}
+
+/**
+ * Get Lisk balances (disabled - placeholder function)
+ * @param address - Wallet address
+ * @returns Empty balances array
+ */
+async function getLiskBalances(address: string): Promise<Balance[]> {
+  console.log(`[CDP] Lisk is disabled - returning empty balances for ${address}`);
+  return [];
 }
 
 /**

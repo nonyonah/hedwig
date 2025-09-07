@@ -702,6 +702,33 @@ export class OfframpService {
          'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
          'USDT': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb'
       },
+      'ethereum': {
+         'USDC': '0xA0b86a33E6441b8C4505E2c52C6b6046d5b0b6e6',
+         'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+      },
+      'bsc': {
+          'USDC': '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+          'USDT': '0x55d398326f99059fF775485246999027B3197955',
+          'BNB': 'native',
+          'WBNB': '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c'
+        },
+      'arbitrum-one': {
+         'USDC': '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+         'USDT': '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+         'ETH': 'native',
+         'WETH': '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'
+      },
+      'celo': {
+         'USDC': '', // To be added when enabled
+         'USDT': '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e',
+         'CELO': '0x471EcE3750Da237f93B8E339c536989b8978a438'
+      },
+      'lisk': {
+         'USDC': '', // To be added when enabled
+         'USDT': '', // To be added when enabled
+         'ETH': 'native',
+         'LSK': '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f'
+      },
     };
 
     return addresses[network]?.[token.toUpperCase()] || '';
