@@ -3,7 +3,7 @@ import type { Client, Invoice } from '../types/supabase';
 
 // Create a new client
 export async function createClient(client: Omit<Client, 'id' | 'created_at'>) {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('clients')
     .insert([client])
     .single();
@@ -23,7 +23,7 @@ export async function getClients(userId: string) {
 
 // Create an invoice
 export async function createInvoice(invoice: Omit<Invoice, 'id' | 'created_at'>) {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('invoices')
     .insert([invoice])
     .single();
@@ -33,7 +33,7 @@ export async function createInvoice(invoice: Omit<Invoice, 'id' | 'created_at'>)
 
 // Fetch invoices for a user
 export async function getInvoices(userId: string) {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('invoices')
     .select('*')
     .eq('user_id', userId);
@@ -44,7 +44,7 @@ export async function getInvoices(userId: string) {
 
 // Update an invoice by ID
 export async function updateInvoice(id: string, updates: Partial<Omit<Invoice, 'id' | 'created_at'>>) {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('invoices')
       .update(updates)
       .eq('id', id)

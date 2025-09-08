@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database, MessageDirection, MessageType } from './database';
 
-// Database types
+// Database types - use the correct Database type that includes phone_number
 export type User = Database['public']['Tables']['users']['Row'];
 export type Wallet = Database['public']['Tables']['wallets']['Row'];
 export type Session = Database['public']['Tables']['sessions']['Row'];
@@ -22,7 +22,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
     autoRefreshToken: false,
     detectSessionInUrl: false
   },
-});
+}) as any;
 
 // Database operations
 export const db = {
@@ -39,7 +39,7 @@ export const db = {
   async createUser(phone: string): Promise<User> {
     const { data, error } = await supabase
       .from('users')
-      .insert({ phone_number: phone })
+      .insert({ phone_number: phone } as Database['public']['Tables']['users']['Insert'])
       .select()
       .single();
     if (error) throw error;
