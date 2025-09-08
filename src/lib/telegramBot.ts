@@ -506,7 +506,7 @@ export class TelegramBotService {
     console.log('[TelegramBot] Command received:', { raw: command, commandName, chatId, hasFrom: !!from });
     switch (commandName) {
       case '/start':
-        await this.sendWelcomeMessage(chatId, userName);
+        await this.botIntegration.showWelcomeMessage(chatId);
         break;
       case '/help':
         await this.sendHelpMessage(chatId);
