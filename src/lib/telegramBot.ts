@@ -2,6 +2,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { runLLM } from './llmAgent';
 import { BotIntegration } from '../modules/bot-integration';
+import { supabase } from './supabase';
 
 export interface TelegramBotConfig {
   token: string;
@@ -280,11 +281,14 @@ export class TelegramBotService {
       // Track session_started event for user activity analysis
       try {
         const { trackEvent } = await import('./posthog');
-        await trackEvent('session_started', {
-          user_id: userId?.toString() || chatId.toString(),
-          feature: 'bot_interaction',
-          timestamp: new Date().toISOString()
-        });
+        await trackEvent(
+          'session_started',
+          {
+            feature: 'bot_interaction',
+            timestamp: new Date().toISOString(),
+          },
+          userId?.toString() || chatId.toString(),
+        );
       } catch (trackingError) {
         console.error('[TelegramBot] Error tracking session_started event:', trackingError);
       }
@@ -563,11 +567,14 @@ export class TelegramBotService {
     // Track bot_started event for PostHog analytics
     try {
       const { trackEvent } = await import('./posthog');
-      await trackEvent('bot_started', {
-        user_id: chatId.toString(),
-        feature: 'bot_interaction',
-        timestamp: new Date().toISOString()
-      });
+      await trackEvent(
+        'bot_started',
+        {
+          feature: 'bot_interaction',
+          timestamp: new Date().toISOString(),
+        },
+        chatId.toString(),
+      );
     } catch (error) {
       console.error('[TelegramBot] Error tracking bot_started event:', error);
     }
@@ -795,7 +802,6 @@ Choose an action below:`;
    */
   private async ensureUserExists(from: TelegramBot.User, chatId: number): Promise<void> {
     try {
-      const { supabase } = await import('./supabase');
       
       // Check if user already exists
       const { data: existingUser } = await supabase
@@ -849,7 +855,6 @@ Choose an action below:`;
    */
   private async checkAndRequestEmail(chatId: number): Promise<void> {
     try {
-      const { supabase } = await import('./supabase');
       
       // Get user data
       const { data: user, error } = await supabase
@@ -878,8 +883,6 @@ Choose an action below:`;
    */
   private async requestUserEmail(chatId: number, userName: string): Promise<void> {
     try {
-      const { supabase } = await import('./supabase');
-      
       // Set session state to expect email
       await supabase
         .from('sessions')
@@ -904,8 +907,6 @@ Choose an action below:`;
    */
   private async handleEmailCollection(chatId: number, messageText: string): Promise<boolean> {
     try {
-      const { supabase } = await import('./supabase');
-      
       // Check if user is in email collection state
       const { data: session, error: sessionError } = await supabase
         .from('sessions')
@@ -966,8 +967,6 @@ Now you can create personalized invoices and proposals. Type /help to see what I
     userId?: number
   ): Promise<void> {
     try {
-      const { supabase } = await import('./supabase');
-      
       // Get user ID by telegram_chat_id
       const { data: userData, error: userError } = await supabase
         .from('users')

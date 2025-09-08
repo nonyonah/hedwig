@@ -188,7 +188,7 @@ export function WalletProviderWrapper({ children }: { children: ReactNode }) {
   const getNetworkName = (chainId: string): string => {
     const id = parseInt(chainId, 16);
     switch (id) {
-      case 8453: return 'Base Mainnet';
+      case 8453: return 'Base';
     case 84532: return 'Base Sepolia';
       case 1: return 'Ethereum Mainnet';
       case 11155111: return 'Ethereum Sepolia';

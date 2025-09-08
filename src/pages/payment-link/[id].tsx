@@ -269,9 +269,9 @@ export default function PaymentLinkPage() {
             Complete your USDC stablecoin payment securely
             <span
               className="ml-2 text-xs text-gray-500 underline decoration-dotted"
-              title="This payment runs on Base Mainnet"
+              title="This payment runs on Base"
             >
-              Base Mainnet
+              Base
             </span>
           </p>
         </div>
@@ -327,9 +327,9 @@ export default function PaymentLinkPage() {
                 Complete this payment using USDC on Base network
                 <span
                   className="ml-2 text-xs text-gray-500 underline decoration-dotted"
-                  title="This payment runs on Base Mainnet"
+                  title="This payment runs on Base"
             >
-              Base Mainnet
+              Base
                 </span>
               </CardDescription>
             </CardHeader>

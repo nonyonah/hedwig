@@ -21,10 +21,12 @@ export interface OfframpSession {
     fiatAmount?: number;
     netAmount?: number;
     transactionId?: string;
+    transactionHash?: string;
     orderId?: string;
     receiveAddress?: string;
     expectedAmount?: string;
     status?: string;
+    lastStatusCheck?: string;
   };
   createdAt: Date;
   updatedAt: Date;

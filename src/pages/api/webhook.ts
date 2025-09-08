@@ -982,10 +982,18 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
         
         // If the result has reply_markup and we have a chatId, send the message directly
         if (actionResult.reply_markup && chatId && bot) {
-          await bot.sendMessage(chatId, actionResult.text, {
-            reply_markup: actionResult.reply_markup,
-            parse_mode: 'Markdown'
-          });
+          try {
+            await bot.sendMessage(chatId, actionResult.text, {
+              reply_markup: actionResult.reply_markup,
+              parse_mode: 'Markdown'
+            });
+          } catch (markdownError: any) {
+            // If markdown parsing fails, try without markdown formatting
+            console.warn('[formatResponseForUser] Markdown parsing failed, sending as plain text:', markdownError.message);
+            await bot.sendMessage(chatId, actionResult.text, {
+              reply_markup: actionResult.reply_markup
+            });
+          }
           return ''; // Return empty string since we already sent the message
         }
         

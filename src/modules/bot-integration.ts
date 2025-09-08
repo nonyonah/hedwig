@@ -120,16 +120,11 @@ export class BotIntegration {
         } else {
           // User doesn't exist yet, show wallet creation prompt
           await this.bot.sendMessage(chatId, 
-            `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
-            { 
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
-                ]
-              }
-            }
-          );
+        `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+        {
+          parse_mode: 'Markdown'
+        }
+      );
           return;
         }
       }
@@ -151,14 +146,9 @@ export class BotIntegration {
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
-          `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
-          { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
-              ]
-            }
+          `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          {
+            parse_mode: 'Markdown'
           }
         );
         return;
@@ -225,16 +215,11 @@ export class BotIntegration {
         } else {
           // User doesn't exist yet, show wallet creation prompt
           await this.bot.sendMessage(chatId, 
-            `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
-            { 
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
-                ]
-              }
-            }
-          );
+          `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          {
+            parse_mode: 'Markdown'
+          }
+        );
           return;
         }
       }
@@ -256,14 +241,9 @@ export class BotIntegration {
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
-          `💡 *No wallets found*\n\nYou don't have any wallets yet. Use the 'Create Wallet' button to get started!`,
-          { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🏦 Create Wallet', callback_data: 'create_wallet' }]
-              ]
-            }
+          `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          {
+            parse_mode: 'Markdown'
           }
         );
         return;
@@ -1658,14 +1638,25 @@ export class BotIntegration {
   // Show welcome message with conditional wallet creation for new users
   async showWelcomeMessage(chatId: number) {
     try {
-      // Check if user exists in database
+      // Check if user exists in database with more comprehensive data
       const { data: user } = await supabase
         .from('users')
-        .select('id, evm_wallet_address, solana_wallet_address')
+        .select('id, telegram_first_name, telegram_username, evm_wallet_address, solana_wallet_address')
         .eq('telegram_chat_id', chatId)
         .single();
 
-      const isNewUser = !user || (!user.evm_wallet_address && !user.solana_wallet_address);
+      // Also check wallets table for more accurate wallet detection
+      let hasWallets = false;
+      if (user) {
+        const { data: wallets } = await supabase
+          .from('wallets')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+        hasWallets = !!(wallets && wallets.length > 0);
+      }
+
+      const isNewUser = !user || (!hasWallets && !user.evm_wallet_address && !user.solana_wallet_address);
       
       if (isNewUser) {
         // Show welcome message with Create Wallet button for new users
@@ -1682,10 +1673,13 @@ export class BotIntegration {
           }
         );
       } else {
-        // Show main menu for existing users with persistent keyboard
+        // Get user's name for personalized greeting
+        const userName = user.telegram_first_name || user.telegram_username || 'there';
+        
+        // Show personalized welcome message for returning users
         await this.bot.sendMessage(chatId, 
-          `🦉 *Welcome back buddy!*\n\n` +
-          `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+          `🦉 *Welcome back, ${userName}!*\n\n` +
+          `Great to see you again! I'm here to help with all your crypto and freelance needs.\n\n` +
           `Choose an option below or chat with me naturally!`,
           {
             parse_mode: 'Markdown',
@@ -1704,7 +1698,7 @@ export class BotIntegration {
   async showMainMenu(chatId: number) {
     await this.bot.sendMessage(chatId, 
       `🦉 *Welcome to Hedwig!*\n\n` +
-      `I'm your AI assistant for crypto payments and wallet management.\n\n` +
+      `I'm your freelance assistant for crypto payments.\n\n` +
       `Choose an option below or chat with me naturally!`,
       {
         parse_mode: 'Markdown',
@@ -1852,14 +1846,9 @@ export class BotIntegration {
             .limit(1);
           
           if (!wallets || wallets.length === 0) {
-            await this.bot.sendMessage(chatId, '💡 *No wallets found*\n\nYou need a wallet to generate earnings reports. Create one first!', {
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [[
-                  { text: '🏦 Create Wallet', callback_data: 'create_wallet' }
-                ]]
-              }
-            });
+            await this.bot.sendMessage(chatId, '💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!', {
+        parse_mode: 'Markdown'
+      });
             await this.bot.answerCallbackQuery(callbackQuery.id);
             return true;
           }

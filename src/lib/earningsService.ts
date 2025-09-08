@@ -112,6 +112,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
     // Fetch all earnings sources
+    console.log('[getEarningsSummary] About to fetch payment events for wallets:', walletAddresses);
     const [paymentLinks, invoices, proposals, paymentEvents, offrampTransactions] = await Promise.all([
       fetchPaymentLinks(filter, startDate, endDate),
       fetchPaidInvoices(filter, startDate, endDate),
@@ -299,61 +300,69 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
 }
 
 /**
- * Fetch payment events from blockchain tracking
+ * Fetch payment events from blockchain tracking (direct transfers)
  */
 async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
   try {
-    // Build the query for payment events
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
+      return [];
+    }
+
+    // Build the query for direct transfers from payments table
+    console.log('[fetchPaymentEvents] Querying payments table for wallets:', walletAddresses);
+    // Convert wallet addresses to lowercase for case-insensitive matching
+    const lowerCaseWallets = walletAddresses.map(addr => addr.toLowerCase());
     let query = supabase
-      .from('payment_events')
+      .from('payments')
       .select('*')
-      .eq('freelancer', filter.walletAddress)
-      .eq('processed', true);
+      .in('recipient_wallet', lowerCaseWallets);
 
     // Add time filtering
     if (startDate) {
-      query = query.gte('timestamp', startDate);
+      query = query.gte('created_at', startDate);
     }
     if (endDate) {
-      query = query.lte('timestamp', endDate);
+      query = query.lte('created_at', endDate);
     }
 
-    // Add token filtering (need to map token addresses to symbols)
+    // Add token filtering
     if (filter.token) {
-      // Map common token symbols to addresses for filtering
-      const tokenAddresses: { [key: string]: string } = {
-        'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-        'USDbC': '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA'
-      };
-      const tokenAddress = tokenAddresses[filter.token.toUpperCase()];
-      if (tokenAddress) {
-        query = query.eq('token', tokenAddress);
-      }
+      query = query.eq('currency', filter.token.toUpperCase());
     }
 
-    // Order by timestamp descending
-    query = query.order('timestamp', { ascending: false });
+    // Add network filtering
+    if (filter.network) {
+      query = query.eq('chain', filter.network);
+    }
 
-    const { data: events, error } = await query;
+    // Order by created_at descending
+    query = query.order('created_at', { ascending: false });
+
+    const { data: payments, error } = await query;
+
+    console.log('[fetchPaymentEvents] Query result - payments:', payments?.length || 0, 'records');
+    console.log('[fetchPaymentEvents] Query error:', error);
 
     if (error) {
       console.error('[fetchPaymentEvents] Database error:', error);
       throw new Error(`Failed to fetch payment events: ${error.message}`);
     }
 
-    // Transform payment events to match earnings format
-    return (events || []).map(event => ({
-      id: event.id,
-      amount: parseFloat(event.amount), // Amount is already in token units, no conversion needed
-      token: getTokenSymbol(event.token),
-      network: 'Base', // Payment events are on Base network
-      paid_at: event.timestamp,
-      transaction_hash: event.transaction_hash,
-      payment_reason: `Direct transfer - Invoice ${event.invoice_id}`,
-      wallet_address: event.freelancer,
-      payer_wallet_address: event.payer,
-      source: 'payment_events',
-      category: 'freelance'
+    // Transform payments to match earnings format
+    return (payments || []).map(payment => ({
+      id: payment.id,
+      amount: parseFloat(payment.amount_paid) || 0,
+      token: payment.currency || 'ETH',
+      network: payment.chain || 'Base',
+      paid_at: payment.created_at,
+      transaction_hash: payment.tx_hash,
+      payment_reason: 'Direct Transfer',
+      wallet_address: payment.recipient_wallet,
+      payer_wallet_address: payment.payer_wallet,
+      source: 'direct_transfer',
+      category: 'direct_transfer'
     }));
   } catch (error) {
     console.error('[fetchPaymentEvents] Error:', error);
@@ -1257,56 +1266,119 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   const timeframeText = timeframe === 'allTime' ? 'all time' : timeframe.replace(/([A-Z])/g, ' $1').toLowerCase();
   const headerEmoji = type === 'earnings' ? '💰' : '💸';
   
-  let response = `${headerEmoji} **${type.charAt(0).toUpperCase() + type.slice(1)} Summary**\n\n`;
+  let response = `${headerEmoji} *${type.charAt(0).toUpperCase() + type.slice(1)} Summary*\n\n`;
   
   // Main summary with fiat value and fun language
   if (totalFiatValue && totalFiatValue > 0) {
     const fiatFormatted = totalFiatValue >= 1000 ? `$${(totalFiatValue/1000).toFixed(1)}k` : `$${totalFiatValue.toFixed(2)}`;
-    response += `You've ${action} **${totalEarnings} tokens** (≈ **${fiatFormatted} USD**) across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. `;
+    response += `You've ${action} *${fiatFormatted} USD* across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. `;
     if (type === 'earnings') {
       response += totalFiatValue > 1000 ? "That's some serious bag building! 💪\n\n" : "Nice work stacking those sats! 📈\n\n";
     } else {
       response += "Hope it was worth it! 😄\n\n";
     }
   } else {
-    response += `You've ${action} **${totalEarnings} tokens** across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. Keep building! 🔨\n\n`;
+    response += `You've ${action} tokens across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. Keep building! 🔨\n\n`;
+  }
+
+  // Payment source breakdown
+  const sourceBreakdown = new Map<string, { count: number; value: number; tokens: Set<string> }>();
+  earnings.forEach(earning => {
+    if (earning.source) {
+      const sources = earning.source.split(', ');
+      sources.forEach(source => {
+        if (!sourceBreakdown.has(source)) {
+          sourceBreakdown.set(source, { count: 0, value: 0, tokens: new Set() });
+        }
+        const breakdown = sourceBreakdown.get(source)!;
+        breakdown.count += earning.count;
+        breakdown.value += earning.fiatValue || 0;
+        breakdown.tokens.add(earning.token);
+      });
+    }
+  });
+
+  if (sourceBreakdown.size > 1) {
+    response += `📊 *Payment Sources:*\n`;
+    Array.from(sourceBreakdown.entries())
+      .sort((a, b) => b[1].value - a[1].value)
+      .forEach(([source, data]) => {
+        const sourceEmoji = source === 'payment_link' ? '🔗' : source === 'invoice' ? '📄' : source === 'payment_events' ? '💸' : source === 'proposal' ? '📋' : '💰';
+        const sourceName = source === 'payment_link' ? 'Payment Links' : 
+                          source === 'invoice' ? 'Invoices' : 
+                          source === 'payment_events' ? 'Direct Transfers' : 
+                          source === 'proposal' ? 'Proposals' : 
+                          source === 'offramp' ? 'Crypto Withdrawals' : source;
+        const valueText = data.value > 0 ? ` ($${data.value.toFixed(2)})` : '';
+        const tokenCount = data.tokens.size;
+        const tokenText = tokenCount > 1 ? ` across ${tokenCount} tokens` : '';
+        response += `${sourceEmoji} *${sourceName}:* ${data.count} payment${data.count > 1 ? 's' : ''}${valueText}${tokenText}\n`;
+      });
+    response += '\n';
   }
   
-  // Breakdown by token with fun formatting and emojis
-  response += `🪙 **Token Breakdown:**\n`;
-  
-  for (const [index, earning] of earnings.entries()) {
-    const fiatText = earning.fiatValue ? ` (≈ $${earning.fiatValue.toFixed(2)})` : '';
-    const percentageText = earning.percentage ? ` • ${earning.percentage}%` : '';
-    const categoryText = earning.category && earning.category !== 'other' ? ` • ${earning.category}` : '';
-    const tokenEmoji = earning.token === 'USDC' ? '💵' : earning.token === 'ETH' ? '💎' : earning.token === 'USDT' ? '💰' : '🪙';
-    const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '•';
-    
-    response += `${rankEmoji} **${earning.total} ${earning.token}** ${tokenEmoji}${fiatText} on ${earning.network}\n`;
-    response += `  ${earning.count} payment${earning.count > 1 ? 's' : ''} • avg: ${earning.averageAmount} ${earning.token}${percentageText}${categoryText}\n\n`;
+  // Token breakdown with blockchain info
+  const tokenSummary = new Map<string, { total: number; networks: Set<string>; fiatValue: number; count: number }>();
+  earnings.forEach(earning => {
+    if (!tokenSummary.has(earning.token)) {
+      tokenSummary.set(earning.token, { total: 0, networks: new Set(), fiatValue: 0, count: 0 });
+    }
+    const summary = tokenSummary.get(earning.token)!;
+    summary.total += earning.total;
+    summary.networks.add(earning.network);
+    summary.fiatValue += earning.fiatValue || 0;
+    summary.count += earning.count;
+  });
+
+  response += `🪙 *Token Summary:*\n`;
+  Array.from(tokenSummary.entries())
+    .sort((a, b) => b[1].fiatValue - a[1].fiatValue)
+    .forEach(([token, data], index) => {
+      const tokenEmoji = token === 'USDC' ? '💵' : token === 'ETH' ? '💎' : token === 'USDT' ? '💰' : '🪙';
+      const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '•';
+      const fiatText = data.fiatValue > 0 ? ` ($${data.fiatValue.toFixed(2)})` : '';
+      const networkCount = data.networks.size;
+      const networkText = networkCount > 1 ? ` across ${networkCount} blockchain${networkCount > 1 ? 's' : ''}` : ` on ${Array.from(data.networks)[0]}`;
+      
+      response += `${rankEmoji} *${data.total.toFixed(8)} ${token}* ${tokenEmoji}${fiatText}${networkText}\n`;
+      response += `  ${data.count} payment${data.count > 1 ? 's' : ''}\n\n`;
+    });
+
+  // Detailed breakdown if multiple networks per token
+  const multiNetworkTokens = Array.from(tokenSummary.entries()).filter(([_, data]) => data.networks.size > 1);
+  if (multiNetworkTokens.length > 0) {
+    response += `⛓️ *Network Breakdown:*\n`;
+    multiNetworkTokens.forEach(([token, _]) => {
+      const tokenEarnings = earnings.filter(e => e.token === token);
+      tokenEarnings.forEach(earning => {
+        const fiatText = earning.fiatValue ? ` ($${earning.fiatValue.toFixed(2)})` : '';
+        response += `• *${earning.total} ${token}* on ${earning.network}${fiatText}\n`;
+      });
+    });
+    response += '\n';
   }
 
   // Add insights if available with fun language
   if (insights) {
-    response += `🔍 **Fun Facts:**\n`;
+    response += `🔍 *Fun Facts:*\n`;
     
     if (insights.largestPayment) {
       const { amount, token, network, fiatValue } = insights.largestPayment;
       const fiatText = fiatValue ? ` ($${fiatValue.toFixed(2)})` : '';
       const bigPaymentEmoji = fiatValue && fiatValue > 1000 ? '🐋' : fiatValue && fiatValue > 100 ? '🦈' : '🐟';
-      response += `${bigPaymentEmoji} Biggest splash: **${amount} ${token}** on ${network}${fiatText}\n`;
+      response += `${bigPaymentEmoji} Biggest splash: *${amount} ${token}* on ${network}${fiatText}\n`;
     }
     
     if (insights.mostActiveNetwork) {
       const { network, count, totalAmount } = insights.mostActiveNetwork;
       const networkEmoji = network.toLowerCase().includes('polygon') ? '🟣' : network.toLowerCase().includes('ethereum') ? '💎' : network.toLowerCase().includes('base') ? '🔵' : '⛓️';
-      response += `${networkEmoji} Network champion: **${network}** (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
+      response += `${networkEmoji} Network champion: *${network}* (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
     }
     
     if (insights.topToken) {
       const { token, percentage } = insights.topToken;
       const tokenEmoji = token === 'USDC' ? '👑' : token === 'ETH' ? '💎' : token === 'USDT' ? '🏆' : '🪙';
-      response += `${tokenEmoji} Token MVP: **${token}** (${percentage}% of portfolio)\n`;
+      response += `${tokenEmoji} Token MVP: *${token}* (${percentage}% of portfolio)\n`;
     }
     
     if (insights.growthComparison) {

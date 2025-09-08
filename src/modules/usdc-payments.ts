@@ -214,16 +214,16 @@ export class USDCPaymentModule {
       `*Payment Amount:* ${amount.toFixed(2)} USDC\n` +
       `*Platform Fee (2%):* ${platformFee.toFixed(2)} USDC\n` +
       `*Freelancer Receives:* ${freelancerReceives.toFixed(2)} USDC\n\n` +
-      `*Network:* Base Mainnet\n` +
+      `*Network:* Base\n` +
       `*Smart Contract:* \`${HEDWIG_PAYMENT_CONFIG.contractAddress}\`\n` +
       `*Recipient Address:*\n\`${recipientAddress}\`\n\n` +
       `*Instructions:*\n` +
       `1. Open your Web3 wallet (MetaMask, Coinbase Wallet, etc.)\n` +
-      `2. Switch to Base Mainnet\n` +
+      `2. Switch to Base\n` +
       `3. Use the Hedwig payment interface or send ${amount.toFixed(2)} USDC\n` +
       `4. Payment will be processed through our smart contract\n` +
       `5. Click "Payment Sent" after transaction is confirmed\n\n` +
-      `⚠️ *Important:* Only send USDC on Base Mainnet. Payment is processed via smart contract with automatic fee deduction.`
+      `⚠️ *Important:* Only send USDC on Base. Payment is processed via smart contract with automatic fee deduction.`
     );
 
     await this.bot.sendMessage(chatId, message, {

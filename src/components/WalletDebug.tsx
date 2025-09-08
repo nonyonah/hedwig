@@ -47,7 +47,7 @@ export function WalletDebug() {
       {wagmiChainId !== BASE_MAINNET_CHAIN_ID && (
         <div className="p-2 bg-yellow-100 border border-yellow-300 rounded">
           <p className="text-yellow-700 font-semibold">⚠️ Wrong Network!</p>
-          <p className="text-sm text-yellow-600">Please switch to Base Mainnet (Chain ID: {BASE_MAINNET_CHAIN_ID})</p>
+          <p className="text-sm text-yellow-600">Please switch to Base (Chain ID: {BASE_MAINNET_CHAIN_ID})</p>
         </div>
       )}
       

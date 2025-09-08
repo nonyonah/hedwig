@@ -58,6 +58,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Check for duplicate notifications using transaction hash
+    if (transactionHash) {
+      const { data: existingNotification, error: notificationError } = await supabase
+        .from('payments')
+        .select('id, notification_sent')
+        .eq('tx_hash', transactionHash)
+        .eq('notification_sent', true)
+        .single();
+
+      if (existingNotification && !notificationError) {
+        console.log(`⏭️ Notification already sent for transaction: ${transactionHash}`);
+        return res.status(200).json({ success: true, message: 'Notification already sent' });
+      }
+    }
+
     // Get the recipient user information
     let recipientUser;
     let itemData;
@@ -270,6 +285,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           chain
         );
         console.log('Telegram notification sent successfully');
+        
+        // Mark notification as sent in database to prevent duplicates
+        if (transactionHash) {
+          await supabase
+            .from('payments')
+            .update({ notification_sent: true })
+            .eq('tx_hash', transactionHash);
+        }
       } catch (telegramError) {
         console.error('Failed to send Telegram notification:', telegramError);
         console.error('Telegram error details:', {
@@ -536,6 +559,14 @@ async function sendTelegramNotification(
     });
     
     console.log(`✅ Telegram notification sent successfully to chat ID: ${chatId}`);
+    
+    // Mark notification as sent in database to prevent duplicates
+    if (transactionHash) {
+      await supabase
+        .from('payments')
+        .update({ notification_sent: true })
+        .eq('tx_hash', transactionHash);
+    }
   } catch (error: any) {
     console.error(`❌ Failed to send Telegram notification to chat ID ${chatId}:`, {
       error: error.message,

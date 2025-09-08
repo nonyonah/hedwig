@@ -1,17 +1,21 @@
-import { loadServerEnvironment } from '@/lib/serverEnv';
+import { loadServerEnvironment } from '../lib/serverEnv';
 
 // Load environment variables first
 loadServerEnvironment();
 
-import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "@/lib/cdp";
+import { getOrCreateCdpWallet, createWallet, getTransaction, getBalances, transferNativeToken, transferToken, estimateTransactionFee, getBlockExplorerUrl } from "../lib/cdp";
 import { createClient } from "@supabase/supabase-js";
 // Earnings service temporarily removed
 import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
-import { SmartNudgeService } from '@/lib/smartNudgeService';
-import { InvoiceReminderService } from '@/lib/invoiceReminderService';
+import { SmartNudgeService } from '../lib/smartNudgeService';
+import { InvoiceReminderService } from '../lib/invoiceReminderService';
 import { offrampService } from '../services/offrampService';
 import { offrampSessionService } from '../services/offrampSessionService';
+import { ServerPaycrestService } from '../services/serverPaycrestService';
+
+// Initialize the service
+const serverPaycrestService = new ServerPaycrestService();
 
 import fetch from "node-fetch";
 import { formatUnits } from "viem";
@@ -461,7 +465,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     } else {
       // Show all balances for general requests
       if (!evmBalances && !solanaBalances) {
-        response = "❌ No wallets found. Type 'create wallet' to get started!";
+        response = "Your wallets are being set up automatically. Please try again in a moment.";
       } else {
         response = `${evmBalances || ""}${solanaBalances || ""}Let me know if you'd like to send tokens or refresh your balances.`;
       }
@@ -507,18 +511,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
 
     if (!wallets || wallets.length === 0) {
       return {
-        text: "❌ No wallets found. Would you like me to create wallets for you?\n\n" +
-              "🎯 **Wallet Creation Templates:**\n" +
-              "• Type: 'Create EVM wallet'\n" +
-              "• Type: 'Create Solana wallet'\n" +
-              "• Type: 'Create both wallets'",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🟦 Create EVM Wallet", callback_data: "create_evm_wallet" }],
-            [{ text: "🌸 Create Solana Wallet", callback_data: "create_solana_wallet" }],
-            [{ text: "✅ Create Both Wallets", callback_data: "create_wallets" }]
-          ]
-        }
+        text: "Your wallets are being set up automatically. Please try again in a moment."
       };
     }
 
@@ -592,21 +585,10 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
 
       responseText += "💡 Use these addresses to receive deposits on their respective networks.\n\n🔒 Keep these addresses safe and share them only when receiving payments.";
 
-      // If no wallets exist, show creation options
+      // If no wallets exist, wallets will be created automatically
       if (!evmAddress && !solanaAddress) {
         return { 
-          text: "❌ No wallets found. Would you like me to create wallets for you?\n\n" +
-                "🎯 **Wallet Creation Templates:**\n" +
-                "• Type: 'Create EVM wallet'\n" +
-                "• Type: 'Create Solana wallet'\n" +
-                "• Type: 'Create both wallets'",
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "🟦 Create EVM Wallet", callback_data: "create_evm_wallet" }],
-              [{ text: "🌸 Create Solana Wallet", callback_data: "create_solana_wallet" }],
-              [{ text: "✅ Create Both Wallets", callback_data: "create_wallets" }]
-            ]
-          }
+          text: "Your wallets are being set up automatically. Please try again in a moment."
         };
       }
 
@@ -866,7 +848,7 @@ export async function handleAction(
             }
           };
         } else {
-          return { text: "💰 **Earnings Summary**\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 **Ways to earn:**\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 **What you'll see:**\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
+          return { text: "💰 *Earnings Summary*\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 *Ways to earn:*\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 *What you'll see:*\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
         }
       } catch (error) {
         console.error('[handleAction] Earnings error:', error);
@@ -1299,7 +1281,7 @@ async function handleSend(params: ActionParams, userId: string) {
 
         // Track token_sent event
         try {
-          const { HedwigEvents } = await import('@/lib/posthog');
+          const { HedwigEvents } = await import('../lib/posthog');
           await HedwigEvents.tokensSent(userId, {
             amount: parseFloat(amount),
             token: tokenSymbol,
@@ -2280,7 +2262,7 @@ async function startOfframpFlow(userId: string): Promise<ActionResult> {
 
     if (walletsError || !userWallets || userWallets.length === 0) {
       return {
-        text: "❌ No wallets found. Please create a wallet first using /wallet command."
+        text: "Your wallets are being set up automatically. Please try again in a moment."
       };
     }
 
@@ -2920,8 +2902,9 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
         };
       }
 
-      const fee = fiatAmount * 0.01; // 1% fee
-      const finalAmount = fiatAmount - fee;
+      const feeInUsdc = session.data.amount * 0.01; // 1% fee in USDC
+      const feeInNaira = feeInUsdc * exchangeRate; // Convert fee to Naira for final amount calculation
+      const finalAmount = fiatAmount - feeInNaira;
 
       // Update session with account details and move to confirmation
       await offrampSessionService.updateSession(session.id, 'confirmation', {
@@ -2930,7 +2913,7 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
         accountName: accountDetails.accountName,
         exchangeRate: exchangeRate,
         fiatAmount: fiatAmount,
-        fee: fee,
+        fee: feeInUsdc, // Store fee in USDC
         finalAmount: finalAmount
       });
 
@@ -2940,7 +2923,7 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
               `💰 **Amount:** ${session.data.amount} USDC\n` +
               `💱 **Rate:** ₦${exchangeRate.toFixed(2)} per USDC\n` +
               `💵 **Gross Amount:** ₦${fiatAmount.toLocaleString()}\n` +
-              `💸 **Fee (1%):** ₦${fee.toLocaleString()}\n` +
+              `💸 **Fee (1%):** ${feeInUsdc.toFixed(2)} USDC\n` +
               `💳 **Net Amount:** ₦${finalAmount.toLocaleString()}\n\n` +
               `🏛️ **Bank Details:**\n` +
               `• Bank: ${session.data.bankName}\n` +
@@ -3084,7 +3067,7 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
       }
       
       // Update session to show order creation in progress
-      await offrampSessionService.updateSession(session.id, 'processing', {
+      await offrampSessionService.updateSession(session.id, 'creating_order', {
         ...session.data,
         status: 'creating_order',
       });
@@ -3115,34 +3098,49 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
           throw new Error('Invalid session - cannot update with order details');
         }
         
+        // Validate and format expectedAmount to prevent NaN display
+        const expectedAmount = orderResult.expectedAmount || session.data.amount || 0;
+        const expectedAmountStr = typeof expectedAmount === 'number' ? expectedAmount.toString() : expectedAmount;
+        const expectedAmountNum = parseFloat(expectedAmountStr);
+        
+        // Ensure we have valid numbers for calculations
+        const validExpectedAmount = !isNaN(expectedAmountNum) && expectedAmountNum > 0 ? expectedAmountNum : session.data.amount;
+
         await offrampSessionService.updateSession(session.id, 'awaiting_transfer', {
           ...session.data,
           orderId: orderResult.orderId,
           receiveAddress: orderResult.receiveAddress,
-          expectedAmount: orderResult.expectedAmount,
+          expectedAmount: validExpectedAmount.toString(),
           status: 'awaiting_transfer',
+          createdAt: new Date().toISOString(),
+          lastStatusCheck: new Date().toISOString()
         });
 
-        // Show user the receive address and ask for transfer confirmation
+        // Start monitoring order status
+        setTimeout(() => {
+          monitorOrderStatus(orderResult.orderId, userId, session.id);
+        }, 30000); // Start monitoring after 30 seconds
+        const validExchangeRate = session.exchange_rate || 1;
+        const nairaAmount = (validExpectedAmount * validExchangeRate).toLocaleString();
+
+        // Show user the enhanced processing message with status monitoring info
         return {
-          text: `🎯 **Order Created Successfully!**\n\n` +
-                `📋 **Order ID:** ${orderResult.orderId}\n` +
-                `💰 **Amount to Send:** ${orderResult.expectedAmount} USDC\n` +
-                `📍 **Send To:** \`${orderResult.receiveAddress}\`\n\n` +
-                `⚠️ **Important:** Please send exactly **${orderResult.expectedAmount} USDC** to the address above.\n\n` +
-                `Click "Send Tokens" below to proceed with the transfer.`,
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: "💸 Send Tokens", callback_data: "offramp_send_tokens" },
-                { text: "❌ Cancel", callback_data: "offramp_cancel" }
-              ]
-            ]
-          },
+          text: `🔄 **Processing Your Withdrawal**\n\n` +
+                `✅ **Order Created Successfully!**\n\n` +
+                `💰 **Sending:** ${validExpectedAmount} USDC\n` +
+                `💵 **You'll Receive:** ₦${nairaAmount}\n` +
+                `📋 **Order ID:** ${orderResult.orderId}\n\n` +
+                `🔍 **What's happening:**\n` +
+                `• Your USDC is being transferred to Paycrest\n` +
+                `• Order is being processed by our partner\n` +
+                `• Funds will be delivered to your bank account\n\n` +
+                `⏰ **Expected completion:** 5-15 minutes\n` +
+                `📱 **You'll receive real-time updates on progress**\n\n` +
+                `💡 Once completed, funds arrive in your account within 2 minutes!`,
           metadata: { 
             orderId: orderResult.orderId, 
             receiveAddress: orderResult.receiveAddress,
-            expectedAmount: orderResult.expectedAmount,
+            expectedAmount: validExpectedAmount.toString(),
             step: 'awaiting_transfer' 
           }
         };
@@ -3781,6 +3779,288 @@ async function handleTransactionStatus(params: ActionParams, userId: string): Pr
     return {
       text: "❌ Failed to check transaction status. Please try again later.",
     };
+  }
+}
+
+/**
+ * Monitor Paycrest order status and handle state transitions
+ */
+async function monitorOrderStatus(orderId: string, userId: string, sessionId: string, attempt: number = 1): Promise<void> {
+  const MAX_ATTEMPTS = 20; // Monitor for ~10 minutes (30s intervals)
+  const RETRY_INTERVAL = 30000; // 30 seconds
+  
+  try {
+    console.log(`[monitorOrderStatus] Checking status for order ${orderId}, attempt ${attempt}`);
+    
+    // Get order status from Paycrest
+    const statusResponse = await serverPaycrestService.getOrderStatus(orderId);
+    
+    if (!statusResponse || !statusResponse.data) {
+      throw new Error('Invalid status response from Paycrest');
+    }
+    
+    const { status, transactionHash } = statusResponse.data;
+    console.log(`[monitorOrderStatus] Order ${orderId} status: ${status}`);
+    
+    // Update session with latest status
+    const session = await offrampSessionService.getSessionById(sessionId);
+    if (session) {
+      await offrampSessionService.updateSession(sessionId, session.step, {
+        ...session.data,
+        status,
+        transactionHash,
+        lastStatusCheck: new Date().toISOString()
+      });
+    }
+    
+    // Handle different status states
+    switch (status.toLowerCase()) {
+      case 'completed':
+      case 'fulfilled':
+      case 'success':
+        await handleSuccessfulWithdrawal(userId, orderId, statusResponse.data);
+        return; // Stop monitoring
+        
+      case 'failed':
+      case 'error':
+      case 'cancelled':
+        await handleFailedWithdrawal(userId, orderId, statusResponse.data);
+        return; // Stop monitoring
+        
+      case 'refunded':
+      case 'refund_pending':
+        await handleRefundNotification(userId, orderId, statusResponse.data);
+        return; // Stop monitoring
+        
+      case 'pending':
+      case 'processing':
+      case 'awaiting_transfer':
+        // Continue monitoring
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => {
+            monitorOrderStatus(orderId, userId, sessionId, attempt + 1);
+          }, RETRY_INTERVAL);
+        } else {
+          // Max attempts reached, notify user of timeout
+          await handleMonitoringTimeout(userId, orderId);
+        }
+        break;
+        
+      default:
+        console.warn(`[monitorOrderStatus] Unknown status: ${status}`);
+        if (attempt < MAX_ATTEMPTS) {
+          setTimeout(() => {
+            monitorOrderStatus(orderId, userId, sessionId, attempt + 1);
+          }, RETRY_INTERVAL);
+        }
+    }
+    
+  } catch (error) {
+    console.error(`[monitorOrderStatus] Error monitoring order ${orderId}:`, error);
+    
+    // Retry on error (network issues, etc.)
+    if (attempt < MAX_ATTEMPTS) {
+      setTimeout(() => {
+        monitorOrderStatus(orderId, userId, sessionId, attempt + 1);
+      }, RETRY_INTERVAL);
+    } else {
+      await handleMonitoringError(userId, orderId, error);
+    }
+  }
+}
+
+/**
+ * Handle successful withdrawal completion
+ */
+async function handleSuccessfulWithdrawal(userId: string, orderId: string, orderData: any): Promise<void> {
+  try {
+    const message = {
+      text: `✅ **Withdrawal Successful!**\n\n` +
+            `🎉 Your withdrawal has been completed successfully!\n\n` +
+            `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
+            `🏦 **Status:** Funds delivered to your bank account\n` +
+            `⏰ **Completion Time:** ${new Date().toLocaleString()}\n\n` +
+            `💡 **Your funds should appear in your account within the next 2 minutes.**\n\n` +
+            `Thank you for using Hedwig! 🚀`,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "📊 View History", callback_data: "offramp_history" },
+          { text: "💸 New Withdrawal", callback_data: "start_offramp" }
+        ]]
+      }
+    };
+    
+    await sendTelegramMessage(userId, message);
+    
+    // Update database record
+    await supabase
+      .from('offramp_transactions')
+      .update({ 
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        transaction_hash: orderData.transactionHash
+      })
+      .eq('paycrest_order_id', orderId);
+      
+  } catch (error) {
+    console.error('[handleSuccessfulWithdrawal] Error:', error);
+  }
+}
+
+/**
+ * Handle failed withdrawal
+ */
+async function handleFailedWithdrawal(userId: string, orderId: string, orderData: any): Promise<void> {
+  try {
+    const message = {
+      text: `❌ **Withdrawal Failed**\n\n` +
+            `We're sorry, but your withdrawal could not be completed.\n\n` +
+            `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
+            `📋 **Order ID:** ${orderId}\n` +
+            `⏰ **Failed At:** ${new Date().toLocaleString()}\n\n` +
+            `🔄 **What happens next:**\n` +
+            `• Your funds will be automatically refunded\n` +
+            `• Refund typically takes 5-10 minutes\n` +
+            `• You'll receive a notification when refund is complete\n\n` +
+            `💬 Need help? Contact our support team.`,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🔄 Try Again", callback_data: "start_offramp" },
+          { text: "💬 Contact Support", callback_data: "contact_support" }
+        ]]
+      }
+    };
+    
+    await sendTelegramMessage(userId, message);
+    
+    // Update database record
+    await supabase
+      .from('offramp_transactions')
+      .update({ 
+        status: 'failed',
+        failed_at: new Date().toISOString(),
+        failure_reason: orderData.failureReason || 'Transaction failed'
+      })
+      .eq('paycrest_order_id', orderId);
+      
+  } catch (error) {
+    console.error('[handleFailedWithdrawal] Error:', error);
+  }
+}
+
+/**
+ * Handle refund notification
+ */
+async function handleRefundNotification(userId: string, orderId: string, orderData: any): Promise<void> {
+  try {
+    const message = {
+      text: `🔄 **Refund Processed**\n\n` +
+            `Your withdrawal has been refunded successfully.\n\n` +
+            `💰 **Refunded Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
+            `📋 **Order ID:** ${orderId}\n` +
+            `⏰ **Refunded At:** ${new Date().toLocaleString()}\n\n` +
+            `✅ **Your USDC has been returned to your wallet.**\n\n` +
+            `You can try the withdrawal again or contact support if you need assistance.`,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🔄 Try Again", callback_data: "start_offramp" },
+          { text: "💬 Contact Support", callback_data: "contact_support" }
+        ]]
+      }
+    };
+    
+    await sendTelegramMessage(userId, message);
+    
+    // Update database record
+    await supabase
+      .from('offramp_transactions')
+      .update({ 
+        status: 'refunded',
+        refunded_at: new Date().toISOString()
+      })
+      .eq('paycrest_order_id', orderId);
+      
+  } catch (error) {
+    console.error('[handleRefundNotification] Error:', error);
+  }
+}
+
+/**
+ * Handle monitoring timeout
+ */
+async function handleMonitoringTimeout(userId: string, orderId: string): Promise<void> {
+  try {
+    const message = {
+      text: `⏰ **Withdrawal Status Update**\n\n` +
+            `Your withdrawal is taking longer than expected to process.\n\n` +
+            `📋 **Order ID:** ${orderId}\n` +
+            `⏰ **Status:** Still processing\n\n` +
+            `🔍 **What's happening:**\n` +
+            `• Your transaction is still being processed\n` +
+            `• This can take up to 24 hours in some cases\n` +
+            `• You'll be notified once it's complete\n\n` +
+            `💬 Contact support if you have concerns.`,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🔍 Check Status", callback_data: `check_status_${orderId}` },
+          { text: "💬 Contact Support", callback_data: "contact_support" }
+        ]]
+      }
+    };
+    
+    await sendTelegramMessage(userId, message);
+  } catch (error) {
+    console.error('[handleMonitoringTimeout] Error:', error);
+  }
+}
+
+/**
+ * Handle monitoring error
+ */
+async function handleMonitoringError(userId: string, orderId: string, error: any): Promise<void> {
+  try {
+    const message = {
+      text: `⚠️ **Status Check Error**\n\n` +
+            `We encountered an issue checking your withdrawal status.\n\n` +
+            `📋 **Order ID:** ${orderId}\n` +
+            `⏰ **Time:** ${new Date().toLocaleString()}\n\n` +
+            `🔄 **Your withdrawal is likely still processing.**\n` +
+            `Please check back later or contact support.`,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🔍 Check Status", callback_data: `check_status_${orderId}` },
+          { text: "💬 Contact Support", callback_data: "contact_support" }
+        ]]
+      }
+    };
+    
+    await sendTelegramMessage(userId, message);
+  } catch (error) {
+    console.error('[handleMonitoringError] Error:', error);
+  }
+}
+
+/**
+ * Send Telegram message helper
+ */
+async function sendTelegramMessage(userId: string, message: any): Promise<void> {
+  try {
+    // Get user's chat ID from database
+    const { data: user } = await supabase
+      .from('users')
+      .select('telegram_chat_id')
+      .eq('id', userId)
+      .single();
+      
+    if (user?.telegram_chat_id) {
+      const telegramBot = require('../lib/telegramBot');
+      await telegramBot.sendMessage(user.telegram_chat_id, message.text, {
+        parse_mode: 'Markdown',
+        reply_markup: message.reply_markup
+      });
+    }
+  } catch (error) {
+    console.error('[sendTelegramMessage] Error:', error);
   }
 }
 

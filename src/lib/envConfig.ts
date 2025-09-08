@@ -48,16 +48,16 @@ export function getNetworkEnvVar(baseKey: string, network?: NetworkEnvironment):
 export const NetworkConfig = {
   // Alchemy Configuration
   alchemy: {
-    apiKey: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_API_KEY', network),
-    baseUrl: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_URL_BASE', network),
-    ethUrl: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_URL_ETH', network),
-    authToken: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_AUTH_TOKEN', network),
-    signingKey: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_SIGNING_KEY', network),
+    apiKey: () => process.env.ALCHEMY_API_KEY,
+    baseUrl: () => process.env.ALCHEMY_URL_BASE_MAINNET,
+    ethUrl: () => process.env.ALCHEMY_URL_ETH_MAINNET,
+    authToken: (currentNetwork: string) => process.env.ALCHEMY_AUTH_TOKEN,
+    signingKey: (currentNetwork: string) => process.env.ALCHEMY_SIGNING_KEY,
     solana: {
-      apiKey: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_SOLANA_API_KEY', network),
-      url: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_SOLANA_URL', network),
-      authToken: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_SOLANA_AUTH_TOKEN', network),
-      signingKey: (network?: NetworkEnvironment) => getNetworkEnvVar('ALCHEMY_SOLANA_SIGNING_KEY', network),
+      apiKey: () => process.env.ALCHEMY_SOLANA_API_KEY,
+      url: () => process.env.ALCHEMY_SOLANA_URL,
+      authToken: () => process.env.ALCHEMY_SOLANA_AUTH_TOKEN,
+      signingKey: () => process.env.ALCHEMY_SOLANA_SIGNING_KEY,
     },
   },
   
@@ -112,16 +112,16 @@ export function getCurrentConfig() {
   return {
     network,
     alchemy: {
-      apiKey: NetworkConfig.alchemy.apiKey(network),
-      baseUrl: NetworkConfig.alchemy.baseUrl(network),
-      ethUrl: NetworkConfig.alchemy.ethUrl(network),
+      apiKey: NetworkConfig.alchemy.apiKey(),
+      baseUrl: NetworkConfig.alchemy.baseUrl(),
+      ethUrl: NetworkConfig.alchemy.ethUrl(),
       authToken: NetworkConfig.alchemy.authToken(network),
       signingKey: NetworkConfig.alchemy.signingKey(network),
       solana: {
-        apiKey: NetworkConfig.alchemy.solana.apiKey(network),
-        url: NetworkConfig.alchemy.solana.url(network),
-        authToken: NetworkConfig.alchemy.solana.authToken(network),
-        signingKey: NetworkConfig.alchemy.solana.signingKey(network),
+        apiKey: NetworkConfig.alchemy.solana.apiKey(),
+        url: NetworkConfig.alchemy.solana.url(),
+        authToken: NetworkConfig.alchemy.solana.authToken(),
+        signingKey: NetworkConfig.alchemy.solana.signingKey(),
       },
     },
     cdp: {
