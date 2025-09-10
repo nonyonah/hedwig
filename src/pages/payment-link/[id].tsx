@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2, RefreshCw, ChevronDown, Check, Building, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
@@ -44,6 +44,7 @@ interface PaymentData {
 // flutterwaveService is imported from the service file
 
 function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: number }) {
+  const freelancerReceives = total * 0.99; // Amount after 1% platform fee
   const { isConnected } = useAccount();
 
   const { 
@@ -85,7 +86,8 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
       <Button 
         onClick={handlePay} 
         disabled={isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing} 
-        className="w-full"
+        className="w-full bg-[#4a5759] hover:bg-[#3a4547] text-white font-semibold text-lg py-4 rounded-2xl transition-colors"
+        style={{ backgroundColor: isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing ? undefined : '#4a5759' }}
       >
           {isAlreadyPaid ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Already Completed</>
@@ -94,7 +96,7 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
           ) : paymentReceipt ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
           ) : (
-            <><Wallet className="h-4 w-4 mr-2" /> Pay {total.toLocaleString()} USDC</>
+            <>Pay • ${freelancerReceives.toFixed(2)}</>
           )}
       </Button>
       
@@ -121,6 +123,10 @@ export default function PaymentLinkPage() {
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState("USDC");
+  const [selectedNetwork, setSelectedNetwork] = useState("Base");
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
 
   // Validate and calculate amounts with proper fallbacks
   const rawAmount = paymentData?.amount || 0;
@@ -222,6 +228,86 @@ export default function PaymentLinkPage() {
     toast.success('Payment link copied to clipboard!')
   }
 
+  // Currency options
+  const currencies = [
+    { label: "USDC", value: "USDC" },
+    { label: "USD Coin", value: "USD_COIN" },
+  ];
+
+  // Network options
+  const networks = [
+    { label: "Base", value: "Base" },
+    { label: "Ethereum", value: "Ethereum" },
+    { label: "Polygon", value: "Polygon" },
+  ];
+
+  // Payment options (disabled)
+  const paymentOptions = [
+    {
+      id: 0,
+      type: "Pay with crypto",
+      description: "Connect your wallet to pay with cryptocurrency",
+      icon: Wallet,
+    },
+    {
+      id: 1,
+      type: "Pay with bank",
+      description: "Pay directly from your bank account",
+      icon: Building,
+    },
+  ];
+
+  const DropdownModal = ({
+    visible,
+    onClose,
+    options,
+    selectedValue,
+    onSelect,
+    title,
+  }: {
+    visible: boolean;
+    onClose: () => void;
+    options: { label: string; value: string }[];
+    selectedValue: string;
+    onSelect: (value: string) => void;
+    title: string;
+  }) => {
+    if (!visible) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4">
+          <h3 className="text-lg font-semibold text-slate-900 text-center mb-4">
+            {title}
+          </h3>
+          <div className="space-y-2">
+            {options.map((item) => (
+              <button
+                key={item.value}
+                onClick={() => {
+                  onSelect(item.value);
+                  onClose();
+                }}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <span className="text-slate-900 font-medium">{item.label}</span>
+                {selectedValue === item.value && (
+                  <Check className="w-5 h-5 text-blue-500" />
+                )}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={onClose}
+            className="w-full mt-4 py-2 text-gray-500 hover:text-gray-700"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   
 
 
@@ -260,231 +346,148 @@ export default function PaymentLinkPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">USDC Payment Request</h1>
-          <p className="text-gray-600">
-            Complete your USDC stablecoin payment securely
-            <span
-              className="ml-2 text-xs text-gray-500 underline decoration-dotted"
-              title="This payment runs on Base"
-            >
-              Base
-            </span>
-          </p>
-        </div>
+    <div className="min-h-screen bg-white">
+
+
+      {/* Main Content */}
+      <div className="px-4 py-12">
+        <div className="max-w-md mx-auto space-y-4">
 
 
 
-        {/* Payment Details Card */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xl">{paymentData.title}</CardTitle>
+          {/* Payment Details Section */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-slate-900">
+                Payment Details
+              </h2>
               <Badge className={statusColor[isExpired ? 'expired' : paymentData.status]}>
                 {isExpired ? 'Expired' : paymentData.status.charAt(0).toUpperCase() + paymentData.status.slice(1)}
               </Badge>
             </div>
-            <CardDescription>{paymentData.description}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Amount */}
-              <div className="text-center py-6 bg-gray-50 rounded-lg">
-                <div className="text-3xl font-bold text-gray-900">
-                  ${validAmount.toLocaleString()}
-                </div>
-                <div className="text-sm text-gray-600 mt-1">{paymentData.currency}</div>
-              </div>
 
-              {/* Recipient Info */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-600">To:</span>
-                  <div className="font-medium">{paymentData.recipient.name}</div>
-                  <div className="text-gray-600">{paymentData.recipient.email}</div>
-                </div>
-                <div>
-                  <span className="text-gray-600">Expires:</span>
-                  <div className="font-medium flex items-center">
-                    <Clock className="h-4 w-4 mr-1" />
-                    {new Date(paymentData.expiresAt).toLocaleDateString()}
-                  </div>
-                </div>
-              </div>
+            {/* Amount */}
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-600 text-sm">Amount</span>
+              <span className="text-base font-bold text-slate-900">${validAmount.toLocaleString()}</span>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Payment Method Selection */}
-        {!isExpired && paymentData.status === 'pending' && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Pay with USDC</CardTitle>
-              <CardDescription>
-                Complete this payment using USDC on Base network
-                <span
-                  className="ml-2 text-xs text-gray-500 underline decoration-dotted"
-                  title="This payment runs on Base"
-            >
-              Base
-                </span>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Stablecoin Payment */}
-              <div className="border rounded-lg p-4">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-between p-0 h-auto hover:bg-gray-50"
-                  onClick={() => setPaymentMethod(paymentMethod === 'stablecoin' ? null : 'stablecoin')}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-gray-100 rounded-lg">
-                      <Wallet className="h-5 w-5 text-gray-600" />
-                    </div>
-                    <div className="text-left">
-                      <div className="font-medium">USDC Stablecoin Payment</div>
-                      <div className="text-sm text-gray-600">Pay with USDC stablecoin only</div>
-                    </div>
-                  </div>
-                  <div className="text-gray-400">
-                    {paymentMethod === 'stablecoin' ? '−' : '+'}
-                  </div>
-                </Button>
-                
-                {paymentMethod === 'stablecoin' && (
-                  <div className="mt-4 pt-4 border-t space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Recipient:</span>
-                        <span className="font-medium">{paymentData.recipient.name}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Wallet Address:</span>
-                        <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                          {paymentData.walletAddress}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Payment Amount:</span>
-                        <span className="font-medium">${subtotal.toLocaleString()} USDC</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Platform Fee (1% deducted):</span>
-                        <span className="font-medium text-red-600">-${platformFee.toLocaleString()} USDC</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Freelancer Receives:</span>
-                        <span className="font-medium">${freelancerReceives.toLocaleString()} USDC</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-bold">
-                        <span className="text-gray-800">Total to Pay:</span>
-                        <span className="text-gray-800">${total.toLocaleString()} USDC</span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-2 p-2 bg-blue-50 rounded border border-blue-200">
-                        <div className="font-medium mb-1 text-blue-800">💰 USDC Stablecoin Only:</div>
-                        <div className="text-blue-700">• This payment link only accepts USDC stablecoin on the Base network.</div>
-                        <div className="text-blue-700">• Payment processed through a secure smart contract.</div>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Description:</span>
-                        <span className="text-right max-w-xs">{paymentData.description}</span>
-                      </div>
-                    </div>
-                    <PaymentFlow paymentData={paymentData} total={total} />
-                  </div>
-                )}
-              </div>
-
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Payment Completed Section */}
-        {paymentData.status === 'paid' && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
-                Payment Completed
-              </CardTitle>
-              <CardDescription>
-                This payment link has been marked as paid.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Recipient:</span>
-                  <span className="font-medium">{paymentData.recipient.name}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Amount:</span>
-                  <span className="font-medium">${validAmount.toLocaleString()} USDC</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Description:</span>
-                  <span className="text-right max-w-xs">{paymentData.description}</span>
-                </div>
-
-              </div>
-
-              <div className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg">
-                <CheckCircle className="h-6 w-6 mr-3 text-green-600" />
-                <span className="text-green-800 font-medium">Payment Completed</span>
-              </div>
-
-
-
-              <div className="text-center text-sm text-gray-600">
-                Payment has been processed and confirmed
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Payment Info */}
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Payment ID:</span>
-                <span className="font-mono">{paymentData.id}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Created:</span>
-                <span>{new Date(paymentData.created_at).toLocaleDateString()}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Expires:</span>
-                <span>{new Date(paymentData.expiresAt).toLocaleDateString()}</span>
-              </div>
+            {/* Recipient Name */}
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-600 text-sm">Recipient</span>
+              <span className="text-sm font-medium text-slate-900">{paymentData.recipient.name}</span>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Copy Link Button */}
-        <Button
-          onClick={handleCopyLink}
-          variant="outline"
-          className="w-full mb-6"
-        >
-          <Copy className="h-4 w-4 mr-2" />
-          Copy Payment Link
-        </Button>
+            {/* Wallet Address */}
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-600 text-sm">
+                Recipient Address
+              </span>
+              <span className="text-xs font-medium text-slate-900 flex-1 text-right ml-3">
+                {paymentData.walletAddress.slice(0, 6)}...{paymentData.walletAddress.slice(-4)}
+              </span>
+            </div>
 
-        {/* Security Notice */}
-        <div className="text-center text-sm text-gray-600">
-          <div className="flex items-center justify-center mb-2">
-            <Shield className="h-4 w-4 mr-1" />
-            <span>Secure Payment</span>
+
+
+            {/* One-time payment */}
+            <div className="text-center mt-3">
+              <span className="text-xs text-gray-400">One-time payment</span>
+            </div>
           </div>
-          <p>Your payment is protected by end-to-end encryption</p>
+
+          {/* Price Section */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-600 text-sm">Price</span>
+              <span className="text-sm font-semibold text-slate-900">
+                {validAmount} {selectedCurrency}
+              </span>
+            </div>
+
+            {/* Network */}
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 text-sm">Network</span>
+              <div className="flex items-center">
+                <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+                <span className="text-sm font-semibold text-slate-900">
+                  {selectedNetwork}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Select Payment Method Section - Commented Out */}
+          {/* 
+          <div className="bg-white border border-gray-100 rounded-2xl p-5">
+            <h2 className="text-base font-semibold text-slate-900 mb-3">
+              Select Payment Method
+            </h2>
+
+            {paymentOptions.map((option) => (
+              <div
+                key={option.id}
+                className="flex items-center p-3 rounded-xl border-2 border-gray-200 bg-gray-50 mb-2 opacity-60 cursor-not-allowed"
+              >
+                <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3">
+                  <option.icon className="w-4 h-4 text-gray-500" />
+                </div>
+
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-1">
+                    {option.type}
+                  </h3>
+                  <p className="text-xs text-gray-600">{option.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          */}
+
+
+
+          {/* Payment Flow - Only show if pending and not expired */}
+          {!isExpired && paymentData.status === 'pending' && (
+            <PaymentFlow paymentData={paymentData} total={total} />
+          )}
+
+          {/* Payment Completed Section */}
+          {paymentData.status === 'paid' && (
+            <div className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg">
+              <CheckCircle className="h-6 w-6 mr-3 text-green-600" />
+              <span className="text-green-800 font-medium">Payment Completed</span>
+            </div>
+          )}
+
+          {/* Secured by Hedwig */}
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1">
+              <Lock className="h-4 w-4 text-gray-400" />
+              <span className="text-sm text-gray-400">Secure and Encrypted Payment</span>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Currency Dropdown Modal */}
+      <DropdownModal
+        visible={showCurrencyModal}
+        onClose={() => setShowCurrencyModal(false)}
+        options={currencies}
+        selectedValue={selectedCurrency}
+        onSelect={setSelectedCurrency}
+        title="Select Currency"
+      />
+
+      {/* Network Dropdown Modal */}
+      <DropdownModal
+        visible={showNetworkModal}
+        onClose={() => setShowNetworkModal(false)}
+        options={networks}
+        selectedValue={selectedNetwork}
+        onSelect={setSelectedNetwork}
+        title="Select Network"
+      />
     </div>
   );
 }

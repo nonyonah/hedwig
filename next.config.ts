@@ -9,13 +9,23 @@ const nextConfig = {
         cacheGroups: {
           ...config.optimization.splitChunks.cacheGroups,
           vendors: {
-            test: /[\\/]node_modules[\\/]/,
+            test: /[\/]node_modules[\/]/,
             name: 'vendors',
             chunks: 'all',
           },
         },
       },
     };
+    
+    // Ensure proper module resolution for ES modules
+    config.resolve = {
+      ...config.resolve,
+      extensionAlias: {
+        '.js': ['.js', '.ts', '.tsx'],
+        '.mjs': ['.mjs', '.ts', '.tsx'],
+      },
+    };
+    
     return config;
   },
   // Enable Turbopack for development

@@ -1563,7 +1563,8 @@ export class BotIntegration {
       `• Type: "Create payment link for $50"\n` +
       `• Or: "Payment link for 25 USDC for web design"\n\n` +
       `I'll help you create a shareable payment link that others can use to pay you directly.\n\n` +
-      `ℹ️ *Note:* A 1% platform fee will be deducted from payments to support our services.`,
+      `💰 *Platform Fee Notice:*\n` +
+      `A 1% platform fee will be automatically deducted from all payments to support our services and maintain the platform.`,
       {
         parse_mode: 'Markdown'
       }
