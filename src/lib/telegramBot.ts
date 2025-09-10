@@ -551,6 +551,21 @@ export class TelegramBotService {
         await this.botIntegration.handleEarningsSummary(chatId, resolvedUserId, 'lastMonth');
         break;
       }
+      case '/referral': {
+        // Handle referral command
+        const resolvedUserId = msg.from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
+        if (resolvedUserId) {
+          await this.botIntegration.handleReferralCommand(chatId, resolvedUserId);
+        } else {
+          await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
+        }
+        break;
+      }
+      case '/leaderboard': {
+        // Handle leaderboard command
+        await this.botIntegration.handleLeaderboardCommand(chatId);
+        break;
+      }
       default:
         await this.sendMessage(
           chatId,
@@ -1016,7 +1031,9 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'business_dashboard', description: 'Access business dashboard' },
         { command: 'invoice', description: 'Create an invoice' },
         { command: 'proposal', description: 'Create a proposal' },
-        { command: 'paymentlink', description: 'Create a payment link' }
+        { command: 'paymentlink', description: 'Create a payment link' },
+        { command: 'referral', description: 'Get your referral link and stats' },
+        { command: 'leaderboard', description: 'View referral leaderboard' }
       ];
 
       await this.bot.setMyCommands(commands);

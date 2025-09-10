@@ -148,6 +148,24 @@ export default async function handler(
 
     const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/payment-link/${data.id}`;
 
+    // Award referral points for first payment link creation
+    try {
+      const { awardActionPoints } = await import('../../lib/referralService');
+      // Get user ID from wallet address or userName (you may need to adjust this based on your user identification)
+      const { data: userData } = await supabase
+        .from('users')
+        .select('id')
+        .eq('wallet_address', walletAddress.toLowerCase())
+        .single();
+      
+      if (userData?.id) {
+        await awardActionPoints(userData.id, 'first_payment_link');
+      }
+    } catch (referralError) {
+      console.error('Error awarding referral points for payment link:', referralError);
+      // Don't fail the request if referral points fail
+    }
+
     // TODO: Send email if recipientEmail is provided
     if (recipientEmail) {
       try {

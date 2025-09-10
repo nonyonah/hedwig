@@ -310,6 +310,15 @@ export class ProposalModule {
         console.error('PostHog tracking error for proposal_created:', trackingError);
       }
 
+      // Award referral points for first proposal creation
+      try {
+        const { awardActionPoints } = await import('../lib/referralService');
+        await awardActionPoints(userId, 'first_proposal');
+        console.log('[ProposalModule] Referral points awarded for first proposal creation');
+      } catch (error) {
+        console.error('[ProposalModule] Error awarding referral points:', error);
+      }
+
       // Clear user state
       await this.clearUserState(userId);
 

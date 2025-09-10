@@ -1337,7 +1337,7 @@ export class BotIntegration {
     async checkNameRequiredForUser(chatId: number, userId: string, messageText: string): Promise<boolean> {
       try {
         // Skip name check for basic commands that don't require name
-        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance'];
+        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance', '/referral', '/leaderboard'];
         if (basicCommands.includes(messageText)) {
           return false;
         }
@@ -1448,7 +1448,7 @@ export class BotIntegration {
     async checkEmailRequiredForExistingUser(chatId: number, messageText: string): Promise<boolean> {
       try {
         // Skip email check for basic commands that don't require email
-        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance'];
+        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance', '/referral', '/leaderboard'];
         if (basicCommands.includes(messageText)) {
           return false;
         }
@@ -1636,9 +1636,63 @@ export class BotIntegration {
     );
   }
 
-  // Show welcome message with conditional wallet creation for new users
-  async showWelcomeMessage(chatId: number) {
+  async handleReferralCommand(chatId: number, userId: string) {
     try {
+      const { getUserReferralStats } = await import('../lib/referralService');
+      const stats = await getUserReferralStats(userId);
+      
+      const referralLink = `https://t.me/hedwig_bot?start=ref_${userId}`;
+      
+      const message = 
+        `🔗 *Your Referral Link:*\n` +
+        `\`${referralLink}\`\n\n` +
+        `📊 *Your Stats:*\n` +
+        `👥 Referrals: ${stats?.referral_count || 0}\n` +
+        `🎯 Points: ${stats?.points || 0}\n\n` +
+        `💡 *How it works:*\n` +
+        `• Share your link with friends\n` +
+        `• Earn +10 points when they sign up\n` +
+        `• Earn +5 points when they create their first invoice/proposal\n` +
+        `• Earn +2 points when they make their first payment link/offramp`;
+      
+      await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    } catch (error) {
+      console.error('Error handling referral command:', error);
+      await this.bot.sendMessage(chatId, '❌ Sorry, I couldn\'t fetch your referral information right now. Please try again later.');
+    }
+  }
+
+  async handleLeaderboardCommand(chatId: number) {
+    try {
+      const { getLeaderboard } = await import('../lib/referralService');
+      const leaderboard = await getLeaderboard();
+      
+      let message = `🏆 *Hedwig Referral Leaderboard* 🏆\n\n`;
+      
+      if (leaderboard.length === 0) {
+        message += `No referral data yet. Be the first to start referring! 🚀`;
+      } else {
+        leaderboard.forEach((entry, index) => {
+          const position = index + 1;
+          const emoji = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : '🏅';
+          const username = entry.username ? `@${entry.username}` : 'Anonymous';
+          message += `${emoji} ${username} – ${entry.points} pts\n`;
+        });
+      }
+      
+      await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    } catch (error) {
+      console.error('Error handling leaderboard command:', error);
+      await this.bot.sendMessage(chatId, '❌ Sorry, I couldn\'t fetch the leaderboard right now. Please try again later.');
+    }
+  }
+
+  // Show welcome message with conditional wallet creation for new users
+  async showWelcomeMessage(chatId: number, startPayload?: string | null) {
+    try {
+      // Import referral service functions
+      const { extractReferrerIdFromPayload, processReferral } = await import('../lib/referralService');
+      
       // Check if user exists in database with more comprehensive data
       const { data: user } = await supabase
         .from('users')
@@ -1658,6 +1712,20 @@ export class BotIntegration {
       }
 
       const isNewUser = !user || (!hasWallets && !user.evm_wallet_address && !user.solana_wallet_address);
+      
+      // Handle referral if this is a new user with referral payload
+      if (isNewUser && startPayload) {
+        const referrerId = extractReferrerIdFromPayload(startPayload);
+        if (referrerId && user?.id) {
+          console.log(`[BotIntegration] Processing referral: ${referrerId} -> ${user.id}`);
+          const referralSuccess = await processReferral(referrerId, user.id);
+          if (referralSuccess) {
+            console.log(`[BotIntegration] Referral processed successfully`);
+          } else {
+            console.warn(`[BotIntegration] Failed to process referral`);
+          }
+        }
+      }
       
       if (isNewUser) {
         // Show welcome message with Create Wallet button for new users
@@ -2118,6 +2186,14 @@ export class BotIntegration {
           await this.handleCurrencyRate(chatId, message.text?.split(' ').slice(1).join(' '));
           return true;
 
+        case '/referral':
+          await this.handleReferralCommand(chatId, userId);
+          return true;
+
+        case '/leaderboard':
+          await this.handleLeaderboardCommand(chatId);
+          return true;
+
         case 'cancel proposal':
         // Handle cancellation of ongoing proposal creation
         const ongoingProposal = await this.getOngoingProposal(userId);
@@ -2214,6 +2290,13 @@ export class BotIntegration {
                 // Delegate to the centralized offramp handler
                 await this.handleOfframp(message);
               } else if (intent === 'create_payment_link') {             }
+              else if (intent === 'referral') {
+                await this.handleReferralCommand(message.chat.id, userId);
+                return true;
+              } else if (intent === 'leaderboard') {
+                await this.handleLeaderboardCommand(message.chat.id);
+                return true;
+              }
               if (intent === 'get_price') {
                 // Only allow USD/NGN/KES (and synonyms)
                 const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'KES'];

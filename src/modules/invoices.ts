@@ -388,6 +388,15 @@ export class InvoiceModule {
         console.error('[InvoiceModule] Error tracking invoice_created event:', error);
       }
 
+      // Award referral points for first invoice creation
+      try {
+        const { awardActionPoints } = await import('../lib/referralService');
+        await awardActionPoints(userId, 'first_invoice');
+        console.log('[InvoiceModule] Referral points awarded for first invoice creation');
+      } catch (error) {
+        console.error('[InvoiceModule] Error awarding referral points:', error);
+      }
+
       // Clear user state
       await this.clearUserState(userId);
 

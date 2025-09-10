@@ -84,6 +84,8 @@ async function setupTelegramMenu() {
       { command: 'proposal', description: '📝 Create proposal' },
       { command: 'earnings_summary', description: '📊 View earnings summary' },
       { command: 'business_dashboard', description: '📈 Business dashboard' },
+      { command: 'referral', description: '🔗 Get your referral link and stats' },
+      { command: 'leaderboard', description: '🏆 View referral leaderboard' },
     ]);
     
     console.log('[Webhook] Telegram menu button configured');
@@ -601,7 +603,9 @@ async function handleCommand(msg: any) {
   switch (command) {
     case '/start':
       if (botIntegration) {
-        await botIntegration.showWelcomeMessage(chatId);
+        // Extract referral parameter from /start command
+        const startPayload = msg.text?.split(' ')[1] || null;
+        await botIntegration.showWelcomeMessage(chatId, startPayload);
       } else {
         await bot.sendMessage(chatId, 
           `🦉 *Hi, I'm Hedwig!*\n\n` +
@@ -808,6 +812,62 @@ async function handleCommand(msg: any) {
       const redirectResponse = await processWithAI('show earnings summary', chatId);
       if (redirectResponse && redirectResponse.trim() !== '' && redirectResponse !== '__NO_MESSAGE__') {
         await bot.sendMessage(chatId, `📈 *Redirecting to Earnings Summary*\n\n${redirectResponse}`);
+      }
+      break;
+
+    case '/referral':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+          
+          if (user) {
+             await botIntegration.handleReferralCommand(chatId, user.id);
+           } else {
+             await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+           }
+        } else {
+          const referralResponse = await processWithAI('show referral link and stats', chatId);
+          if (referralResponse && referralResponse.trim() !== '' && referralResponse !== '__NO_MESSAGE__') {
+            await bot.sendMessage(chatId, referralResponse);
+          }
+        }
+      } catch (error) {
+        console.error('[Webhook] Error handling /referral command:', error);
+        await bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try again.');
+      }
+      break;
+
+    case '/leaderboard':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+          
+          if (user) {
+             await botIntegration.handleLeaderboardCommand(chatId);
+           } else {
+             await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+           }
+        } else {
+          const leaderboardResponse = await processWithAI('show referral leaderboard', chatId);
+          if (leaderboardResponse && leaderboardResponse.trim() !== '' && leaderboardResponse !== '__NO_MESSAGE__') {
+            await bot.sendMessage(chatId, leaderboardResponse);
+          }
+        }
+      } catch (error) {
+        console.error('[Webhook] Error handling /leaderboard command:', error);
+        await bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try again.');
       }
       break;
 

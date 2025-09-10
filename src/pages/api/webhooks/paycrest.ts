@@ -176,6 +176,15 @@ async function handleWebhookStatusUpdate(
  */
 async function sendSuccessNotification(userId: string, orderId: string, orderData: any): Promise<void> {
   try {
+    // Award referral points for first offramp completion
+    try {
+      const { awardActionPoints } = await import('../../../lib/referralService');
+      await awardActionPoints(userId, 'first_offramp');
+    } catch (referralError) {
+      console.error('[PaycrestWebhook] Error awarding referral points for offramp:', referralError);
+      // Don't fail the notification if referral points fail
+    }
+
     const message = {
       text: `✅ **Withdrawal Completed!**\n\n` +
             `🎉 Your funds have been successfully delivered!\n\n` +

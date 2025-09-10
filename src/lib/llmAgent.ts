@@ -248,6 +248,19 @@ IMPORTANT INTENT RECOGNITION RULES:
     - "how much did I earn", "total earnings", "money received summary"
     - "earnings analytics", "payment analytics", "income analytics"
     - "show my earnings", "view earnings", "earnings overview"
+
+19. REFERRAL REQUESTS: Always use "referral" intent for:
+    - "referral", "referral link", "my referral", "get referral link"
+    - "refer friend", "referral code", "referral stats", "referral points"
+    - "how to refer", "referral program", "invite friend", "share referral"
+    - "my referrals", "referral count", "referral earnings", "referral rewards"
+    - "create referral link", "generate referral", "referral url"
+
+20. LEADERBOARD REQUESTS: Always use "leaderboard" intent for:
+    - "leaderboard", "referral leaderboard", "top referrers", "rankings"
+    - "who's winning", "top users", "best referrers", "referral rankings"
+    - "show leaderboard", "view rankings", "referral competition", "top performers"
+    - "leaderboard stats", "ranking position", "where do I rank"
     - "earnings breakdown", "payment breakdown", "income breakdown"
     - Any request for detailed earnings analysis and summaries
 
