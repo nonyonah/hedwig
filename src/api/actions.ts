@@ -3473,7 +3473,7 @@ async function handleRetryTransaction(params: ActionParams, userId: string): Pro
         text: "❌ **Access Denied**\n\nUser not found. Please make sure you're registered with the bot.",
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🔗 Register", url: "https://t.me/hedwig_bot" }]
+            [{ text: "🔗 Register", url: "https://t.me/HedwigAssistBot" }]
           ]
         }
       };
@@ -3595,7 +3595,7 @@ async function handleCancelTransaction(params: ActionParams, userId: string): Pr
         text: "❌ **Access Denied**\n\nUser not found. Please make sure you're registered with the bot.",
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🔗 Register", url: "https://t.me/hedwig_bot" }]
+            [{ text: "🔗 Register", url: "https://t.me/HedwigAssistBot" }]
           ]
         }
       };

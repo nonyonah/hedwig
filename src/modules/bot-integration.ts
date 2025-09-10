@@ -1646,7 +1646,7 @@ export class BotIntegration {
       const stats = await getUserReferralStats(userId);
       const badges = await getUserBadges(userId);
       
-      const referralLink = `https://t.me/hedwig_bot?start=ref_${userId}`;
+      const referralLink = `https://t.me/HedwigAssistBot?start=ref_${userId}`;
       
       let message = 
         `🔗 *Your Referral Link:*\n` +

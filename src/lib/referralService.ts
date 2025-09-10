@@ -197,7 +197,7 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
         return {
           points: 0,
           referral_count: 0,
-          referral_link: `https://t.me/hedwig_bot?start=ref_${userId}`
+          referral_link: `https://t.me/HedwigAssistBot?start=ref_${userId}`
         };
       }
       console.error('Error fetching user referral stats:', error);
@@ -207,7 +207,7 @@ export async function getUserReferralStats(userId: string): Promise<ReferralStat
     return {
       points: data.points,
       referral_count: data.referral_count,
-      referral_link: `https://t.me/hedwig_bot?start=ref_${userId}`
+      referral_link: `https://t.me/HedwigAssistBot?start=ref_${userId}`
     };
   } catch (error) {
     console.error('Error in getUserReferralStats:', error);
