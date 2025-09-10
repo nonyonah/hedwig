@@ -390,8 +390,9 @@ export class InvoiceModule {
 
       // Award referral points for first invoice creation
       try {
-        const { awardActionPoints } = await import('../lib/referralService');
+        const { awardActionPoints, awardMilestoneBadges } = await import('../lib/referralService');
         await awardActionPoints(userId, 'first_invoice');
+        await awardMilestoneBadges(userId);
         console.log('[InvoiceModule] Referral points awarded for first invoice creation');
       } catch (error) {
         console.error('[InvoiceModule] Error awarding referral points:', error);

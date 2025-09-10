@@ -312,8 +312,9 @@ export class ProposalModule {
 
       // Award referral points for first proposal creation
       try {
-        const { awardActionPoints } = await import('../lib/referralService');
+        const { awardActionPoints, awardMilestoneBadges } = await import('../lib/referralService');
         await awardActionPoints(userId, 'first_proposal');
+        await awardMilestoneBadges(userId);
         console.log('[ProposalModule] Referral points awarded for first proposal creation');
       } catch (error) {
         console.error('[ProposalModule] Error awarding referral points:', error);

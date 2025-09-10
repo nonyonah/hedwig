@@ -1638,24 +1638,51 @@ export class BotIntegration {
 
   async handleReferralCommand(chatId: number, userId: string) {
     try {
-      const { getUserReferralStats } = await import('../lib/referralService');
+      const { getUserReferralStats, getUserBadges, awardMilestoneBadges } = await import('../lib/referralService');
+      
+      // Award milestone badges first
+      await awardMilestoneBadges(userId);
+      
       const stats = await getUserReferralStats(userId);
+      const badges = await getUserBadges(userId);
       
       const referralLink = `https://t.me/hedwig_bot?start=ref_${userId}`;
       
-      const message = 
+      let message = 
         `🔗 *Your Referral Link:*\n` +
         `\`${referralLink}\`\n\n` +
         `📊 *Your Stats:*\n` +
         `👥 Referrals: ${stats?.referral_count || 0}\n` +
-        `🎯 Points: ${stats?.points || 0}\n\n` +
-        `💡 *How it works:*\n` +
-        `• Share your link with friends\n` +
-        `• Earn +10 points when they sign up\n` +
-        `• Earn +5 points when they create their first invoice/proposal\n` +
-        `• Earn +2 points when they make their first payment link/offramp`;
+        `🎯 Points: ${stats?.points || 0}\n\n`;
       
-      await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+      // Add badges section if user has any
+      if (badges && badges.length > 0) {
+        message += `🏅 *Your Badges:*\n`;
+        badges.forEach(userBadge => {
+          const badge = userBadge.badge;
+          message += `${badge.emoji} ${badge.name}\n`;
+        });
+        message += `\n`;
+      }
+      
+      message += 
+        `💡 *How to earn points:*\n` +
+        `• Refer friends: +10 points\n` +
+        `• First invoice: +10 points\n` +
+        `• First proposal: +5 points\n` +
+        `• First payment link: +5 points\n` +
+        `• First offramp: +15 points\n\n` +
+        `🎯 *Monthly Contest:*\n` +
+        `Compete for badges and recognition!`;
+      
+      await this.bot.sendMessage(chatId, message, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🏆 View Leaderboard', callback_data: 'leaderboard' }]
+          ]
+        }
+      });
     } catch (error) {
       console.error('Error handling referral command:', error);
       await this.bot.sendMessage(chatId, '❌ Sorry, I couldn\'t fetch your referral information right now. Please try again later.');
@@ -1664,23 +1691,61 @@ export class BotIntegration {
 
   async handleLeaderboardCommand(chatId: number) {
     try {
-      const { getLeaderboard } = await import('../lib/referralService');
-      const leaderboard = await getLeaderboard();
+      const { getMonthlyLeaderboard, getCurrentPeriod } = await import('../lib/referralService');
       
-      let message = `🏆 *Hedwig Referral Leaderboard* 🏆\n\n`;
+      // Get current period info
+      const currentPeriod = await getCurrentPeriod();
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const periodText = currentPeriod ? `${monthNames[currentPeriod.month - 1]} ${currentPeriod.year}` : 'Current';
+      
+      const leaderboard = await getMonthlyLeaderboard();
+      
+      let message = `🏆 *Hedwig Referral Leaderboard* 🏆\n📅 *${periodText} Contest*\n\n`;
       
       if (leaderboard.length === 0) {
-        message += `No referral data yet. Be the first to start referring! 🚀`;
+        message += `No referral data yet. Be the first to start referring! 🚀\n\n`;
+        message += `💡 *How to earn points:*\n`;
+        message += `• Refer friends: 10 pts per referral\n`;
+        message += `• First invoice: 10 pts\n`;
+        message += `• First proposal: 5 pts\n`;
+        message += `• First payment link: 5 pts\n`;
+        message += `• First offramp: 15 pts`;
       } else {
         leaderboard.forEach((entry, index) => {
           const position = index + 1;
           const emoji = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : '🏅';
           const username = entry.username ? `@${entry.username}` : 'Anonymous';
-          message += `${emoji} ${username} – ${entry.points} pts\n`;
+          
+          // Add badges to display
+          let badgeText = '';
+          if (entry.badges && entry.badges.length > 0) {
+            const badgeEmojis = entry.badges.map(badge => badge.badge.emoji).join('');
+            badgeText = ` ${badgeEmojis}`;
+          }
+          
+          message += `${emoji} ${username}${badgeText} – ${entry.points} pts (${entry.referral_count} refs)\n`;
         });
+        
+        message += `\n🎯 *Monthly Prizes:*\n`;
+        message += `🥇 Top Referrer of the Month\n`;
+        message += `🥈 Silver Referrer\n`;
+        message += `🥉 Bronze Referrer\n`;
+        message += `⭐ Rising Star (Top 10)\n\n`;
+        message += `💎 *Milestone Badges:*\n`;
+        message += `🎯 First Referral\n`;
+        message += `👑 Referral Master (10 refs)\n`;
+        message += `💎 Point Collector (100 pts)\n`;
+        message += `🏆 Referral Legend (50 refs)`;
       }
       
-      await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+      await this.bot.sendMessage(chatId, message, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔗 Get My Referral Link', callback_data: 'referral_link' }]
+          ]
+        }
+      });
     } catch (error) {
       console.error('Error handling leaderboard command:', error);
       await this.bot.sendMessage(chatId, '❌ Sorry, I couldn\'t fetch the leaderboard right now. Please try again later.');
@@ -2020,6 +2085,18 @@ export class BotIntegration {
       // USDC payment callbacks
       else if (data.startsWith('usdc_') || data.startsWith('confirm_payment_')) {
         await this.usdcPaymentModule.handleCallback(callbackQuery);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      // Leaderboard callback
+      else if (data === 'leaderboard') {
+        await this.handleLeaderboardCommand(chatId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      // Referral link callback
+      else if (data === 'referral_link') {
+        await this.handleReferralCommand(chatId, userId!);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
