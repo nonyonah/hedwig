@@ -624,6 +624,8 @@ export class OfframpModule {
         return true;
       }
       
+      // Note: Exchange rate will be calculated during transaction processing
+      
       // Update state
       await this.updateOfframpState(userId, {
         amount,
@@ -635,6 +637,7 @@ export class OfframpModule {
       await this.bot.sendMessage(
         chatId,
         '🏦 *Bank Account Details*\n\n' +
+        `You want to withdraw: **${amount} ${token}**\n\n` +
         'Please provide your bank details in the following format:\n\n' +
         '```' +
         'Account Number: 1234567890' +
@@ -769,9 +772,10 @@ export class OfframpModule {
         throw new Error('Paycrest API token not configured');
       }
       
-      // Get real exchange rates from offrampService
-      const rates = await offrampService.getExchangeRates('USDC', state.amount!);
-      const fiatAmount = rates['NGN'] || state.amount! * 1650; // fallback rate
+      // Get exchange rates from offramp service
+      const exchangeRates = await offrampService.getExchangeRates();
+      const exchangeRate = exchangeRates['USDC'] || 1500; // Fallback rate
+      const fiatAmount = state.amount! * exchangeRate;
       
       // Call Paycrest API to create payout
       const response = await axios.post(

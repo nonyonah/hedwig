@@ -3,6 +3,7 @@ import { trackEvent } from '../lib/posthog';
 import { handleAction } from '../api/actions';
 import { createClient } from '@supabase/supabase-js';
 import { handleCurrencyConversion } from '../lib/currencyConversionService';
+import { PaycrestRateService } from '../lib/paycrestRateService';
 import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
@@ -1626,14 +1627,50 @@ export class BotIntegration {
     );
   }
   
-  // Currency conversion temporarily disabled
   async handleCurrencyRate(chatId: number, query?: string) {
-    await this.bot.sendMessage(chatId, 
-      '⚠️ *Currency Conversion Disabled*\n\n' +
-      'The currency conversion feature is currently unavailable.\n\n' +
-      'Please check back later or contact support if you need assistance.',
-      { parse_mode: 'Markdown' }
-    );
+    try {
+      const paycrestService = new PaycrestRateService();
+      
+      if (!query) {
+        // Show available rates
+        const rates = await paycrestService.getAllRates();
+        const message = paycrestService.formatRatesDisplay(rates);
+        await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        return;
+      }
+
+      // Parse and handle specific rate query
+      const parsedQuery = paycrestService.parseRateQuery(query);
+      if (!parsedQuery) {
+        await this.bot.sendMessage(chatId, 
+          '❓ *Invalid Query*\n\n' +
+          'Please use format like:\n' +
+          '• "USDC to NGN"\n' +
+          '• "1 USDC → KES"\n' +
+          '• "rates" for all rates',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      const rate = await paycrestService.getExchangeRate(parsedQuery.fromCurrency, parsedQuery.toCurrency);
+      const message = paycrestService.formatSingleRateDisplay(
+        parsedQuery.fromCurrency,
+        parsedQuery.toCurrency,
+        rate,
+        parsedQuery.amount
+      );
+      
+      await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+      
+    } catch (error) {
+      console.error('Error handling currency rate:', error);
+      await this.bot.sendMessage(chatId, 
+        '❌ *Rate Fetch Error*\n\n' +
+        'Unable to fetch exchange rates at the moment. Please try again later.',
+        { parse_mode: 'Markdown' }
+      );
+    }
   }
 
   async handleReferralCommand(chatId: number, userId: string) {
