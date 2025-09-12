@@ -388,13 +388,11 @@ export class PaycrestRateService {
     
     for (const token of SUPPORTED_TOKENS) {
       for (const currency of SUPPORTED_CURRENCIES) {
-        if (token !== currency) {
-          try {
-            const rate = await this.getExchangeRate(token, currency);
-            rates[`${token}_${currency}`] = rate;
-          } catch (error) {
-            console.warn(`Failed to get rate for ${token} → ${currency}:`, error);
-          }
+        try {
+          const rate = await this.getExchangeRate(token, currency);
+          rates[`${token}_${currency}`] = rate;
+        } catch (error) {
+          console.warn(`Failed to get rate for ${token} → ${currency}:`, error);
         }
       }
     }
@@ -440,7 +438,7 @@ export class PaycrestRateService {
   /**
    * Parse rate query from user input
    */
-  parseRateQuery(query: string): { fromCurrency: string; toCurrency: string; amount: number } | null {
+  parseRateQuery(query: string): RateQuery | null {
     return parseRateQuery(query);
   }
 

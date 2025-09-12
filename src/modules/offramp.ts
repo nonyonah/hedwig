@@ -773,8 +773,8 @@ export class OfframpModule {
       }
       
       // Get exchange rates from offramp service
-      const exchangeRates = await offrampService.getExchangeRates();
-      const exchangeRate = exchangeRates['USDC'] || 1500; // Fallback rate
+      const exchangeRates = await offrampService.getExchangeRates(state.token!, state.amount!);
+      const exchangeRate = exchangeRates['NGN'] || 1500; // Fallback rate
       const fiatAmount = state.amount! * exchangeRate;
       
       // Call Paycrest API to create payout

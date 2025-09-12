@@ -1653,9 +1653,9 @@ export class BotIntegration {
         return;
       }
 
-      const rate = await paycrestService.getExchangeRate(parsedQuery.fromCurrency, parsedQuery.toCurrency);
+      const rate = await paycrestService.getExchangeRate(parsedQuery.fromToken, parsedQuery.toCurrency);
       const message = paycrestService.formatSingleRateDisplay(
-        parsedQuery.fromCurrency,
+        parsedQuery.fromToken,
         parsedQuery.toCurrency,
         rate,
         parsedQuery.amount
