@@ -371,7 +371,7 @@ export class OfframpModule {
     // KYC is temporarily disabled - skip verification
     await this.bot.sendMessage(
       chatId,
-      '✅ *KYC Verification Temporarily Disabled*\n\n' +
+      '✅ **KYC Verification Temporarily Disabled**\n\n' +
       'KYC verification is currently disabled. You can proceed with your withdrawal.\n\n' +
       'Please specify the amount and token you want to withdraw.',
       {
@@ -441,7 +441,7 @@ export class OfframpModule {
         // Send KYC verification link to user
         await this.bot.sendMessage(
           chatId,
-          '🔐 *KYC Verification Required*\n\n' +
+          '🔐 **KYC Verification Required**\n\n' +
           'Before you can withdraw funds, you need to complete KYC verification.\n\n' +
           `Please complete your verification using this link:\n${response.data.verificationUrl}\n\n` +
           'Once you have completed the verification, click the button below to check your status.',
@@ -536,7 +536,7 @@ export class OfframpModule {
         // KYC verified, proceed to amount collection
         await this.bot.sendMessage(
           chatId,
-          '✅ *KYC Verification Completed*\n\n' +
+          '✅ **KYC Verification Completed**\n\n' +
           'Your identity has been verified successfully. You can now proceed with the withdrawal.\n\n' +
           'Please enter the amount and token you wish to withdraw:\n' +
           'Example: `10 USDC` or `25 USDT`',
@@ -548,7 +548,7 @@ export class OfframpModule {
         // KYC rejected
         await this.bot.sendMessage(
           chatId,
-          '❌ *KYC Verification Rejected*\n\n' +
+          '❌ **KYC Verification Rejected**\n\n' +
           'Unfortunately, your KYC verification was rejected. Please contact support for assistance.',
           { parse_mode: 'Markdown' }
         );
@@ -558,7 +558,7 @@ export class OfframpModule {
         // KYC still pending
         await this.bot.sendMessage(
           chatId,
-          '⏳ *KYC Verification Pending*\n\n' +
+          '⏳ **KYC Verification Pending**\n\n' +
           'Your KYC verification is still being processed. Please check back later.\n\n' +
           'You can check your status again using the button below.',
           {
@@ -636,7 +636,7 @@ export class OfframpModule {
       // Proceed to bank details collection
       await this.bot.sendMessage(
         chatId,
-        '🏦 *Bank Account Details*\n\n' +
+        '🏦 **Bank Account Details**\n\n' +
         `You want to withdraw: **${amount} ${token}**\n\n` +
         'Please provide your bank details in the following format:\n\n' +
         '```' +
@@ -716,11 +716,11 @@ export class OfframpModule {
       // Show confirmation
       await this.bot.sendMessage(
         chatId,
-        '💰 *Transaction Summary*\n\n' +
+        '💰 **Transaction Summary**\n\n' +
         `Amount: ${state.amount} ${state.token}\n` +
         `Exchange Rate: 1 ${state.token} = ${exchangeRate} ${currency}\n` +
         `Estimated Payout: ${currency} ${fiatAmount.toLocaleString()}\n\n` +
-        '*Bank Details:*\n' +
+        '**Bank Details:**\n' +
         `Account Number: ${accountNumber}\n` +
         `Bank Name: ${bankName}\n` +
         `Country: ${country}\n\n` +
@@ -832,7 +832,7 @@ export class OfframpModule {
         // Send confirmation to user
         await this.bot.sendMessage(
           chatId,
-          '✅ *Transaction Initiated*\n\n' +
+          '✅ **Transaction Initiated**\n\n' +
           `Your withdrawal of ${state.amount} ${state.token} has been initiated.\n\n` +
           `Order ID: ${response.data.orderId}\n` +
           `Status: Pending\n\n` +
@@ -931,7 +931,7 @@ export class OfframpModule {
           // Transaction completed
           await this.bot.sendMessage(
             chatId,
-            '🎉 *Transaction Completed*\n\n' +
+            '🎉 **Transaction Completed**\n\n' +
             `Your withdrawal has been successfully processed and the funds have been sent to your bank account.\n\n` +
             `Order ID: ${orderId}\n` +
             'Thank you for using our service!',
@@ -944,7 +944,7 @@ export class OfframpModule {
           // Transaction failed
           await this.bot.sendMessage(
             chatId,
-            '❌ *Transaction Failed*\n\n' +
+            '❌ **Transaction Failed**\n\n' +
             `Unfortunately, your withdrawal could not be processed. Please contact support for assistance.\n\n` +
             `Order ID: ${orderId}`,
             { parse_mode: 'Markdown' }

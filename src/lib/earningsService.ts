@@ -1266,12 +1266,12 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   const timeframeText = timeframe === 'allTime' ? 'all time' : timeframe.replace(/([A-Z])/g, ' $1').toLowerCase();
   const headerEmoji = type === 'earnings' ? '💰' : '💸';
   
-  let response = `${headerEmoji} *${type.charAt(0).toUpperCase() + type.slice(1)} Summary*\n\n`;
+  let response = `${headerEmoji} **${type.charAt(0).toUpperCase() + type.slice(1)} Summary**\n\n`;
   
   // Main summary with fiat value and fun language
   if (totalFiatValue && totalFiatValue > 0) {
     const fiatFormatted = totalFiatValue >= 1000 ? `$${(totalFiatValue/1000).toFixed(1)}k` : `$${totalFiatValue.toFixed(2)}`;
-    response += `You've ${action} *${fiatFormatted} USD* across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. `;
+    response += `You've ${action} **${fiatFormatted} USD** across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. `;
     if (type === 'earnings') {
       response += totalFiatValue > 1000 ? "That's some serious bag building! 💪\n\n" : "Nice work stacking those sats! 📈\n\n";
     } else {
@@ -1299,7 +1299,7 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   });
 
   if (sourceBreakdown.size > 1) {
-    response += `📊 *Payment Sources:*\n`;
+    response += `📊 **Payment Sources:**\n`;
     Array.from(sourceBreakdown.entries())
       .sort((a, b) => b[1].value - a[1].value)
       .forEach(([source, data]) => {
@@ -1312,7 +1312,7 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
         const valueText = data.value > 0 ? ` ($${data.value.toFixed(2)})` : '';
         const tokenCount = data.tokens.size;
         const tokenText = tokenCount > 1 ? ` across ${tokenCount} tokens` : '';
-        response += `${sourceEmoji} *${sourceName}:* ${data.count} payment${data.count > 1 ? 's' : ''}${valueText}${tokenText}\n`;
+        response += `${sourceEmoji} **${sourceName}:** ${data.count} payment${data.count > 1 ? 's' : ''}${valueText}${tokenText}\n`;
       });
     response += '\n';
   }
@@ -1330,7 +1330,7 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
     summary.count += earning.count;
   });
 
-  response += `🪙 *Token Summary:*\n`;
+  response += `🪙 **Token Summary:**\n`;
   Array.from(tokenSummary.entries())
     .sort((a, b) => b[1].fiatValue - a[1].fiatValue)
     .forEach(([token, data], index) => {
@@ -1340,19 +1340,19 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
       const networkCount = data.networks.size;
       const networkText = networkCount > 1 ? ` across ${networkCount} blockchain${networkCount > 1 ? 's' : ''}` : ` on ${Array.from(data.networks)[0]}`;
       
-      response += `${rankEmoji} *${data.total.toFixed(8)} ${token}* ${tokenEmoji}${fiatText}${networkText}\n`;
+      response += `${rankEmoji} **${data.total.toFixed(8)} ${token}** ${tokenEmoji}${fiatText}${networkText}\n`;
       response += `  ${data.count} payment${data.count > 1 ? 's' : ''}\n\n`;
     });
 
   // Detailed breakdown if multiple networks per token
   const multiNetworkTokens = Array.from(tokenSummary.entries()).filter(([_, data]) => data.networks.size > 1);
   if (multiNetworkTokens.length > 0) {
-    response += `⛓️ *Network Breakdown:*\n`;
+    response += `⛓️ **Network Breakdown:**\n`;
     multiNetworkTokens.forEach(([token, _]) => {
       const tokenEarnings = earnings.filter(e => e.token === token);
       tokenEarnings.forEach(earning => {
         const fiatText = earning.fiatValue ? ` ($${earning.fiatValue.toFixed(2)})` : '';
-        response += `• *${earning.total} ${token}* on ${earning.network}${fiatText}\n`;
+        response += `• **${earning.total} ${token}** on ${earning.network}${fiatText}\n`;
       });
     });
     response += '\n';
@@ -1360,25 +1360,25 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
 
   // Add insights if available with fun language
   if (insights) {
-    response += `🔍 *Fun Facts:*\n`;
+    response += `🔍 **Fun Facts:**\n`;
     
     if (insights.largestPayment) {
       const { amount, token, network, fiatValue } = insights.largestPayment;
       const fiatText = fiatValue ? ` ($${fiatValue.toFixed(2)})` : '';
       const bigPaymentEmoji = fiatValue && fiatValue > 1000 ? '🐋' : fiatValue && fiatValue > 100 ? '🦈' : '🐟';
-      response += `${bigPaymentEmoji} Biggest splash: *${amount} ${token}* on ${network}${fiatText}\n`;
+      response += `${bigPaymentEmoji} Biggest splash: **${amount} ${token}** on ${network}${fiatText}\n`;
     }
     
     if (insights.mostActiveNetwork) {
       const { network, count, totalAmount } = insights.mostActiveNetwork;
       const networkEmoji = network.toLowerCase().includes('polygon') ? '🟣' : network.toLowerCase().includes('ethereum') ? '💎' : network.toLowerCase().includes('base') ? '🔵' : '⛓️';
-      response += `${networkEmoji} Network champion: *${network}* (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
+      response += `${networkEmoji} Network champion: **${network}** (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
     }
     
     if (insights.topToken) {
       const { token, percentage } = insights.topToken;
       const tokenEmoji = token === 'USDC' ? '👑' : token === 'ETH' ? '💎' : token === 'USDT' ? '🏆' : '🪙';
-      response += `${tokenEmoji} Token MVP: *${token}* (${percentage}% of portfolio)\n`;
+      response += `${tokenEmoji} Token MVP: **${token}** (${percentage}% of portfolio)\n`;
     }
     
     if (insights.growthComparison) {

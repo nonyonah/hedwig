@@ -66,11 +66,11 @@ export class InvoiceModule {
 
       // Show personalization with user info and edit option
       const personalizationMessage = 
-        `📋 *Invoice from ${userData?.name || 'Unknown User'}*\n\n` +
-        `👤 *Your Information:*\n` +
+        `📋 **Invoice from ${userData?.name || 'Unknown User'}**\n\n` +
+        `👤 **Your Information:**\n` +
         `Name: ${userData?.name || 'Not set'}\n` +
         `Email: ${userData?.email || 'Not set'}\n\n` +
-        `ℹ️ *Note:* A 1% platform fee will be deducted from payments to support our services.\n\n` +
+        `ℹ️ **Note:** A 1% platform fee will be deducted from payments to support our services.\n\n` +
         `Ready to create your professional invoice?`;
 
       await this.bot.sendMessage(chatId, personalizationMessage, {
@@ -206,7 +206,7 @@ export class InvoiceModule {
           console.log(`[InvoiceModule] Processing freelancer_name step with input: ${userInput}`);
           updateData.freelancer_name = userInput.trim();
           nextStep = 'freelancer_email';
-          responseMessage = `✅ Freelancer: ${userInput}\n\n*Step 2/9:* What's your email address?`;
+          responseMessage = `✅ Freelancer: ${userInput}\n\n**Step 2/9:** What's your email address?`;
           break;
 
         case 'freelancer_email':
@@ -217,13 +217,13 @@ export class InvoiceModule {
           }
           updateData.freelancer_email = userInput.trim();
           nextStep = 'client_name';
-          responseMessage = `✅ Email: ${userInput}\n\n*Step 3/9:* What's your client's name?`;
+          responseMessage = `✅ Email: ${userInput}\n\n**Step 3/9:** What's your client's name?`;
           break;
 
         case 'client_name':
           updateData.client_name = userInput.trim();
           nextStep = 'client_email';
-          responseMessage = `✅ Client: ${userInput}\n\n*Step 4/9:* What's your client's email address?`;
+          responseMessage = `✅ Client: ${userInput}\n\n**Step 4/9:** What's your client's email address?`;
           break;
 
         case 'client_email':
@@ -232,13 +232,13 @@ export class InvoiceModule {
           }
           updateData.client_email = userInput.trim();
           nextStep = 'project_description';
-          responseMessage = `✅ Client email: ${userInput}\n\n*Step 5/9:* What's the project description?`;
+          responseMessage = `✅ Client email: ${userInput}\n\n**Step 5/9:** What's the project description?`;
           break;
 
         case 'project_description':
           updateData.project_description = userInput.trim();
           nextStep = 'quantity';
-          responseMessage = `✅ Project: ${userInput}\n\n*Step 6/9:* How many units/hours? (e.g., 1, 5, 10)`;
+          responseMessage = `✅ Project: ${userInput}\n\n**Step 6/9:** How many units/hours? (e.g., 1, 5, 10)`;
           break;
 
         case 'quantity':
@@ -248,7 +248,7 @@ export class InvoiceModule {
           }
           updateData.quantity = quantity;
           nextStep = 'rate';
-          responseMessage = `✅ Quantity: ${quantity}\n\n*Step 7/9:* What's the rate per unit? (e.g., 100, 50.5)`;
+          responseMessage = `✅ Quantity: ${quantity}\n\n**Step 7/9:** What's the rate per unit? (e.g., 100, 50.5)`;
           break;
 
         case 'rate':
@@ -265,7 +265,7 @@ export class InvoiceModule {
           updateData.amount = totalAmount;
           
           nextStep = 'due_date';
-          responseMessage = `✅ Rate: ${rateData.amount} ${rateData.currency} per unit\n✅ Total: ${totalAmount} ${rateData.currency}\n\n*Step 8/9:* When is the payment due? (e.g., 2024-02-15 or "in 30 days")`;
+          responseMessage = `✅ Rate: ${rateData.amount} ${rateData.currency} per unit\n✅ Total: ${totalAmount} ${rateData.currency}\n\n**Step 8/9:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")`;
           break;
 
         case 'due_date':
@@ -277,7 +277,7 @@ export class InvoiceModule {
           }
           updateData.due_date = dueDate;
           nextStep = 'complete';
-          responseMessage = `✅ Due date: ${dueDate}\n\n*Step 9/9:* Creating your invoice...`;
+          responseMessage = `✅ Due date: ${dueDate}\n\n**Step 9/9:** Creating your invoice...`;
           console.log(`[InvoiceModule] Setting nextStep to complete`);
           break;
 
@@ -435,22 +435,22 @@ export class InvoiceModule {
     const freelancerReceives = invoice.amount - platformFee;
     
     return (
-      `📋 *Invoice Preview*\n\n` +
-      `*Invoice #:* ${invoice.invoice_number}\n` +
-      `*From:* ${invoice.freelancer_name} (${invoice.freelancer_email})\n` +
-      `*To:* ${invoice.client_name} (${invoice.client_email})\n` +
-      `*Project:* ${invoice.project_description}\n` +
-      `*Quantity:* ${invoice.quantity}\n` +
-      `*Rate:* ${invoice.rate} ${invoice.currency}\n` +
-      `*Invoice Amount:* ${invoice.amount} ${invoice.currency}\n` +
-      `*Platform Fee (1%):* -${platformFee.toFixed(2)} ${invoice.currency}\n` +
-      `*You'll Receive:* ${freelancerReceives.toFixed(2)} ${invoice.currency}\n` +
-      `*Due Date:* ${invoice.due_date}\n` +
-      `*Status:* ${invoice.status.toUpperCase()}\n\n` +
-      `ℹ️ *Note:* A 1% platform fee is deducted from payments to support our services.\n\n` +
-      `*Payment Methods Available:*\n` +
+      `📋 **Invoice Preview**\n\n` +
+      `**Invoice #:** ${invoice.invoice_number}\n` +
+      `**From:** ${invoice.freelancer_name} (${invoice.freelancer_email})\n` +
+      `**To:** ${invoice.client_name} (${invoice.client_email})\n` +
+      `**Project:** ${invoice.project_description}\n` +
+      `**Quantity:** ${invoice.quantity}\n` +
+      `**Rate:** ${invoice.rate} ${invoice.currency}\n` +
+      `**Invoice Amount:** ${invoice.amount} ${invoice.currency}\n` +
+      `**Platform Fee (1%):** -${platformFee.toFixed(2)} ${invoice.currency}\n` +
+      `**You'll Receive:** ${freelancerReceives.toFixed(2)} ${invoice.currency}\n` +
+      `**Due Date:** ${invoice.due_date}\n` +
+      `**Status:** ${invoice.status.toUpperCase()}\n\n` +
+      `ℹ️ **Note:** A 1% platform fee is deducted from payments to support our services.\n\n` +
+      `**Payment Methods Available:**\n` +
       `💰 USDC (Base Network)\n\n` +
-      `🔗 *Invoice Link:* ${invoiceLink}\n\n` +
+      `🔗 **Invoice Link:** ${invoiceLink}\n\n` +
       `What would you like to do next?`
     );
   }
@@ -671,30 +671,30 @@ export class InvoiceModule {
     
     switch (step) {
       case 'freelancer_name':
-        message = '📋 *Creating Professional Invoice*\n\n' +
-                 'ℹ️ *Note:* A 1% platform fee will be deducted from payments to support our services.\n\n' +
-                 '*Step 1/9:* What\'s your name (freelancer)?';
+        message = '📋 **Creating Professional Invoice**\n\n' +
+        'ℹ️ **Note:** A 1% platform fee will be deducted from payments to support our services.\n\n' +
+        '**Step 1/9:** What\'s your name (freelancer)?';
         break;
       case 'freelancer_email':
-        message = '*Step 2/9:* What\'s your email address?';
+        message = '**Step 2/9:** What\'s your email address?';
         break;
       case 'client_name':
-        message = '*Step 3/9:* What\'s your client\'s name?';
+        message = '**Step 3/9:** What\'s your client\'s name?';
         break;
       case 'client_email':
-        message = '*Step 4/9:* What\'s your client\'s email address?';
+        message = '**Step 4/9:** What\'s your client\'s email address?';
         break;
       case 'project_description':
-        message = '*Step 5/9:* What\'s the project description?';
+        message = '**Step 5/9:** What\'s the project description?';
         break;
       case 'quantity':
-        message = '*Step 6/9:* How many units/hours? (e.g., 1, 5, 10)';
+        message = '**Step 6/9:** How many units/hours? (e.g., 1, 5, 10)';
         break;
       case 'rate':
-        message = '*Step 7/9:* What\'s the rate per unit? (e.g., 100, 50.5)';
+        message = '**Step 7/9:** What\'s the rate per unit? (e.g., 100, 50.5)';
         break;
       case 'due_date':
-        message = '*Step 8/9:* When is the payment due? (e.g., 2024-02-15 or "in 30 days")';
+        message = '**Step 8/9:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")';
         break;
     }
 
@@ -748,8 +748,8 @@ export class InvoiceModule {
         .single();
 
       const message = 
-        `✏️ *Edit Your Information*\n\n` +
-        `👤 *Current Information:*\n` +
+        `✏️ **Edit Your Information**\n\n` +
+      `👤 **Current Information:**\n` +
         `Name: ${userData?.name || 'Not set'}\n` +
         `Email: ${userData?.email || 'Not set'}\n\n` +
         `What would you like to edit?`;
@@ -812,12 +812,12 @@ export class InvoiceModule {
       let message = '';
       if (field === 'name') {
         message = 
-          `📝 *Edit Name*\n\n` +
+          `📝 **Edit Name**\n\n` +
           `Current name: ${userData?.name || 'Not set'}\n\n` +
           `Please send your new name:`;
       } else if (field === 'email') {
         message = 
-          `📧 *Edit Email*\n\n` +
+          `📧 **Edit Email**\n\n` +
           `Current email: ${userData?.email || 'Not set'}\n\n` +
           `Please send your new email address:`;
       }
@@ -882,7 +882,7 @@ export class InvoiceModule {
 
       const updatedMessage = 
         `${message}\n\n` +
-        `📋 *Updated Information:*\n` +
+        `📋 **Updated Information:**\n` +
         `Name: ${userData?.name || 'Not set'}\n` +
         `Email: ${userData?.email || 'Not set'}\n\n` +
         `Ready to create your invoice?`;
@@ -1054,7 +1054,7 @@ export class InvoiceModule {
       }
 
       await this.bot.sendMessage(chatId, 
-        `📝 *Edit Invoice ${invoice.invoice_number}*\n\n` +
+        `📝 **Edit Invoice ${invoice.invoice_number}**\n\n` +
         `Current details:\n` +
         `• Freelancer: ${invoice.freelancer_name}\n` +
         `• Client: ${invoice.client_name}\n` +
@@ -1096,7 +1096,7 @@ export class InvoiceModule {
       }
 
       await this.bot.sendMessage(chatId, 
-        `🗑️ *Delete Invoice*\n\n` +
+        `🗑️ **Delete Invoice**\n\n` +
         `Are you sure you want to delete Invoice ${invoice.invoice_number}?\n` +
         `This action cannot be undone.`,
         {
@@ -1159,24 +1159,24 @@ export class InvoiceModule {
       let message = '';
       switch (field) {
         case 'client':
-          message = `📝 *Edit Client Information*\n\n` +
+          message = `📝 **Edit Client Information**\n\n` +
                    `Current client: ${invoice.client_name} (${invoice.client_email})\n\n` +
                    `Please send the new client name:`;
           break;
         case 'project':
-          message = `📝 *Edit Project Details*\n\n` +
+          message = `📝 **Edit Project Details**\n\n` +
                    `Current project: ${invoice.project_description}\n` +
                    `Current quantity: ${invoice.quantity}\n` +
                    `Current rate: ${invoice.rate}\n\n` +
                    `Please send the new project description:`;
           break;
         case 'amount':
-          message = `📝 *Edit Amount*\n\n` +
+          message = `📝 **Edit Amount**\n\n` +
                    `Current amount: ${invoice.amount} ${invoice.currency}\n\n` +
                    `Please send the new amount (e.g., 100 USD):`;
           break;
         case 'due_date':
-          message = `📝 *Edit Due Date*\n\n` +
+          message = `📝 **Edit Due Date**\n\n` +
                    `Current due date: ${invoice.due_date}\n\n` +
                    `Please send the new due date (e.g., 2024-02-15 or "in 30 days"):`;
           break;

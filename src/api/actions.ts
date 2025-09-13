@@ -848,7 +848,7 @@ export async function handleAction(
             }
           };
         } else {
-          return { text: "💰 *Earnings Summary*\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 *Ways to earn:*\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 *What you'll see:*\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
+          return { text: "💰 **Earnings Summary**\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 **Ways to earn:**\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 **What you'll see:**\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
         }
       } catch (error) {
         console.error('[handleAction] Earnings error:', error);
@@ -879,7 +879,19 @@ export async function handleAction(
 
         // Import earnings service functions dynamically
         const { getEarningsSummary } = await import('../lib/earningsService');
-        const { generateEarningsPDF } = await import('../modules/pdf-generator');
+        const { generateEarningsPDF } = await import('../modules/pdf-generator-earnings');
+        
+        // Get user data for dynamic PDF content
+        const actualUserId = await resolveUserId(userId);
+        let userData: { name: any; telegram_first_name: any; telegram_last_name: any; telegram_username: any; } | null = null;
+        if (actualUserId) {
+          const { data } = await supabase
+            .from('users')
+            .select('name, telegram_first_name, telegram_last_name, telegram_username')
+            .eq('id', actualUserId)
+            .single();
+          userData = data;
+        }
         
         const summary = await getEarningsSummary(filter, true); // Include insights
         if (summary && summary.totalPayments > 0) {
@@ -896,6 +908,12 @@ export async function handleAction(
               largestPayment: summary.insights.largestPayment,
               topToken: summary.insights.topToken,
               motivationalMessage: summary.insights.motivationalMessage
+            } : undefined,
+            userData: userData ? {
+              name: userData.name,
+              telegramFirstName: userData.telegram_first_name,
+              telegramLastName: userData.telegram_last_name,
+              telegramUsername: userData.telegram_username
             } : undefined
           };
 

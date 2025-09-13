@@ -121,10 +121,10 @@ export class USDCPaymentModule {
       const exchangeRate = currency === 'NGN' ? await this.getExchangeRate('NGN', 'USD') : 1;
       
       const message = (
-        `💰 *USDC Payment Options*\n\n` +
-        `*${type.charAt(0).toUpperCase() + type.slice(1)} Amount:* ${amount} ${currency}\n` +
-        `*USDC Equivalent:* ${usdcAmount.toFixed(2)} USDC\n` +
-        (currency === 'NGN' ? `*Exchange Rate:* 1 NGN = ${exchangeRate.toFixed(6)} USD\n\n` : '\n') +
+        `💰 **USDC Payment Options**\n\n` +
+        `**${type.charAt(0).toUpperCase() + type.slice(1)} Amount:** ${amount} ${currency}\n` +
+        `**USDC Equivalent:** ${usdcAmount.toFixed(2)} USDC\n` +
+        (currency === 'NGN' ? `**Exchange Rate:** 1 NGN = ${exchangeRate.toFixed(6)} USD\n\n` : '\n') +
         `Choose your preferred network:`
       );
 
@@ -210,20 +210,20 @@ export class USDCPaymentModule {
     const { platformFee, freelancerReceives } = await this.calculateSmartContractFee(amount);
     
     const message = (
-      `🔵 *Base Network USDC Payment*\n\n` +
-      `*Payment Amount:* ${amount.toFixed(2)} USDC\n` +
-      `*Platform Fee (2%):* ${platformFee.toFixed(2)} USDC\n` +
-      `*Freelancer Receives:* ${freelancerReceives.toFixed(2)} USDC\n\n` +
-      `*Network:* Base\n` +
-      `*Smart Contract:* \`${HEDWIG_PAYMENT_CONFIG.contractAddress}\`\n` +
-      `*Recipient Address:*\n\`${recipientAddress}\`\n\n` +
-      `*Instructions:*\n` +
+      `🔵 **Base Network USDC Payment**\n\n` +
+      `**Payment Amount:** ${amount.toFixed(2)} USDC\n` +
+      `**Platform Fee (2%):** ${platformFee.toFixed(2)} USDC\n` +
+      `**Freelancer Receives:** ${freelancerReceives.toFixed(2)} USDC\n\n` +
+      `**Network:** Base\n` +
+      `**Smart Contract:** \`${HEDWIG_PAYMENT_CONFIG.contractAddress}\`\n` +
+      `**Recipient Address:**\n\`${recipientAddress}\`\n\n` +
+      `**Instructions:**\n` +
       `1. Open your Web3 wallet (MetaMask, Coinbase Wallet, etc.)\n` +
       `2. Switch to Base\n` +
       `3. Use the Hedwig payment interface or send ${amount.toFixed(2)} USDC\n` +
       `4. Payment will be processed through our smart contract\n` +
       `5. Click "Payment Sent" after transaction is confirmed\n\n` +
-      `⚠️ *Important:* Only send USDC on Base. Payment is processed via smart contract with automatic fee deduction.`
+      `⚠️ **Important:** Only send USDC on Base. Payment is processed via smart contract with automatic fee deduction.`
     );
 
     await this.bot.sendMessage(chatId, message, {
@@ -254,16 +254,16 @@ export class USDCPaymentModule {
     type: 'invoice' | 'proposal'
   ) {
     const message = (
-      `🟣 *Solana USDC Payment*\n\n` +
-      `*Amount:* ${amount.toFixed(2)} USDC\n` +
-      `*Network:* Solana Mainnet\n` +
-      `*Token Mint:* \`${SOLANA_USDC_MINT}\`\n` +
-      `*Recipient Address:*\n\`${recipientAddress}\`\n\n` +
-      `*Instructions:*\n` +
+      `🟣 **Solana USDC Payment**\n\n` +
+      `**Amount:** ${amount.toFixed(2)} USDC\n` +
+      `**Network:** Solana Mainnet\n` +
+      `**Token Mint:** \`${SOLANA_USDC_MINT}\`\n` +
+      `**Recipient Address:**\n\`${recipientAddress}\`\n\n` +
+      `**Instructions:**\n` +
       `1. Open your Solana wallet (Phantom, Solflare, etc.)\n` +
       `2. Send ${amount.toFixed(2)} USDC to the address above\n` +
       `3. Click "Payment Sent" after transaction is confirmed\n\n` +
-      `⚠️ *Important:* Only send USDC on Solana. Other tokens will result in loss of funds.`
+      `⚠️ **Important:** Only send USDC on Solana. Other tokens will result in loss of funds.`
     );
 
     await this.bot.sendMessage(chatId, message, {
@@ -310,11 +310,11 @@ export class USDCPaymentModule {
         .insert([paymentRequest]);
 
       const message = (
-        `⏳ *Payment Confirmation Pending*\n\n` +
+        `⏳ **Payment Confirmation Pending**\n\n` +
         `We're monitoring the blockchain for your payment.\n` +
         `You'll receive a confirmation once the transaction is detected.\n\n` +
-        `*Network:* ${network.charAt(0).toUpperCase() + network.slice(1)}\n` +
-        `*Status:* Pending verification\n\n` +
+        `**Network:** ${network.charAt(0).toUpperCase() + network.slice(1)}\n` +
+        `**Status:** Pending verification\n\n` +
         `This usually takes 1-5 minutes.`
       );
 
@@ -383,11 +383,11 @@ export class USDCPaymentModule {
         .eq('id', itemId);
 
       const message = (
-        `✅ *Payment Confirmed!*\n\n` +
+        `✅ **Payment Confirmed!**\n\n` +
         `Your ${type} payment has been successfully confirmed on the Base network.\n\n` +
-        `*Amount:* ${(Number(event.amount) / 1000000).toFixed(2)} USDC\n` +
-        `*Fee:* ${(Number(event.fee) / 1000000).toFixed(2)} USDC\n` +
-        `*Transaction Hash:*\n\`${event.transactionHash}\`\n\n` +
+        `**Amount:** ${(Number(event.amount) / 1000000).toFixed(2)} USDC\n` +
+        `**Fee:** ${(Number(event.fee) / 1000000).toFixed(2)} USDC\n` +
+        `**Transaction Hash:**\n\`${event.transactionHash}\`\n\n` +
         `Thank you for your payment!`
       );
 

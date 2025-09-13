@@ -287,10 +287,10 @@ function setupBotHandlers() {
             
             // Import required functions
             const { getEarningsSummary } = await import('../../lib/earningsService');
-            const { generateEarningsPDF } = await import('../../modules/pdf-generator');
+            const { generateEarningsPDF } = await import('../../modules/pdf-generator-earnings');
             const { createClient } = await import('@supabase/supabase-js');
             
-            // Get user's wallet addresses (both EVM and Solana)
+            // Get user's wallet addresses (both EVM and Solana) and user data
             const supabase = createClient(
               process.env.NEXT_PUBLIC_SUPABASE_URL!,
               process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -300,6 +300,13 @@ function setupBotHandlers() {
               .select('address, chain')
               .eq('user_id', userId)
               .eq('is_active', true);
+            
+            // Get user data for dynamic PDF content
+            const { data: userData } = await supabase
+              .from('users')
+              .select('name, telegram_first_name, telegram_last_name, telegram_username')
+              .eq('id', userId)
+              .single();
             
             if (!wallets || wallets.length === 0) {
               await bot?.sendMessage(chatId, '❌ Your wallet is being set up automatically. Please try again in a moment.');
@@ -367,6 +374,12 @@ function setupBotHandlers() {
                   largestPayment: finalSummary.insights.largestPayment,
                   topToken: finalSummary.insights.topToken,
                   motivationalMessage: finalSummary.insights.motivationalMessage
+                } : undefined,
+                userData: userData ? {
+                  name: userData.name,
+                  telegramFirstName: userData.telegram_first_name,
+                  telegramLastName: userData.telegram_last_name,
+                  telegramUsername: userData.telegram_username
                 } : undefined
               };
               
@@ -608,16 +621,16 @@ async function handleCommand(msg: any) {
         await botIntegration.showWelcomeMessage(chatId, startPayload);
       } else {
         await bot.sendMessage(chatId, 
-          `🦉 *Hi, I'm Hedwig!*\n\n` +
+          `🦉 **Hi, I'm Hedwig!**\n\n` +
           `I'm your AI assistant for crypto payments, freelance and wallet management.\n\n` +
-          `🚀 *What I can help you with:*\n` +
+          `🚀 **What I can help you with:**\n` +
           `• 💰 Check wallet balances\n` +
           `• 💸 Send crypto payments\n` +
           `• 📄 Create professional invoices\n` +
           `• 💳 Generate payment links\n` +
           `• 📊 Track earnings and analytics\n` +
           `• 📋 Manage proposals\n\n` +
-          `💬 *Just ask me naturally!* Try:\n` +
+          `💬 **Just ask me naturally!** Try:\n` +
           `• "Check my balance"\n` +
           `• "Send 10 USDC to 0x123..."\n` +
           `• "Create an invoice for $500"\n` +
@@ -635,9 +648,9 @@ async function handleCommand(msg: any) {
 
     case '/help':
       await bot.sendMessage(chatId, 
-        `🦉 *Hi, I'm Hedwig!*\n\n` +
+        `🦉 **Hi, I'm Hedwig!**\n\n` +
         `I'm your freelance assistant. Here's what I can do:\n\n` +
-        `*Quick Commands:*\n` +
+        `**Quick Commands:**\n` +
         `• /start - Get started with Hedwig\n` +
         `• /balance - Check wallet balances\n` +
         `• /wallet - View wallet addresses\n` +
@@ -647,13 +660,13 @@ async function handleCommand(msg: any) {
         `• /invoice - Create invoices\n` +
         `• /earnings_summary - View earnings summary\n` +
         `• /business_dashboard - Access business dashboard\n\n` +
-        `*Natural Language:*\n` +
+        `**Natural Language:**\n` +
         `You can also chat with me naturally! Try:\n` +
         `• "Send 10 USDC to 0x123..."\n` +
         `• "What's my balance?"\n` +
         `• "Create an invoice for $100"\n` +
         `• "Show my earnings summary"\n\n` +
-        `💡 *Tip:* Use the menu button (☰) for quick access to commands!`,
+        `💡 **Tip:** Use the menu button (☰) for quick access to commands!`,
         { parse_mode: 'Markdown' }
       );
       break;
@@ -811,7 +824,7 @@ async function handleCommand(msg: any) {
       // Redirect to earnings summary for better user experience
       const redirectResponse = await processWithAI('show earnings summary', chatId);
       if (redirectResponse && redirectResponse.trim() !== '' && redirectResponse !== '__NO_MESSAGE__') {
-        await bot.sendMessage(chatId, `📈 *Redirecting to Earnings Summary*\n\n${redirectResponse}`);
+        await bot.sendMessage(chatId, `📈 **Redirecting to Earnings Summary**\n\n${redirectResponse}`);
       }
       break;
 

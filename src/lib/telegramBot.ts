@@ -625,22 +625,22 @@ Just send me a message and I'll help you out!`;
    * Send help message
    */
   private async sendHelpMessage(chatId: number): Promise<void> {
-    const helpText = `🤖 *Hedwig AI Assistant Help*
+    const helpText = `🤖 **Hedwig AI Assistant Help**
 
-*Available Commands:*
+**Available Commands:**
 /start - Start the bot
 /help - Show this help message
 /about - About Hedwig
 /menu - Show quick action menu
 
-*What I can do:*
+**What I can do:**
 • Create professional invoices
 • Track your payments and earnings
 • Provide payment summaries
 • Help with token swaps
 • Answer questions about your business
 
-*How to use:*
+**How to use:**
 Just type your request in natural language, like:
 - "Create an invoice for $500"
 - "Show me my earnings this month"
@@ -656,7 +656,7 @@ Feel free to ask me anything! 💬`;
    * Send about message
    */
   private async sendAboutMessage(chatId: number): Promise<void> {
-    const aboutText = `ℹ️ *About Hedwig*
+    const aboutText = `ℹ️ **About Hedwig**
 
 Hedwig is an AI-powered assistant for freelancers and businesses, helping you manage:
 
@@ -678,7 +678,7 @@ Powered by: node-telegram-bot-api`;
    * Send menu with quick actions
    */
   private async sendMenuMessage(chatId: number): Promise<void> {
-    const menuText = `📋 *Quick Actions Menu*
+    const menuText = `📋 **Quick Actions Menu**
 
 Choose an action below:`;
 

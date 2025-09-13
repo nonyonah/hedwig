@@ -54,7 +54,7 @@ export class BotIntegration {
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
-          `💡 *No wallets found*\n\nYou need a wallet to view earnings. Create one first!`,
+          `💡 **No wallets found**\n\nYou need a wallet to view earnings. Create one first!`,
           { 
             parse_mode: 'Markdown',
             reply_markup: {
@@ -91,7 +91,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error fetching earnings summary:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ *Error fetching earnings summary*\n\nPlease try again later.`,
+        `❌ **Error fetching earnings summary**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -101,7 +101,7 @@ export class BotIntegration {
     try {
       // Send "checking balance" message
       await this.bot.sendMessage(chatId, 
-        `💰 *Checking your wallet balances...*\n\n` +
+        `💰 **Checking your wallet balances...**\n\n` +
         `Please wait while I fetch your current balances.`,
         { parse_mode: 'Markdown' }
       );
@@ -121,7 +121,7 @@ export class BotIntegration {
         } else {
           // User doesn't exist yet, show wallet creation prompt
           await this.bot.sendMessage(chatId, 
-        `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+        `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
         {
           parse_mode: 'Markdown'
         }
@@ -139,7 +139,7 @@ export class BotIntegration {
       if (error) {
         console.error('[BotIntegration] Error fetching wallets:', error);
         await this.bot.sendMessage(chatId, 
-          `❌ *Failed to fetch wallet information*\n\nPlease try again later.`,
+          `❌ **Failed to fetch wallet information**\n\nPlease try again later.`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -147,7 +147,7 @@ export class BotIntegration {
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
-          `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
           {
             parse_mode: 'Markdown'
           }
@@ -156,17 +156,17 @@ export class BotIntegration {
       }
 
       // Display wallet balances
-      let balanceMessage = `💰 *Your Wallet Balances*\n\n`;
+      let balanceMessage = `💰 **Your Wallet Balances**\n\n`;
       
       for (const wallet of wallets) {
         try {
           const balance = await this.getWalletBalance(wallet.address, wallet.chain);
-          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} *${wallet.chain.toUpperCase()} Wallet:*\n`;
+          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} **${wallet.chain.toUpperCase()} Wallet:**\n`;
           balanceMessage += `Address: \`${wallet.address}\`\n`;
           balanceMessage += `Balance: ${balance}\n\n`;
         } catch (error) {
           console.error(`[BotIntegration] Error fetching balance for ${wallet.chain} wallet:`, error);
-          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} *${wallet.chain.toUpperCase()} Wallet:*\n`;
+          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} **${wallet.chain.toUpperCase()} Wallet:**\n`;
           balanceMessage += `Address: \`${wallet.address}\`\n`;
           balanceMessage += `Balance: Error fetching balance\n\n`;
         }
@@ -185,7 +185,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error checking balance:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ *Error checking balance*\n\nPlease try again later.`,
+        `❌ **Error checking balance**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -196,7 +196,7 @@ export class BotIntegration {
     try {
       // Send "fetching wallet info" message
       await this.bot.sendMessage(chatId, 
-        `👛 *Fetching your wallet information...*\n\n` +
+        `👛 **Fetching your wallet information...**\n\n` +
         `Please wait while I retrieve your wallet addresses.`,
         { parse_mode: 'Markdown' }
       );
@@ -216,7 +216,7 @@ export class BotIntegration {
         } else {
           // User doesn't exist yet, show wallet creation prompt
           await this.bot.sendMessage(chatId, 
-          `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
           {
             parse_mode: 'Markdown'
           }
@@ -234,7 +234,7 @@ export class BotIntegration {
       if (error) {
         console.error('[BotIntegration] Error fetching wallets:', error);
         await this.bot.sendMessage(chatId, 
-          `❌ *Failed to fetch wallet information*\n\nPlease try again later.`,
+          `❌ **Failed to fetch wallet information**\n\nPlease try again later.`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -242,7 +242,7 @@ export class BotIntegration {
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
-          `💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
           {
             parse_mode: 'Markdown'
           }
@@ -251,14 +251,14 @@ export class BotIntegration {
       }
 
       // Display wallet addresses
-      let walletMessage = `👛 *Your Wallet Addresses*\n\n`;
+      let walletMessage = `👛 **Your Wallet Addresses**\n\n`;
       
       for (const wallet of wallets) {
-        walletMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} *${wallet.chain.toUpperCase()} Wallet:*\n`;
+        walletMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} **${wallet.chain.toUpperCase()} Wallet:**\n`;
         walletMessage += `\`${wallet.address}\`\n\n`;
       }
       
-      walletMessage += `💡 *Tip:* You can use these addresses to receive crypto payments!`;
+      walletMessage += `💡 **Tip:** You can use these addresses to receive crypto payments!`;
       
       await this.bot.sendMessage(chatId, walletMessage, {
         parse_mode: 'Markdown',
@@ -273,7 +273,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error viewing wallet:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ *Error fetching wallet information*\n\nPlease try again later.`,
+        `❌ **Error fetching wallet information**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -359,7 +359,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error fetching earnings with wallet:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ *Error fetching earnings*\n\nPlease try again later.`,
+        `❌ **Error fetching earnings**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -370,7 +370,7 @@ export class BotIntegration {
     try {
       // Send "wallet being created" message
       await this.bot.sendMessage(chatId, 
-        `🏦 *Creating your wallet...*\n\n` +
+        `🏦 **Creating your wallet...**\n\n` +
         `Please wait while I set up your new crypto wallet.`,
         { parse_mode: 'Markdown' }
       );
@@ -424,7 +424,7 @@ export class BotIntegration {
         });
       } else {
         await this.bot.sendMessage(chatId, 
-          `❌ *Wallet creation failed*\n\n${result?.text || 'Unknown error'}`,
+          `❌ **Wallet creation failed**\n\n${result?.text || 'Unknown error'}`,
           { parse_mode: 'Markdown' }
         );
       }
@@ -432,7 +432,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error creating wallet:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ *Error creating wallet*\n\nPlease try again later.`,
+        `❌ **Error creating wallet**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -459,7 +459,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error processing with AI:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ *Error processing your request*\n\nPlease try again later.`,
+        `❌ **Error processing your request**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -545,7 +545,7 @@ export class BotIntegration {
   // Handle business dashboard
   async handleBusinessDashboard(chatId: number) {
     const message = (
-      `📊 *Business Dashboard*\n\n` +
+      `📊 **Business Dashboard**\n\n` +
       `Manage your invoices, proposals, and payments from here.\n\n` +
       `What would you like to do?`
     );
@@ -584,20 +584,20 @@ export class BotIntegration {
 
       if (!invoices || invoices.length === 0) {
         await this.bot.sendMessage(chatId, 
-          '📄 *No invoices found*\n\nYou haven\'t created any invoices yet. Use the "Invoice" button to create your first invoice!',
+          '📄 **No invoices found**\n\nYou haven\'t created any invoices yet. Use the "Invoice" button to create your first invoice!',
           { parse_mode: 'Markdown' }
         );
         return;
       }
 
-      let message = '📄 *Your Recent Invoices*\n\n';
+      let message = '📄 **Your Recent Invoices**\n\n';
       const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
 
       for (const invoice of invoices) {
         const status = this.getStatusEmoji(invoice.status);
         const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency || 'USD' }).format(invoice.total_amount);
         
-        let invoiceMessage = `${status} *${invoice.invoice_number}* - ${amount}\n`;
+        let invoiceMessage = `${status} **${invoice.invoice_number}** - ${amount}\n`;
         invoiceMessage += `   📧 Client: ${invoice.client_name}`;
         if (invoice.client_email) {
           invoiceMessage += ` (${invoice.client_email})`;
@@ -667,20 +667,20 @@ export class BotIntegration {
 
       if (!proposals || proposals.length === 0) {
         await this.bot.sendMessage(chatId, 
-          '📋 *No proposals found*\n\nYou haven\'t created any proposals yet. Use the "Proposal" button to create your first proposal!',
+          '📋 **No proposals found**\n\nYou haven\'t created any proposals yet. Use the "Proposal" button to create your first proposal!',
           { parse_mode: 'Markdown' }
         );
         return;
       }
 
-      let message = '📋 *Your Recent Proposals*\n\n';
+      let message = '📋 **Your Recent Proposals**\n\n';
       const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
 
       for (const proposal of proposals) {
         const status = this.getStatusEmoji(proposal.status);
         const createdDate = new Date(proposal.created_at).toLocaleDateString();
         
-        message += `${status} *${proposal.proposal_number}*\n`;
+        message += `${status} **${proposal.proposal_number}**\n`;
         message += `   📧 Client: ${proposal.client_name}`;
         if (proposal.client_email) {
           message += ` (${proposal.client_email})`;
@@ -740,20 +740,20 @@ export class BotIntegration {
 
       if (!paymentLinks || paymentLinks.length === 0) {
         await this.bot.sendMessage(chatId, 
-          '🔗 *No payment links found*\n\nYou haven\'t created any payment links yet. Use the "Payment Link" button to create your first payment link!',
+          '🔗 **No payment links found**\n\nYou haven\'t created any payment links yet. Use the "Payment Link" button to create your first payment link!',
           { parse_mode: 'Markdown' }
         );
         return;
       }
 
-      let message = '🔗 *Your Recent Payment Links*\n\n';
+      let message = '🔗 **Your Recent Payment Links**\n\n';
       const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
 
       for (const link of paymentLinks) {
         const status = this.getStatusEmoji(link.status || 'pending');
         const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: link.currency || 'USD' }).format(link.amount);
         
-        let linkMessage = `${status} *${link.title || 'Payment Link'}* - ${amount}\n`;
+        let linkMessage = `${status} **${link.title || 'Payment Link'}** - ${amount}\n`;
         linkMessage += `   Description: ${link.description || 'No description'}\n`;
         linkMessage += `   Created: ${new Date(link.created_at).toLocaleDateString()}`;
 
@@ -835,7 +835,7 @@ export class BotIntegration {
       }
 
       await this.bot.sendMessage(chatId, 
-        `✅ *Payment link deleted successfully*\n\nThe payment link "${paymentLink.description || 'Untitled'}" has been removed.`,
+        `✅ **Payment link deleted successfully**\n\nThe payment link "${paymentLink.description || 'Untitled'}" has been removed.`,
         { parse_mode: 'Markdown' }
       );
 
@@ -870,15 +870,15 @@ export class BotIntegration {
       const stats = await getBusinessStats(actualUserId);
 
       const message = (
-        `💰 *Payment Statistics*\n\n` +
-        `📄 *Invoices:*\n` +
+        `💰 **Payment Statistics**\n\n` +
+        `📄 **Invoices:**\n` +
         `   Total: ${stats.invoices.total}\n` +
         `   Paid: ${stats.invoices.paid}\n` +
         `   Pending: ${stats.invoices.pending}\n` +
         `   Draft: ${stats.invoices.draft}\n` +
         `   Overdue: ${stats.invoices.overdue}\n` +
         `   Revenue: $${stats.invoices.revenue.toFixed(2)}\n\n` +
-        `📋 *Proposals:*\n` +
+        `📋 **Proposals:**\n` +
         `   Total: ${stats.proposals.total}\n` +
         `   Accepted: ${stats.proposals.accepted}\n` +
         `   Pending: ${stats.proposals.pending}\n` +
@@ -886,14 +886,14 @@ export class BotIntegration {
         `   Rejected: ${stats.proposals.rejected}\n` +
         `   Total Value: $${stats.proposals.value.toFixed(2)}\n` +
         `   Revenue: $${stats.proposals.revenue.toFixed(2)}\n\n` +
-        `🔗 *Payment Links:*\n` +
+        `🔗 **Payment Links:**\n` +
         `   Total: ${stats.paymentLinks.total}\n` +
         `   Paid: ${stats.paymentLinks.paid}\n` +
         `   Pending: ${stats.paymentLinks.pending}\n` +
         `   Draft: ${stats.paymentLinks.draft}\n` +
         `   Expired: ${stats.paymentLinks.expired}\n` +
         `   Revenue: $${stats.paymentLinks.revenue.toFixed(2)}\n\n` +
-        `💵 *Total Revenue: $${stats.totalRevenue.toFixed(2)}*`
+        `💵 **Total Revenue: $${stats.totalRevenue.toFixed(2)}**`
       );
 
       await this.bot.sendMessage(chatId, message, {
@@ -1074,7 +1074,7 @@ export class BotIntegration {
   // Handle business settings
   async handleBusinessSettings(chatId: number) {
     const message = (
-      `⚙️ *Business Settings*\n\n` +
+      `⚙️ **Business Settings**\n\n` +
       `Configure your business preferences and payment settings.`
     );
 
@@ -1144,7 +1144,7 @@ export class BotIntegration {
 
       // Send email request message
       await this.bot.sendMessage(chatId,
-        `📧 *Email Setup Required*\n\n` +
+        `📧 **Email Setup Required**\n\n` +
         `Hi ${userName}! To get the most out of Hedwig, please provide your email address.\n\n` +
         `This will allow you to:\n` +
         `• Receive invoice notifications\n` +
@@ -1203,7 +1203,7 @@ export class BotIntegration {
 
        // Send confirmation message
        await this.bot.sendMessage(chatId,
-         `✅ *Email Saved Successfully!*\n\n` +
+         `✅ **Email Saved Successfully!**\n\n` +
          `Your email address \`${email}\` has been saved.\n\n` +
          `You'll now receive:\n` +
          `• Invoice notifications\n` +
@@ -1315,7 +1315,7 @@ export class BotIntegration {
 
         // Send confirmation message
         await this.bot.sendMessage(chatId,
-          `✅ *Name Saved Successfully!*\n\n` +
+          `✅ **Name Saved Successfully!**\n\n` +
           `Hello ${name}! Your name has been saved.\n\n` +
           `This will be used for:\n` +
           `• Invoice creation\n` +
@@ -1406,7 +1406,7 @@ export class BotIntegration {
           `${greeting} 👋\n\n` +
           `To use advanced features like invoices and proposals, I need to know your full name.\n\n` +
           `This will be used for professional communications and invoice creation.\n\n` +
-          `*Please enter your full name:*`,
+          `**Please enter your full name:**`,
           { parse_mode: 'Markdown' }
         );
       } catch (error) {
@@ -1482,7 +1482,7 @@ export class BotIntegration {
         if (wallets && wallets.length > 0) {
           const userName = user.name || user.telegram_first_name || 'there';
           await this.bot.sendMessage(chatId,
-            `📧 *Email Required*\n\n` +
+            `📧 **Email Required**\n\n` +
             `Hi ${userName}! To use this feature, please provide your email address first.\n\n` +
             `This helps us:\n` +
             `• Send you important notifications\n` +
@@ -1516,7 +1516,7 @@ export class BotIntegration {
   // Handle send crypto
   async handleSendCrypto(chatId: number, userId: string) {
     await this.bot.sendMessage(chatId, 
-      `💸 *Send Crypto*\n\n` +
+      `💸 **Send Crypto**\n\n` +
       `To send cryptocurrency, you can:\n\n` +
       `• Type naturally: "Send 10 USDC to alice@example.com"\n` +
       `• Use the format: "Send [amount] [token] to [recipient]"\n\n` +
@@ -1559,12 +1559,12 @@ export class BotIntegration {
   // --- Payment Link Creation Handler ---
   async handlePaymentLink(chatId: number, userId: string) {
     await this.bot.sendMessage(chatId, 
-      `🔗 *Create Payment Link*\n\n` +
+      `🔗 **Create Payment Link**\n\n` +
       `To create a payment link, you can:\n\n` +
       `• Type: "Create payment link for $50"\n` +
       `• Or: "Payment link for 25 USDC for web design"\n\n` +
       `I'll help you create a shareable payment link that others can use to pay you directly.\n\n` +
-      `💰 *Platform Fee Notice:*\n` +
+      `💰 **Platform Fee Notice:**\n` +
       `A 1% platform fee will be automatically deducted from all payments to support our services and maintain the platform.`,
       {
         parse_mode: 'Markdown'
@@ -1601,7 +1601,7 @@ export class BotIntegration {
   // Handle help
   async handleHelp(chatId: number) {
     await this.bot.sendMessage(chatId, 
-      `❓ *Help & Support*\n\n` +
+      `❓ **Help & Support**\n\n` +
       `Here's what I can help you with:\n\n` +
       `💰 **Wallet Management**\n` +
       `• Check your balance\n` +
@@ -1610,7 +1610,8 @@ export class BotIntegration {
       `💸 **Transactions**\n` +
       `• Send crypto to anyone\n` +
       `• Create payment links\n` +
-      `• Generate invoices\n\n` +
+      `• Generate invoices\n` +
+      `• Offramp (cash out crypto)\n\n` +
       `📊 **Business Tools**\n` +
       `• Create proposals\n` +
       `• Track payments\n` +
@@ -1643,7 +1644,7 @@ export class BotIntegration {
       const parsedQuery = paycrestService.parseRateQuery(query);
       if (!parsedQuery) {
         await this.bot.sendMessage(chatId, 
-          '❓ *Invalid Query*\n\n' +
+          '❓ **Invalid Query**\n\n' +
           'Please use format like:\n' +
           '• "USDC to NGN"\n' +
           '• "1 USDC → KES"\n' +
@@ -1666,7 +1667,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('Error handling currency rate:', error);
       await this.bot.sendMessage(chatId, 
-        '❌ *Rate Fetch Error*\n\n' +
+        '❌ **Rate Fetch Error**\n\n' +
         'Unable to fetch exchange rates at the moment. Please try again later.',
         { parse_mode: 'Markdown' }
       );
@@ -1686,15 +1687,15 @@ export class BotIntegration {
       const referralLink = `https://t.me/HedwigAssistBot?start=ref_${userId}`;
       
       let message = 
-        `🔗 *Your Referral Link:*\n` +
+        `🔗 **Your Referral Link:**\n` +
         `\`${referralLink}\`\n\n` +
-        `📊 *Your Stats:*\n` +
+        `📊 **Your Stats:**\n` +
         `👥 Referrals: ${stats?.referral_count || 0}\n` +
         `🎯 Points: ${stats?.points || 0}\n\n`;
       
       // Add badges section if user has any
       if (badges && badges.length > 0) {
-        message += `🏅 *Your Badges:*\n`;
+        message += `🏅 **Your Badges:**\n`;
         badges.forEach(userBadge => {
           const badge = userBadge.badge;
           message += `${badge.emoji} ${badge.name}\n`;
@@ -1703,13 +1704,13 @@ export class BotIntegration {
       }
       
       message += 
-        `💡 *How to earn points:*\n` +
+        `💡 **How to earn points:**\n` +
         `• Refer friends: +10 points\n` +
         `• First invoice: +10 points\n` +
         `• First proposal: +5 points\n` +
         `• First payment link: +5 points\n` +
         `• First offramp: +15 points\n\n` +
-        `🎯 *Monthly Contest:*\n` +
+        `🎯 **Monthly Contest:**\n` +
         `Compete for badges and recognition!`;
       
       await this.bot.sendMessage(chatId, message, { 
@@ -1737,11 +1738,11 @@ export class BotIntegration {
       
       const leaderboard = await getMonthlyLeaderboard();
       
-      let message = `🏆 *Hedwig Referral Leaderboard* 🏆\n📅 *${periodText} Contest*\n\n`;
+      let message = `🏆 **Hedwig Referral Leaderboard** 🏆\n📅 **${periodText} Contest**\n\n`;
       
       if (leaderboard.length === 0) {
         message += `No referral data yet. Be the first to start referring! 🚀\n\n`;
-        message += `💡 *How to earn points:*\n`;
+        message += `💡 **How to earn points:**\n`;
         message += `• Refer friends: 10 pts per referral\n`;
         message += `• First invoice: 10 pts\n`;
         message += `• First proposal: 5 pts\n`;
@@ -1763,12 +1764,12 @@ export class BotIntegration {
           message += `${emoji} ${username}${badgeText} – ${entry.points} pts (${entry.referral_count} refs)\n`;
         });
         
-        message += `\n🎯 *Monthly Prizes:*\n`;
+        message += `\n🎯 **Monthly Prizes:**\n`;
         message += `🥇 Top Referrer of the Month\n`;
         message += `🥈 Silver Referrer\n`;
         message += `🥉 Bronze Referrer\n`;
         message += `⭐ Rising Star (Top 10)\n\n`;
-        message += `💎 *Milestone Badges:*\n`;
+        message += `💎 **Milestone Badges:**\n`;
         message += `🎯 First Referral\n`;
         message += `👑 Referral Master (10 refs)\n`;
         message += `💎 Point Collector (100 pts)\n`;
@@ -1849,7 +1850,7 @@ export class BotIntegration {
         
         // Show personalized welcome message for returning users
         await this.bot.sendMessage(chatId, 
-          `🦉 *Welcome back, ${userName}!*\n\n` +
+          `🦉 **Welcome back, ${userName}!**\n\n` +
           `Great to see you again! I'm here to help with all your crypto and freelance needs.\n\n` +
           `Choose an option below or chat with me naturally!`,
           {
@@ -1868,7 +1869,7 @@ export class BotIntegration {
   // Show main menu
   async showMainMenu(chatId: number) {
     await this.bot.sendMessage(chatId, 
-      `🦉 *Welcome to Hedwig!*\n\n` +
+      `🦉 **Welcome to Hedwig!**\n\n` +
       `I'm your freelance assistant for crypto payments.\n\n` +
       `Choose an option below or chat with me naturally!`,
       {
@@ -2002,7 +2003,7 @@ export class BotIntegration {
           
           // Import required functions
           const { getEarningsSummary } = await import('../lib/earningsService');
-          const { generateEarningsPDF } = await import('../modules/pdf-generator');
+          const { generateEarningsPDF } = await import('../modules/pdf-generator-earnings');
           const { createClient } = await import('@supabase/supabase-js');
           
           // Get user's wallet addresses (both EVM and Solana)
@@ -2016,8 +2017,15 @@ export class BotIntegration {
             .eq('user_id', userId)
             .limit(1);
           
+          // Get user data for dynamic PDF content
+          const { data: userData } = await supabase
+            .from('users')
+            .select('name, telegram_first_name, telegram_last_name, telegram_username')
+            .eq('id', userId)
+            .single();
+          
           if (!wallets || wallets.length === 0) {
-            await this.bot.sendMessage(chatId, '💡 *Setting up your wallets*\n\nYour wallets are being created automatically. Please try again in a moment!', {
+            await this.bot.sendMessage(chatId, '💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!', {
         parse_mode: 'Markdown'
       });
             await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -2049,6 +2057,12 @@ export class BotIntegration {
                 largestPayment: summary.insights.largestPayment,
                 topToken: summary.insights.topToken,
                 motivationalMessage: summary.insights.motivationalMessage
+              } : undefined,
+              userData: userData ? {
+                name: userData.name,
+                telegramFirstName: userData.telegram_first_name,
+                telegramLastName: userData.telegram_last_name,
+                telegramUsername: userData.telegram_username
               } : undefined
             };
             
@@ -2409,6 +2423,11 @@ export class BotIntegration {
                 return true;
               } else if (intent === 'leaderboard') {
                 await this.handleLeaderboardCommand(message.chat.id);
+                return true;
+              } else if (intent === 'conversation') {
+                // Handle conversational responses naturally
+                const conversationalMessage = params.message || "Thanks for chatting with me! How can I help you today? 😊";
+                await this.bot.sendMessage(message.chat.id, conversationalMessage);
                 return true;
               }
               if (intent === 'get_price') {

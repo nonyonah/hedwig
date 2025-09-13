@@ -81,8 +81,8 @@ export class ProposalModule {
 
       // Show personalization with user info and edit option
       const personalizationMessage = 
-        `📋 *Proposal from ${userData?.name || 'Unknown User'}*\n\n` +
-        `👤 *Your Information:*\n` +
+        `📋 **Proposal from ${userData?.name || 'Unknown User'}**\n\n` +
+        `👤 **Your Information:**\n` +
         `Name: ${userData?.name || 'Not set'}\n` +
         `Email: ${userData?.email || 'Not set'}\n\n` +
         `This information will be used in your proposal. Would you like to edit it or continue?`;
@@ -143,10 +143,10 @@ export class ProposalModule {
 
       // Start the creation flow with client information
       await this.bot.sendMessage(chatId, 
-        `📋 *Creating New Proposal ${proposal.proposal_number}*\n\n` +
+        `📋 **Creating New Proposal ${proposal.proposal_number}**\n\n` +
         `Let's create a personalized, professional proposal for your client.\n\n` +
         `This will generate a natural language proposal that invites discussion and negotiation.\n\n` +
-        `*Step 1/9:* Who is the client? (Enter their name)`,
+        `**Step 1/9:** Who is the client? (Enter their name)`,
         { 
           parse_mode: 'Markdown',
           reply_markup: {
@@ -188,7 +188,7 @@ export class ProposalModule {
         case 'client_name':
           updateData.client_name = userInput.trim();
           nextStep = 'client_company';
-          responseMessage = `✅ Client name: ${userInput}\n\n*Step 2/9:* What's the client's company name? (Type "skip" if individual client)`;
+          responseMessage = `✅ Client name: ${userInput}\n\n**Step 2/9:** What's the client's company name? (Type "skip" if individual client)`;
           break;
 
         case 'client_company':
@@ -196,7 +196,7 @@ export class ProposalModule {
             updateData.client_company = userInput.trim();
           }
           nextStep = 'client_industry';
-          responseMessage = `✅ Company info saved\n\n*Step 3/9:* What industry is the client in? (e.g., "E-commerce", "Healthcare", "Education", or "skip")`;
+          responseMessage = `✅ Company info saved\n\n**Step 3/9:** What industry is the client in? (e.g., "E-commerce", "Healthcare", "Education", or "skip")`;
           break;
 
         case 'client_industry':
@@ -204,7 +204,7 @@ export class ProposalModule {
             updateData.client_industry = userInput.trim();
           }
           nextStep = 'client_email';
-          responseMessage = `✅ Industry info saved\n\n*Step 4/9:* What's the client's email address?`;
+          responseMessage = `✅ Industry info saved\n\n**Step 4/9:** What's the client's email address?`;
           break;
 
         case 'client_email':
@@ -213,19 +213,19 @@ export class ProposalModule {
           }
           updateData.client_email = userInput.trim();
           nextStep = 'project_description';
-          responseMessage = `✅ Client email: ${userInput}\n\n*Step 5/9:* What's the project title? (e.g., "Website Redesign" or "Mobile App Development")`;
+          responseMessage = `✅ Client email: ${userInput}\n\n**Step 5/9:** What's the project title? (e.g., "Website Redesign" or "Mobile App Development")`;
           break;
 
         case 'project_description':
           updateData.project_description = userInput.trim();
           nextStep = 'scope_of_work';
-          responseMessage = `✅ Project title saved\n\n*Step 6/9:* What are the deliverables? (List what you'll provide, separated by commas)`;
+          responseMessage = `✅ Project title saved\n\n**Step 6/9:** What are the deliverables? (List what you'll provide, separated by commas)`;
           break;
 
         case 'scope_of_work':
           updateData.scope_of_work = userInput.trim();
           nextStep = 'project_complexity';
-          responseMessage = `✅ Deliverables saved\n\n*Step 7/9:* How would you rate the project complexity?\n\n🟢 Type "simple" - Basic tasks, straightforward requirements\n🟡 Type "moderate" - Standard complexity, some challenges\n🔴 Type "complex" - Advanced requirements, significant challenges`;
+          responseMessage = `✅ Deliverables saved\n\n**Step 7/9:** How would you rate the project complexity?\n\n🟢 Type "simple" - Basic tasks, straightforward requirements\n🟡 Type "moderate" - Standard complexity, some challenges\n🔴 Type "complex" - Advanced requirements, significant challenges`;
           break;
 
         case 'project_complexity':
@@ -235,13 +235,13 @@ export class ProposalModule {
           }
           updateData.project_complexity = complexity as 'simple' | 'moderate' | 'complex';
           nextStep = 'timeline';
-          responseMessage = `✅ Complexity set to ${complexity}\n\n*Step 8/9:* What's the timeline? (e.g., "2 weeks", "1 month", "by March 15th")`;
+          responseMessage = `✅ Complexity set to ${complexity}\n\n**Step 8/9:** What's the timeline? (e.g., "2 weeks", "1 month", "by March 15th")`;
           break;
 
         case 'timeline':
           updateData.timeline = userInput.trim();
           nextStep = 'amount';
-          responseMessage = `✅ Timeline saved\n\n*Step 9/9:* What's the budget? (e.g., 1500 USD or 600000 NGN)`;
+          responseMessage = `✅ Timeline saved\n\n**Step 9/9:** What's the budget? (e.g., 1500 USD or 600000 NGN)`;
           break;
 
         case 'amount':
@@ -443,7 +443,7 @@ export class ProposalModule {
 
       // Send success message with invoice preview
       const previewMessage = 
-        `✅ *Invoice Generated Successfully!*\n\n` +
+        `✅ **Invoice Generated Successfully!**\n\n` +
         `📄 **Invoice ${invoice.invoice_number}**\n` +
         `🔗 Linked to Proposal ${proposal.proposal_number}\n\n` +
         `**Details:**\n` +
@@ -792,7 +792,7 @@ export class ProposalModule {
       if (!proposal) throw new Error('Proposal not found');
 
       await this.bot.sendMessage(chatId, 
-        `✏️ *Edit Proposal ${proposal.proposal_number}*\n\n` +
+        `✏️ **Edit Proposal ${proposal.proposal_number}**\n\n` +
         `What would you like to edit?`,
         {
           parse_mode: 'Markdown',
@@ -831,7 +831,7 @@ export class ProposalModule {
       if (!proposal) throw new Error('Proposal not found');
 
       await this.bot.sendMessage(chatId, 
-        `🗑️ *Delete Proposal ${proposal.proposal_number}*\n\n` +
+        `🗑️ **Delete Proposal ${proposal.proposal_number}**\n\n` +
         `Are you sure you want to delete this proposal?\n` +
         `This action cannot be undone.`,
         {
@@ -940,7 +940,7 @@ export class ProposalModule {
   // Start editing client info
   private async startEditClientInfo(chatId: number, proposalId: string) {
     await this.bot.sendMessage(chatId, 
-      '👤 *Edit Client Information*\n\n' +
+      '👤 **Edit Client Information**\n\n' +
       'What would you like to update?',
       {
         parse_mode: 'Markdown',
@@ -962,7 +962,7 @@ export class ProposalModule {
   // Start editing project details
   private async startEditProjectDetails(chatId: number, proposalId: string) {
     await this.bot.sendMessage(chatId, 
-      '📋 *Edit Project Details*\n\n' +
+      '📋 **Edit Project Details**\n\n' +
       'What would you like to update?',
       {
         parse_mode: 'Markdown',
@@ -984,7 +984,7 @@ export class ProposalModule {
   // Start editing amount
   private async startEditAmount(chatId: number, proposalId: string) {
     await this.bot.sendMessage(chatId, 
-      '💰 *Edit Amount*\n\n' +
+      '💰 **Edit Amount**\n\n' +
       'Please enter the new total rate amount:\n' +
       '(e.g., 1500 USD or 600000 NGN)',
       {
@@ -1010,7 +1010,7 @@ export class ProposalModule {
   // Start editing timeline
   private async startEditTimeline(chatId: number, proposalId: string) {
     await this.bot.sendMessage(chatId, 
-      '⏰ *Edit Timeline*\n\n' +
+      '⏰ **Edit Timeline**\n\n' +
       'Please enter the new project timeline:\n' +
       '(e.g., "2-3 weeks" or "30 days")',
       {
@@ -1121,15 +1121,15 @@ export class ProposalModule {
 
   private async sendStepPrompt(chatId: number, step: string, proposalId: string) {
     const prompts: { [key: string]: string } = {
-      'freelancer_name': '*Step 1/9:* What\'s your name (freelancer/service provider)?',
-      'freelancer_email': '*Step 2/9:* What\'s your email address?',
-      'client_name': '*Step 3/9:* Who is the client? (Enter their name)',
-      'client_email': '*Step 4/9:* What\'s the client\'s email address?',
-      'project_description': '*Step 5/9:* What\'s the project title? (e.g., "Website Redesign" or "Mobile App Development")',
-      'scope_of_work': '*Step 6/9:* What are the deliverables? (List what you\'ll provide, separated by commas)',
-      'timeline': '*Step 7/9:* What\'s the timeline? (e.g., "2 weeks", "1 month", "by March 15th")',
-      'amount': '*Step 8/9:* What\'s the budget? (e.g., 1500 USD or 600000 NGN)',
-      'payment_terms': '*Step 9/9:* Any extra notes? (Optional - additional context, special requirements, etc.)'
+      'freelancer_name': '**Step 1/9:** What\'s your name (freelancer/service provider)?',
+      'freelancer_email': '**Step 2/9:** What\'s your email address?',
+      'client_name': '**Step 3/9:** Who is the client? (Enter their name)',
+      'client_email': '**Step 4/9:** What\'s the client\'s email address?',
+      'project_description': '**Step 5/9:** What\'s the project title? (e.g., "Website Redesign" or "Mobile App Development")',
+      'scope_of_work': '**Step 6/9:** What are the deliverables? (List what you\'ll provide, separated by commas)',
+      'timeline': '**Step 7/9:** What\'s the timeline? (e.g., "2 weeks", "1 month", "by March 15th")',
+      'amount': '**Step 8/9:** What\'s the budget? (e.g., 1500 USD or 600000 NGN)',
+      'payment_terms': '**Step 9/9:** Any extra notes? (Optional - additional context, special requirements, etc.)'
     };
 
     const message = prompts[step] || 'Please provide the required information.';
@@ -1157,7 +1157,7 @@ export class ProposalModule {
 
       if (error) throw error;
 
-      const message = `📝 *Edit Your Information*\n\n` +
+      const message = `📝 **Edit Your Information**\n\n` +
         `👤 **Name:** ${user.name || 'Not set'}\n` +
         `📧 **Email:** ${user.email || 'Not set'}\n\n` +
         `What would you like to edit?`;
@@ -1193,7 +1193,7 @@ export class ProposalModule {
         context: 'proposal'
       });
 
-      await this.bot.sendMessage(chatId, `📝 *Edit ${fieldName}*\n\n${prompt}`, {
+      await this.bot.sendMessage(chatId, `📝 **Edit ${fieldName}**\n\n${prompt}`, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
@@ -1259,7 +1259,7 @@ export class ProposalModule {
 
       // Send confirmation message
       const fieldName = field === 'name' ? 'Name' : 'Email';
-      const message = `✅ *${fieldName} Updated Successfully!*\n\n` +
+      const message = `✅ **${fieldName} Updated Successfully!**\n\n` +
         `Your ${field} has been updated to: **${userInput.trim()}**\n\n` +
         `What would you like to do next?`;
 
