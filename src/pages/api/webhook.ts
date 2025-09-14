@@ -172,9 +172,19 @@ function setupBotHandlers() {
           
           // Only send message if response is not empty
           if (response) {
-            const messageToSend = typeof response === 'string' ? response : JSON.stringify(response);
-            if (messageToSend.trim() !== '') {
+            // Handle response object (for send_reminder with reply_markup)
+            if (typeof response === 'object' && response.text) {
+              const messageOptions: any = { parse_mode: 'Markdown' };
+              if (response.reply_markup) {
+                messageOptions.reply_markup = response.reply_markup;
+              }
+              await bot?.sendMessage(chatId, response.text, messageOptions);
+            } else {
+              // Handle string response
+              const messageToSend = typeof response === 'string' ? response : JSON.stringify(response);
+              if (messageToSend.trim() !== '') {
                 await bot?.sendMessage(chatId, messageToSend);
+              }
             }
           }
         } catch (aiError) {
@@ -249,7 +259,7 @@ function setupBotHandlers() {
         case 'start_send_token_flow':
         case 'send_crypto':
           const sendResponse = await processWithAI('send', chatId);
-          if (sendResponse && sendResponse.trim() !== '') {
+          if (sendResponse && isStringResponse(sendResponse) && sendResponse.trim() !== '') {
             await bot?.sendMessage(chatId, sendResponse);
           }
           break;
@@ -261,6 +271,151 @@ function setupBotHandlers() {
 
         case 'cancel_send':
           await bot?.sendMessage(chatId, '❌ Transfer cancelled.');
+          break;
+          
+        default:
+          // Handle reminder type selection callbacks
+          if (data === 'select_payment_links_for_reminder' || data === 'select_invoices_for_reminder') {
+            try {
+              // First, edit the message to remove buttons (make them disappear)
+              if (callbackQuery.message?.message_id) {
+                try {
+                  await bot?.editMessageReplyMarkup({ inline_keyboard: [] }, {
+                    chat_id: chatId,
+                    message_id: callbackQuery.message.message_id
+                  });
+                } catch (editError) {
+                  console.warn('[Webhook] Could not remove buttons from message:', editError);
+                }
+              }
+              
+              const userId = await botIntegration?.getUserIdByChatId(chatId);
+              if (!userId) {
+                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                return;
+              }
+              
+              const { handleAction } = await import('../../api/actions');
+              const targetType = data === 'select_payment_links_for_reminder' ? 'payment_link' : 'invoice';
+              
+              // Call the action to show the list of items
+              const result = await handleAction('send_reminder', { 
+                showList: true, 
+                targetType: targetType 
+              }, userId);
+              
+              if (result && result.text) {
+                await bot?.sendMessage(chatId, result.text, {
+                  reply_markup: result.reply_markup as any,
+                  parse_mode: 'Markdown'
+                });
+              }
+            } catch (error) {
+              console.error('[Webhook] Error handling reminder type selection:', error);
+              await bot?.sendMessage(chatId, '❌ Failed to load items. Please try again.');
+            }
+            return;
+          }
+          
+          // Handle reminder selection callbacks
+          if (data?.startsWith('remind_payment_link_') || data?.startsWith('remind_invoice_')) {
+            try {
+              // First, edit the message to remove buttons (make them disappear)
+              if (callbackQuery.message?.message_id) {
+                try {
+                  await bot?.editMessageReplyMarkup({ inline_keyboard: [] }, {
+                    chat_id: chatId,
+                    message_id: callbackQuery.message.message_id
+                  });
+                } catch (editError) {
+                  console.warn('[Webhook] Could not remove buttons from message:', editError);
+                }
+              }
+              
+              const userId = await botIntegration?.getUserIdByChatId(chatId);
+              if (!userId) {
+                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                return;
+              }
+              
+              const isPaymentLink = data.startsWith('remind_payment_link_');
+              const targetId = data.replace(isPaymentLink ? 'remind_payment_link_' : 'remind_invoice_', '').split('_msg_')[0];
+              const targetType = isPaymentLink ? 'payment_link' : 'invoice';
+              
+              // Extract custom message if present
+              let customMessage = '';
+              if (data.includes('_msg_')) {
+                const encodedMessage = data.split('_msg_')[1];
+                try {
+                  customMessage = Buffer.from(encodedMessage, 'base64').toString('utf-8');
+                } catch (e) {
+                  console.warn('Failed to decode custom message:', e);
+                }
+              }
+              
+              // Directly call sendManualReminder instead of going through AI processing
+              const { handleAction } = await import('../../api/actions');
+              const result = await handleAction('send_reminder', {
+                targetType: targetType,
+                targetId: targetId,
+                customMessage: customMessage
+              }, userId);
+              
+              if (result && result.text) {
+                await bot?.sendMessage(chatId, result.text, {
+                  parse_mode: 'Markdown'
+                });
+              }
+            } catch (error) {
+              console.error('[Webhook] Error handling reminder callback:', error);
+              await bot?.sendMessage(chatId, '❌ Failed to send reminder. Please try again.');
+            }
+            return;
+          }
+          
+          // Handle PDF generation callbacks with timeframe
+          if (data?.startsWith('generate_earnings_pdf_')) {
+            // This is now handled in the main case above
+            return;
+          }
+          
+          // Handle offramp callbacks
+          if (data?.startsWith('payout_bank_') || data?.startsWith('select_bank_') || data?.startsWith('back_to_') || data?.startsWith('offramp_') || data === 'action_offramp') {
+            console.log(`[Webhook] Routing offramp callback: ${data}`);
+            try {
+              // First, edit the message to remove buttons (make them disappear) for selection callbacks
+              if ((data?.startsWith('payout_bank_') || data?.startsWith('select_bank_')) && callbackQuery.message?.message_id) {
+                try {
+                  await bot?.editMessageReplyMarkup({ inline_keyboard: [] }, {
+                    chat_id: chatId,
+                    message_id: callbackQuery.message.message_id
+                  });
+                } catch (editError) {
+                  console.warn('[Webhook] Could not remove buttons from offramp message:', editError);
+                }
+              }
+              
+              // Route to actions.ts offramp handler
+              const { handleAction } = await import('../../api/actions');
+              // Get user ID from chat ID
+              const userId = await botIntegration?.getUserIdByChatId(chatId);
+              if (!userId) {
+                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                return;
+              }
+              const result = await handleAction('offramp', { callback_data: data }, userId);
+              if (result && result.text) {
+                await bot?.sendMessage(chatId, result.text, {
+                  reply_markup: result.reply_markup as any,
+                  parse_mode: 'Markdown'
+                });
+              }
+            } catch (error) {
+              console.error('[Webhook] Error handling offramp callback:', error);
+              await bot?.sendMessage(chatId, '❌ Error processing your request. Please try again.');
+            }
+            return;
+          }
           break;
           
         case 'generate_earnings_pdf':
@@ -404,38 +559,7 @@ function setupBotHandlers() {
           }
           return;
           
-        default:
-          // Handle PDF generation callbacks with timeframe
-          if (data?.startsWith('generate_earnings_pdf_')) {
-            // This is now handled in the main case above
-            return;
-          }
-          
-          // Handle offramp callbacks
-          if (data?.startsWith('payout_bank_') || data?.startsWith('select_bank_') || data?.startsWith('back_to_') || data?.startsWith('offramp_') || data === 'action_offramp') {
-            console.log(`[Webhook] Routing offramp callback: ${data}`);
-            try {
-              // Route to actions.ts offramp handler
-              const { handleAction } = await import('../../api/actions');
-              // Get user ID from chat ID
-              const userId = await botIntegration?.getUserIdByChatId(chatId);
-              if (!userId) {
-                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
-                return;
-              }
-              const result = await handleAction('offramp', { callback_data: data }, userId);
-              if (result && result.text) {
-                await bot?.sendMessage(chatId, result.text, {
-                  reply_markup: result.reply_markup as any,
-                  parse_mode: 'Markdown'
-                });
-              }
-            } catch (error) {
-              console.error('[Webhook] Error handling offramp callback:', error);
-              await bot?.sendMessage(chatId, '❌ Error processing your request. Please try again.');
-            }
-            return;
-          }
+          // Continue with confirm_send callback handling
           
           // Handle confirm_send callback data
           if (data?.startsWith('confirm_')) {
@@ -527,7 +651,7 @@ function setupBotHandlers() {
                   .from('users')
                   .select('id, telegram_username')
                   .eq('telegram_chat_id', chatId)
-                  .single() as { data: { id: string; telegram_username: string | null } | null };
+                  .single();
 
                 if (!user) {
                   await bot?.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
@@ -673,28 +797,28 @@ async function handleCommand(msg: any) {
 
     case '/wallet':
       const walletResponse = await processWithAI('get wallet address', chatId);
-      if (walletResponse && walletResponse.trim() !== '' && walletResponse !== '__NO_MESSAGE__') {
+      if (walletResponse && isStringResponse(walletResponse) && walletResponse.trim() !== '' && walletResponse !== '__NO_MESSAGE__') {
         await bot.sendMessage(chatId, walletResponse);
       }
       break;
 
     case '/balance':
       const balanceResponse = await processWithAI('check balance', chatId);
-      if (balanceResponse && balanceResponse.trim() !== '' && balanceResponse !== '__NO_MESSAGE__') {
+      if (balanceResponse && isStringResponse(balanceResponse) && balanceResponse.trim() !== '' && balanceResponse !== '__NO_MESSAGE__') {
         await bot.sendMessage(chatId, balanceResponse);
       }
       break;
 
     case '/send':
       const sendResponse = await processWithAI(msg.text || '/send', chatId);
-      if (sendResponse && sendResponse.trim() !== '') {
+      if (sendResponse && isStringResponse(sendResponse) && sendResponse.trim() !== '') {
         await bot.sendMessage(chatId, sendResponse);
       }
       break;
 
     case '/payment':
       const paymentResponse = await processWithAI('create payment link', chatId);
-      if (paymentResponse && paymentResponse.trim() !== '' && paymentResponse !== '__NO_MESSAGE__') {
+      if (paymentResponse && isStringResponse(paymentResponse) && paymentResponse.trim() !== '' && paymentResponse !== '__NO_MESSAGE__') {
         await bot.sendMessage(chatId, paymentResponse);
       }
       break;
@@ -736,7 +860,7 @@ async function handleCommand(msg: any) {
         } else {
           // Fallback to processWithAI but handle empty responses
           const proposalResponse = await processWithAI('create proposal', chatId);
-          if (proposalResponse && proposalResponse.trim() !== '' && proposalResponse !== '__NO_MESSAGE__') {
+          if (proposalResponse && isStringResponse(proposalResponse) && proposalResponse.trim() !== '' && proposalResponse !== '__NO_MESSAGE__') {
             await bot.sendMessage(chatId, proposalResponse);
           }
           // If response is empty or __NO_MESSAGE__, don't send anything - the ProposalModule handles the interaction
@@ -769,7 +893,7 @@ async function handleCommand(msg: any) {
         } else {
           // Fallback to processWithAI but handle empty responses
           const invoiceResponse = await processWithAI('create invoice', chatId);
-          if (invoiceResponse && invoiceResponse.trim() !== '' && invoiceResponse !== '__NO_MESSAGE__') {
+          if (invoiceResponse && isStringResponse(invoiceResponse) && invoiceResponse.trim() !== '' && invoiceResponse !== '__NO_MESSAGE__') {
             await bot.sendMessage(chatId, invoiceResponse);
           }
           // If response is empty or __NO_MESSAGE__, don't send anything - the InvoiceModule handles the interaction
@@ -784,9 +908,9 @@ async function handleCommand(msg: any) {
       try {
         console.log('[Webhook] Routing /earnings_summary to AI processor');
         const earningsResponse = await processWithAI(msg.text, chatId);
-        if (earningsResponse && earningsResponse.trim() !== '' && earningsResponse !== '__NO_MESSAGE__') {
-          await bot.sendMessage(chatId, earningsResponse);
-        }
+        if (earningsResponse && isStringResponse(earningsResponse) && earningsResponse.trim() !== '' && earningsResponse !== '__NO_MESSAGE__') {
+            await bot.sendMessage(chatId, earningsResponse);
+          }
       } catch (error) {
         console.error('[Webhook] Error in /earnings_summary:', error);
         await bot.sendMessage(chatId, 'Sorry, I encountered an error while fetching your earnings summary.');
@@ -800,14 +924,14 @@ async function handleCommand(msg: any) {
         } else {
           console.log('[Webhook] BotIntegration not available, falling back to processWithAI');
           const dashboardResponse = await processWithAI('show business dashboard', chatId);
-          if (dashboardResponse && dashboardResponse.trim() !== '' && dashboardResponse !== '__NO_MESSAGE__') {
+          if (dashboardResponse && isStringResponse(dashboardResponse) && dashboardResponse.trim() !== '' && dashboardResponse !== '__NO_MESSAGE__') {
             await bot.sendMessage(chatId, dashboardResponse);
           }
         }
       } catch (error) {
         console.error('[Webhook] Error in /business_dashboard:', error);
         const fallbackResponse = await processWithAI('show business dashboard', chatId);
-        if (fallbackResponse && fallbackResponse.trim() !== '' && fallbackResponse !== '__NO_MESSAGE__') {
+        if (fallbackResponse && isStringResponse(fallbackResponse) && fallbackResponse.trim() !== '' && fallbackResponse !== '__NO_MESSAGE__') {
           await bot.sendMessage(chatId, fallbackResponse);
         }
       }
@@ -815,7 +939,7 @@ async function handleCommand(msg: any) {
 
     case '/paymentlink':
       const paymentLinkResponse = await processWithAI('create payment link', chatId);
-      if (paymentLinkResponse && paymentLinkResponse.trim() !== '' && paymentLinkResponse !== '__NO_MESSAGE__') {
+      if (paymentLinkResponse && isStringResponse(paymentLinkResponse) && paymentLinkResponse.trim() !== '' && paymentLinkResponse !== '__NO_MESSAGE__') {
         await bot.sendMessage(chatId, paymentLinkResponse);
       }
       break;
@@ -823,7 +947,7 @@ async function handleCommand(msg: any) {
     case '/history':
       // Redirect to earnings summary for better user experience
       const redirectResponse = await processWithAI('show earnings summary', chatId);
-      if (redirectResponse && redirectResponse.trim() !== '' && redirectResponse !== '__NO_MESSAGE__') {
+      if (redirectResponse && isStringResponse(redirectResponse) && redirectResponse.trim() !== '' && redirectResponse !== '__NO_MESSAGE__') {
         await bot.sendMessage(chatId, `📈 **Redirecting to Earnings Summary**\n\n${redirectResponse}`);
       }
       break;
@@ -846,7 +970,7 @@ async function handleCommand(msg: any) {
            }
         } else {
           const referralResponse = await processWithAI('show referral link and stats', chatId);
-          if (referralResponse && referralResponse.trim() !== '' && referralResponse !== '__NO_MESSAGE__') {
+          if (referralResponse && isStringResponse(referralResponse) && referralResponse.trim() !== '' && referralResponse !== '__NO_MESSAGE__') {
             await bot.sendMessage(chatId, referralResponse);
           }
         }
@@ -874,7 +998,7 @@ async function handleCommand(msg: any) {
            }
         } else {
           const leaderboardResponse = await processWithAI('show referral leaderboard', chatId);
-          if (leaderboardResponse && leaderboardResponse.trim() !== '' && leaderboardResponse !== '__NO_MESSAGE__') {
+          if (leaderboardResponse && isStringResponse(leaderboardResponse) && leaderboardResponse.trim() !== '' && leaderboardResponse !== '__NO_MESSAGE__') {
             await bot.sendMessage(chatId, leaderboardResponse);
           }
         }
@@ -896,8 +1020,13 @@ async function handleCommand(msg: any) {
   }
 }
 
+// Helper function to check if response is a string
+function isStringResponse(response: string | { text: string; reply_markup?: any }): response is string {
+  return typeof response === 'string';
+}
+
 // Process message with AI
-async function processWithAI(message: string, chatId: number): Promise<string> {
+async function processWithAI(message: string, chatId: number): Promise<string | { text: string; reply_markup?: any }> {
   try {
     // Get the actual user UUID and Telegram username from the database
     const { supabase } = await import('../../lib/supabase');
@@ -1007,7 +1136,7 @@ async function processWithAI(message: string, chatId: number): Promise<string> {
 }
 
 // Function to format LLM response for user and execute actual functions
-async function formatResponseForUser(parsedResponse: any, userId: string, userMessage: string, chatId?: number): Promise<string> {
+async function formatResponseForUser(parsedResponse: any, userId: string, userMessage: string, chatId?: number): Promise<string | { text: string; reply_markup?: any }> {
   const { intent, params } = parsedResponse;
   
   try {
@@ -1145,7 +1274,8 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
       case 'send_reminder':
         // Use the existing actions.ts handler for reminder functionality
         const reminderResult = await handleAction(intent, params, userId);
-        return reminderResult.text;
+        // Return the full result object to preserve reply_markup
+        return reminderResult;
       
       case 'get_earnings':
         // Use the existing actions.ts handler for earnings functionality

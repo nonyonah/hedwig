@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { SmartNudgeService } from '@/lib/smartNudgeService';
 import { InvoiceReminderService } from '@/lib/invoiceReminderService';
+import { PaymentLinkReminderService } from '@/lib/paymentLinkReminderService';
 import { loadServerEnvironment } from '@/lib/serverEnv';
 
 loadServerEnvironment();
@@ -11,7 +12,11 @@ interface AllRemindersResponse {
     sent: number;
     failed: number;
   };
-  dueDateReminders?: {
+  invoiceDueDateReminders?: {
+    sent: number;
+    failed: number;
+  };
+  paymentLinkDueDateReminders?: {
     sent: number;
     failed: number;
   };
@@ -51,13 +56,18 @@ export default async function handler(
     const nudgeResult = await SmartNudgeService.processNudges();
     console.log(`✅ Smart nudges completed: ${nudgeResult.sent} sent, ${nudgeResult.failed} failed`);
     
-    // Process due date reminders (new system)
-    console.log('📅 Processing due date reminders...');
-    const dueDateResult = await InvoiceReminderService.processDueDateReminders();
-    console.log(`✅ Due date reminders completed: ${dueDateResult.sent} sent, ${dueDateResult.failed} failed`);
+    // Process invoice due date reminders
+    console.log('📅 Processing invoice due date reminders...');
+    const invoiceDueDateResult = await InvoiceReminderService.processDueDateReminders();
+    console.log(`✅ Invoice due date reminders completed: ${invoiceDueDateResult.sent} sent, ${invoiceDueDateResult.failed} failed`);
     
-    const totalSent = nudgeResult.sent + dueDateResult.sent;
-    const totalFailed = nudgeResult.failed + dueDateResult.failed;
+    // Process payment link due date reminders
+    console.log('🔗 Processing payment link due date reminders...');
+    const paymentLinkDueDateResult = await PaymentLinkReminderService.processDueDateReminders();
+    console.log(`✅ Payment link due date reminders completed: ${paymentLinkDueDateResult.sent} sent, ${paymentLinkDueDateResult.failed} failed`);
+    
+    const totalSent = nudgeResult.sent + invoiceDueDateResult.sent + paymentLinkDueDateResult.sent;
+    const totalFailed = nudgeResult.failed + invoiceDueDateResult.failed + paymentLinkDueDateResult.failed;
     
     console.log(`🎯 All reminders completed: ${totalSent} total sent, ${totalFailed} total failed`);
     
@@ -67,9 +77,13 @@ export default async function handler(
         sent: nudgeResult.sent,
         failed: nudgeResult.failed
       },
-      dueDateReminders: {
-        sent: dueDateResult.sent,
-        failed: dueDateResult.failed
+      invoiceDueDateReminders: {
+        sent: invoiceDueDateResult.sent,
+        failed: invoiceDueDateResult.failed
+      },
+      paymentLinkDueDateReminders: {
+        sent: paymentLinkDueDateResult.sent,
+        failed: paymentLinkDueDateResult.failed
       },
       message: `Successfully processed all reminders: ${totalSent} sent, ${totalFailed} failed`
     });

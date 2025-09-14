@@ -576,8 +576,8 @@ export class BotIntegration {
       const { data: invoices, error } = await supabase
         .from('invoices')
         .select('*')
-        .eq('user_id', actualUserId)
-        .order('created_at', { ascending: false })
+        .eq('created_by', actualUserId)
+        .order('date_created', { ascending: false })
         .limit(10);
 
       if (error) throw error;
@@ -595,7 +595,7 @@ export class BotIntegration {
 
       for (const invoice of invoices) {
         const status = this.getStatusEmoji(invoice.status);
-        const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: invoice.currency || 'USD' }).format(invoice.total_amount);
+        const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(invoice.amount);
         
         let invoiceMessage = `${status} **${invoice.invoice_number}** - ${amount}\n`;
         invoiceMessage += `   📧 Client: ${invoice.client_name}`;
@@ -603,7 +603,7 @@ export class BotIntegration {
           invoiceMessage += ` (${invoice.client_email})`;
         }
         invoiceMessage += `\n`;
-        invoiceMessage += `   📅 Created: ${new Date(invoice.created_at).toLocaleDateString()}`;
+        invoiceMessage += `   📅 Created: ${new Date(invoice.date_created).toLocaleDateString()}`;
 
         // Add buttons for each invoice
         keyboard.push([
@@ -1900,6 +1900,17 @@ export class BotIntegration {
     try {
       // Business dashboard callbacks
       if (data === 'business_dashboard') {
+        // Make buttons disappear
+        if (callbackQuery.message?.message_id) {
+          try {
+            await this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+              chat_id: chatId,
+              message_id: callbackQuery.message.message_id
+            });
+          } catch (editError) {
+            console.warn('[BotIntegration] Could not remove buttons from business dashboard message:', editError);
+          }
+        }
         await this.handleBusinessDashboard(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
@@ -1908,22 +1919,77 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'business_invoices') {
+        // Make buttons disappear
+        if (callbackQuery.message?.message_id) {
+          try {
+            await this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+              chat_id: chatId,
+              message_id: callbackQuery.message.message_id
+            });
+          } catch (editError) {
+            console.warn('[BotIntegration] Could not remove buttons from business invoices message:', editError);
+          }
+        }
         await this.handleInvoiceList(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'business_proposals') {
+        // Make buttons disappear
+        if (callbackQuery.message?.message_id) {
+          try {
+            await this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+              chat_id: chatId,
+              message_id: callbackQuery.message.message_id
+            });
+          } catch (editError) {
+            console.warn('[BotIntegration] Could not remove buttons from business proposals message:', editError);
+          }
+        }
         await this.handleProposalList(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'business_payment_links') {
+        // Make buttons disappear
+        if (callbackQuery.message?.message_id) {
+          try {
+            await this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+              chat_id: chatId,
+              message_id: callbackQuery.message.message_id
+            });
+          } catch (editError) {
+            console.warn('[BotIntegration] Could not remove buttons from business payment links message:', editError);
+          }
+        }
         await this.handlePaymentLinksList(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'business_stats') {
+        // Make buttons disappear
+        if (callbackQuery.message?.message_id) {
+          try {
+            await this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+              chat_id: chatId,
+              message_id: callbackQuery.message.message_id
+            });
+          } catch (editError) {
+            console.warn('[BotIntegration] Could not remove buttons from business stats message:', editError);
+          }
+        }
         await this.handlePaymentStats(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'business_settings') {
+        // Make buttons disappear
+        if (callbackQuery.message?.message_id) {
+          try {
+            await this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+              chat_id: chatId,
+              message_id: callbackQuery.message.message_id
+            });
+          } catch (editError) {
+            console.warn('[BotIntegration] Could not remove buttons from business settings message:', editError);
+          }
+        }
         await this.handleBusinessSettings(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;

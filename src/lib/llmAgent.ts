@@ -503,6 +503,24 @@ Response: {"intent": "kyc_verification", "params": {}}
 User: "complete KYC" or "verify my identity" or "start verification"
 Response: {"intent": "kyc_verification", "params": {}}
 
+User: "send reminder" or "remind client" or "payment reminder"
+Response: {"intent": "send_reminder", "params": {}}
+
+User: "remind john@example.com about payment"
+Response: {"intent": "send_reminder", "params": {"clientEmail": "john@example.com"}}
+
+User: "send reminder for invoice INV123"
+Response: {"intent": "send_reminder", "params": {"targetType": "invoice", "targetId": "INV123"}}
+
+User: "remind about payment link PL456"
+Response: {"intent": "send_reminder", "params": {"targetType": "payment_link", "targetId": "PL456"}}
+
+User: "send due date reminder"
+Response: {"intent": "send_reminder", "params": {"reminderType": "due_date"}}
+
+User: "nudge client about overdue payment"
+Response: {"intent": "send_reminder", "params": {"reminderType": "due_date"}}
+
 AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.
 If the user mentions blockchain, crypto, wallet, tokens, etc., assume they want to perform a blockchain action.

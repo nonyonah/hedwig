@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from './serverEnv';
-import { sendInvoiceEmail } from './invoiceService';
+import { sendEmail, generateInvoiceEmailTemplate } from './emailService';
 import { sendPaymentLinkEmail } from './paymentlinkservice';
 
 // Load environment variables
@@ -68,11 +68,14 @@ export class SmartNudgeService {
         nudge_disabled,
         created_at,
         created_by,
+        user_name,
         users!created_by(name)
       `)
       .eq('status', 'pending')
       .is('paid_at', null)
       .eq('nudge_disabled', false)
+      .not('recipient_email', 'is', null)
+      .neq('recipient_email', '')
       .lt('nudge_count', this.MAX_NUDGES)
       .not('viewed_at', 'is', null)
       .or(`viewed_at.lt.${nudgeThreshold.toISOString()},and(viewed_at.not.is.null,last_nudge_at.lt.${intervalThreshold.toISOString()})`);
@@ -98,7 +101,7 @@ export class SmartNudgeService {
               lastNudgeAt: link.last_nudge_at,
               nudgeDisabled: link.nudge_disabled,
               createdAt: link.created_at,
-              senderName: (link.users as any)?.name || 'Unknown Sender'
+              senderName: (link.users as any)?.name || link.user_name || 'Your Service Provider'
             });
           }
         }
@@ -120,18 +123,21 @@ export class SmartNudgeService {
         nudge_disabled,
         date_created,
         user_id,
+        freelancer_name,
         users!user_id(name)
       `)
       .neq('status', 'paid')
       .eq('nudge_disabled', false)
+      .not('client_email', 'is', null)
+      .neq('client_email', '')
       .lt('nudge_count', this.MAX_NUDGES)
-      .not('viewed_at', 'is', null)
-      .or(`viewed_at.lt.${nudgeThreshold.toISOString()},and(viewed_at.not.is.null,last_nudge_at.lt.${intervalThreshold.toISOString()})`);
+      .or(`viewed_at.lt.${nudgeThreshold.toISOString()},and(viewed_at.not.is.null,last_nudge_at.lt.${intervalThreshold.toISOString()}),and(viewed_at.is.null,date_created.lt.${nudgeThreshold.toISOString()})`);
 
     if (!invoiceError && invoices) {
       for (const invoice of invoices) {
-        if (invoice.viewed_at && invoice.client_email) {
-          // Check if enough time has passed since last nudge or if it's the first nudge
+        if (invoice.client_email) {
+          // For invoices that haven't been viewed, check if enough time has passed since creation
+          // For viewed invoices, check if enough time has passed since viewing or last nudge
           const shouldNudge = !invoice.last_nudge_at || 
             new Date(invoice.last_nudge_at) < intervalThreshold;
 
@@ -149,7 +155,7 @@ export class SmartNudgeService {
               lastNudgeAt: invoice.last_nudge_at,
               nudgeDisabled: invoice.nudge_disabled,
               createdAt: invoice.date_created,
-              senderName: (invoice.users as any)?.name || 'Unknown Sender'
+              senderName: (invoice.users as any)?.name || invoice.freelancer_name || 'Your Freelancer'
             });
           }
         }
@@ -172,15 +178,23 @@ export class SmartNudgeService {
       if (target.clientEmail) {
         try {
           if (target.type === 'invoice') {
-            await sendInvoiceEmail({
-              recipientEmail: target.clientEmail!,
+            const invoiceData = {
+              id: target.id,
+              invoice_number: target.title.replace('Invoice ', ''),
+              project_description: target.title,
               amount: target.amount,
-              token: 'USDC', // TODO: fetch real token if needed
-              network: 'base', // TODO: fetch real network if needed
-              invoiceLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/invoice/${target.id}`,
-              freelancerName: target.senderName || 'Unknown Sender',
-              description: target.title,
-              invoiceNumber: target.title.replace('Invoice ', ''), // crude fallback
+              currency: 'USDC',
+              due_date: new Date().toISOString(),
+              client_name: 'Valued Client',
+              client_email: target.clientEmail!,
+              freelancer_name: target.senderName || 'Your Freelancer',
+              custom_message: message
+            };
+            
+            await sendEmail({
+              to: target.clientEmail!,
+              subject: `Payment Reminder: ${target.title}`,
+              html: generateInvoiceEmailTemplate(invoiceData)
             });
           } else if (target.type === 'payment_link') {
             await sendPaymentLinkEmail({
@@ -189,7 +203,7 @@ export class SmartNudgeService {
               token: 'USDC', // TODO: fetch real token if needed
               network: 'base', // TODO: fetch real network if needed
               paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/payment-link/${target.id}`,
-              senderName: target.senderName || 'Unknown Sender',
+              senderName: target.senderName || 'Your Service Provider',
               reason: target.title,
             });
           }
@@ -452,7 +466,8 @@ export class SmartNudgeService {
         nudgeCount: targetData.nudge_count || 0,
         lastNudgeAt: targetData.last_nudge_at,
         nudgeDisabled: targetData.nudge_disabled,
-        createdAt: targetData.created_at || targetData.date_created
+        createdAt: targetData.created_at || targetData.date_created,
+        senderName: targetData.user_name || targetData.freelancer_name
       };
 
       // Use custom message if provided, otherwise generate default
@@ -471,7 +486,7 @@ export class SmartNudgeService {
               token: 'USDC', // TODO: fetch real token if needed
               network: 'base', // TODO: fetch real network if needed
               invoiceLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/invoice/${target.id}`,
-              freelancerName: target.senderName || 'Unknown Sender',
+              freelancerName: target.senderName || 'Your Freelancer',
               description: target.title,
               invoiceNumber: target.title.replace('Invoice ', ''), // crude fallback
               customMessage: customMessage
@@ -483,7 +498,7 @@ export class SmartNudgeService {
               token: 'USDC', // TODO: fetch real token if needed
               network: 'base', // TODO: fetch real network if needed
               paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/payment-link/${target.id}`,
-              senderName: target.senderName || 'Unknown Sender',
+              senderName: target.senderName || 'Hedwig User',
               reason: target.title,
               customMessage: customMessage
             });
@@ -540,13 +555,15 @@ export class SmartNudgeService {
     const invoices: any[] = [];
 
     try {
-      // Get unpaid payment links
+      // Get unpaid payment links (only those with recipient emails)
       const { data: paymentLinksData } = await supabase
         .from('payment_links')
         .select('id, payment_reason, amount, recipient_email, status, paid_at')
         .eq('created_by', userId)
         .neq('status', 'paid')
-        .is('paid_at', null);
+        .is('paid_at', null)
+        .not('recipient_email', 'is', null)
+        .neq('recipient_email', '');
 
       if (paymentLinksData) {
         paymentLinks.push(...paymentLinksData.map(link => ({
@@ -558,18 +575,20 @@ export class SmartNudgeService {
         })));
       }
 
-      // Get unpaid invoices
+      // Get unpaid invoices (only those with client emails)
       const { data: invoicesData } = await supabase
         .from('invoices')
-        .select('id, invoice_number, total_amount, client_email, status')
-        .eq('user_id', userId)
-        .neq('status', 'paid');
+        .select('id, invoice_number, amount, client_email, status')
+        .eq('created_by', userId)
+        .neq('status', 'paid')
+        .not('client_email', 'is', null)
+        .neq('client_email', '');
 
       if (invoicesData) {
         invoices.push(...invoicesData.map(invoice => ({
           id: invoice.id,
           title: `Invoice ${invoice.invoice_number || invoice.id}`,
-          amount: parseFloat(invoice.total_amount || '0'),
+          amount: parseFloat(invoice.amount || '0'),
           clientEmail: invoice.client_email || '',
           status: invoice.status || 'pending'
         })));

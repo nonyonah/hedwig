@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from '@/lib/serverEnv';
+import { sendEmail, generatePaymentLinkEmailTemplate } from '../../lib/emailService';
 
 // Load environment variables
 loadServerEnvironment();
@@ -20,6 +21,7 @@ interface CreatePaymentLinkRequest {
   recipientEmail?: string;
   proposalId?: string;
   invoiceId?: string;
+  dueDate?: string; // ISO date string for payment due date
 }
 
 interface CreatePaymentLinkResponse {
@@ -48,7 +50,8 @@ export default async function handler(
       for: paymentReason,
       recipientEmail,
       proposalId,
-      invoiceId
+      invoiceId,
+      dueDate
     }: CreatePaymentLinkRequest = req.body;
 
     // Validate required fields
@@ -112,6 +115,24 @@ export default async function handler(
       });
     }
 
+    // Validate due date format if provided
+    if (dueDate) {
+      const dueDateObj = new Date(dueDate);
+      if (isNaN(dueDateObj.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid due date format. Please use ISO date string (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss.sssZ)'
+        });
+      }
+      // Check if due date is in the past
+      if (dueDateObj < new Date()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Due date cannot be in the past'
+        });
+      }
+    }
+
     // Insert payment link into database
     const insertData: any = {
       amount,
@@ -121,7 +142,8 @@ export default async function handler(
       user_name: userName,
       payment_reason: paymentReason,
       recipient_email: recipientEmail || null,
-      status: 'pending'
+      status: 'pending',
+      due_date: dueDate ? new Date(dueDate).toISOString() : null
     };
 
     // Add proposal_id or invoice_id if provided
@@ -166,19 +188,30 @@ export default async function handler(
       // Don't fail the request if referral points fail
     }
 
-    // TODO: Send email if recipientEmail is provided
+    // Send email if recipientEmail is provided
     if (recipientEmail) {
       try {
-        await sendPaymentLinkEmail({
-          recipientEmail,
-          paymentLink,
-          amount,
-          token,
-          userName,
-          paymentReason,
-          network,
-          walletAddress
-        });
+        // Get the user's name from the database using wallet address
+        const { data: userData } = await supabase
+          .from('users')
+          .select('name')
+          .eq('wallet_address', walletAddress.toLowerCase())
+          .single();
+
+        const emailHtml = generatePaymentLinkEmailTemplate({
+           sender_name: userData?.name || userName,
+           amount,
+           token,
+           reason: paymentReason,
+           payment_link: paymentLink
+         });
+
+         await sendEmail({
+           to: recipientEmail,
+           from: userData?.name || userName,
+           subject: `Payment Request: ${amount} ${token}`,
+           html: emailHtml
+         });
       } catch (emailError) {
         console.error('Email sending failed:', emailError);
         // Don't fail the request if email fails, just log it
@@ -197,155 +230,5 @@ export default async function handler(
       success: false,
       error: 'Internal server error'
     });
-  }
-}
-
-// Email sending function using Resend
-async function sendPaymentLinkEmail({
-  recipientEmail,
-  paymentLink,
-  amount,
-  token,
-  userName,
-  paymentReason,
-  network,
-  walletAddress
-}: {
-  recipientEmail: string;
-  paymentLink: string;
-  amount: number;
-  token: string;
-  userName: string;
-  paymentReason: string;
-  network: string;
-  walletAddress: string;
-}) {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('Resend API key not configured, skipping email');
-    return;
-  }
-
-  try {
-    // Get the user's name from the database using wallet address
-    const { data: userData } = await supabase
-      .from('users')
-      .select('name')
-      .eq('wallet_address', walletAddress.toLowerCase())
-      .single();
-
-    // Create personalized email address
-    const userEmail = userData?.name 
-      ? `${userData.name.toLowerCase().replace(/\s+/g, '')}@hedwigbot.xyz`
-      : 'payments@hedwigbot.xyz';
-
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: userData?.name ? `${userData.name} <${userEmail}>` : 'Hedwig <payments@hedwigbot.xyz>',
-        to: [recipientEmail],
-        subject: `Payment Request: ${amount} ${token}`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Payment Request</title>
-              <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f9fafb; }
-                .container { max-width: 600px; margin: 0 auto; background-color: white; }
-                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; }
-                .header h1 { color: white; margin: 0; font-size: 28px; font-weight: 600; }
-                .header p { color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 16px; }
-                .content { padding: 40px 20px; }
-                .amount { text-align: center; margin-bottom: 32px; }
-                .amount-value { font-size: 36px; font-weight: 700; color: #111827; margin-bottom: 4px; }
-                .amount-network { color: #6b7280; font-size: 14px; }
-                .details { background-color: #f9fafb; border-radius: 8px; padding: 24px; margin-bottom: 32px; }
-                .detail-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
-                .detail-row:last-child { margin-bottom: 0; }
-                .detail-label { color: #6b7280; font-size: 14px; }
-                .detail-value { color: #111827; font-size: 14px; font-weight: 500; }
-                .cta { text-align: center; margin-bottom: 32px; }
-                .cta-button { display: inline-block; background-color: #4f46e5; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; }
-                .cta-button:hover { background-color: #4338ca; }
-                .footer { text-align: center; color: #6b7280; font-size: 12px; padding: 20px; border-top: 1px solid #e5e7eb; }
-                .security-note { background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
-                .security-note p { margin: 0; color: #92400e; font-size: 14px; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1>USDC Payment Request</h1>
-                  <p>You have received a USDC stablecoin payment request</p>
-                </div>
-                
-                <div class="content">
-                  <div class="amount">
-                    <div class="amount-value">${amount} ${token}</div>
-                    <div class="amount-network">on ${network.charAt(0).toUpperCase() + network.slice(1)}</div>
-                  </div>
-                  
-                  <div class="details">
-                    <div class="detail-row">
-                      <span class="detail-label">From</span>
-                      <span class="detail-value">${userName}</span>
-                    </div>
-                    <div class="detail-row">
-                      <span class="detail-label">For</span>
-                      <span class="detail-value">${paymentReason}</span>
-                    </div>
-                    <div class="detail-row">
-                      <span class="detail-label">Network</span>
-                      <span class="detail-value">${network.charAt(0).toUpperCase() + network.slice(1)}</span>
-                    </div>
-                  </div>
-                  
-                  <div class="security-note">
-                    <p><strong>USDC Only:</strong> This payment link only accepts USDC stablecoin. Other cryptocurrencies are not supported.</p>
-                  </div>
-                  
-                  <div class="security-note" style="background-color: #f3f4f6; border: 1px solid #d1d5db;">
-                    <p><strong>Security Notice:</strong> Always verify the payment details and recipient address before completing any transaction. This link will expire in 24 hours.</p>
-                  </div>
-                  
-                  <div class="cta">
-                    <a href="${paymentLink}" class="cta-button">Complete Payment</a>
-                  </div>
-                  
-                  <p style="color: #6b7280; font-size: 14px; text-align: center; margin-bottom: 0;">
-                    If you're unable to click the button above, copy and paste this link into your browser:<br>
-                    <span style="word-break: break-all; color: #4f46e5;">${paymentLink}</span>
-                  </p>
-                </div>
-                
-                <div class="footer">
-                  <p>Powered by Hedwig • Secure USDC stablecoin payments</p>
-                  <p>This email was sent because a USDC payment request was created with your email address.</p>
-                </div>
-              </div>
-            </body>
-          </html>
-        `,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Failed to send email:', errorData);
-      throw new Error(`Email API error: ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log('Email sent successfully:', result.id);
-    return result;
-  } catch (error) {
-    console.error('Error sending email:', error);
-    throw error;
   }
 }

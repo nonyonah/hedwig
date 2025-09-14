@@ -10,6 +10,7 @@ import { getTokenPricesBySymbol, TokenPrice } from '../lib/tokenPriceService';
 // Proposal service imports removed - using new module system
 import { SmartNudgeService } from '../lib/smartNudgeService';
 import { InvoiceReminderService } from '../lib/invoiceReminderService';
+import { PaymentLinkReminderService } from '../lib/paymentLinkReminderService';
 import { offrampService } from '../services/offrampService';
 import { offrampSessionService } from '../services/offrampSessionService';
 import { ServerPaycrestService } from '../services/serverPaycrestService';
@@ -1789,6 +1790,78 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
     const customMessage = params.message || params.text || params.customMessage;
     const clientEmail = params.clientEmail;
     const reminderType = params.reminderType || 'standard'; // 'standard' or 'due_date'
+    const searchByEmail = params.searchByEmail;
+    const requiresSelection = params.requiresSelection;
+    const showList = params.showList; // New parameter to show list of items
+    
+    // Handle showList parameter - display specific type of items
+    if (showList && targetType) {
+      const items = await SmartNudgeService.getUserRemindableItems(userId);
+      
+      if (targetType === 'payment_link') {
+        if (items.paymentLinks.length === 0) {
+          return {
+            text: "📭 You don't have any unpaid payment links to send reminders for."
+          };
+        }
+        
+        let selectionText = '💳 **Select a Payment Link to send reminder:**\n\n';
+        const inlineKeyboard: Array<Array<{
+          text: string;
+          callback_data?: string;
+          url?: string;
+          copy_text?: { text: string };
+        }>> = [];
+        
+        items.paymentLinks.forEach((link, index) => {
+          selectionText += `${index + 1}. **${link.title}** - $${link.amount}\n   📧 ${link.clientEmail}\n\n`;
+          inlineKeyboard.push([{
+            text: `💳 ${link.title} ($${link.amount})`,
+            callback_data: `remind_payment_link_${link.id}`
+          }]);
+        });
+        
+        selectionText += '👆 **Select a payment link above to send reminder.**';
+        
+        return {
+          text: selectionText,
+          reply_markup: {
+            inline_keyboard: inlineKeyboard
+          }
+        };
+      } else if (targetType === 'invoice') {
+        if (items.invoices.length === 0) {
+          return {
+            text: "📭 You don't have any unpaid invoices to send reminders for."
+          };
+        }
+        
+        let selectionText = '📄 **Select an Invoice to send reminder:**\n\n';
+        const inlineKeyboard: Array<Array<{
+          text: string;
+          callback_data?: string;
+          url?: string;
+          copy_text?: { text: string };
+        }>> = [];
+        
+        items.invoices.forEach((invoice, index) => {
+          selectionText += `${index + 1}. **${invoice.title}** - $${invoice.amount}\n   📧 ${invoice.clientEmail}\n\n`;
+          inlineKeyboard.push([{
+            text: `📄 ${invoice.title} ($${invoice.amount})`,
+            callback_data: `remind_invoice_${invoice.id}`
+          }]);
+        });
+        
+        selectionText += '👆 **Select an invoice above to send reminder.**';
+        
+        return {
+          text: selectionText,
+          reply_markup: {
+            inline_keyboard: inlineKeyboard
+          }
+        };
+      }
+    }
     
     // If we have a targetId but no targetType, try to determine the type
     if (targetId && !targetType) {
@@ -1816,8 +1889,68 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
       }
     }
     
+    // Handle email-based search with selection interface
+    if (searchByEmail && clientEmail) {
+      const items = await SmartNudgeService.getUserRemindableItems(userId);
+      
+      // Filter items by client email
+      const matchingPaymentLinks = items.paymentLinks.filter(link => 
+        link.clientEmail.toLowerCase() === clientEmail.toLowerCase()
+      );
+      const matchingInvoices = items.invoices.filter(invoice => 
+        invoice.clientEmail.toLowerCase() === clientEmail.toLowerCase()
+      );
+      
+      if (matchingPaymentLinks.length === 0 && matchingInvoices.length === 0) {
+        return {
+          text: `📭 No unpaid invoices or payment links found for **${clientEmail}**.\n\nMake sure the email address is correct and that there are pending payments for this client.`
+        };
+      }
+      
+      // Create interactive selection interface
+      let selectionText = `🔍 **Found items for ${clientEmail}:**\n\n`;
+      const inlineKeyboard: Array<Array<{
+        text: string;
+        callback_data?: string;
+        url?: string;
+        copy_text?: { text: string };
+      }>> = [];
+      
+      if (matchingPaymentLinks.length > 0) {
+        selectionText += '💳 **Payment Links:**\n';
+        matchingPaymentLinks.forEach((link, index) => {
+          selectionText += `${index + 1}. ${link.title} - $${link.amount}\n`;
+          inlineKeyboard.push([{
+            text: `💳 ${link.title} ($${link.amount})`,
+            callback_data: `remind_payment_link_${link.id}${customMessage ? `_msg_${Buffer.from(customMessage).toString('base64')}` : ''}`
+          }]);
+        });
+        selectionText += '\n';
+      }
+      
+      if (matchingInvoices.length > 0) {
+        selectionText += '📄 **Invoices:**\n';
+        matchingInvoices.forEach((invoice, index) => {
+          selectionText += `${index + 1}. ${invoice.title} - $${invoice.amount}\n`;
+          inlineKeyboard.push([{
+            text: `📄 ${invoice.title} ($${invoice.amount})`,
+            callback_data: `remind_invoice_${invoice.id}${customMessage ? `_msg_${Buffer.from(customMessage).toString('base64')}` : ''}`
+          }]);
+        });
+      }
+      
+      selectionText += '\n👆 **Select an item above to send a reminder.**';
+      
+      return {
+        text: selectionText,
+        reply_markup: {
+          inline_keyboard: inlineKeyboard
+        }
+      };
+    }
+    
     // If we have a client email but no specific target, find the most recent unpaid item for that client
-    if (clientEmail && !targetId) {
+    if (clientEmail && !targetId && !searchByEmail) {
       const items = await SmartNudgeService.getUserRemindableItems(userId);
       
       // Look for items with matching client email
@@ -1837,40 +1970,47 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
       }
     }
     
-    // If still no specific target, show available options with better formatting
+    // If still no specific target, show selection interface with callback buttons
     if (!targetType || !targetId) {
       const items = await SmartNudgeService.getUserRemindableItems(userId);
       
       if (items.paymentLinks.length === 0 && items.invoices.length === 0) {
         return {
-          text: "📭 You don't have any unpaid payment links or invoices to send reminders for."
+          text: "📭 You don't have any unpaid payment links or invoices to send reminders for.\n\n💡 **Tip:** Create payment links or invoices first, then you can send reminders to your clients."
         };
       }
       
-      let itemsList = '📋 **Choose what to remind about:**\n\n';
+      // Create selection interface with callback buttons - always show both options
+      let selectionText = '📋 **Choose what type of reminder to send:**\n\n';
+      const inlineKeyboard: Array<Array<{
+        text: string;
+        callback_data?: string;
+        url?: string;
+        copy_text?: { text: string };
+      }>> = [];
       
-      if (items.paymentLinks.length > 0) {
-        itemsList += '💳 **Payment Links:**\n';
-        items.paymentLinks.forEach((link, index) => {
-          itemsList += `${index + 1}. ${link.title} - $${link.amount}\n   📧 ${link.clientEmail}\n   🆔 \`${link.id}\`\n\n`;
-        });
-      }
+      // Always show payment links option
+      selectionText += `💳 **Payment Links:** ${items.paymentLinks.length} unpaid\n`;
+      inlineKeyboard.push([{
+        text: `💳 Payment Links (${items.paymentLinks.length})`,
+        callback_data: 'select_payment_links_for_reminder'
+      }]);
       
-      if (items.invoices.length > 0) {
-        itemsList += '📄 **Invoices:**\n';
-        items.invoices.forEach((invoice, index) => {
-          itemsList += `${index + 1}. ${invoice.title} - $${invoice.amount}\n   📧 ${invoice.clientEmail}\n   🆔 \`${invoice.id}\`\n\n`;
-        });
-      }
+      // Always show invoices option
+      selectionText += `📄 **Invoices:** ${items.invoices.length} unpaid\n`;
+      inlineKeyboard.push([{
+        text: `📄 Invoices (${items.invoices.length})`,
+        callback_data: 'select_invoices_for_reminder'
+      }]);
       
-      itemsList += '💡 **How to send a reminder:**\n';
-      itemsList += '• "Remind about payment link [ID]"\n';
-      itemsList += '• "Send reminder for invoice [ID]"\n';
-      itemsList += '• "Remind [client@email.com]"\n';
-      itemsList += '• "Send reminder with message: [your message]"';
+      selectionText += '\n👆 **Select the type above to see available items.**';
+      
       
       return {
-        text: itemsList
+        text: selectionText,
+        reply_markup: {
+          inline_keyboard: inlineKeyboard
+        }
       };
     }
     
@@ -1889,7 +2029,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         .from('invoices')
         .select('*')
         .eq('id', targetId)
-        .eq('user_id', userId)
+        .eq('created_by', userId)
         .single();
       
       if (!invoice) {
@@ -1902,6 +2042,28 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
       
       if (result.success) {
         result.message = `Due date reminder sent to ${invoice.client_email} for invoice ${invoice.invoice_number}`;
+      } else {
+        result.message = result.error || 'Failed to send due date reminder';
+      }
+    } else if (reminderType === 'due_date' && targetType === 'payment_link') {
+      // Use PaymentLinkReminderService for due date reminders on payment links
+      const { data: paymentLink } = await supabase
+        .from('payment_links')
+        .select('*')
+        .eq('id', targetId)
+        .eq('created_by', userId)
+        .single();
+      
+      if (!paymentLink) {
+        return {
+          text: "❌ Payment link not found or you don't have permission to send reminders for it."
+        };
+      }
+      
+      result = await PaymentLinkReminderService.sendDueDateReminder(paymentLink, 'manual');
+      
+      if (result.success) {
+        result.message = `Due date reminder sent to ${paymentLink.recipient_email} for payment link ${paymentLink.payment_reason || paymentLink.id}`;
       } else {
         result.message = result.error || 'Failed to send due date reminder';
       }

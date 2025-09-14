@@ -15,21 +15,21 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 225 100% 82%;  /* Brand color #a2d2ff */
+    --primary: 270 99% 39%;  /* Brand color #8e01bb */
     --primary-foreground: 222.2 84% 4.9%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 225 100% 82%;  /* Brand color #a2d2ff */
+    --accent: 270 99% 39%;  /* Brand color #8e01bb */
     --accent-foreground: 222.2 84% 4.9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 225 100% 82%;  /* Brand color #a2d2ff */
+    --ring: 270 99% 39%;  /* Brand color #8e01bb */
     --radius: 0.5rem;
-    --brand-color: #a2d2ff;
+    --brand-color: #8e01bb;
   }
 
   .dark {

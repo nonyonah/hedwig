@@ -642,7 +642,7 @@ async function sendEmailNotification(
     
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: linear-gradient(135deg, ${type === 'offramp' && itemData.status === 'failed' ? '#dc3545 0%, #c82333 100%' : '#667eea 0%, #764ba2 100%'}); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+        <div style="background: linear-gradient(135deg, ${type === 'offramp' && itemData.status === 'failed' ? '#dc3545 0%, #c82333 100%' : '#8e01bb 0%, #7a01a5 100%'}); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
           <h1 style="margin: 0; font-size: 28px;">${type === 'offramp' && itemData.status === 'failed' ? '❌ Offramp Failed!' : type === 'offramp' ? '🏦 Offramp Completed!' : '🎉 Payment Received!'}</h1>
         </div>
         
@@ -679,7 +679,7 @@ async function sendEmailNotification(
           
           <div style="text-align: center; margin-top: 30px;">
             <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" 
-               style="background: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+               style="background: #8e01bb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
               View Dashboard
             </a>
           </div>

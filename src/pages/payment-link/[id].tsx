@@ -26,6 +26,7 @@ interface PaymentData {
   };
   walletAddress: string;
   expiresAt: string;
+  dueDate?: string; // ISO date string for payment due date
   bankDetails: {
     accountName: string;
     bankName: string;
@@ -86,8 +87,8 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
       <Button 
         onClick={handlePay} 
         disabled={isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing} 
-        className="w-full bg-[#4a5759] hover:bg-[#3a4547] text-white font-semibold text-lg py-4 rounded-2xl transition-colors"
-        style={{ backgroundColor: isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing ? undefined : '#4a5759' }}
+        className="w-full bg-[#8e01bb] hover:bg-[#7a01a5] text-white font-semibold text-lg py-4 rounded-2xl transition-colors"
+        style={{ backgroundColor: isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing ? undefined : '#8e01bb' }}
       >
           {isAlreadyPaid ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Already Completed</>
@@ -192,6 +193,7 @@ export default function PaymentLinkPage() {
           recipient: { name: data.user_name, email: data.recipient_email || '' },
           walletAddress: data.wallet_address,
           expiresAt: data.expires_at,
+          dueDate: data.due_date,
           bankDetails: { accountName: data.user_name, bankName: 'Flutterwave Virtual Account', accountNumber: 'Generated on payment', routingNumber: 'N/A' },
           network: data.network,
           token: data.token,
@@ -388,7 +390,15 @@ export default function PaymentLinkPage() {
               </span>
             </div>
 
-
+            {/* Due Date */}
+            {paymentData.dueDate && (
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-gray-600 text-sm">Due Date</span>
+                <span className="text-sm font-medium text-slate-900">
+                  {new Date(paymentData.dueDate).toLocaleDateString()}
+                </span>
+              </div>
+            )}
 
             {/* One-time payment */}
             <div className="text-center mt-3">

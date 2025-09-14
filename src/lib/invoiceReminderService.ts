@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendInvoiceEmail } from './invoiceService';
+import { sendEmail, generateInvoiceEmailTemplate } from './emailService';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -78,16 +78,23 @@ export class InvoiceReminderService {
       }
 
       // Send email reminder
-      await sendInvoiceEmail({
-        recipientEmail: invoice.client_email || '',
+      const invoiceData = {
+        id: invoiceId,
+        invoice_number: invoice.invoice_number || invoiceId,
+        project_description: invoice.project_description || 'Services Rendered',
         amount: invoice.amount,
-        token: invoice.token || 'USDC',
-        network: invoice.blockchain || 'base',
-        invoiceLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/invoice/${invoiceId}`,
-        freelancerName: invoice.users?.name || invoice.freelancer_name || 'Your Freelancer',
-        description: invoice.project_description || 'Services Rendered',
-        invoiceNumber: invoice.invoice_number || invoiceId,
-        customMessage: message
+        currency: invoice.token || 'USDC',
+        due_date: invoice.due_date,
+        client_name: invoice.client_name || 'Valued Client',
+        client_email: invoice.client_email || '',
+        freelancer_name: invoice.users?.name || invoice.freelancer_name || 'Your Freelancer',
+        custom_message: message
+      };
+      
+      await sendEmail({
+        to: invoice.client_email || '',
+        subject: `Invoice Reminder: ${invoice.invoice_number || invoiceId}`,
+        html: generateInvoiceEmailTemplate(invoiceData)
       });
 
       // Update reminder count and last reminder timestamp

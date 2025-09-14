@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from './serverEnv';
 import { Resend } from 'resend';
+import { sendEmail, generateInvoiceEmailTemplate } from './emailService';
 
 // Load environment variables
 loadServerEnvironment();
@@ -273,10 +274,6 @@ interface SendInvoiceEmailParams {
 export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<void> {
   const { recipientEmail, amount, token, network, invoiceLink, freelancerName, description, invoiceNumber, dueDate } = params;
 
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY is not configured');
-  }
-
   // Get user data for personalized display name
   const { data: userData } = await supabase
     .from('users')
@@ -284,76 +281,30 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
     .eq('name', freelancerName)
     .single();
 
-  // Always use verified domain for 'from' address to avoid domain verification issues
-  const senderEmail = process.env.EMAIL_FROM || 'noreply@hedwigbot.xyz';
   const displayName = userData?.name || freelancerName;
-  const userEmail = userData?.email; // Keep user email for display purposes
+  const userEmail = userData?.email;
 
-  const emailHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Invoice ${invoiceNumber}</title>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-        .invoice-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }
-        .button { display: inline-block; background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
-        .security-notice { background: #d1ecf1; border: 1px solid #bee5eb; padding: 15px; border-radius: 5px; margin: 20px 0; }
-        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h1>📄 Invoice ${invoiceNumber}</h1>
-        <p>Payment request from ${displayName}</p>
-      </div>
-      
-      <div class="content">
-        <div class="invoice-details">
-          <h3>Invoice Details</h3>
-          <p><strong>From:</strong> ${displayName}${userEmail ? ` (${userEmail})` : ''}</p>
-          <p><strong>Invoice Number:</strong> ${invoiceNumber}</p>
-          <p><strong>Description:</strong> ${description}</p>
-          <p><strong>Network:</strong> ${network.toUpperCase()}</p>
-          <p><strong>Amount:</strong> ${amount} ${token.toUpperCase()}</p>
-          ${dueDate ? `<p><strong>Due Date:</strong> ${new Date(dueDate).toLocaleDateString()}</p>` : ''}
-        </div>
-        
-        <div class="security-notice">
-          <p><strong>💼 Professional Invoice:</strong> This is an official invoice. Please review all details before proceeding with payment.</p>
-        </div>
-        
-        <div style="text-align: center;">
-          <a href="${invoiceLink}" class="button">View & Pay Invoice</a>
-        </div>
-        
-        <p>If the button doesn't work, copy and paste this link into your browser:</p>
-        <p style="word-break: break-all; background: #f0f0f0; padding: 10px; border-radius: 5px;">${invoiceLink}</p>
-      </div>
-      
-      <div class="footer">
-        <p>This invoice was sent via Hedwig Bot</p>
-        <p>If you have any questions about this invoice, please contact ${displayName} directly.</p>
-      </div>
-    </body>
-    </html>
-  `;
+  // Generate email template using the centralized service
+  const emailHtml = generateInvoiceEmailTemplate({
+    invoiceNumber,
+    displayName,
+    userEmail,
+    description,
+    network,
+    amount,
+    token,
+    dueDate,
+    invoiceLink,
+    customMessage: params.customMessage
+  });
 
-  const result = await resend.emails.send({
-    from: `${displayName} <${senderEmail}>`,
+  // Send email using the centralized service
+  await sendEmail({
     to: recipientEmail,
+    from: displayName,
     subject: `Invoice ${invoiceNumber} - ${amount} ${token.toUpperCase()}`,
     html: emailHtml
   });
-
-  if (result.error) {
-    const errorMessage = result.error.message || JSON.stringify(result.error) || 'Unknown email error';
-    throw new Error(`Failed to send email: ${errorMessage}`);
-  }
 
   // Track invoice sent event
   try {

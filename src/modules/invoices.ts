@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { supabase } from '../lib/supabase';
-import { sendEmail } from '../lib/emailService';
+import { sendEmail, generateInvoiceEmailTemplate } from '../lib/emailService';
 import { generateInvoicePDF } from './pdf-generator';
 
 export interface InvoiceData {
@@ -537,7 +537,7 @@ export class InvoiceModule {
       const pdfBuffer = await generateInvoicePDF(invoice);
       
       // Send email with PDF attachment
-      const emailTemplate = this.generateEmailTemplate(invoice);
+      const emailTemplate = generateInvoiceEmailTemplate(invoice);
       await sendEmail({
         to: invoice.client_email,
         subject: `Invoice ${invoice.invoice_number}`,
@@ -949,64 +949,7 @@ export class InvoiceModule {
     return null;
   }
 
-  // Generate email template
-  private generateEmailTemplate(invoice: InvoiceData): string {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://hedwigbot.xyz';
-    const invoiceLink = `${baseUrl}/invoice/${invoice.id}`;
-    
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Invoice ${invoice.invoice_number}</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .invoice-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745; }
-          .button { display: inline-block; background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
-          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>📄 Invoice ${invoice.invoice_number}</h1>
-          <p>Payment request from ${invoice.freelancer_name}</p>
-        </div>
-        
-        <div class="content">
-          <p>Dear ${invoice.client_name},</p>
-          <p>Please find attached your invoice for the project: ${invoice.project_description}</p>
-          
-          <div class="invoice-details">
-            <h3>Invoice Details</h3>
-            <p><strong>Invoice Number:</strong> ${invoice.invoice_number}</p>
-            <p><strong>Project:</strong> ${invoice.project_description}</p>
-            <p><strong>Amount:</strong> ${invoice.amount} ${invoice.currency}</p>
-            <p><strong>Due Date:</strong> ${invoice.due_date}</p>
-          </div>
-          
-          <div style="text-align: center;">
-            <a href="${invoiceLink}" class="button">View & Pay Invoice</a>
-          </div>
-          
-          <p>If the button doesn't work, copy and paste this link into your browser:</p>
-          <p style="word-break: break-all; background: #f0f0f0; padding: 10px; border-radius: 5px;">${invoiceLink}</p>
-          
-          <p>Thank you for your business!</p>
-          <p>Best regards,<br>${invoice.freelancer_name}</p>
-        </div>
-        
-        <div class="footer">
-          <p>This invoice was sent via Hedwig Bot</p>
-          <p>If you have any questions about this invoice, please contact ${invoice.freelancer_name} directly.</p>
-        </div>
-      </body>
-      </html>
-    `;
-  }
+
 
   // Cancel invoice creation
   async cancelInvoiceCreation(chatId: number, invoiceId: string, userId?: string) {

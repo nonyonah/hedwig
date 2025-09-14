@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail } from '../../../../lib/emailService';
+import { sendEmail, generateInvoiceEmailTemplate } from '../../../../lib/emailService';
 import { generateInvoicePDF } from '../../../../modules/pdf-generator';
 
 const supabase = createClient(
@@ -33,13 +33,7 @@ export default async function handler(
       const emailResult = await sendEmail({
         to: invoice.client_email,
         subject: `Invoice ${invoice.invoice_number} from ${invoice.freelancer_name}`,
-        html: `
-          <h2>Invoice ${invoice.invoice_number}</h2>
-          <p>Dear ${invoice.client_name},</p>
-          <p>Please find attached your invoice for the amount of ${invoice.amount} ${invoice.currency}.</p>
-          <p>Due Date: ${invoice.due_date}</p>
-          <p>Best regards,<br>${invoice.freelancer_name}</p>
-        `,
+        html: generateInvoiceEmailTemplate(invoice),
         attachments: [{
           filename: `invoice-${invoice.invoice_number}.pdf`,
           content: pdfBuffer

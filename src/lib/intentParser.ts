@@ -309,7 +309,15 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
           text.includes('remind client') || 
           text.includes('payment reminder') ||
           (text.includes('remind') && text.includes('client')) ||
-          (text.includes('send') && text.includes('reminder'))) {
+          (text.includes('send') && text.includes('reminder')) ||
+          (text.includes('email') && text.includes('remind')) ||
+          (text.includes('search') && text.includes('remind')) ||
+          text.includes('remind by email') ||
+          text.includes('send reminder to') ||
+          text.includes('find and remind') ||
+          text.includes('search client and remind') ||
+          text.includes('look up client') ||
+          text.includes('find client by email')) {
         
         const params: any = {};
         
@@ -339,6 +347,17 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         const emailMatch = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
         if (emailMatch) {
           params.clientEmail = emailMatch[1];
+        }
+        
+        // Detect if this is an email-based search request
+        if (text.includes('search') || 
+            text.includes('find') || 
+            text.includes('look up') ||
+            text.includes('by email') ||
+            text.includes('client email') ||
+            (params.clientEmail && !params.targetId)) {
+          params.searchByEmail = true;
+          params.requiresSelection = true;
         }
         
         // Detect due date reminder type

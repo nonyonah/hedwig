@@ -165,7 +165,7 @@ async function sendPaymentLinkEmail(emailData: EmailData) {
                                   <td style="text-align: center; padding-top: 16px;">
                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
                                       <tr>
-                                        <td style="background-color: #7f56d9; border-radius: 6px;">
+                                        <td style="background-color: #8e01bb; border-radius: 6px;">
                                           <a href="${emailData.paymentLink}" style="display: inline-block; padding: 12px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; line-height: 1.2; white-space: nowrap;">Complete Payment</a>
                                         </td>
                                       </tr>
@@ -178,7 +178,7 @@ async function sendPaymentLinkEmail(emailData: EmailData) {
                                   <td style="padding-top: 16px; text-align: center;">
                                     <p style="margin: 0; color: #6b7280; font-size: 12px;">
                                       If you're unable to click the button, copy this link:<br>
-                                      <span style="word-break: break-all; color: #7f56d9; font-size: 11px;">${emailData.paymentLink}</span>
+                                      <span style="word-break: break-all; color: #8e01bb; font-size: 11px;">${emailData.paymentLink}</span>
                                     </p>
                                   </td>
                                 </tr>
