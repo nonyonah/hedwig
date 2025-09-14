@@ -93,7 +93,7 @@ export class InvoiceReminderService {
       
       await sendEmail({
         to: invoice.client_email || '',
-        subject: `Invoice Reminder: ${invoice.invoice_number || invoiceId}`,
+        subject: `Payment Reminder: Invoice ${invoice.invoice_number || invoiceId}`,
         html: generateInvoiceEmailTemplate(invoiceData)
       });
 

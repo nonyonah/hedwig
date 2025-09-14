@@ -210,7 +210,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
   }
 }
 
-interface SendPaymentLinkEmailParams {
+export interface SendPaymentLinkEmailParams {
   recipientEmail: string;
   amount: number;
   token: string;
@@ -219,10 +219,11 @@ interface SendPaymentLinkEmailParams {
   senderName: string;
   reason: string;
   customMessage?: string;
+  isReminder?: boolean;
 }
 
 export async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): Promise<void> {
-  const { recipientEmail, amount, token, network, paymentLink, senderName, reason } = params;
+  const { recipientEmail, amount, token, network, paymentLink, senderName, reason, isReminder } = params;
 
   if (!process.env.RESEND_API_KEY) {
     throw new Error('RESEND_API_KEY is not configured');
@@ -249,10 +250,14 @@ export async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): 
      payment_link: paymentLink
    });
 
+  const subject = isReminder 
+    ? `Payment Reminder: ${amount} ${token.toUpperCase()} for ${reason}`
+    : `Payment Request: ${amount} ${token.toUpperCase()} for ${reason}`;
+
   const result = await resend.emails.send({
     from: `${displayName} <${senderEmail}>`,
     to: recipientEmail,
-    subject: `Payment Request: ${amount} ${token.toUpperCase()} for ${reason}`,
+    subject,
     html: emailHtml
   });
 

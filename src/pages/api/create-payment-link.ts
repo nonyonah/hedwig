@@ -208,7 +208,6 @@ export default async function handler(
 
          await sendEmail({
            to: recipientEmail,
-           from: userData?.name || userName,
            subject: `Payment Request: ${amount} ${token}`,
            html: emailHtml
          });

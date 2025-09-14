@@ -92,7 +92,8 @@ export class PaymentLinkReminderService {
         paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/payment-link/${paymentLinkId}`,
         senderName: paymentLink.users?.name || paymentLink.user_name || 'Your Service Provider',
         reason: paymentLink.payment_reason || 'Payment Request',
-        customMessage: message
+        customMessage: message,
+        isReminder: true
       });
 
       // Update reminder count and last reminder timestamp

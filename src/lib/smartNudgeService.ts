@@ -480,16 +480,20 @@ export class SmartNudgeService {
       if (target.clientEmail) {
         try {
           if (target.type === 'invoice') {
-            await sendInvoiceEmail({
-              recipientEmail: target.clientEmail!,
+            const emailHtml = generateInvoiceEmailTemplate({
+              sender_name: target.senderName || 'Your Freelancer',
               amount: target.amount,
-              token: 'USDC', // TODO: fetch real token if needed
-              network: 'base', // TODO: fetch real network if needed
-              invoiceLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/invoice/${target.id}`,
-              freelancerName: target.senderName || 'Your Freelancer',
+              token: 'USDC',
               description: target.title,
-              invoiceNumber: target.title.replace('Invoice ', ''), // crude fallback
-              customMessage: customMessage
+              invoice_number: target.title.replace('Invoice ', ''),
+              custom_message: customMessage,
+              invoice_link: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.hedwigbot.xyz'}/invoice/${target.id}`
+            });
+            
+            await sendEmail({
+              to: target.clientEmail!,
+              subject: `Payment Reminder: Invoice ${target.title.replace('Invoice ', '')} - ${target.amount} USDC`,
+              html: emailHtml
             });
           } else if (target.type === 'payment_link') {
             await sendPaymentLinkEmail({
@@ -500,7 +504,8 @@ export class SmartNudgeService {
               paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.hedwigbot.xyz'}/payment-link/${target.id}`,
               senderName: target.senderName || 'Hedwig User',
               reason: target.title,
-              customMessage: customMessage
+              customMessage: customMessage,
+              isReminder: true
             });
           }
           success = true;

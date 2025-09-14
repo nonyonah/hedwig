@@ -301,7 +301,6 @@ export async function sendInvoiceEmail(params: SendInvoiceEmailParams): Promise<
   // Send email using the centralized service
   await sendEmail({
     to: recipientEmail,
-    from: displayName,
     subject: `Invoice ${invoiceNumber} - ${amount} ${token.toUpperCase()}`,
     html: emailHtml
   });
