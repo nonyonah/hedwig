@@ -511,6 +511,13 @@ export class TelegramBotService {
       case '/help':
         await this.sendHelpMessage(chatId);
         break;
+      case '/cancel':
+        await this.handleCancelCommand(chatId, from?.id?.toString());
+        break;
+      case '/send_reminder':
+      case '/sendreminder':
+        await this.handleSendReminderCommand(chatId, from?.id?.toString(), command);
+        break;
       case '/about':
         await this.sendAboutMessage(chatId);
         break;
@@ -1021,6 +1028,8 @@ Now you can create personalized invoices and proposals. Type /help to see what I
       const commands = [
         { command: 'start', description: 'Start the bot and show main menu' },
         { command: 'help', description: 'Show help and available commands' },
+        { command: 'cancel', description: 'Cancel current action or flow' },
+        { command: 'send_reminder', description: 'Send a payment reminder' },
         { command: 'wallet', description: 'View wallet information' },
         { command: 'balance', description: 'Check wallet balance' },
         { command: 'send', description: 'Send crypto to someone' },
@@ -1089,6 +1098,79 @@ Now you can create personalized invoices and proposals. Type /help to see what I
     } catch (error) {
       console.error('[TelegramBot] Error getting webhook info:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Handle cancel command to stop any ongoing flow
+   */
+  async handleCancelCommand(chatId: number, userId?: string): Promise<void> {
+    try {
+      if (userId) {
+        // Clear user session state
+        const { sessionManager } = await import('./sessionManager');
+        const { supabase } = await import('./supabase');
+        
+        // Get user's wallet address to clear session
+        const { data: userWallet } = await supabase
+          .from('wallets')
+          .select('address')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (userWallet?.address) {
+          sessionManager.invalidateSession(userWallet.address);
+        }
+        
+        // Clear offramp session if exists
+        const { offrampSessionService } = await import('../services/offrampSessionService');
+        const activeOfframpSession = await offrampSessionService.getActiveSession(userId);
+        if (activeOfframpSession) {
+          await offrampSessionService.clearSession(activeOfframpSession.id);
+        }
+        
+        // Clear any other state management
+        await supabase
+          .from('user_states')
+          .delete()
+          .eq('user_id', userId);
+      }
+      
+      await this.bot.sendMessage(chatId, '✅ All ongoing actions have been cancelled. You can start fresh with any command.');
+    } catch (error) {
+      console.error('[TelegramBot] Error handling cancel command:', error);
+      await this.bot.sendMessage(chatId, '❌ Error cancelling actions. Please try again.');
+    }
+  }
+
+  /**
+   * Handle send reminder command
+   */
+  async handleSendReminderCommand(chatId: number, userId?: string, command?: string): Promise<void> {
+    try {
+      if (!userId) {
+        await this.bot.sendMessage(chatId, '❌ User identification required for sending reminders.');
+        return;
+      }
+
+      await this.bot.sendMessage(chatId, '📧 Please provide the email address to send the reminder to:');
+      
+      // Set user state to expect email input for reminder
+      const { supabase } = await import('./supabase');
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'awaiting_reminder_email',
+          state_data: {},
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+      
+    } catch (error) {
+      console.error('[TelegramBot] Error handling send reminder command:', error);
+      await this.bot.sendMessage(chatId, '❌ Error setting up reminder. Please try again.');
     }
   }
 

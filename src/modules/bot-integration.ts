@@ -1221,6 +1221,72 @@ export class BotIntegration {
    }
 
    /**
+    * Handle reminder email collection
+    */
+   async handleReminderEmailCollection(chatId: number, userId: string, messageText: string): Promise<boolean> {
+     try {
+       // Check if user is in reminder email collection state
+       const { data: userState } = await supabase
+         .from('user_states')
+         .select('state_data')
+         .eq('user_id', userId)
+         .eq('state_type', 'awaiting_reminder_email')
+         .single();
+
+       if (!userState) {
+         return false; // Not in reminder email collection state
+       }
+
+       // Validate email format
+       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+       if (!emailRegex.test(messageText.trim())) {
+         await this.bot.sendMessage(chatId, '❌ Please enter a valid email address (e.g., john@example.com):');
+         return true; // Handled, but invalid
+       }
+
+       const email = messageText.trim().toLowerCase();
+
+       // Send reminder using SmartNudgeService
+       try {
+         const { SmartNudgeService } = await import('../lib/smartNudgeService');
+         
+         // Send a manual reminder using the email
+         const result = await SmartNudgeService.sendManualReminder(
+           'invoice',
+           'manual-reminder',
+           `This is a payment reminder sent via Telegram bot to ${email}.`
+         );
+
+         if (result.success) {
+           await this.bot.sendMessage(chatId, 
+             `✅ **Reminder Sent Successfully!**\n\n` +
+             `A payment reminder has been sent to \`${email}\`.\n\n` +
+             `The recipient will receive an email notification.`,
+             { parse_mode: 'Markdown' }
+           );
+         } else {
+           await this.bot.sendMessage(chatId, `❌ Failed to send reminder: ${result.message}`);
+         }
+       } catch (reminderError) {
+         console.error('[BotIntegration] Error sending reminder:', reminderError);
+         await this.bot.sendMessage(chatId, '❌ Failed to send reminder. Please try again.');
+       }
+
+       // Clear user state
+       await supabase
+         .from('user_states')
+         .delete()
+         .eq('user_id', userId)
+         .eq('state_type', 'awaiting_reminder_email');
+
+       return true;
+     } catch (error) {
+       console.error('[BotIntegration] Error handling reminder email collection:', error);
+       return false;
+     }
+   }
+
+   /**
     * Handle user info editing input
     */
    async handleUserInfoEditInput(chatId: number, userId: string, text: string): Promise<boolean> {
@@ -2283,6 +2349,12 @@ export class BotIntegration {
       // Check if user is in email collection state
       const emailHandled = await this.handleEmailCollection(chatId, text);
       if (emailHandled) {
+        return true;
+      }
+
+      // Check if user is in reminder email collection state
+      const reminderEmailHandled = await this.handleReminderEmailCollection(chatId, userId, text);
+      if (reminderEmailHandled) {
         return true;
       }
 

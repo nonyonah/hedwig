@@ -744,29 +744,11 @@ async function handleCommand(msg: any) {
         const startPayload = msg.text?.split(' ')[1] || null;
         await botIntegration.showWelcomeMessage(chatId, startPayload);
       } else {
-        await bot.sendMessage(chatId, 
-          `🦉 **Hi, I'm Hedwig!**\n\n` +
-          `I'm your AI assistant for crypto payments, freelance and wallet management.\n\n` +
-          `🚀 **What I can help you with:**\n` +
-          `• 💰 Check wallet balances\n` +
-          `• 💸 Send crypto payments\n` +
-          `• 📄 Create professional invoices\n` +
-          `• 💳 Generate payment links\n` +
-          `• 📊 Track earnings and analytics\n` +
-          `• 📋 Manage proposals\n\n` +
-          `💬 **Just ask me naturally!** Try:\n` +
-          `• "Check my balance"\n` +
-          `• "Send 10 USDC to 0x123..."\n` +
-          `• "Create an invoice for $500"\n` +
-          `• "Show my transaction history"\n\n` +
-          `📱 Use the menu button or type commands to get started!`,
-          { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-              remove_keyboard: true
-            }
-          }
-        );
+        // Fallback: Create a temporary BotIntegration instance to handle welcome message properly
+        const { BotIntegration } = await import('../../modules/bot-integration');
+        const tempBotIntegration = new BotIntegration(bot);
+        const startPayload = msg.text?.split(' ')[1] || null;
+        await tempBotIntegration.showWelcomeMessage(chatId, startPayload);
       }
       break;
 
@@ -1005,6 +987,93 @@ async function handleCommand(msg: any) {
       } catch (error) {
         console.error('[Webhook] Error handling /leaderboard command:', error);
         await bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try again.');
+      }
+      break;
+
+    case '/cancel':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+
+          if (user) {
+            // Clear user session state
+            const { sessionManager } = await import('../../lib/sessionManager');
+            // Get user's wallet address to clear session
+            const { data: userWallet } = await supabase
+              .from('wallets')
+              .select('address')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            
+            if (userWallet?.address) {
+              sessionManager.invalidateSession(userWallet.address);
+            }
+            
+            // Clear offramp session if exists
+            const { offrampSessionService } = await import('../../services/offrampSessionService');
+            const activeOfframpSession = await offrampSessionService.getActiveSession(user.id);
+            if (activeOfframpSession) {
+              await offrampSessionService.clearSession(activeOfframpSession.id);
+            }
+            
+            // Clear any other state management
+            await supabase
+              .from('user_states')
+              .delete()
+              .eq('user_id', user.id);
+          }
+          
+          await bot.sendMessage(chatId, '✅ All ongoing actions have been cancelled. You can start fresh with any command.');
+        } else {
+          await bot.sendMessage(chatId, '❌ Cancel feature is not available at the moment.');
+        }
+      } catch (error) {
+        console.error('[Webhook] Error handling /cancel command:', error);
+        await bot.sendMessage(chatId, '❌ Error cancelling actions. Please try again.');
+      }
+      break;
+
+    case '/send_reminder':
+    case '/sendreminder':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+
+          if (user) {
+            await bot.sendMessage(chatId, '📧 Please provide the email address to send the reminder to:');
+            
+            // Set user state to expect email input for reminder
+            await supabase
+              .from('user_states')
+              .upsert({
+                user_id: user.id,
+                state_type: 'awaiting_reminder_email',
+                state_data: {},
+                updated_at: new Date().toISOString()
+              }, {
+                onConflict: 'user_id,state_type'
+              });
+          } else {
+            await bot.sendMessage(chatId, '❌ User identification required for sending reminders.');
+          }
+        } else {
+          await bot.sendMessage(chatId, '❌ Send reminder feature is not available at the moment.');
+        }
+      } catch (error) {
+        console.error('[Webhook] Error handling /send_reminder command:', error);
+        await bot.sendMessage(chatId, '❌ Error setting up reminder. Please try again.');
       }
       break;
 
