@@ -34,11 +34,11 @@ if (!PAYCREST_API_KEY || !PAYCREST_API_TOKEN || !PAYCREST_API_SECRET) {
   });
 }
 
-// Supported tokens for offramp (Base network only)
-const SUPPORTED_TOKENS = ['USDC'];
+// Supported tokens for offramp (Base, Celo, and Lisk networks)
+const SUPPORTED_TOKENS = ['USDC', 'USDT', 'CUSD'];
 const SUPPORTED_CURRENCIES = ['NGN', 'KES'];
 const MINIMUM_USD_AMOUNT = 1; // Minimum $1 USD equivalent
-const UNSUPPORTED_TOKENS = ['SOL', 'ETH', 'USDT'];
+const UNSUPPORTED_TOKENS = ['SOL', 'ETH', 'WETH', 'BTC', 'WBTC'];
 const SOLANA_TOKENS = ['SOL', 'USDC-SOL', 'USDT-SOL'];
 
 // Types
@@ -401,18 +401,15 @@ export class OfframpService {
 
     if (UNSUPPORTED_TOKENS.includes(tokenUpper)) {
       if (tokenUpper === 'ETH') {
-        throw new Error('🚧 ETH withdrawals are not available yet. Currently, we only support USDC on Base network. Please convert your ETH to USDC first.');
+        throw new Error('🚧 ETH withdrawals are not available yet. Currently, we support USDC on Base, USDC/cUSD on Celo, and USDT on Lisk. Please convert your ETH to a supported token first.');
       }
       if (tokenUpper === 'SOL') {
-        throw new Error('🚧 SOL withdrawals are coming soon! Currently, we only support USDC on Base network.');
-      }
-      if (tokenUpper === 'USDT') {
-        throw new Error('🚧 USDT withdrawals are not available yet. Currently, we only support USDC on Base network. Please convert your USDT to USDC first.');
+        throw new Error('🚧 SOL withdrawals are coming soon! Currently, we support USDC on Base, USDC/cUSD on Celo, and USDT on Lisk.');
       }
     }
 
     if (!SUPPORTED_TOKENS.includes(tokenUpper)) {
-      throw new Error(`🚧 ${request.token} withdrawals are not supported yet. Currently, we only support USDC on Base network.`);
+      throw new Error(`🚧 ${request.token} withdrawals are not supported yet. Currently, we support USDC on Base, USDC/cUSD on Celo, and USDT on Lisk.`);
     }
 
     if (!SUPPORTED_CURRENCIES.includes(request.currency.toUpperCase())) {
@@ -423,11 +420,24 @@ export class OfframpService {
   /**
    * Check wallet balance for a given token
    */
-  private async checkWalletBalance(userId: string, token: string, amount: number) {
+  private async checkWalletBalance(userId: string, token: string, amount: number, network?: string) {
     try {
-      const wallet = await getOrCreateCdpWallet(userId, 'base');
-      const balancesResponse = await getBalances(wallet.address, 'base');
-      console.log(`[OfframpService] Raw balance response:`, JSON.stringify(balancesResponse, null, 2));
+      // Determine network based on token if not provided
+      let targetNetwork = network;
+      if (!targetNetwork) {
+        const tokenUpper = token.toUpperCase();
+        if (tokenUpper === 'CUSD') {
+          targetNetwork = 'celo';
+        } else if (tokenUpper === 'USDT') {
+          targetNetwork = 'lisk';
+        } else {
+          targetNetwork = 'base'; // Default to Base for USDC
+        }
+      }
+
+      const wallet = await getOrCreateCdpWallet(userId, targetNetwork);
+      const balancesResponse = await getBalances(wallet.address, targetNetwork);
+      console.log(`[OfframpService] Raw balance response for ${targetNetwork}:`, JSON.stringify(balancesResponse, null, 2));
 
       let balances;
       if (balancesResponse && typeof balancesResponse === 'object') {
@@ -449,9 +459,9 @@ export class OfframpService {
       );
 
       if (!tokenBalance) {
-        console.error(`[OfframpService] Token ${token} not found in wallet. Available tokens:`,
+        console.error(`[OfframpService] Token ${token} not found in ${targetNetwork} wallet. Available tokens:`,
           balances.map(b => b.asset?.symbol).filter(Boolean));
-        this.handleOfframpError(new Error(`Token ${token} not found in wallet`), 'balance_check');
+        this.handleOfframpError(new Error(`Token ${token} not found in ${targetNetwork} wallet`), 'balance_check');
       }
 
       const decimals = tokenBalance.asset.decimals || 18;
@@ -459,7 +469,7 @@ export class OfframpService {
       const divisor = BigInt(10 ** decimals);
       const balanceInTokens = Number(balanceInWei) / Number(divisor);
 
-      console.log(`[OfframpService] Token balance check:`);
+      console.log(`[OfframpService] Token balance check on ${targetNetwork}:`);
       console.log(`[OfframpService] - Token: ${token}`);
       console.log(`[OfframpService] - Balance (wei): ${tokenBalance.amount}`);
       console.log(`[OfframpService] - Balance (tokens): ${balanceInTokens}`);
@@ -539,27 +549,38 @@ export class OfframpService {
       // 1. Validate inputs
       this.validateOfframpRequest(request);
 
-      // 2. Get user's wallet
-      const wallet = await getOrCreateCdpWallet(request.userId, 'base');
+      // 2. Determine network based on token
+      const tokenUpper = request.token.toUpperCase();
+      let network: string;
+      if (tokenUpper === 'CUSD') {
+        network = 'celo';
+      } else if (tokenUpper === 'USDT') {
+        network = 'lisk';
+      } else {
+        network = 'base'; // Default to Base for USDC
+      }
 
-      // 3. Check wallet balance
-      await this.checkWalletBalance(request.userId, request.token, request.amount);
+      // 3. Get user's wallet for the appropriate network
+      const wallet = await getOrCreateCdpWallet(request.userId, network);
 
-      // 4. Verify bank account
+      // 4. Check wallet balance on the correct network
+      await this.checkWalletBalance(request.userId, request.token, request.amount, network);
+
+      // 5. Verify bank account
       await this.verifyBankAccount(
         request.bankDetails.accountNumber,
         request.bankDetails.bankCode,
         request.currency
       );
 
-      // 5. Get exchange rate
+      // 6. Get exchange rate
       const rates = await this.getExchangeRates(request.token, request.amount);
       const fiatAmount = rates[request.currency.toUpperCase()];
       if (!fiatAmount || fiatAmount <= 0) {
         throw new Error('Unable to get exchange rate');
       }
 
-      // 6. Create Paycrest order (but don't execute transfer yet)
+      // 7. Create Paycrest order (but don't execute transfer yet)
       const order = await this.createPaycrestOrder(request, wallet.address);
 
       // 7. Create database transaction record
@@ -610,18 +631,34 @@ export class OfframpService {
     token: string;
   }): Promise<{ transactionHash: string; orderId: string }> {
     try {
-      // Get user's wallet
-      const wallet = await getOrCreateCdpWallet(params.userId, 'base');
+      // Determine network based on token
+      const tokenUpper = params.token.toUpperCase();
+      let network: string;
+      let decimals: number;
+      
+      if (tokenUpper === 'CUSD') {
+        network = 'celo';
+        decimals = 18; // cUSD has 18 decimals
+      } else if (tokenUpper === 'USDT') {
+        network = 'lisk';
+        decimals = 6; // USDT typically has 6 decimals
+      } else {
+        network = 'base'; // Default to Base for USDC
+        decimals = 6; // USDC has 6 decimals
+      }
+
+      // Get user's wallet for the appropriate network
+      const wallet = await getOrCreateCdpWallet(params.userId, network);
 
       // Execute token transfer using CDP
-      const tokenAddress = this.getTokenAddress(params.token, 'base');
+      const tokenAddress = this.getTokenAddress(params.token, network);
       const transferResult = await transferToken(
         wallet.address,
         params.receiveAddress,
         tokenAddress,
         params.amount,
-        6, // USDC has 6 decimals
-        'base'
+        decimals,
+        network
       );
 
       const txHash = transferResult.hash;
@@ -719,15 +756,16 @@ export class OfframpService {
          'WETH': '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'
       },
       'celo': {
-         'USDC': '', // To be added when enabled
+         'USDC': '0xcebA9300f2b948710d2653dD7B07f33A8B32118C', // Native USDC on Celo mainnet
+         'CUSD': '0x765DE816845861e75A25fCA122bb6898B8B1282a', // cUSD on Celo mainnet
          'USDT': '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e',
          'CELO': '0x471EcE3750Da237f93B8E339c536989b8978a438'
       },
       'lisk': {
-         'USDC': '', // To be added when enabled
-         'USDT': '', // To be added when enabled
+         'USDT': '0x05D032ac25d322df992303dCa074EE7392C117b9', // Bridged USDT on Lisk mainnet
+         'USDC': '0x3e7eF8f50246f725885102E8238CBba33F276747', // Bridged USDC on Lisk mainnet
          'ETH': 'native',
-         'LSK': '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f'
+         'LSK': '0xac485391EB2d7D88253a7F1eF18C37f4242D1A24'
       },
     };
 
@@ -1149,6 +1187,20 @@ export class OfframpService {
   }
 
   /**
+   * Get the appropriate network for a given token
+   */
+  private getNetworkForToken(token: string): string {
+    const tokenUpper = token.toUpperCase();
+    if (tokenUpper === 'CUSD') {
+      return 'celo';
+    } else if (tokenUpper === 'USDT') {
+      return 'lisk';
+    } else {
+      return 'base'; // Default to Base for USDC
+    }
+  }
+
+  /**
    * Process offramp request for Telegram bot users using server-managed wallets
    */
   async processTelegramOfframp(request: OfframpRequest): Promise<{
@@ -1175,7 +1227,7 @@ export class OfframpService {
           accountName: request.bankDetails.accountName,
           bankName: request.bankDetails.bankName
         },
-        network: 'base' // Default to Base network for USDC
+        network: this.getNetworkForToken(request.token || 'USDC')
       };
       
       // Use server wallet service to create the order
@@ -1200,7 +1252,3 @@ export class OfframpService {
 }
 
 export const offrampService = new OfframpService();
-
-/**
- * Process the offramp request
- */
