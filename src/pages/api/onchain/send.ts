@@ -49,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }] as const;
 
     // Simulate and send
-    const value = parseUnits(amount, tokenCfg.decimals);
+    const value = parseUnits(String(amount), tokenCfg.decimals);
     const { request } = await publicClient.simulateContract({
       address: tokenCfg.address,
       abi: erc20TransferAbi,

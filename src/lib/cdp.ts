@@ -42,7 +42,7 @@ const supabase = createClient(
 const cdp = new BaseCdpClient({
   apiKeyId: process.env.CDP_API_KEY_ID!,
   apiKeySecret: process.env.CDP_API_KEY_SECRET!,
-  walletSecret: process.env.CDP_WALLET_SECRET
+  walletSecret: process.env.CDP_WALLET_SECRET,
 });
 
 // Access EVM and Solana clients
@@ -179,9 +179,9 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'optimism-sepolia',
     chainId: 11155420,
   },
-  'celo-alfajores': {
-    name: 'celo-alfajores',
-    chainId: 44787,
+  'celo-sepolia': {
+    name: 'celo-sepolia',
+    chainId: 11142220,
   },
   'solana': {
     name: 'solana',
@@ -192,9 +192,9 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'bsc',
     chainId: 56,
   },
-  'bsc-testnet': {
-    name: 'bsc-testnet',
-    chainId: 97,
+  'lisk-sepolia': {
+    name: 'lisk-sepolia',
+    chainId: 4202,
   },
   'lisk': {
     name: 'lisk',
@@ -219,14 +219,15 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
 };
 
 /**
- * Active networks - BEP20 and Asset Chain are DISABLED
+ * Active networks - Lisk Sepolia testnet and Celo Sepolia testnet are now ENABLED
  */
 export const ACTIVE_NETWORKS = [
   'ethereum-sepolia',
   'ethereum',
   'base',
   'optimism-sepolia',
-  'celo-alfajores',
+  'celo-sepolia',
+  'lisk-sepolia',
   'solana'
 ];
 
@@ -266,6 +267,19 @@ export const TOKEN_CONTRACTS = {
     'USDT': '0x55d398326f99059fF775485246999027B3197955', // Binance-Peg BSC-USD (USDT)
     'BNB': 'native', // Native BNB
     'WBNB': '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' // Wrapped BNB
+  },
+  // Lisk Sepolia Testnet - ENABLED
+  'lisk-sepolia': {
+    'USDT': '0x2728DD8B45B788e26d12B13Db5A244e5403e7eda', // USDT on Lisk Sepolia
+    'ETH': 'native', // Native ETH (Sepolia Ether)
+    'LISK': '0x625eB34C6bebd89ebfC41B9b3D0430BAcb37b9F8' // LISK token on Lisk Sepolia
+  },
+  // Celo Sepolia Testnet - ENABLED
+  'celo-sepolia': {
+    'USDC': '0x01C5C0122039549AD1493B8220cABEdD739BC44E', // USDC on Celo Sepolia
+    'cUSD': '0xEF4d55D6dE8e8d73232827Cd1e9b2F2dBb45bC80', // Celo Dollar (cUSD) on Celo Sepolia
+    'CELO': 'native', // Native CELO
+    'CELO_TOKEN': '0x77F6a7215B27688Ab4a660EDbfB1DC88aFa2Dd68' // CELO token - provided by user
   },
   // Arbitrum One - DISABLED
   'arbitrum-one': {
@@ -340,6 +354,10 @@ export function getBlockExplorerUrl(txHash: string, network: string): string {
       return `https://celoscan.io/tx/${txHash}`;
     case 'lisk':
       return `https://blockscout.lisk.com/tx/${txHash}`;
+    case 'lisk-sepolia':
+      return `https://sepolia-blockscout.lisk.com/tx/${txHash}`;
+    case 'celo-sepolia':
+      return `https://celo-sepolia.blockscout.com/tx/${txHash}`;
     case 'solana':
       return `https://explorer.solana.com/tx/${txHash}`;
     default:
@@ -660,9 +678,13 @@ export async function getBalances(address: string, network: string) {
     // Get balances based on network type
     let balances;
     if (networkConfig.chainId) {
-      // For Ethereum Sepolia, use Alchemy API since CDP doesn't support it
+      // For networks not supported by CDP, use alternative methods
       if (actualNetwork === 'ethereum-sepolia') {
         balances = await getEthereumSepoliaBalances(address);
+      } else if (actualNetwork === 'celo-sepolia') {
+        balances = await getCeloSepoliaBalances(address);
+      } else if (actualNetwork === 'lisk-sepolia') {
+        balances = await getLiskSepoliaBalances(address);
       } else if (actualNetwork === 'base') {
         // Try CDP first, fallback to Coinbase RPC if needed
         try {
@@ -682,10 +704,16 @@ export async function getBalances(address: string, network: string) {
         }
       } else {
         // Get EVM balances using CDP for other supported networks
-        balances = await evmClient.listTokenBalances({
-          address: address as `0x${string}`,
-          network: networkConfig.name as any,
-        });
+        try {
+          balances = await evmClient.listTokenBalances({
+            address: address as `0x${string}`,
+            network: networkConfig.name as any,
+          });
+        } catch (cdpError) {
+          console.warn(`[CDP] CDP failed for ${actualNetwork}, using fallback method:`, cdpError);
+          // Fallback to generic EVM balance fetching
+          balances = await getGenericEvmBalances(address, actualNetwork);
+        }
       }
     } else if (networkConfig.networkId) {
       // Get Solana balances with SOL and USDC SPL token
@@ -1001,16 +1029,24 @@ export async function transferNativeToken(
   network: string = 'base'
 ) {
   try {
-    console.log(`[CDP] Transferring ${amount} native tokens from ${fromAddress} to ${toAddress} on network ${network}`);
+    console.log(`[CDP] ===== STARTING NATIVE TOKEN TRANSFER =====`);
+    console.log(`[CDP] From: ${fromAddress}`);
+    console.log(`[CDP] To: ${toAddress}`);
+    console.log(`[CDP] Amount: ${amount}`);
+    console.log(`[CDP] Network: ${network}`);
     
     // Get network configuration first to determine wallet type
     const networkConfig = SUPPORTED_NETWORKS[network];
     if (!networkConfig) {
+      console.error(`[CDP] ERROR: Unsupported network: ${network}`);
       throw new Error(`Unsupported network: ${network}`);
     }
+    console.log(`[CDP] Network config found:`, networkConfig);
     
     // Get wallet from database - filter by chain type to avoid multiple rows
     const isEVM = !!networkConfig.chainId;
+    console.log(`[CDP] Is EVM network: ${isEVM}`);
+    
     const { data: wallet, error } = await supabase
       .from('wallets')
       .select('cdp_wallet_id, chain')
@@ -1018,34 +1054,102 @@ export async function transferNativeToken(
       .eq('chain', isEVM ? 'evm' : 'solana')
       .single();
     
+    console.log(`[CDP] Wallet query result:`, { wallet, error });
+    
     if (error || !wallet) {
       console.error(`[CDP] Failed to get wallet from database:`, error);
       throw error || new Error(`Wallet not found: ${fromAddress}`);
     }
     
+    console.log(`[CDP] Found wallet:`, wallet);
+    
     // Convert amount to wei (for EVM) or lamports (for Solana)
     let parsedAmount;
     if (networkConfig.chainId) {
       // EVM - convert to wei
-      parsedAmount = parseUnits(amount, 18).toString();
+      const amountStr = String(amount);
+      parsedAmount = parseUnits(amountStr, 18).toString();
+      console.log(`[CDP] EVM amount converted to wei: ${parsedAmount}`);
     } else {
       // Solana - convert to lamports (1 SOL = 10^9 lamports)
       parsedAmount = (parseFloat(amount) * 1e9).toString();
+      console.log(`[CDP] Solana amount converted to lamports: ${parsedAmount}`);
     }
     
     // Send transaction
     let txHash;
     if (networkConfig.chainId) {
-      // EVM transfer
-      const tx = await evmClient.sendTransaction({
-        address: fromAddress as `0x${string}`,
-        network: networkConfig.name as any,
-        transaction: {
-          to: toAddress as `0x${string}`,
-          value: BigInt(parsedAmount) as bigint,
-        },
-      });
-      txHash = tx.transactionHash;
+      // Get the user ID from the wallet to retrieve the correct account name
+      const { data: walletData, error: walletError } = await supabase
+        .from('wallets')
+        .select('user_id')
+        .eq('address', fromAddress)
+        .eq('chain', isEVM ? 'evm' : 'solana')
+        .single();
+      
+      if (walletError || !walletData) {
+        console.error(`[CDP] Failed to get user ID for wallet ${fromAddress}:`, walletError);
+        throw new Error(`Could not find user for wallet: ${fromAddress}`);
+      }
+      
+      // Get user details to recreate the same account name used during wallet creation
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('phone_number')
+        .eq('id', walletData.user_id)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[CDP] Failed to get user details for account name:`, userError);
+        throw new Error(`Could not get user details for wallet: ${fromAddress}`);
+      }
+      
+      // Format the phone number to create the same account name as during wallet creation
+      let accountName = user.phone_number;
+      accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
+      if (accountName.startsWith('+')) {
+        accountName = 'p' + accountName.substring(1);
+      }
+      if (accountName.length < 2) {
+        accountName = 'user-' + accountName;
+      } else if (accountName.length > 36) {
+        accountName = accountName.substring(0, 36);
+      }
+      
+      console.log(`[CDP] Using account name from wallet creation: ${accountName}`);
+      
+      // Check if this is a Celo or Lisk network - use viem instead of CDP
+      if (network === 'celo-sepolia' || network === 'lisk-sepolia' || network === 'celo' || network === 'lisk') {
+        console.log(`[CDP] Using viem for ${network} native token transfer...`);
+        const { sendNativeTokenViem } = await import('./viemClient');
+        txHash = await sendNativeTokenViem(fromAddress, toAddress, amount, network as any, accountName);
+        console.log(`[CDP] Viem transaction completed with hash: ${txHash}`);
+      } else {
+        // EVM transfer with CDP for other networks
+        console.log(`[CDP] Initiating EVM native token transfer on ${network}...`);
+        
+        // Get or create account for the sender using the correct account name
+        console.log(`[CDP] Getting or creating account for: ${fromAddress} (name: ${accountName})`);
+        const account = await evmClient.getOrCreateAccount({ name: accountName });
+        console.log(`[CDP] Account created/retrieved:`, account);
+        
+        console.log(`[CDP] Using default network: ${networkConfig.name}`);
+        const networkClient = await account.useNetwork(networkConfig.name as any);
+        console.log(`[CDP] Network client created:`, networkClient);
+
+        const transactionConfig: any = {
+          transaction: {
+            to: toAddress as `0x${string}`,
+            value: BigInt(parsedAmount) as bigint,
+          },
+        };
+        console.log(`[CDP] Transaction config:`, transactionConfig);
+
+        console.log(`[CDP] Sending transaction...`);
+        const tx = await networkClient.sendTransaction(transactionConfig);
+        console.log(`[CDP] Transaction sent successfully:`, tx);
+        txHash = tx.transactionHash;
+      }
     } else {
       // Solana transfer - build and sign transaction
       const connection = new Connection(
@@ -1084,11 +1188,15 @@ export async function transferNativeToken(
       txHash = signature;
     }
     
-    console.log(`[CDP] Native token transfer successful with hash: ${txHash}`);
+    console.log(`[CDP] ===== NATIVE TOKEN TRANSFER COMPLETED =====`);
+    console.log(`[CDP] Transaction hash: ${txHash}`);
     
     return { hash: txHash };
   } catch (error) {
-    console.error(`[CDP] Failed to transfer native token:`, error);
+    console.error(`[CDP] ===== NATIVE TOKEN TRANSFER FAILED =====`);
+    console.error(`[CDP] Error details:`, error);
+    console.error(`[CDP] Error message:`, error instanceof Error ? error.message : 'Unknown error');
+    console.error(`[CDP] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
     throw error;
   }
 }
@@ -1135,21 +1243,113 @@ export async function transferToken(
     }
     
     // Convert amount to token units
-    const parsedAmount = parseUnits(amount, decimals).toString();
+    const amountStr = String(amount);
+    const parsedAmount = parseUnits(amountStr, decimals).toString();
     
     // Send transaction
     let txHash;
     if (networkConfig.chainId) {
-      // ERC-20 transfer
-      const tx = await evmClient.sendTransaction({
-        address: fromAddress as `0x${string}`,
-        network: networkConfig.name as any,
-        transaction: {
-          to: tokenAddress as `0x${string}`,
-          data: `0xa9059cbb${toAddress.slice(2).padStart(64, '0')}${BigInt(parsedAmount).toString(16).padStart(64, '0')}` as `0x${string}`,
-        },
-      });
-      txHash = tx.transactionHash;
+      // Get the user ID from the wallet to retrieve the correct account name
+      const { data: walletData, error: walletError } = await supabase
+        .from('wallets')
+        .select('user_id')
+        .eq('address', fromAddress)
+        .eq('chain', isEVM ? 'evm' : 'solana')
+        .single();
+      
+      if (walletError || !walletData) {
+        console.error(`[CDP] Failed to get user ID for wallet ${fromAddress}:`, walletError);
+        throw new Error(`Could not find user for wallet: ${fromAddress}`);
+      }
+      
+      // Get user details to recreate the same account name used during wallet creation
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('phone_number')
+        .eq('id', walletData.user_id)
+        .single();
+      
+      if (userError || !user) {
+        console.error(`[CDP] Failed to get user details for account name:`, userError);
+        throw new Error(`Could not get user details for wallet: ${fromAddress}`);
+      }
+      
+      // Format the phone number to create the same account name as during wallet creation
+      let accountName = user.phone_number;
+      accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
+      if (accountName.startsWith('+')) {
+        accountName = 'p' + accountName.substring(1);
+      }
+      if (accountName.length < 2) {
+        accountName = 'user-' + accountName;
+      } else if (accountName.length > 36) {
+        accountName = accountName.substring(0, 36);
+      }
+      
+      console.log(`[CDP] Using account name from wallet creation: ${accountName}`);
+      
+      // Check if this is a Celo or Lisk network - use viem instead of CDP
+      if (network === 'celo-sepolia' || network === 'lisk-sepolia' || network === 'celo' || network === 'lisk') {
+        console.log(`[CDP] Using viem for ${network} token transfer...`);
+        console.log(`[CDP] Token address to lookup: ${tokenAddress}`);
+        console.log(`[CDP] Available networks in TOKEN_CONTRACTS:`, Object.keys(TOKEN_CONTRACTS));
+        console.log(`[CDP] Available tokens for ${network}:`, TOKEN_CONTRACTS[network] ? Object.keys(TOKEN_CONTRACTS[network]) : 'Network not found');
+        
+        const { sendTokenViem } = await import('./viemClient');
+        
+        // Determine token symbol from address for viem
+        let tokenSymbol = '';
+        const networkTokens = TOKEN_CONTRACTS[network];
+        if (networkTokens) {
+          console.log(`[CDP] Checking tokens for ${network}:`, networkTokens);
+          for (const [symbol, address] of Object.entries(networkTokens)) {
+            console.log(`[CDP] Comparing ${symbol}: ${address.toLowerCase()} vs ${tokenAddress.toLowerCase()}`);
+            if (address.toLowerCase() === tokenAddress.toLowerCase()) {
+              tokenSymbol = symbol;
+              console.log(`[CDP] Found matching token symbol: ${tokenSymbol}`);
+              break;
+            }
+          }
+        }
+        
+        if (!tokenSymbol) {
+          console.error(`[CDP] Token address ${tokenAddress} not found in ${network} token contracts`);
+          console.error(`[CDP] Available tokens:`, networkTokens);
+          throw new Error(`Token address ${tokenAddress} not found in ${network} token contracts`);
+        }
+        
+        txHash = await sendTokenViem(fromAddress, toAddress, amount, tokenSymbol, network as any, decimals, accountName);
+        console.log(`[CDP] Viem token transaction completed with hash: ${txHash}`);
+      } else {
+        // ERC-20 transfer with CDP for other networks
+        console.log(`Initiating token transfer on ${network}...`);
+        
+        // Format the address to create a valid account name for CDP
+        // CDP requires alphanumeric characters and hyphens, between 2 and 36 characters
+        let accountName = fromAddress.toLowerCase().replace(/[^a-zA-Z0-9-]/g, '');
+        if (accountName.length > 36) {
+          accountName = accountName.substring(0, 36);
+        }
+        if (accountName.length < 2) {
+          accountName = 'addr-' + accountName;
+        }
+        
+        // Get or create account for the sender
+        const account = await evmClient.getOrCreateAccount({ name: accountName });
+        
+        console.log(`[CDP] Using default network: ${networkConfig.name}`);
+        const networkClient = await account.useNetwork(networkConfig.name as any);
+
+        const transactionConfig: any = {
+          transaction: {
+            to: tokenAddress as `0x${string}`,
+            data: `0xa9059cbb${toAddress.slice(2).padStart(64, '0')}${BigInt(parsedAmount).toString(16).padStart(64, '0')}` as `0x${string}`,
+          },
+        };
+
+        const tx = await networkClient.sendTransaction(transactionConfig);
+        txHash = tx.transactionHash;
+      }
     } else {
       // SPL token transfer - build and sign transaction
       const connection = new Connection(
@@ -1307,8 +1507,16 @@ export async function estimateTransactionFee(
     } else if (networkConfig.chainId) {
       // EVM network - estimate gas fee
       console.log(`[estimateTransactionFee] Processing EVM network with chainId: ${networkConfig.chainId}`);
+      
+      // Check if this is a Celo or Lisk network - use viem instead of CDP
+      if (network === 'celo-sepolia' || network === 'lisk-sepolia' || network === 'celo' || network === 'lisk') {
+        console.log(`[estimateTransactionFee] Using viem for ${network} fee estimation`);
+        const { estimateTransactionFeeViem } = await import('./viemClient');
+        return await estimateTransactionFeeViem(network as 'celo-sepolia' | 'lisk-sepolia' | 'celo' | 'lisk', transactionType);
+      }
+      
       try {
-        // For EVM networks, we can use a rough estimate
+        // For other EVM networks, we can use a rough estimate
         // Native transfers typically cost ~21,000 gas
         // Token transfers typically cost ~65,000 gas
         const gasLimit = transactionType === 'native' ? 21000 : 65000;
@@ -1333,16 +1541,319 @@ export async function estimateTransactionFee(
     } else {
       // Unknown network type
       console.warn(`[estimateTransactionFee] Unknown network type for: ${network}`);
-      const fallback = network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
+      const fallback = network.includes('solana') ? '~0.000005 SOL' : 
+                      network === 'lisk-sepolia' ? '~0.0001 LSK' :
+                      network === 'celo-sepolia' ? '~0.0001 CELO' : '~0.0001 ETH';
       console.log(`[estimateTransactionFee] Returning unknown type fallback: ${fallback}`);
       return fallback;
     }
   } catch (error) {
     console.error(`[estimateTransactionFee] Error estimating fee:`, error);
     // Return network-appropriate fallback
-    const fallback = network.includes('solana') ? '~0.000005 SOL' : '~0.0001 ETH';
+    const fallback = network.includes('solana') ? '~0.000005 SOL' : 
+                    network === 'lisk-sepolia' ? '~0.0001 LSK' :
+                    network === 'celo-sepolia' ? '~0.0001 CELO' : '~0.0001 ETH';
     console.log(`[estimateTransactionFee] Returning error fallback: ${fallback}`);
     return fallback;
+  }
+}
+
+/**
+ * Get Celo Sepolia balances using generic EVM RPC
+ * @param address - Wallet address
+ * @returns Token balances
+ */
+async function getCeloSepoliaBalances(address: string) {
+  try {
+    const celoSepoliaRpc = 'https://forno.celo-sepolia.celo-testnet.org';
+    
+    console.log(`[CDP] Fetching Celo Sepolia balances for ${address}`);
+
+    // Get CELO balance (native token)
+    const celoBalanceResponse = await fetch(celoSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      })
+    });
+
+    const celoBalanceData = await celoBalanceResponse.json();
+    if (celoBalanceData.error) {
+      throw new Error(`Celo Sepolia CELO balance error: ${celoBalanceData.error.message}`);
+    }
+
+    // Get USDC balance using ERC-20 balanceOf method
+    const usdcContractAddress = TOKEN_CONTRACTS['celo-sepolia']['USDC'];
+    const balanceOfData = `0x70a08231000000000000000000000000${address.slice(2)}`;
+    
+    const usdcBalanceResponse = await fetch(celoSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 2,
+        jsonrpc: '2.0',
+        method: 'eth_call',
+        params: [
+          {
+            to: usdcContractAddress,
+            data: balanceOfData
+          },
+          'latest'
+        ]
+      })
+    });
+
+    const usdcBalanceData = await usdcBalanceResponse.json();
+    let usdcBalance = '0';
+    if (!usdcBalanceData.error && usdcBalanceData.result && usdcBalanceData.result !== '0x') {
+      usdcBalance = usdcBalanceData.result;
+    }
+
+    // Get cUSD balance
+    const cusdContractAddress = TOKEN_CONTRACTS['celo-sepolia']['cUSD'];
+    const cusdBalanceResponse = await fetch(celoSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 3,
+        jsonrpc: '2.0',
+        method: 'eth_call',
+        params: [
+          {
+            to: cusdContractAddress,
+            data: balanceOfData
+          },
+          'latest'
+        ]
+      })
+    });
+
+    const cusdBalanceData = await cusdBalanceResponse.json();
+    let cusdBalance = '0';
+    if (!cusdBalanceData.error && cusdBalanceData.result && cusdBalanceData.result !== '0x') {
+      cusdBalance = cusdBalanceData.result;
+    }
+
+    // Get CELO token balance
+    const celoTokenContractAddress = TOKEN_CONTRACTS['celo-sepolia']['CELO_TOKEN'];
+    const celoTokenBalanceOfData = `0x70a08231000000000000000000000000${address.slice(2)}`;
+    const celoTokenBalanceResponse = await fetch(celoSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 4,
+        jsonrpc: '2.0',
+        method: 'eth_call',
+        params: [
+          {
+            to: celoTokenContractAddress,
+            data: celoTokenBalanceOfData
+          },
+          'latest'
+        ]
+      })
+    });
+
+    const celoTokenBalanceData = await celoTokenBalanceResponse.json();
+    let celoTokenBalance = '0';
+    if (!celoTokenBalanceData.error && celoTokenBalanceData.result && celoTokenBalanceData.result !== '0x') {
+      celoTokenBalance = celoTokenBalanceData.result;
+    }
+
+    // Format balances
+    const balances: Balance[] = [];
+
+    // Add CELO balance (native) - this is the main balance that should be displayed
+    balances.push({
+      asset: { symbol: 'CELO', decimals: 18 },
+      amount: celoBalanceData.result
+    });
+
+    // Add USDC balance
+    balances.push({
+      asset: { symbol: 'USDC', decimals: 6, contractAddress: usdcContractAddress },
+      amount: usdcBalance
+    });
+
+    // Add cUSD balance
+    balances.push({
+      asset: { symbol: 'cUSD', decimals: 18, contractAddress: cusdContractAddress },
+      amount: cusdBalance
+    });
+
+    return { data: balances };
+  } catch (error) {
+    console.error('[CDP] Failed to get Celo Sepolia balances:', error);
+    return {
+      data: [
+        { asset: { symbol: 'CELO', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDC', decimals: 6 }, amount: '0' },
+        { asset: { symbol: 'cUSD', decimals: 18 }, amount: '0' }
+      ]
+    };
+  }
+}
+
+/**
+ * Get Lisk Sepolia balances using generic EVM RPC
+ * @param address - Wallet address
+ * @returns Token balances
+ */
+async function getLiskSepoliaBalances(address: string) {
+  try {
+    const liskSepoliaRpc = 'https://rpc.sepolia-api.lisk.com';
+    
+    console.log(`[CDP] Fetching Lisk Sepolia balances for ${address}`);
+
+    // Get native ETH balance first (for gas fees)
+    const ethBalanceResponse = await fetch(liskSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      })
+    });
+
+    const ethBalanceData = await ethBalanceResponse.json();
+    if (ethBalanceData.error) {
+      throw new Error(`Lisk Sepolia ETH balance error: ${ethBalanceData.error.message}`);
+    }
+
+    // Get LSK token balance
+    const liskContractAddress = TOKEN_CONTRACTS['lisk-sepolia']['LISK'];
+    const balanceOfData = `0x70a08231000000000000000000000000${address.slice(2)}`;
+    
+    const lskBalanceResponse = await fetch(liskSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 2,
+        jsonrpc: '2.0',
+        method: 'eth_call',
+        params: [
+          {
+            to: liskContractAddress,
+            data: balanceOfData
+          },
+          'latest'
+        ]
+      })
+    });
+
+    const lskBalanceData = await lskBalanceResponse.json();
+    let lskBalance = '0';
+    if (!lskBalanceData.error && lskBalanceData.result && lskBalanceData.result !== '0x') {
+      lskBalance = lskBalanceData.result;
+    }
+
+    // Get USDT balance
+    const usdtContractAddress = TOKEN_CONTRACTS['lisk-sepolia']['USDT'];
+    const usdtBalanceOfData = `0x70a08231000000000000000000000000${address.slice(2)}`;
+    const usdtBalanceResponse = await fetch(liskSepoliaRpc, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 3,
+        jsonrpc: '2.0',
+        method: 'eth_call',
+        params: [
+          {
+            to: usdtContractAddress,
+            data: usdtBalanceOfData
+          },
+          'latest'
+        ]
+      })
+    });
+
+    const usdtBalanceData = await usdtBalanceResponse.json();
+    let usdtBalance = '0';
+    if (!usdtBalanceData.error && usdtBalanceData.result && usdtBalanceData.result !== '0x') {
+      usdtBalance = usdtBalanceData.result;
+    }
+
+    // Format balances
+    const balances: Balance[] = [];
+
+    // Add native ETH balance (for gas fees)
+    balances.push({
+      asset: { symbol: 'ETH', decimals: 18 },
+      amount: ethBalanceData.result
+    });
+
+    // Add LSK token balance
+    balances.push({
+      asset: { symbol: 'LSK', decimals: 18, contractAddress: liskContractAddress },
+      amount: lskBalance
+    });
+
+    // Add USDT balance
+    balances.push({
+      asset: { symbol: 'USDT', decimals: 6, contractAddress: usdtContractAddress },
+      amount: usdtBalance
+    });
+
+    return { data: balances };
+  } catch (error) {
+    console.error('[CDP] Failed to get Lisk Sepolia balances:', error);
+    return {
+      data: [
+        { asset: { symbol: 'ETH', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'LSK', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDT', decimals: 6 }, amount: '0' }
+      ]
+    };
+  }
+}
+
+/**
+ * Get generic EVM balances for unsupported networks
+ * @param address - Wallet address
+ * @param network - Network name
+ * @returns Token balances
+ */
+async function getGenericEvmBalances(address: string, network: string) {
+  try {
+    console.log(`[CDP] Using generic EVM balance fetching for ${network}`);
+    
+    // Return basic structure with zero balances
+    const balances: Balance[] = [
+      { asset: { symbol: 'ETH', decimals: 18 }, amount: '0' },
+      { asset: { symbol: 'USDC', decimals: 6 }, amount: '0' },
+      { asset: { symbol: 'USDT', decimals: 6 }, amount: '0' }
+    ];
+
+    return { data: balances };
+  } catch (error) {
+    console.error(`[CDP] Failed to get generic EVM balances for ${network}:`, error);
+    return {
+      data: [
+        { asset: { symbol: 'ETH', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDC', decimals: 6 }, amount: '0' },
+        { asset: { symbol: 'USDT', decimals: 6 }, amount: '0' }
+      ]
+    };
   }
 }
 

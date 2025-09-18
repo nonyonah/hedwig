@@ -1586,7 +1586,15 @@ export class BotIntegration {
       `To send cryptocurrency, you can:\n\n` +
       `• Type naturally: "Send 10 USDC to alice@example.com"\n` +
       `• Use the format: "Send [amount] [token] to [recipient]"\n\n` +
-      `Supported tokens: USDC, ETH, SOL\n` +
+      `**Supported tokens:**\n` +
+      `• ETH (Base, Lisk)\n` +
+      `• USDC (Base, Celo)\n` +
+      `• USDT (Lisk)\n` +
+      `• SOL (Solana)\n` +
+      `• CELO (Celo native)\n` +
+      `• cUSD (Celo Dollar)\n` +
+      `• LISK (Lisk token)\n\n` +
+      `**Supported networks:** Base, Celo, Lisk, Solana\n\n` +
       `Recipients can be email addresses or wallet addresses.`,
       {
         parse_mode: 'Markdown',

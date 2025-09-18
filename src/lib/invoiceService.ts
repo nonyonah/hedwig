@@ -158,7 +158,7 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
     }
 
     // Validate token
-    const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP'];
+    const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP', 'BNB', 'CELO', 'cUSD'];
     if (!supportedTokens.includes(token.toUpperCase())) {
       return {
         success: false,

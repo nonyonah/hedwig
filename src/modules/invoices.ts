@@ -51,7 +51,7 @@ export class InvoiceModule {
       // Get user info and wallet for required fields
       const [userResult, walletResult] = await Promise.all([
         supabase.from('users').select('name, email').eq('id', userId).single(),
-        supabase.from('wallets').select('address, chain').eq('user_id', userId)
+        supabase.from('wallets').select('address, chain').eq('user_id', userId).order('created_at', { ascending: true })
       ]);
 
       const userData = userResult.data;
@@ -96,7 +96,7 @@ export class InvoiceModule {
       // Get user info and wallet for required fields
       const [userResult, walletResult] = await Promise.all([
         supabase.from('users').select('name, email').eq('id', userId).single(),
-        supabase.from('wallets').select('address, chain').eq('user_id', userId)
+        supabase.from('wallets').select('address, chain').eq('user_id', userId).order('created_at', { ascending: true })
       ]);
 
       const userData = userResult.data;

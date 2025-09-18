@@ -152,7 +152,7 @@ export async function createProposal(params: CreateProposalParams): Promise<Crea
 
     // Validate token if provided
     if (token) {
-      const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP'];
+      const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP', 'BNB', 'CELO', 'cUSD'];
       if (!supportedTokens.includes(token.toUpperCase())) {
         return {
           success: false,

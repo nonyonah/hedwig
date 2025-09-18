@@ -302,7 +302,7 @@ export function formatPriceResponse(symbol: string, analysis: PriceAnalysis): st
   }
   
   // Add supported trading information
-  const supportedTokens = ['ETH', 'SOL', 'USDC'];
+  const supportedTokens = ['ETH', 'SOL', 'USDC', 'USDT', 'BNB', 'CELO'];
   if (supportedTokens.includes(symbol.toUpperCase())) {
     response += `✅ You can trade ${symbol.toUpperCase()} on Hedwig! Use commands like "send", "swap", or "buy" to get started.\n\n`;
   } else {

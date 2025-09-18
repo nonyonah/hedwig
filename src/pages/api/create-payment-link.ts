@@ -87,7 +87,7 @@ export default async function handler(
     }
 
     // Validate network
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-alfajores'];
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism-sepolia', 'celo-sepolia', 'lisk-sepolia'];
     // DISABLED NETWORKS: BEP20 and Asset Chain are not yet active
     // const disabledNetworks = ['bsc', 'bsc-testnet', 'asset-chain', 'asset-chain-testnet'];
     
@@ -99,7 +99,7 @@ export default async function handler(
     }
 
     // Validate token
-    const supportedTokens = ['USDC']; // Only USDC stablecoin is supported
+    const supportedTokens = ['USDC', 'USDT', 'LISK', 'CELO', 'cUSD']; // Multiple tokens now supported
     if (!supportedTokens.includes(token.toUpperCase())) {
       return res.status(400).json({
         success: false,

@@ -80,7 +80,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     }
 
     // Validate network
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo'];
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo-sepolia', 'lisk-sepolia'];
     
     if (!supportedNetworks.includes(network.toLowerCase())) {
       return {
@@ -90,7 +90,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     }
 
     // Validate token
-    const supportedTokens = ['USDC']; // Only USDC stablecoin is supported
+    const supportedTokens = ['USDC', 'USDT', 'LISK', 'CELO', 'cUSD']; // Multiple tokens now supported
     if (!supportedTokens.includes(token.toUpperCase())) {
       return {
         success: false,

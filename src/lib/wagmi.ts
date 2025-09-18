@@ -2,10 +2,10 @@ import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { base, baseSepolia, mainnet, optimismSepolia, bsc, bscTestnet } from 'wagmi/chains';
 import { defineChain } from 'viem';
 
-// Define Celo Alfajores testnet configuration
-const celoAlfajores = defineChain({
-  id: 44787,
-  name: 'Celo Alfajores',
+// Define Celo Sepolia testnet configuration
+const celoSepolia = defineChain({
+  id: 11142220,
+  name: 'Celo Sepolia',
   nativeCurrency: {
     decimals: 18,
     name: 'Celo',
@@ -13,13 +13,13 @@ const celoAlfajores = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://alfajores-forno.celo-testnet.org'],
+      http: ['https://forno.celo-sepolia.celo-testnet.org/'],
     },
   },
   blockExplorers: {
     default: {
-      name: 'Celo Alfajores Explorer',
-      url: 'https://explorer.celo.org/alfajores',
+      name: 'Celo Sepolia Explorer',
+      url: 'https://celo-sepolia.blockscout.com/',
     },
   },
   testnet: true,
@@ -46,6 +46,29 @@ const assetChain = defineChain({
     },
   },
   testnet: false,
+});
+
+// Define Lisk Sepolia testnet configuration
+const liskSepolia = defineChain({
+  id: 4202,
+  name: 'Lisk Sepolia',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Sepolia Ether',
+    symbol: 'ETH',
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://4202.rpc.thirdweb.com'],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Lisk Sepolia Explorer',
+      url: 'https://sepolia-blockscout.lisk.com',
+    },
+  },
+  testnet: true,
 });
 
 // Define Asset Chain Testnet configuration - DISABLED
@@ -78,6 +101,6 @@ export const config = getDefaultConfig({
   appName: 'Hedwig Payment',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
   // Prefer Base Mainnet first for production deployment
-  chains: [base, mainnet, baseSepolia, optimismSepolia, celoAlfajores], // BEP20 and Asset Chain are DISABLED
+  chains: [base, mainnet, baseSepolia, optimismSepolia, celoSepolia, liskSepolia], // Celo Sepolia and Lisk Sepolia testnets now ENABLED
   ssr: true,
 });

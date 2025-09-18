@@ -25,6 +25,11 @@ export function formatAddress(address: string): string {
  */
 export function formatTokenBalance(balance: string, decimals: number): string {
   try {
+    // Handle empty or invalid hex strings
+    if (!balance || balance === '0x' || balance === '') {
+      return '0';
+    }
+    
     // Convert to BigInt
     const balanceBigInt = BigInt(balance);
     

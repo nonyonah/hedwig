@@ -251,7 +251,8 @@ function setupBotHandlers() {
       }
 
       // Handle different callback actions
-      switch (data) {
+      try {
+        switch (data) {
         case 'refresh_balances':
           const refreshBalanceResponse = await processWithAI('check balance', chatId);
           break;
@@ -274,6 +275,37 @@ function setupBotHandlers() {
           break;
           
         default:
+          // Handle send confirmation callbacks
+          if (data?.startsWith('confirm_')) {
+            try {
+              console.log(`[Webhook] Processing send confirmation: ${data}`);
+              
+              // Get user ID from chat ID
+              const userId = await botIntegration?.getUserIdByChatId(chatId);
+              if (!userId) {
+                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                return;
+              }
+              
+              // Route to actions.ts send handler with confirmation
+              const { handleAction } = await import('../../api/actions');
+              const result = await handleAction('send', { 
+                action: 'confirm_send',
+                callback_data: data 
+              }, userId);
+              
+              if (result && result.text) {
+                await bot?.sendMessage(chatId, result.text, {
+                  reply_markup: result.reply_markup as any,
+                  parse_mode: 'Markdown'
+                });
+              }
+            } catch (error) {
+              console.error('[Webhook] Error handling send confirmation:', error);
+              await bot?.sendMessage(chatId, '❌ Error processing transfer. Please try again.');
+            }
+            return;
+          }
           // Handle reminder type selection callbacks
           if (data === 'select_payment_links_for_reminder' || data === 'select_invoices_for_reminder') {
             try {
@@ -558,12 +590,15 @@ function setupBotHandlers() {
             await bot?.sendMessage(chatId, '❌ Error generating PDF report. Please try again later.');
           }
           return;
-          
-          // Continue with confirm_send callback handling
-          
-          // Handle confirm_send callback data
-          if (data?.startsWith('confirm_')) {
-            
+        }
+      } catch (switchError) {
+        console.error('[Webhook] Error in switch statement:', switchError);
+        await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Error processing action' });
+      }
+        
+      // Handle confirm_send callback data
+      if (data?.startsWith('confirm_')) {
+        try {
             // Immediately disable the button by editing the message
             if (callbackQuery.message) {
               try {
@@ -581,22 +616,38 @@ function setupBotHandlers() {
             
             // Parse transaction details from the original message text
             const messageText = callbackQuery.message?.text || '';
-            console.log('[Webhook] Parsing message text:', messageText);
+            console.log('[Webhook] ===== STARTING TRANSACTION DETAILS PARSING =====');
+            console.log('[Webhook] Raw message text length:', messageText.length);
+            console.log('[Webhook] Raw message text:', messageText);
             
             // Extract transaction details from the message
             // Look for the "Transaction Details:" section which contains the full, untruncated values
-            const transactionDetailsMatch = messageText.match(/\*\*Transaction Details:\*\*\n([\s\S]*?)$/);
+            const transactionDetailsMatch = messageText.match(/\*\*Transaction Details:\*\*\n([\s\S]*?)(?:\n\n|$)/);
+            console.log('[Webhook] Transaction Details regex match result:', transactionDetailsMatch ? 'FOUND' : 'NOT FOUND');
+            if (transactionDetailsMatch) {
+              console.log('[Webhook] Transaction Details section content:', transactionDetailsMatch[1]);
+            }
+            
             let amount, token, recipient, network;
             
             if (transactionDetailsMatch) {
               const detailsSection = transactionDetailsMatch[1];
               console.log('[Webhook] Transaction details section found:', detailsSection);
+              console.log('[Webhook] Details section length:', detailsSection.length);
+              console.log('[Webhook] Details section (escaped):', JSON.stringify(detailsSection));
               
               // Extract from the details section which has full values
               const amountMatch = detailsSection.match(/Amount:\s*([^\n\r]+)/);
               const tokenMatch = detailsSection.match(/Token:\s*([^\n\r]+)/);
               const toMatch = detailsSection.match(/To:\s*([^\n\r]+)/);
               const networkMatch = detailsSection.match(/Network:\s*([^\n\r]+)/);
+              
+              console.log('[Webhook] Individual regex matches:', {
+                amountMatch: amountMatch ? amountMatch[0] : 'NO MATCH',
+                tokenMatch: tokenMatch ? tokenMatch[0] : 'NO MATCH', 
+                toMatch: toMatch ? toMatch[0] : 'NO MATCH',
+                networkMatch: networkMatch ? networkMatch[0] : 'NO MATCH'
+              });
               
               amount = amountMatch?.[1]?.trim();
               token = tokenMatch?.[1]?.trim();
@@ -632,11 +683,18 @@ function setupBotHandlers() {
               });
             }
             
+            console.log('[Webhook] ===== TRANSACTION DETAILS PARSING RESULT =====');
             console.log('[Webhook] Parsed transaction details:', {
               amount,
               token,
               recipient,
               network
+            });
+            console.log('[Webhook] Validation check:', {
+              hasAmount: !!amount,
+              hasRecipient: !!recipient,
+              hasNetwork: !!network,
+              validationPassed: !!(amount && recipient && network)
             });
             
             if (amount && recipient && network) {
@@ -689,19 +747,29 @@ function setupBotHandlers() {
                 await bot?.sendMessage(chatId, `❌ Transfer failed: ${errorMessage}. Please try again.`);
               }
             } else {
-              console.log('[Webhook] Failed to parse transaction details from message:', messageText);
+              console.log('[Webhook] ===== TRANSACTION DETAILS PARSING FAILED =====');
+              console.log('[Webhook] Failed to parse transaction details from message');
+              console.log('[Webhook] Message text length:', messageText.length);
+              console.log('[Webhook] Message text preview (first 500 chars):', messageText.substring(0, 500));
               console.log('[Webhook] Missing required fields:', {
                 hasAmount: !!amount,
                 hasRecipient: !!recipient,
                 hasNetwork: !!network,
-                hasToken: !!token
+                hasToken: !!token,
+                amountValue: amount,
+                recipientValue: recipient,
+                networkValue: network,
+                tokenValue: token
               });
-              await bot?.sendMessage(chatId, '❌ Could not parse transaction details. Please start the send process again.');
+              await bot?.sendMessage(chatId, '❌ Missing transaction details. Please start the send process again.');
             }
-          } else {
-            await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Unknown action' });
+          } catch (error) {
+            console.error('[Webhook] Error handling confirm callback:', error);
+            await bot?.sendMessage(chatId, '❌ Error processing transaction. Please try again.');
           }
-      }
+        } else {
+          await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Unknown action' });
+        }
     } catch (error) {
       console.error('[Webhook] Error handling callback query:', error);
       await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Error occurred' });
