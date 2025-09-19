@@ -402,7 +402,7 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
     
-    // Offramp keywords - comprehensive detection for cash out functionality
+    // Offramp keywords - comprehensive detection for cash out functionality with multi-chain support
     if (text.includes('offramp') || 
         text.includes('cash out') || 
         text.includes('withdraw to bank') ||
@@ -419,7 +419,47 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         (text.includes('send') && text.includes('bank account')) ||
         text.includes('cash withdrawal') || 
         text.includes('money withdrawal')) {
-      const result = { intent: 'offramp', params: {} };
+      
+      const params: any = {};
+      
+      // Extract amount from the text
+      const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:usdc|usd|dollars?)/i);
+      if (amountMatch) {
+        params.amount = parseFloat(amountMatch[1]);
+      }
+      
+      // Extract token (currently supporting USDC)
+      if (text.includes('usdc')) {
+        params.token = 'USDC';
+      }
+      
+      // Extract chain information
+      const chainPatterns = [
+        { pattern: /\bon\s+(base|ethereum)/i, chain: 'base' },
+        { pattern: /\bon\s+(celo)/i, chain: 'celo' },
+        { pattern: /\bon\s+(lisk)/i, chain: 'lisk' },
+        { pattern: /\b(base)\s+usdc/i, chain: 'base' },
+        { pattern: /\b(celo)\s+usdc/i, chain: 'celo' },
+        { pattern: /\b(lisk)\s+usdc/i, chain: 'lisk' },
+        { pattern: /usdc\s+on\s+(base|ethereum)/i, chain: 'base' },
+        { pattern: /usdc\s+on\s+(celo)/i, chain: 'celo' },
+        { pattern: /usdc\s+on\s+(lisk)/i, chain: 'lisk' }
+      ];
+      
+      for (const { pattern, chain } of chainPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          params.chain = chain;
+          break;
+        }
+      }
+      
+      // If amount, token, and chain are all specified, mark as complete
+      if (params.amount && params.token && params.chain) {
+        params.hasCompleteInfo = true;
+      }
+      
+      const result = { intent: 'offramp', params };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }

@@ -270,7 +270,8 @@ export const TOKEN_CONTRACTS = {
   // Lisk Mainnet - ENABLED
   'lisk': {
     'ETH': 'native', // Native ETH (L2)
-    'LSK': '0x8a21CF9Ba08Ae709D64Cb25AfAA951183EC9FF6D' // LSK token contract on Lisk L2
+    'LSK': '0x8a21CF9Ba08Ae709D64Cb25AfAA951183EC9FF6D', // LSK token contract on Lisk L2
+    'USDT': '0x05D032ac25d322df992303dCa074EE7392C117b9' // Bridged USDT on Lisk mainnet
   },
   // Celo Mainnet - ENABLED
   'celo': {

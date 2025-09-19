@@ -27,6 +27,7 @@ export interface OfframpSession {
     expectedAmount?: string;
     status?: string;
     lastStatusCheck?: string;
+    selected_chain?: string;
   };
   createdAt: Date;
   updatedAt: Date;

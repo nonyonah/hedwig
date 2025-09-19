@@ -3,6 +3,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { runLLM } from './llmAgent';
 import { BotIntegration } from '../modules/bot-integration';
 import { supabase } from './supabase';
+import type { ActionResult } from '../api/actions';
 
 export interface TelegramBotConfig {
   token: string;
@@ -766,17 +767,57 @@ Choose an action below:`;
 
       // Special-case: Offramp intent should open the mini app (not conversational flow)
       if (intent === 'offramp' || intent === 'withdraw') {
-        const url = this.buildOfframpUrl(user.id, chatId, 'Base');
-        await this.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+        // If the user provided complete information (amount, token, chain), start the flow directly
+        if (params.hasCompleteInfo) {
+          console.log('[TelegramBot] Complete offramp info provided, starting flow with params:', params);
+          
+          // Execute the offramp action with the parsed parameters
+          try {
+            const actionResult = await handleAction(
+              'offramp',
+              { 
+                ...params,
+                step: 'amount',
+                skipAmountStep: true // Flag to skip amount input since we have it
+              },
+              user.id
+            );
+            
+            // Handle the action result
+            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+              await this.sendMessage(chatId, actionResult.text || 'Processing your withdrawal...', {
+                reply_markup: actionResult.reply_markup
+              });
+              return 'Starting offramp flow with provided details';
+            } else {
+              await this.sendMessage(chatId, (actionResult as ActionResult).text || 'Processing your withdrawal...');
+              return 'Starting offramp flow';
+            }
+          } catch (actionError) {
+            console.error('[TelegramBot] Offramp action error:', actionError);
+            // Fallback to mini app if action fails
+            const url = this.buildOfframpUrl(user.id, chatId, 'Base');
+            await this.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+              reply_markup: {
+                inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+              }
+            });
+            return 'Opening mini app…';
           }
-        });
-        return 'Opening mini app…';
+        } else {
+          // If incomplete information, open mini app as before
+          const url = this.buildOfframpUrl(user.id, chatId, 'Base');
+          await this.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+            reply_markup: {
+              inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
+            }
+          });
+          return 'Opening mini app…';
+        }
       }
 
       // Execute the action based on the intent using the user's UUID
-      let actionResult: any;
+      let actionResult: ActionResult | string;
       try {
         actionResult = await handleAction(
           intent,
