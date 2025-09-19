@@ -7,51 +7,7 @@ import { loadServerEnvironment } from './serverEnv';
 // Ensure environment variables are loaded
 loadServerEnvironment();
 
-// Define Celo Sepolia chain
-const celoSepolia = defineChain({
-  id: 11142220,
-  name: 'Celo Sepolia',
-  network: 'celo-sepolia',
-  nativeCurrency: {
-    decimals: 18,
-    name: 'Celo',
-    symbol: 'CELO',
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://forno.celo-sepolia.celo-testnet.org'],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'Celo Sepolia Explorer',
-      url: 'https://celo-sepolia.blockscout.com',
-    },
-  },
-});
-
-// Define Lisk Sepolia chain
-const liskSepolia = defineChain({
-  id: 4202,
-  name: 'Lisk Sepolia',
-  network: 'lisk-sepolia',
-  nativeCurrency: {
-    decimals: 18,
-    name: 'Ethereum',
-    symbol: 'ETH',
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://rpc.sepolia-api.lisk.com'],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'Lisk Sepolia Explorer',
-      url: 'https://sepolia-blockscout.lisk.com',
-    },
-  },
-});
+// Remove testnet chain definitions - keeping only mainnet chains
 
 // Define Celo Mainnet chain
 const celo = defineChain({
@@ -99,31 +55,21 @@ const lisk = defineChain({
   },
 });
 
-// Chain mapping
+// Chain mapping - Updated to use mainnet chains
 const CHAIN_MAP = {
-  'celo-sepolia': celoSepolia,
-  'lisk-sepolia': liskSepolia,
   'celo': celo,
   'lisk': lisk,
 };
 
-// Token contract addresses
+// Token contract addresses - Updated for mainnet
 const TOKEN_CONTRACTS = {
-  'celo-sepolia': {
-    'USDC': '0x01C5C0122039549AD1493B8220cABEdD739BC44E',
-    'cUSD': '0xEF4d55D6dE8e8d73232827Cd1e9b2F2dBb45bC80',
-    'CELO_TOKEN': '0x77F6a7215B27688Ab4a660EDbfB1DC88aFa2Dd68',
-  },
-  'lisk-sepolia': {
-    'USDT': '0x2728DD8B45B788e26d12B13Db5A244e5403e7eda',
-    'LISK': '0x625eB34C6bebd89ebfC41B9b3D0430BAcb37b9F8',
-  },
   'celo': {
     'USDC': '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
+    'cUSD': '0x765de816845861e75a25fca122bb6898b8b1282a',
     'CELO': '0x471EcE3750Da237f93B8E339c536989b8978a438',
   },
   'lisk': {
-    // Add Lisk mainnet token addresses when available
+    'LSK': '0xac485391EB2d7D88253a7F1eF18C37f4242D1A24',
   },
 };
 
@@ -141,7 +87,7 @@ export async function sendNativeTokenViem(
   fromAddress: string,
   toAddress: string,
   amount: string,
-  network: 'celo-sepolia' | 'lisk-sepolia' | 'celo' | 'lisk',
+  network: 'celo' | 'lisk',
   accountName?: string
 ): Promise<string> {
   console.log(`[VIEM] Initiating native token transfer on ${network}...`);
@@ -215,7 +161,7 @@ export async function sendTokenViem(
   toAddress: string,
   amount: string,
   tokenSymbol: string,
-  network: 'celo-sepolia' | 'lisk-sepolia' | 'celo' | 'lisk',
+  network: 'celo' | 'lisk',
   decimals: number = 18,
   accountName?: string
 ): Promise<string> {
@@ -295,7 +241,7 @@ export async function sendTokenViem(
 export async function getTokenBalanceViem(
   address: string,
   tokenSymbol: string,
-  network: 'celo-sepolia' | 'lisk-sepolia' | 'celo' | 'lisk',
+  network: 'celo' | 'lisk',
   decimals: number = 18
 ): Promise<string> {
   const chain = CHAIN_MAP[network];
@@ -342,7 +288,7 @@ export async function getTokenBalanceViem(
  * Estimate transaction fee for Celo/Lisk networks
  */
 export async function estimateTransactionFeeViem(
-  network: 'celo-sepolia' | 'lisk-sepolia' | 'celo' | 'lisk',
+  network: 'celo' | 'lisk',
   transactionType: 'native' | 'token' = 'native'
 ): Promise<string> {
   try {
@@ -370,9 +316,9 @@ export async function estimateTransactionFeeViem(
     
     // Determine the correct native token symbol for the network
     let nativeTokenSymbol: string;
-    if (network === 'celo-sepolia' || network === 'celo') {
+    if (network === 'celo') {
       nativeTokenSymbol = 'CELO';
-    } else if (network === 'lisk-sepolia' || network === 'lisk') {
+    } else if (network === 'lisk') {
       nativeTokenSymbol = 'LSK'; // Lisk uses LSK as gas token
     } else {
       nativeTokenSymbol = 'ETH'; // fallback
@@ -382,8 +328,8 @@ export async function estimateTransactionFeeViem(
   } catch (error) {
     console.error(`[viemClient] Failed to estimate fee for ${network}:`, error);
     // Return conservative fallback with correct token symbol
-    const fallbackSymbol = (network === 'celo-sepolia' || network === 'celo') ? 'CELO' : 
-                          (network === 'lisk-sepolia' || network === 'lisk') ? 'ETH' : 'ETH';
+    const fallbackSymbol = (network === 'celo') ? 'CELO' : 
+                          (network === 'lisk') ? 'ETH' : 'ETH';
     return `~0.001 ${fallbackSymbol}`;
   }
 }

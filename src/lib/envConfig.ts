@@ -16,10 +16,6 @@ export function getCurrentNetworkEnvironment(): NetworkEnvironment {
     return 'mainnet';
   }
   
-  if (networkId === 'base-sepolia' || networkId === '84532') {
-    return 'testnet';
-  }
-  
   // Default to mainnet for production safety
   return 'mainnet';
 }
@@ -92,7 +88,7 @@ export const NetworkConfig = {
       const env = network || getCurrentNetworkEnvironment();
       return env === 'mainnet' 
         ? process.env.BASE_MAINNET_RPC_URL 
-        : process.env.BASE_SEPOLIA_RPC_URL;
+        : process.env.BASE_MAINNET_RPC_URL;
     },
     solana: (network?: NetworkEnvironment) => {
       const env = network || getCurrentNetworkEnvironment();

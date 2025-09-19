@@ -1,11 +1,11 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { base, baseSepolia, mainnet, optimismSepolia, bsc, bscTestnet } from 'wagmi/chains';
+import { base, mainnet, bsc, bscTestnet } from 'wagmi/chains';
 import { defineChain } from 'viem';
 
-// Define Celo Sepolia testnet configuration
-const celoSepolia = defineChain({
-  id: 11142220,
-  name: 'Celo Sepolia',
+// Define Celo Mainnet configuration
+const celoMainnet = defineChain({
+  id: 42220,
+  name: 'Celo',
   nativeCurrency: {
     decimals: 18,
     name: 'Celo',
@@ -13,16 +13,16 @@ const celoSepolia = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://forno.celo-sepolia.celo-testnet.org/'],
+      http: ['https://forno.celo.org'],
     },
   },
   blockExplorers: {
     default: {
-      name: 'Celo Sepolia Explorer',
-      url: 'https://celo-sepolia.blockscout.com/',
+      name: 'Celo Explorer',
+      url: 'https://celoscan.io',
     },
   },
-  testnet: true,
+  testnet: false,
 });
 
 // Define Asset Chain (RWA Chain) configuration - DISABLED
@@ -48,27 +48,27 @@ const assetChain = defineChain({
   testnet: false,
 });
 
-// Define Lisk Sepolia testnet configuration
-const liskSepolia = defineChain({
-  id: 4202,
-  name: 'Lisk Sepolia',
+// Define Lisk Mainnet configuration
+const liskMainnet = defineChain({
+  id: 1135,
+  name: 'Lisk',
   nativeCurrency: {
     decimals: 18,
-    name: 'Sepolia Ether',
+    name: 'Ether',
     symbol: 'ETH',
   },
   rpcUrls: {
     default: {
-      http: ['https://4202.rpc.thirdweb.com'],
+      http: ['https://rpc.api.lisk.com'],
     },
   },
   blockExplorers: {
     default: {
-      name: 'Lisk Sepolia Explorer',
-      url: 'https://sepolia-blockscout.lisk.com',
+      name: 'Lisk Explorer',
+      url: 'https://blockscout.lisk.com',
     },
   },
-  testnet: true,
+  testnet: false,
 });
 
 // Define Asset Chain Testnet configuration - DISABLED
@@ -101,6 +101,6 @@ export const config = getDefaultConfig({
   appName: 'Hedwig Payment',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
   // Prefer Base Mainnet first for production deployment
-  chains: [base, mainnet, baseSepolia, optimismSepolia, celoSepolia, liskSepolia], // Celo Sepolia and Lisk Sepolia testnets now ENABLED
+  chains: [base, mainnet, celoMainnet, liskMainnet], // Celo Mainnet and Lisk Mainnet now ENABLED
   ssr: true,
 });

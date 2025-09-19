@@ -80,7 +80,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     }
 
     // Validate network
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo-sepolia', 'lisk-sepolia'];
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo', 'lisk'];
     
     if (!supportedNetworks.includes(network.toLowerCase())) {
       return {

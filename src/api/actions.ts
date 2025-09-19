@@ -296,8 +296,8 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const evmWallet = wallets.find(w => w.chain === 'evm');
     if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
       try {
-        // Get balances for supported networks including new testnets
-        const supportedEvmNetworks = ['base', 'celo-sepolia', 'lisk-sepolia'];
+        // Get balances for supported networks - updated to mainnet
+        const supportedEvmNetworks = ['base', 'celo', 'lisk'];
         let allEvmBalances = "";
 
         // Get token prices for USD conversion
@@ -317,10 +317,10 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
         if (requestedNetwork && requestedNetwork !== 'evm') {
           const chainMap: { [key: string]: string } = {
             'base': 'base',
-            'lisk': 'lisk-sepolia',
-            'lisk-sepolia': 'lisk-sepolia',
-            'celo': 'celo-sepolia',
-            'celo-sepolia': 'celo-sepolia'
+            'lisk': 'lisk',
+            'lisk-sepolia': 'lisk',
+            'celo': 'celo',
+            'celo-sepolia': 'celo'
           };
           const specificNetwork = chainMap[requestedNetwork];
           if (specificNetwork) {
@@ -349,18 +349,17 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               // Network-specific token handling
               let usdcToken, cusdToken, usdtToken;
               
-              if (network === 'celo-sepolia') {
+              if (network === 'celo') {
                 // For Celo: USDC and cUSD (no USDT)
                 usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC' || b.symbol === 'USDC');
                 cusdToken = balances.find((b: any) => b.asset?.symbol === 'cUSD' || b.symbol === 'cUSD');
                 const celoTokenToken = balances.find((b: any) => b.asset?.symbol === 'CELO_TOKEN' || b.symbol === 'CELO_TOKEN');
                 // Don't add cUSD to additionalTokens as it's already displayed in the main section
                 if (celoTokenToken) additionalTokens.push({ symbol: 'CELO Token', balance: (celoTokenToken as any)?.balance || (celoTokenToken as any)?.amount || '0' });
-              } else if (network === 'lisk-sepolia') {
-                // For Lisk: USDT only (no USDC)
-                usdtToken = balances.find((b: any) => b.asset?.symbol === 'USDT' || b.symbol === 'USDT');
-                const liskToken = balances.find((b: any) => b.asset?.symbol === 'LISK' || b.symbol === 'LISK');
-                if (liskToken) additionalTokens.push({ symbol: 'LISK', balance: (liskToken as any)?.balance || (liskToken as any)?.amount || '0' });
+              } else if (network === 'lisk') {
+                // For Lisk: LSK token
+                const liskToken = balances.find((b: any) => b.asset?.symbol === 'LSK' || b.symbol === 'LSK');
+                if (liskToken) additionalTokens.push({ symbol: 'LSK', balance: (liskToken as any)?.balance || (liskToken as any)?.amount || '0' });
               } else {
                 // For other networks: USDC and USDT
                 usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC' || b.symbol === 'USDC');
@@ -381,16 +380,15 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               // Network-specific token handling
               let usdcToken, cusdToken, usdtToken;
               
-              if (network === 'celo-sepolia') {
+              if (network === 'celo') {
                 // For Celo: USDC and cUSD (no USDT)
                 usdcToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
                 cusdToken = balanceArray.find((b: any) => b.asset?.symbol === 'cUSD');
                 const celoTokenToken = balanceArray.find((b: any) => b.asset?.symbol === 'CELO_TOKEN');
                 // Don't add cUSD to additionalTokens as it's already displayed in the main section
                 if (celoTokenToken) additionalTokens.push({ symbol: 'CELO Token', balance: formatBalance(celoTokenToken.amount, celoTokenToken.asset.decimals) });
-              } else if (network === 'lisk-sepolia') {
-                // For Lisk: USDT only (no USDC)
-                usdtToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDT');
+              } else if (network === 'lisk') {
+                // For Lisk: LSK token
                 const liskToken = balanceArray.find((b: any) => b.asset?.symbol === 'LSK');
                 if (liskToken) additionalTokens.push({ symbol: 'LSK', balance: formatBalance(liskToken.amount, liskToken.asset.decimals) });
               } else {
@@ -406,18 +404,18 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             }
             
             const networkName = network.replace('-sepolia', '').replace('-alfajores', '').replace('-testnet', '');
-            const displayName = networkName === 'lisk' ? 'Lisk Sepolia' : 
-                              networkName === 'celo' ? 'Celo Sepolia' :
+            const displayName = networkName === 'lisk' ? 'Lisk' : 
+                              networkName === 'celo' ? 'Celo' :
                               networkName.charAt(0).toUpperCase() + networkName.slice(1);
             
             // Get chain-specific icon
             const chainIcon = network === 'base' ? '🔵' :
-                            network === 'ethereum-sepolia' ? '💎' :
-                            network === 'celo-sepolia' ? '🟡' :
-                            network === 'lisk-sepolia' ? '🟢' :
-                            network === 'optimism-sepolia' ? '🔴' :
-                            network === 'polygon-amoy' ? '🟣' :
-                            network === 'arbitrum-sepolia' ? '🔶' : '🔹';
+                            network === 'ethereum' ? '💎' :
+                            network === 'celo' ? '🟡' :
+                            network === 'lisk' ? '🟢' :
+                            network === 'optimism' ? '🔴' :
+                            network === 'polygon' ? '🟣' :
+                            network === 'arbitrum' ? '🔶' : '🔹';
             
             // Format balances with USD equivalents
             const nativeBalanceNum = parseFloat(nativeBalance);
@@ -426,8 +424,8 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             const usdtBalanceNum = parseFloat(usdtBalance);
             
             // Determine native token symbol
-            const nativeSymbol = network === 'lisk-sepolia' ? 'ETH' : 
-                               network === 'celo-sepolia' ? 'CELO' : 'ETH';
+            const nativeSymbol = network === 'lisk' ? 'ETH' : 
+                               network === 'celo' ? 'CELO' : 'ETH';
             
             let nativeDisplay = `${nativeBalanceNum.toFixed(4)} ${nativeSymbol}`;
             let usdcDisplay = `${usdcBalanceNum.toFixed(2)} USDC`;
@@ -460,13 +458,13 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             allEvmBalances += `• ${nativeDisplay}\n`;
             
             // Network-specific token display
-            if (network === 'celo-sepolia') {
+            if (network === 'celo') {
               // For Celo: show USDC and cUSD
               allEvmBalances += `• ${usdcDisplay}\n`;
               allEvmBalances += `• ${cusdDisplay}\n`;
-            } else if (network === 'lisk-sepolia') {
-              // For Lisk: show USDT only
-              allEvmBalances += `• ${usdtDisplay}\n`;
+            } else if (network === 'lisk') {
+              // For Lisk: show LSK token
+              // No specific stablecoin display for Lisk mainnet
             } else {
               // For other networks: show USDC and USDT
               allEvmBalances += `• ${usdcDisplay}\n`;
@@ -487,12 +485,12 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             
             // Get chain-specific icon for error case
             const chainIcon = network === 'base' ? '🔵' :
-                            network === 'ethereum-sepolia' ? '💎' :
-                            network === 'celo-sepolia' ? '🟡' :
-                            network === 'lisk-sepolia' ? '🟢' :
-                            network === 'optimism-sepolia' ? '🔴' :
-                            network === 'polygon-amoy' ? '🟣' :
-                            network === 'arbitrum-sepolia' ? '🔶' : '🔹';
+                            network === 'ethereum' ? '💎' :
+                            network === 'celo' ? '🟡' :
+                            network === 'lisk' ? '🟢' :
+                            network === 'optimism' ? '🔴' :
+                            network === 'polygon' ? '🟣' :
+                            network === 'arbitrum' ? '🔶' : '🔹';
             
             allEvmBalances += `${chainIcon} **${displayName}**\n• Error fetching balances\n\n`;
           }
@@ -1388,33 +1386,32 @@ async function handleSend(params: ActionParams, userId: string) {
                  finalNetwork?.toLowerCase() === 'celo-sepolia' ||
                  finalToken?.toLowerCase() === 'celo' ||
                  finalToken?.toLowerCase() === 'cusd' ||
-                 (finalToken?.toLowerCase() === 'usdc' && finalNetwork?.toLowerCase() === 'celo-sepolia')) {
+                 (finalToken?.toLowerCase() === 'usdc' && finalNetwork?.toLowerCase() === 'celo')) {
         console.log(`[handleSend] Network selection logic - finalToken: ${finalToken}, finalNetwork: ${finalNetwork}`);
-        console.log(`[handleSend] Celo Sepolia network selection triggered`);
+        console.log(`[handleSend] Celo network selection triggered`);
         selectedWallet = wallets.find(w => w.chain === 'evm');
-        selectedNetwork = 'celo-sepolia';
-        console.log('[handleSend] Explicitly selected Celo Sepolia network');
+        selectedNetwork = 'celo';
+        console.log('[handleSend] Explicitly selected Celo network');
       } else if (finalNetwork?.toLowerCase() === 'lisk' || 
                  finalNetwork?.toLowerCase() === 'lisk-sepolia' ||
                  finalToken?.toLowerCase() === 'lsk' ||
-                 finalToken?.toLowerCase() === 'lisk' ||
-                 (finalToken?.toLowerCase() === 'usdt' && finalNetwork?.toLowerCase() === 'lisk-sepolia')) {
+                 finalToken?.toLowerCase() === 'lisk') {
         selectedWallet = wallets.find(w => w.chain === 'evm');
-        selectedNetwork = 'lisk-sepolia';
-        console.log('[handleSend] Explicitly selected Lisk Sepolia network');
+        selectedNetwork = 'lisk';
+        console.log('[handleSend] Explicitly selected Lisk network');
       } else if (finalToken?.toLowerCase() === 'usdc' && !finalNetwork) {
         // For USDC without explicit network, check if user has Celo wallet and funds
-        console.log('[handleSend] USDC without explicit network - checking Celo Sepolia balance');
+        console.log('[handleSend] USDC without explicit network - checking Celo balance');
         const evmWallet = wallets.find(w => w.chain === 'evm');
         if (evmWallet) {
           try {
-            console.log(`[handleSend] Checking USDC balance on Celo Sepolia for wallet: ${evmWallet.address}`);
-            const celoBalancesResult = await getBalances(evmWallet.address, 'celo-sepolia');
-            console.log('[handleSend] Celo Sepolia balances result:', celoBalancesResult);
+            console.log(`[handleSend] Checking USDC balance on Celo for wallet: ${evmWallet.address}`);
+            const celoBalancesResult = await getBalances(evmWallet.address, 'celo');
+            console.log('[handleSend] Celo balances result:', celoBalancesResult);
             
             // Handle both direct array and {data: array} formats
             const celoBalances = celoBalancesResult?.data || celoBalancesResult;
-            console.log('[handleSend] Celo Sepolia balances array:', celoBalances);
+            console.log('[handleSend] Celo balances array:', celoBalances);
             
             const usdcToken = celoBalances?.find((b: any) => 
               (b.asset?.symbol === 'USDC' || b.symbol === 'USDC') && 
@@ -1424,34 +1421,14 @@ async function handleSend(params: ActionParams, userId: string) {
             
             if (usdcToken) {
               selectedWallet = evmWallet;
-              selectedNetwork = 'celo-sepolia';
-              console.log('[handleSend] Selected Celo Sepolia for USDC transfer');
+              selectedNetwork = 'celo';
+              console.log('[handleSend] Selected Celo for USDC transfer');
             } else {
-              // Check Lisk Sepolia for USDT before defaulting to Base
-              console.log('[handleSend] No USDC on Celo, checking Lisk Sepolia for USDT');
-              try {
-                const liskBalancesResult = await getBalances(evmWallet.address, 'lisk-sepolia');
-                const liskBalances = liskBalancesResult?.data || liskBalancesResult;
-                const usdtToken = liskBalances?.find((b: any) => 
-                  (b.asset?.symbol === 'USDT' || b.symbol === 'USDT') && 
-                  parseFloat(b.amount || b.balance || '0') > 0
-                );
-                
-                if (usdtToken && finalToken?.toLowerCase() === 'usdt') {
-                  selectedWallet = evmWallet;
-                  selectedNetwork = 'lisk-sepolia';
-                  console.log('[handleSend] Selected Lisk Sepolia for USDT transfer');
-                } else {
-                  // Default to Base if no matching tokens found
-                  selectedWallet = evmWallet;
-                  selectedNetwork = 'base';
-                  console.log('[handleSend] No matching tokens found, defaulting to Base');
-                }
-              } catch (liskError) {
-                console.log('[handleSend] Error checking Lisk balance, defaulting to Base:', liskError);
-                selectedWallet = evmWallet;
-                selectedNetwork = 'base';
-              }
+              // Default to Base if no USDC found on Celo
+              console.log('[handleSend] No USDC on Celo, defaulting to Base');
+              selectedWallet = evmWallet;
+              selectedNetwork = 'base';
+              console.log('[handleSend] Defaulting to Base network');
             }
           } catch (error) {
             // If balance check fails, default to Base
@@ -1472,8 +1449,8 @@ async function handleSend(params: ActionParams, userId: string) {
 
       if (!selectedWallet) {
         const networkDisplayName = selectedNetwork === 'solana' ? 'Solana' : 
-                                   selectedNetwork === 'celo-sepolia' ? 'Celo Sepolia' :
-                                   selectedNetwork === 'lisk-sepolia' ? 'Lisk Sepolia' : 'Base';
+                                   selectedNetwork === 'celo' ? 'Celo' :
+                                   selectedNetwork === 'lisk' ? 'Lisk' : 'Base';
         return {
           text: `❌ You don't have a ${networkDisplayName} wallet. Please create one first.`
         };
@@ -1486,8 +1463,8 @@ async function handleSend(params: ActionParams, userId: string) {
         // Determine if this is a native token transfer or token transfer
         const isNativeToken = (
           (selectedNetwork === 'base' && (!finalToken || finalToken.toLowerCase() === 'eth')) ||
-          (selectedNetwork === 'celo-sepolia' && (!finalToken || finalToken.toLowerCase() === 'celo')) ||
-          (selectedNetwork === 'lisk-sepolia' && (!finalToken || finalToken.toLowerCase() === 'eth')) ||
+          (selectedNetwork === 'celo' && (!finalToken || finalToken.toLowerCase() === 'celo')) ||
+          (selectedNetwork === 'lisk' && (!finalToken || finalToken.toLowerCase() === 'eth')) ||
           (selectedNetwork === 'solana' && (!finalToken || finalToken.toLowerCase() === 'sol'))
         );
 
@@ -1510,9 +1487,9 @@ async function handleSend(params: ActionParams, userId: string) {
             if (selectedNetwork === 'base') {
               tokenAddress = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
               console.log(`[handleSend] Using Base USDC address: ${tokenAddress}`);
-            } else if (selectedNetwork === 'celo-sepolia') {
-              tokenAddress = '0x01C5C0122039549AD1493B8220cABEdD739BC44E'; // Celo Sepolia USDC
-              console.log(`[handleSend] Using Celo Sepolia USDC address: ${tokenAddress}`);
+            } else if (selectedNetwork === 'celo') {
+              tokenAddress = '0xcebA9300f2b948710d2653dD7B07f33A8B32118C'; // Celo Mainnet USDC
+              console.log(`[handleSend] Using Celo USDC address: ${tokenAddress}`);
             } else if (selectedNetwork === 'solana') {
               tokenAddress = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Solana Mainnet USDC
               console.log(`[handleSend] Using Solana USDC address: ${tokenAddress}`);
@@ -1523,18 +1500,14 @@ async function handleSend(params: ActionParams, userId: string) {
               };
             }
           } else if (finalToken?.toLowerCase() === 'usdt') {
-            // Use appropriate USDT contract address based on network
-            if (selectedNetwork === 'lisk-sepolia') {
-              tokenAddress = '0x2728DD8B45B788e26d12B13Db5A244e5403e7eda'; // Lisk Sepolia USDT
-            } else {
-              return {
-                text: `❌ USDT not supported on ${selectedNetwork}. Please use a supported network.`
-              };
-            }
+            // USDT is not commonly available on Lisk mainnet, remove this functionality
+            return {
+              text: `❌ USDT not supported on Lisk mainnet. Please use LSK or ETH instead.`
+            };
           } else if (finalToken?.toLowerCase() === 'cusd') {
-            // Celo Dollar (cUSD) on Celo Sepolia
-            if (selectedNetwork === 'celo-sepolia') {
-              tokenAddress = '0xEF4d55D6dE8e8d73232827Cd1e9b2F2dBb45bC80'; // Celo Sepolia cUSD
+            // Celo Dollar (cUSD) on Celo mainnet
+            if (selectedNetwork === 'celo') {
+              tokenAddress = '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // Celo Mainnet cUSD
               tokenDecimals = 18; // cUSD has 18 decimals
             } else {
               return {
@@ -1542,9 +1515,9 @@ async function handleSend(params: ActionParams, userId: string) {
               };
             }
           } else if (finalToken?.toLowerCase() === 'lisk' || finalToken?.toLowerCase() === 'lsk') {
-            // LISK/LSK token on Lisk Sepolia
-            if (selectedNetwork === 'lisk-sepolia') {
-              tokenAddress = '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f'; // Lisk Sepolia LSK token
+            // LSK token on Lisk L2 mainnet
+            if (selectedNetwork === 'lisk') {
+              tokenAddress = '0x8a21CF9Ba08Ae709D64Cb25AfAA951183EC9FF6D'; // Lisk L2 Mainnet LSK token
               tokenDecimals = 18; // LSK has 18 decimals
             } else {
               return {
@@ -1580,12 +1553,12 @@ async function handleSend(params: ActionParams, userId: string) {
         
         // Format success message
         const networkName = selectedNetwork === 'solana' ? 'Solana' : 
-                           selectedNetwork === 'celo-sepolia' ? 'Celo Sepolia' :
-                           selectedNetwork === 'lisk-sepolia' ? 'Lisk Sepolia' : 'Base';
+                           selectedNetwork === 'celo' ? 'Celo' :
+                           selectedNetwork === 'lisk' ? 'Lisk' : 'Base';
         const tokenSymbol = isNativeToken ? 
           (selectedNetwork === 'base' ? 'ETH' : 
-           selectedNetwork === 'celo-sepolia' ? 'CELO' :
-           selectedNetwork === 'lisk-sepolia' ? 'ETH' : 'SOL') : 
+           selectedNetwork === 'celo' ? 'CELO' :
+           selectedNetwork === 'lisk' ? 'ETH' : 'SOL') : 
           (finalToken?.toUpperCase() || 'TOKEN');
 
         // Clean up stored transaction after successful execution
@@ -1667,15 +1640,15 @@ async function handleSend(params: ActionParams, userId: string) {
                  token?.toLowerCase() === 'celo' ||
                  token?.toLowerCase() === 'cusd') {
         selectedWallet = wallets.find(w => w.chain === 'evm');
-        selectedNetwork = 'celo-sepolia';
-        networkName = 'Celo Sepolia';
+        selectedNetwork = 'celo';
+        networkName = 'Celo';
       } else if (network?.toLowerCase() === 'lisk' || 
                  network?.toLowerCase() === 'lisk-sepolia' ||
                  token?.toLowerCase() === 'lsk' ||
                  token?.toLowerCase() === 'lisk') {
         selectedWallet = wallets.find(w => w.chain === 'evm');
-        selectedNetwork = 'lisk-sepolia';
-        networkName = 'Lisk Sepolia';
+        selectedNetwork = 'lisk';
+        networkName = 'Lisk';
       } else {
         // Default to EVM for ETH, USDC, etc.
         selectedWallet = wallets.find(w => w.chain === 'evm');
@@ -1692,8 +1665,8 @@ async function handleSend(params: ActionParams, userId: string) {
       // Determine native token detection
       const isNativeToken = (
         (selectedNetwork === 'base' && (!token || token.toLowerCase() === 'eth')) ||
-        (selectedNetwork === 'celo-sepolia' && (!token || token.toLowerCase() === 'celo')) ||
-        (selectedNetwork === 'lisk-sepolia' && (!token || token.toLowerCase() === 'eth')) ||
+        (selectedNetwork === 'celo' && (!token || token.toLowerCase() === 'celo')) ||
+        (selectedNetwork === 'lisk' && (!token || token.toLowerCase() === 'eth')) ||
         (selectedNetwork === 'solana' && (!token || token.toLowerCase() === 'sol'))
       );
       
@@ -1706,15 +1679,15 @@ async function handleSend(params: ActionParams, userId: string) {
       } catch (error) {
         console.error('[handleSend] Fee estimation error:', error);
         estimatedFee = selectedNetwork.includes('solana') ? '~0.000005 SOL' : 
-                      selectedNetwork === 'lisk-sepolia' ? '~0.0001 ETH' :
-                      selectedNetwork === 'celo-sepolia' ? '~0.0001 CELO' : '~0.0001 ETH';
+                      selectedNetwork === 'lisk' ? '~0.0001 ETH' :
+                      selectedNetwork === 'celo' ? '~0.0001 CELO' : '~0.0001 ETH';
       }
 
       // Determine token symbol for display
       const tokenSymbol = isNativeToken ? 
         (selectedNetwork === 'base' ? 'ETH' : 
-         selectedNetwork === 'celo-sepolia' ? 'CELO' :
-         selectedNetwork === 'lisk-sepolia' ? 'ETH' : 'SOL') : 
+         selectedNetwork === 'celo' ? 'CELO' :
+         selectedNetwork === 'lisk' ? 'ETH' : 'SOL') : 
         (token?.toUpperCase() || 'TOKEN');
 
       // Truncate addresses for display
@@ -1779,9 +1752,10 @@ async function handleSend(params: ActionParams, userId: string) {
             "• `Send 5 SOL to alice.sol`\n\n" +
             "**Supported Tokens:**\n" +
             "• ETH (Base network)\n" +
-            "• USDC (Base, Celo Sepolia, or Solana)\n" +
-            "• USDT (Lisk Sepolia)\n" +
-            "• CELO (Celo Sepolia network)\n" +
+            "• USDC (Base, Celo, or Solana)\n" +
+            "• CELO (Celo network)\n" +
+            "• cUSD (Celo network)\n" +
+            "• LSK (Lisk network)\n" +
             "• SOL (Solana network)\n\n" +
             "💡 **Tip**: Include all details in one message for faster processing!"
     };
@@ -1873,8 +1847,8 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     const userName = user?.name || 'Hedwig User';
 
     // Validate network and token
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo', 'celo-sepolia', 'lisk-sepolia', 'bsc-testnet', 'celo-alfajores'];
-    const supportedTokens = ['USDC', 'USDT', 'BNB', 'CELO', 'cUSD']; // Multiple tokens now supported
+    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo', 'lisk', 'solana'];
+    const supportedTokens = ['USDC', 'CELO', 'cUSD', 'LSK', 'ETH', 'SOL']; // Multiple tokens now supported
 
     if (!supportedNetworks.includes(selectedNetwork)) {
       return {

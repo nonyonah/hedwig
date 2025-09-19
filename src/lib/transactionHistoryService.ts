@@ -71,8 +71,6 @@ async function getEvmTransactionHistory(filter: TransactionHistoryFilter): Promi
       alchemyUrl = process.env.ALCHEMY_URL_ETH_MAINNET || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
     } else if (network.toLowerCase() === 'base-mainnet' || network.toLowerCase() === 'base') {
       alchemyUrl = process.env.ALCHEMY_URL_BASE_MAINNET || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
-    } else if (network.toLowerCase() === 'ethereum-sepolia') {
-      alchemyUrl = process.env.ALCHEMY_URL_ETH_SEPOLIA || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
     } else if (network.toLowerCase() === 'base') {
     alchemyUrl = process.env.ALCHEMY_URL_BASE_MAINNET || `https://${alchemyNetwork}.g.alchemy.com/v2/${alchemyApiKey}`;
     } else {
@@ -222,14 +220,8 @@ function mapNetworkToAlchemy(network: string): string {
     case 'ethereum':
     case 'ethereum-mainnet':
       return 'eth-mainnet';
-    case 'ethereum-sepolia':
-      return 'eth-sepolia';
     case 'polygon':
       return 'polygon-mainnet';
-    case 'optimism-sepolia':
-      return 'opt-sepolia';
-    case 'celo-alfajores':
-      return 'celo-alfajores';
     case 'optimism':
       return 'opt-mainnet';
     // DISABLED NETWORKS: BEP20 and Asset Chain are not yet active
