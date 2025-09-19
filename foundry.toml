@@ -10,6 +10,14 @@ via_ir = true
 [rpc_endpoints]
 base = "${BASE_MAINNET_RPC_URL}"
 base_mainnet = "${BASE_MAINNET_RPC_URL}"
+celo_alfajores = "https://alfajores-forno.celo-testnet.org"
+celo = "https://forno.celo.org"
+lisk_sepolia = "https://rpc.sepolia-api.lisk.com"
+lisk = "https://rpc.api.lisk.com"
 
 [etherscan]
 base = { key = "${BASESCAN_API_KEY}" }
+celo_alfajores = { key = "${CELOSCAN_API_KEY}", url = "https://api-alfajores.celoscan.io/api" }
+celo = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api" }
+lisk_sepolia = { key = "${LISK_API_KEY}", url = "https://sepolia-blockscout.lisk.com/api" }
+lisk = { key = "${LISK_API_KEY}", url = "https://blockscout.lisk.com/api" }

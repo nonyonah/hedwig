@@ -6,20 +6,64 @@ const path = require('path');
 // Contract ABI and bytecode (we'll need to get this from Foundry compilation)
 const contractArtifact = require('../out/HedwigPayment.sol/HedwigPayment.json');
 
+// Network configurations
+const NETWORK_CONFIGS = {
+  'base-sepolia': {
+    rpcUrl: 'https://sepolia.base.org',
+    chainId: 84532,
+    usdcAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    isTestnet: true
+  },
+  'base-mainnet': {
+    rpcUrl: 'https://mainnet.base.org',
+    chainId: 8453,
+    usdcAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    isTestnet: false
+  },
+  'celo-alfajores': {
+    rpcUrl: 'https://alfajores-forno.celo-testnet.org',
+    chainId: 44787,
+    usdcAddress: '0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B',
+    isTestnet: true
+  },
+  'celo-mainnet': {
+    rpcUrl: 'https://forno.celo.org',
+    chainId: 42220,
+    usdcAddress: '0x765de816845861e75a25fca122bb6898b8b1282a', // cUSD instead of USDC
+    isTestnet: false
+  },
+  'lisk-sepolia': {
+    rpcUrl: 'https://rpc.sepolia-api.lisk.com',
+    chainId: 4202,
+    usdcAddress: '0x0000000000000000000000000000000000000000', // To be deployed or found
+    isTestnet: true
+  },
+  'lisk-mainnet': {
+    rpcUrl: 'https://rpc.api.lisk.com',
+    chainId: 1135,
+    usdcAddress: '0x05D032ac25d322df992303dCa074EE7392C117b9', // USDT instead of USDC
+    isTestnet: false
+  }
+};
+
 async function main() {
   console.log('=== Deploying Enhanced HedwigPayment Contract ===');
   
   // Network configuration
   const network = process.env.NETWORK || 'base-sepolia';
-  const rpcUrl = network === 'base-sepolia' 
-    ? 'https://sepolia.base.org'
-    : 'https://mainnet.base.org';
+  const networkConfig = NETWORK_CONFIGS[network];
+  
+  if (!networkConfig) {
+    throw new Error(`Unsupported network: ${network}. Supported networks: ${Object.keys(NETWORK_CONFIGS).join(', ')}`);
+  }
   
   console.log(`Network: ${network}`);
-  console.log(`RPC URL: ${rpcUrl}`);
+  console.log(`RPC URL: ${networkConfig.rpcUrl}`);
+  console.log(`Chain ID: ${networkConfig.chainId}`);
+  console.log(`Is Testnet: ${networkConfig.isTestnet}`);
   
   // Setup provider and wallet
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
   
   if (!process.env.PLATFORM_PRIVATE_KEY) {
     throw new Error('PLATFORM_PRIVATE_KEY not found in environment variables');
@@ -39,14 +83,17 @@ async function main() {
   }
   
   // Platform wallet configuration
-  const platformWallet = process.env.HEDWIG_PLATFORM_WALLET_TESTNET 
-    || process.env.HEDWIG_PLATFORM_WALLET 
-    || deployerAddress;
+  const platformWallet = networkConfig.isTestnet
+    ? (process.env.HEDWIG_PLATFORM_WALLET_TESTNET || process.env.HEDWIG_PLATFORM_WALLET || deployerAddress)
+    : (process.env.HEDWIG_PLATFORM_WALLET_MAINNET || process.env.HEDWIG_PLATFORM_WALLET || deployerAddress);
   
   // USDC address for the network
-  const usdcAddress = network === 'base-sepolia'
-    ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' // Base Sepolia USDC
-    : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
+  const usdcAddress = networkConfig.usdcAddress;
+  
+  // Warn if USDC address is not set
+  if (usdcAddress === '0x0000000000000000000000000000000000000000') {
+    console.warn(`⚠️  WARNING: USDC address not configured for ${network}. Contract will be deployed but USDC functionality may not work.`);
+  }
   
   console.log(`Platform wallet: ${platformWallet}`);
   console.log(`USDC address: ${usdcAddress}`);
@@ -109,7 +156,7 @@ async function main() {
     deployer: deployerAddress,
     timestamp: new Date().toISOString(),
     network: network,
-    chainId: network === 'base-sepolia' ? 84532 : 8453,
+    chainId: networkConfig.chainId,
     gasUsed: hedwigPayment.deploymentTransaction().gasLimit?.toString() || 'unknown'
   };
   
@@ -129,7 +176,7 @@ async function main() {
   console.log('Add these to your .env.local file:');
   console.log('');
   
-  if (network === 'base-sepolia') {
+  if (networkConfig.isTestnet) {
     console.log(`NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS=${contractAddress}`);
     console.log(`HEDWIG_PAYMENT_CONTRACT_ADDRESS_TESTNET=${contractAddress}`);
     console.log(`HEDWIG_PLATFORM_WALLET_TESTNET=${platformWallet}`);
