@@ -132,6 +132,64 @@ class SupabaseTransactionStorage {
       console.error('[TransactionStorage] Error updating transaction:', error);
       throw new Error(`Failed to update transaction: ${error.message}`);
     }
+
+    // If transaction is completed, move it to permanent storage and remove from pending
+    if (updates.status === 'completed') {
+      await this.moveToCompletedTransactions(transactionId);
+    }
+  }
+
+  /**
+   * Move completed transaction to permanent storage
+   */
+  private async moveToCompletedTransactions(transactionId: string): Promise<void> {
+    try {
+      // Get the transaction data first
+      const { data: transactionData, error: fetchError } = await supabase
+        .from('pending_transactions')
+        .select('*')
+        .eq('transaction_id', transactionId)
+        .single();
+
+      if (fetchError || !transactionData) {
+        console.error('[TransactionStorage] Error fetching transaction for permanent storage:', fetchError);
+        return;
+      }
+
+      // Insert into completed_transactions table (permanent storage)
+      const completedTransaction = {
+        transaction_id: transactionData.transaction_id,
+        user_id: transactionData.user_id,
+        from_address: transactionData.from_address,
+        to_address: transactionData.to_address,
+        amount: transactionData.amount,
+        token_symbol: transactionData.token_symbol,
+        token_address: transactionData.token_address,
+        network: transactionData.network,
+        status: transactionData.status,
+        transaction_hash: transactionData.transaction_hash,
+        error_message: transactionData.error_message,
+        metadata: transactionData.metadata,
+        completed_at: new Date().toISOString(),
+        created_at: transactionData.created_at
+      };
+
+      const { error: insertError } = await supabase
+        .from('completed_transactions')
+        .insert(completedTransaction);
+
+      if (insertError) {
+        console.error('[TransactionStorage] Error storing completed transaction:', insertError);
+        return;
+      }
+
+      // Remove from pending_transactions table
+      await this.remove(transactionId);
+      
+      console.log(`[TransactionStorage] Moved completed transaction ${transactionId} to permanent storage`);
+    } catch (error) {
+      console.error('[TransactionStorage] Error moving transaction to permanent storage:', error);
+    }
   }
 
   /**
@@ -152,25 +210,27 @@ class SupabaseTransactionStorage {
   }
 
   /**
-   * Clean up expired transactions from Supabase
+   * Clean up expired and failed transactions from Supabase
+   * Note: Completed transactions are moved to permanent storage, not deleted
    */
   async cleanupExpired(): Promise<number> {
     const now = new Date();
 
+    // Only delete expired, failed, or pending transactions that have expired
     const { data, error } = await supabase
       .from('pending_transactions')
       .delete()
-      .lt('expires_at', now.toISOString())
+      .or(`expires_at.lt.${now.toISOString()},status.eq.failed,status.eq.expired`)
       .select('transaction_id');
 
     if (error) {
-      console.error('[TransactionStorage] Error cleaning up expired transactions:', error);
-      throw new Error(`Failed to cleanup expired transactions: ${error.message}`);
+      console.error('[TransactionStorage] Error cleaning up transactions:', error);
+      throw new Error(`Failed to cleanup transactions: ${error.message}`);
     }
 
     const cleanedCount = data?.length || 0;
     if (cleanedCount > 0) {
-      console.log(`[TransactionStorage] Cleaned up ${cleanedCount} expired transactions`);
+      console.log(`[TransactionStorage] Cleaned up ${cleanedCount} expired/failed transactions`);
     }
 
     return cleanedCount;
@@ -193,13 +253,14 @@ class SupabaseTransactionStorage {
   }
 
   /**
-   * Get all pending transactions for a user
+   * Get all pending transactions for a user (excludes completed transactions)
    */
   async getByUserId(userId: string): Promise<PendingTransaction[]> {
     const { data, error } = await supabase
       .from('pending_transactions')
       .select('*')
       .eq('user_id', userId)
+      .neq('status', 'completed') // Exclude completed transactions as they're moved to permanent storage
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -248,6 +309,43 @@ class SupabaseTransactionStorage {
     }
 
     return validTransactions;
+  }
+
+  /**
+   * Get completed transactions for a user from permanent storage
+   */
+  async getCompletedTransactionsByUserId(userId: string): Promise<PendingTransaction[]> {
+    const { data, error } = await supabase
+      .from('completed_transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('completed_at', { ascending: false });
+
+    if (error) {
+      console.error('[TransactionStorage] Error retrieving completed transactions:', error);
+      throw new Error(`Failed to retrieve completed transactions: ${error.message}`);
+    }
+
+    if (!data) {
+      return [];
+    }
+
+    return data.map(row => ({
+      transactionId: row.transaction_id,
+      userId: row.user_id,
+      fromAddress: row.from_address,
+      toAddress: row.to_address,
+      amount: row.amount,
+      tokenSymbol: row.token_symbol,
+      tokenAddress: row.token_address,
+      network: row.network,
+      status: row.status,
+      transactionHash: row.transaction_hash,
+      errorMessage: row.error_message,
+      metadata: row.metadata,
+      createdAt: new Date(row.created_at),
+      expiresAt: new Date(row.completed_at), // Use completed_at as expiresAt for consistency
+    }));
   }
 }
 

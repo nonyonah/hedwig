@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadServerEnvironment } from './serverEnv';
 import { getTokenPricesBySymbol } from './tokenPriceService';
+import { transactionStorage } from './transactionStorage';
 
+loadServerEnvironment();
 // Load environment variables
 loadServerEnvironment();
 
@@ -96,6 +98,82 @@ export interface UserPreferences {
 }
 
 /**
+ * Fetch completed transactions from permanent storage
+ */
+async function fetchCompletedTransactions(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
+  try {
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
+      return [];
+    }
+
+    console.log('[fetchCompletedTransactions] Fetching completed transactions for wallets:', walletAddresses);
+    
+    // Get completed transactions for each wallet
+    const allCompletedTransactions: any[] = [];
+    for (const walletAddress of walletAddresses) {
+      try {
+        const transactions = await transactionStorage.getCompletedTransactionsByUserId(walletAddress);
+        
+        // Filter by date range if specified
+        let filteredTransactions = transactions;
+        if (startDate || endDate) {
+          filteredTransactions = transactions.filter(tx => {
+            const txDate = tx.expiresAt || tx.createdAt;
+            if (!txDate) return false;
+            
+            const txDateObj = new Date(txDate);
+            if (startDate && txDateObj < new Date(startDate)) return false;
+            if (endDate && txDateObj > new Date(endDate)) return false;
+            
+            return true;
+          });
+        }
+
+        // Filter by token if specified
+        if (filter.token) {
+          filteredTransactions = filteredTransactions.filter(tx => 
+            tx.tokenSymbol?.toUpperCase() === filter.token?.toUpperCase()
+          );
+        }
+
+        // Filter by network if specified
+        if (filter.network) {
+          filteredTransactions = filteredTransactions.filter(tx => 
+            tx.network === filter.network
+          );
+        }
+
+        // Transform to earnings format
+        const transformedTransactions = filteredTransactions.map(tx => ({
+          id: tx.transactionId,
+          amount: parseFloat(tx.amount) || 0,
+          token: tx.tokenSymbol || 'Unknown',
+          network: tx.network || 'Base',
+          paid_at: tx.expiresAt || tx.createdAt, // Use expiresAt which contains completed_at
+          transaction_hash: tx.transactionHash,
+          payment_reason: tx.errorMessage || 'Completed Transaction',
+          wallet_address: walletAddress,
+          source: 'completed_transaction',
+          category: 'transaction'
+        }));
+
+        allCompletedTransactions.push(...transformedTransactions);
+      } catch (error) {
+        console.error(`[fetchCompletedTransactions] Error fetching for wallet ${walletAddress}:`, error);
+      }
+    }
+
+    console.log(`[fetchCompletedTransactions] Found ${allCompletedTransactions.length} completed transactions`);
+    return allCompletedTransactions;
+  } catch (error) {
+    console.error('[fetchCompletedTransactions] Error:', error);
+    return [];
+  }
+}
+
+/**
  * Get earnings summary for a wallet address with optional filtering
  */
 export async function getEarningsSummary(filter: EarningsFilter, includeInsights = false): Promise<EarningsSummaryResponse> {
@@ -111,7 +189,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     // Calculate date range based on timeframe
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
-    // Fetch all earnings sources
+    // Fetch all earnings sources excluding completed transactions to prevent duplication
     console.log('[getEarningsSummary] About to fetch payment events for wallets:', walletAddresses);
     const [paymentLinks, invoices, proposals, paymentEvents, offrampTransactions] = await Promise.all([
       fetchPaymentLinks(filter, startDate, endDate),
@@ -124,7 +202,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events, ${offrampTransactions.length} offramp transactions`);
 
     // Combine all earnings sources
-    const allEarnings = [
+    const allEarnings: any[] = [
       ...paymentLinks.map(p => ({ ...p, source: 'payment_link' as const })),
       ...invoices.map(i => ({ 
         ...i, 
@@ -180,7 +258,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
 
     // Get unique tokens for price fetching
     const paymentTokens = allEarnings.map(p => p.token);
-    const uniqueTokens = [...new Set(paymentTokens)];
+    const uniqueTokens = Array.from(new Set(paymentTokens));
     
     let tokenPrices: { [key: string]: number } = {};
     
@@ -215,13 +293,26 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     let totalEarnings = 0;
     let totalFiatValue = 0;
 
-    // Process all earnings sources
-    for (const earning of categorizedEarnings) {
-      const key = `${earning.token}-${earning.network}`;
+    // Define stablecoins to track (excluding ETH and other volatile tokens)
+    const STABLECOINS = ['USDC', 'USDT', 'cUSD', 'DAI', 'BUSD', 'TUSD', 'FRAX'];
+    
+    // Filter earnings to only include stablecoins
+    const stablecoinEarnings = categorizedEarnings.filter(earning => 
+      STABLECOINS.includes(earning.token?.toUpperCase())
+    );
+
+    // Process only stablecoin earnings sources
+    for (const earning of stablecoinEarnings) {
+      const normalizedNetwork = formatChainName(earning.network);
+      const key = `${earning.token}-${normalizedNetwork}`;
       const amount = parseFloat(earning.paid_amount) || 0;
-      const fiatValue = (tokenPrices[earning.token] || 0) * amount;
       
-      totalEarnings += amount;
+      // For stablecoins, use 1:1 USD conversion or actual price if available
+      const isStablecoin = STABLECOINS.includes(earning.token?.toUpperCase());
+      const fiatValue = isStablecoin ? amount : ((tokenPrices[earning.token] || 0) * amount);
+      
+      // Use fiat value for totalEarnings to properly aggregate different tokens in USD
+      totalEarnings += fiatValue;
       totalFiatValue += fiatValue;
 
       if (earningsMap.has(key)) {
@@ -234,7 +325,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       } else {
         earningsMap.set(key, {
           token: earning.token,
-          network: earning.network,
+          network: normalizedNetwork,
           total: amount,
           count: 1,
           payments: [earning],
@@ -263,7 +354,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         fiatValue: Math.round(item.fiatValue * 100) / 100,
         fiatCurrency: 'USD',
         exchangeRate: tokenPrices[item.token] || 0,
-        percentage: totalEarnings > 0 ? Math.round((item.total / totalEarnings) * 10000) / 100 : 0,
+        percentage: totalEarnings > 0 ? Math.round((item.fiatValue / totalEarnings) * 10000) / 100 : 0,
         category: item.category,
         source: Array.from(item.sources).join(', ') // Convert Set to comma-separated string
       };
@@ -272,23 +363,40 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     // Sort by total earnings descending
     earnings.sort((a, b) => b.total - a.total);
 
+    // Calculate offramp summary - only from actual offramp transactions
+    const offrampEarnings = stablecoinEarnings.filter(e => e.source === 'offramp');
+    const totalOfframped = offrampEarnings.reduce((sum, e) => {
+      const amount = parseFloat(e.paid_amount) || 0;
+      // For stablecoins, use 1:1 USD conversion
+      const isStablecoin = STABLECOINS.includes(e.token?.toUpperCase());
+      const fiatValue = isStablecoin ? amount : ((tokenPrices[e.token] || 0) * amount);
+      return sum + fiatValue;
+    }, 0);
+    const remainingCrypto = totalEarnings - totalOfframped;
+    const offrampPercentage = totalEarnings > 0 ? (totalOfframped / totalEarnings) * 100 : 0;
+
     const result: EarningsSummaryResponse = {
     walletAddress: filter.walletAddress, // For backward compatibility
     walletAddresses: walletAddresses,
     timeframe: filter.timeframe || 'allTime',
-    totalEarnings: Math.round(totalEarnings * 100000000) / 100000000,
+    totalEarnings: Math.round(totalEarnings * 100) / 100,
     totalFiatValue: Math.round(totalFiatValue * 100) / 100,
-    totalPayments: allEarnings.length,
+    totalPayments: stablecoinEarnings.length, // Use stablecoin earnings count
     earnings,
     period: {
       startDate: startDate || '',
       endDate: endDate || new Date().toISOString()
+    },
+    offrampSummary: {
+      totalOfframped: Math.round(totalOfframped * 100) / 100,
+      remainingCrypto: Math.round(remainingCrypto * 100) / 100,
+      offrampPercentage: Math.round(offrampPercentage * 100) / 100
     }
   };
 
     // Add insights if requested
-  if (includeInsights && allEarnings.length > 0) {
-    result.insights = await generateEarningsInsights(categorizedEarnings, earnings, filter);
+  if (includeInsights && stablecoinEarnings.length > 0) {
+    result.insights = await generateEarningsInsights(stablecoinEarnings, earnings, filter);
   }
 
     return result;
@@ -354,8 +462,8 @@ async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | nu
     return (payments || []).map(payment => ({
       id: payment.id,
       amount: parseFloat(payment.amount_paid) || 0,
-      token: payment.currency || 'ETH',
-      network: payment.chain || 'Base',
+      token: payment.currency || 'Unknown',
+      network: formatChainName(payment.chain || 'Base'),
       paid_at: payment.created_at,
       transaction_hash: payment.tx_hash,
       payment_reason: 'Direct Transfer',
@@ -379,21 +487,21 @@ function getTokenSymbol(tokenAddress: string): string {
     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913': 'USDC',
     '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb': 'USDT',
     '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA': 'USDbC',
-    // Ethereum
+    // Ethereum - Removed ETH/WETH support
     '0xA0b86a33E6441b8C4505E2c52C6b6046d5b0b6e6': 'USDC',
     '0xdAC17F958D2ee523a2206206994597C13D831ec7': 'USDT',
     // BSC
     '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d': 'USDC',
     '0x55d398326f99059fF775485246999027B3197955': 'USDT',
     '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c': 'WBNB',
-    // Arbitrum One
+    // Arbitrum One - Removed ETH/WETH support
     '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
     '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',
-    '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1': 'WETH',
-    // Celo
-    '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e': 'USDT',
+    // Celo - Updated with correct addresses
+    '0x765DE816845861e75A25fCA122bb6898B8B1282a': 'cUSD', // Celo Dollar
     '0x471EcE3750Da237f93B8E339c536989b8978a438': 'CELO',
-    // Lisk
+    // Lisk - Updated with correct addresses  
+    '0x05D032ac25d322df992303dCa074EE7392C117b9': 'USDT', // Lisk USDT
     '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f': 'LSK'
   };
   return tokens[tokenAddress] || 'Unknown';
@@ -421,7 +529,7 @@ async function fetchPaymentLinks(filter: EarningsFilter, startDate: string | nul
       return [];
     }
 
-    const userIds = [...new Set(userWallets.map(w => w.user_id))]; // Remove duplicates
+    const userIds = Array.from(new Set(userWallets.map(w => w.user_id))); // Remove duplicates
 
     // Build the query using created_by (user_id)
     let query = supabase
@@ -489,7 +597,7 @@ async function fetchPaidInvoices(filter: EarningsFilter, startDate: string | nul
       return [];
     }
 
-    const userIds = [...new Set(userWallets.map(w => w.user_id))]; // Remove duplicates
+    const userIds = Array.from(new Set(userWallets.map(w => w.user_id))); // Remove duplicates
 
     // Build the query using user_id
     let query = supabase
@@ -639,7 +747,7 @@ async function fetchAcceptedProposals(filter: EarningsFilter, startDate: string 
       return [];
     }
 
-    const userIds = [...new Set(userWallets.map(w => w.user_id))]; // Remove duplicates
+    const userIds = Array.from(new Set(userWallets.map(w => w.user_id))); // Remove duplicates
 
     // First try with paid_at column, fallback to created_at if it doesn't exist
     let query = supabase
@@ -1248,6 +1356,40 @@ function getDateRange(timeframe?: string, startDate?: string, endDate?: string):
 }
 
 /**
+ * Format chain names for display
+ */
+export function formatChainName(network: string): string {
+  const chainMap: { [key: string]: string } = {
+    'base': 'Base',
+    'base-mainnet': 'Base',
+    'base mainnet': 'Base',
+    'ethereum': 'Ethereum',
+    'ethereum-mainnet': 'Ethereum',
+    'polygon': 'Polygon',
+    'polygon-mainnet': 'Polygon',
+    'optimism': 'Optimism',
+    'optimism-mainnet': 'Optimism',
+    'arbitrum': 'Arbitrum',
+    'arbitrum-one': 'Arbitrum',
+    'arbitrum-mainnet': 'Arbitrum',
+    'avalanche': 'Avalanche',
+    'avalanche-mainnet': 'Avalanche',
+    'bsc': 'BSC',
+    'binance': 'BSC',
+    'binance-smart-chain': 'BSC',
+    'celo': 'Celo',
+    'celo-mainnet': 'Celo',
+    'lisk': 'Lisk',
+    'lisk-mainnet': 'Lisk',
+    'solana': 'Solana',
+    'solana-mainnet': 'Solana'
+  };
+  
+  const normalized = network.toLowerCase().trim();
+  return chainMap[normalized] || network.charAt(0).toUpperCase() + network.slice(1).toLowerCase();
+}
+
+/**
  * Enhanced format earnings summary for natural language response
  */
 export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: 'earnings' | 'spending' = 'earnings'): string {
@@ -1334,11 +1476,11 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   Array.from(tokenSummary.entries())
     .sort((a, b) => b[1].fiatValue - a[1].fiatValue)
     .forEach(([token, data], index) => {
-      const tokenEmoji = token === 'USDC' ? '💵' : token === 'ETH' ? '💎' : token === 'USDT' ? '💰' : '🪙';
+      const tokenEmoji = token === 'USDC' ? '💵' : token === 'USDT' ? '💰' : token === 'cUSD' ? '💵' : token === 'CELO' ? '🟡' : token === 'LSK' ? '🔵' : '🪙';
       const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '•';
       const fiatText = data.fiatValue > 0 ? ` ($${data.fiatValue.toFixed(2)})` : '';
       const networkCount = data.networks.size;
-      const networkText = networkCount > 1 ? ` across ${networkCount} blockchain${networkCount > 1 ? 's' : ''}` : ` on ${Array.from(data.networks)[0]}`;
+      const networkText = networkCount > 1 ? ` across ${networkCount} blockchain${networkCount > 1 ? 's' : ''}` : ` on ${formatChainName(Array.from(data.networks)[0])}`;
       
       response += `${rankEmoji} **${data.total.toFixed(8)} ${token}** ${tokenEmoji}${fiatText}${networkText}\n`;
       response += `  ${data.count} payment${data.count > 1 ? 's' : ''}\n\n`;
@@ -1352,7 +1494,7 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
       const tokenEarnings = earnings.filter(e => e.token === token);
       tokenEarnings.forEach(earning => {
         const fiatText = earning.fiatValue ? ` ($${earning.fiatValue.toFixed(2)})` : '';
-        response += `• **${earning.total} ${token}** on ${earning.network}${fiatText}\n`;
+        response += `• **${earning.total} ${token}** on ${formatChainName(earning.network)}${fiatText}\n`;
       });
     });
     response += '\n';
@@ -1366,18 +1508,18 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
       const { amount, token, network, fiatValue } = insights.largestPayment;
       const fiatText = fiatValue ? ` ($${fiatValue.toFixed(2)})` : '';
       const bigPaymentEmoji = fiatValue && fiatValue > 1000 ? '🐋' : fiatValue && fiatValue > 100 ? '🦈' : '🐟';
-      response += `${bigPaymentEmoji} Biggest splash: **${amount} ${token}** on ${network}${fiatText}\n`;
+      response += `${bigPaymentEmoji} Biggest splash: **${amount} ${token}** on ${formatChainName(network)}${fiatText}\n`;
     }
     
     if (insights.mostActiveNetwork) {
       const { network, count, totalAmount } = insights.mostActiveNetwork;
       const networkEmoji = network.toLowerCase().includes('polygon') ? '🟣' : network.toLowerCase().includes('ethereum') ? '💎' : network.toLowerCase().includes('base') ? '🔵' : '⛓️';
-      response += `${networkEmoji} Network champion: **${network}** (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
+      response += `${networkEmoji} Network champion: **${formatChainName(network)}** (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
     }
     
     if (insights.topToken) {
       const { token, percentage } = insights.topToken;
-      const tokenEmoji = token === 'USDC' ? '👑' : token === 'ETH' ? '💎' : token === 'USDT' ? '🏆' : '🪙';
+      const tokenEmoji = token === 'USDC' ? '👑' : token === 'USDT' ? '🏆' : token === 'cUSD' ? '👑' : token === 'CELO' ? '🟡' : token === 'LSK' ? '🔵' : '🪙';
       response += `${tokenEmoji} Token MVP: **${token}** (${percentage}% of portfolio)\n`;
     }
     
@@ -1459,7 +1601,7 @@ export function parseEarningsQuery(query: string): EarningsFilter | null {
 
   // Extract token with more patterns
   let token: string | undefined;
-  const tokenPatterns = ['usdc', 'usdt', 'dai', 'eth', 'matic', 'weth', 'btc', 'sol', 'avax', 'link'];
+  const tokenPatterns = ['usdc', 'usdt', 'dai', 'cusd', 'celo', 'lsk', 'matic', 'btc', 'sol', 'avax', 'link'];
   for (const tokenPattern of tokenPatterns) {
     if (lowerQuery.includes(tokenPattern)) {
       token = tokenPattern.toUpperCase();
@@ -1469,7 +1611,7 @@ export function parseEarningsQuery(query: string): EarningsFilter | null {
 
   // Extract network with more patterns
   let network: string | undefined;
-  const networkPatterns = ['base', 'polygon', 'ethereum', 'optimism', 'avalanche', 'bsc', 'solana', 'celo'];
+  const networkPatterns = ['base', 'polygon', 'ethereum', 'optimism', 'avalanche', 'bsc', 'solana', 'celo', 'lisk'];
   // DISABLED NETWORKS: BEP20 and Asset Chain patterns are defined but not active
   // Additional patterns when enabled: 'bsc-testnet', 'asset-chain', 'asset-chain-testnet'
   for (const networkPattern of networkPatterns) {
