@@ -283,7 +283,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const requestedNetwork = params?.parameters?.network?.toLowerCase();
     
     // Map specific chains to their categories
-    const evmChains = ['evm', 'base', 'ethereum', 'optimism', 'celo', 'polygon', 'arbitrum'];
+    const evmChains = ['evm', 'base', 'ethereum', 'optimism', 'celo'];
     const isEvmRequest = requestedNetwork && evmChains.includes(requestedNetwork);
     const isSolanaRequest = requestedNetwork === 'solana';
     const isSpecificChainRequest = requestedNetwork && (evmChains.includes(requestedNetwork) || requestedNetwork === 'solana');
@@ -296,7 +296,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const evmWallet = wallets.find(w => w.chain === 'evm');
     if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
       try {
-        // Get balances for supported networks - updated to mainnet
+        // Get balances for supported networks - disabled Arbitrum and BSC networks
         const supportedEvmNetworks = ['base', 'celo', 'lisk'];
         let allEvmBalances = "";
 
@@ -414,8 +414,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
                             network === 'celo' ? '🟡' :
                             network === 'lisk' ? '🟢' :
                             network === 'optimism' ? '🔴' :
-                            network === 'polygon' ? '🟣' :
-                            network === 'arbitrum' ? '🔶' : '🔹';
+                            network === 'polygon' ? '🟣' : '🔹';
             
             // Format balances with USD equivalents
             const nativeBalanceNum = parseFloat(nativeBalance);
@@ -489,8 +488,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
                             network === 'celo' ? '🟡' :
                             network === 'lisk' ? '🟢' :
                             network === 'optimism' ? '🔴' :
-                            network === 'polygon' ? '🟣' :
-                            network === 'arbitrum' ? '🔶' : '🔹';
+                            network === 'polygon' ? '🟣' : '🔹';
             
             allEvmBalances += `${chainIcon} **${displayName}**\n• Error fetching balances\n\n`;
           }
@@ -1834,7 +1832,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
               "**Required Details:**\n" +
               "• **Amount**: e.g., `100 USDC`\n" +
               "• **Purpose**: What the payment is for\n" +
-              "• **Network** (optional): `base`, `ethereum`, `polygon`\n" +
+              "• **Network** (optional): `base`, `ethereum`, `optimism`, `celo`, `lisk`\n" +
               "• **Recipient Email** (optional): To send the link via email\n\n" +
               "**Example Messages:**\n" +
               "• `Create payment link for 100 USDC for web development`\n" +
@@ -1852,7 +1850,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     const userName = user?.name || 'Hedwig User';
 
     // Validate network and token
-    const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo', 'lisk', 'solana'];
+    const supportedNetworks = ['base', 'ethereum', 'optimism', 'celo', 'lisk', 'solana'];
     const supportedTokens = ['USDC', 'CELO', 'cUSD', 'LSK', 'ETH', 'SOL']; // Multiple tokens now supported
 
     if (!supportedNetworks.includes(selectedNetwork)) {
@@ -2798,7 +2796,7 @@ async function startOfframpFlow(userId: string): Promise<ActionResult> {
               chainBalances[wallet.network.toLowerCase()] = amount;
               
               // Format chain name for display
-              const chainName = wallet.network.charAt(0).toUpperCase() + wallet.network.slice(1);
+              let chainName = wallet.network.charAt(0).toUpperCase() + wallet.network.slice(1);
               balanceMessages.push(`💰 ${amount.toFixed(6)} USDC on ${chainName}`);
             }
           }

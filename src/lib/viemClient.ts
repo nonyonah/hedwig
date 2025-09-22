@@ -1,6 +1,7 @@
 import { createWalletClient, createPublicClient, http, parseEther, parseUnits, formatUnits } from 'viem';
 import { toAccount } from 'viem/accounts';
 import { defineChain } from 'viem';
+import { polygon } from 'viem/chains';
 import { CdpClient } from '@coinbase/cdp-sdk';
 import { loadServerEnvironment } from './serverEnv';
 
@@ -55,22 +56,27 @@ const lisk = defineChain({
   },
 });
 
-// Chain mapping - Updated to use mainnet chains
+// Chain mapping - Updated to use mainnet chains and testnets
 const CHAIN_MAP = {
   'celo': celo,
   'lisk': lisk,
+  'polygon': polygon,
 };
 
-// Token contract addresses - Updated for mainnet
+// Token contract addresses - Updated for mainnet and testnets
 const TOKEN_CONTRACTS = {
   'celo': {
     'USDC': '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
-    'cUSD': '0x765de816845861e75a25fca122bb6898b8b1282a',
-    'CELO': '0x471EcE3750Da237f93B8E339c536989b8978a438',
+    'cNGN': '0x52828daa48C1a9A06F37500882b42daf0bE04C3B',
   },
   'lisk': {
-    'LSK': '0xac485391EB2d7D88253a7F1eF18C37f4242D1A24',
+    'USDC': '0x3e7eF8f50246f725885102E8238CBba33F276747',
     'USDT': '0x05D032ac25d322df992303dCa074EE7392C117b9',
+  },
+  'polygon': {
+    'USDC': '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+    'USDT': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+    'cNGN': '0x52828daa48C1a9A06F37500882b42daf0bE04C3B',
   },
 };
 
@@ -88,7 +94,7 @@ export async function sendNativeTokenViem(
   fromAddress: string,
   toAddress: string,
   amount: string,
-  network: 'celo' | 'lisk',
+  network: 'celo' | 'lisk' | 'polygon',
   accountName?: string
 ): Promise<string> {
   console.log(`[VIEM] Initiating native token transfer on ${network}...`);

@@ -46,6 +46,11 @@ export interface EarningsData {
     telegramLastName?: string;
     telegramUsername?: string;
   };
+  offrampSummary?: {
+    totalOfframped: number;
+    remainingCrypto: number;
+    offrampPercentage: number;
+  };
 }
 
 export async function generateEarningsPDF(data: EarningsData): Promise<Buffer> {
@@ -70,7 +75,7 @@ export async function generateEarningsPDF(data: EarningsData): Promise<Buffer> {
       const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       const dynamicTitle = generateDynamicTitle(data.totalEarnings, data.totalPayments);
       const dynamicSubtitle = generateDynamicSubtitle(data.earnings, data.totalEarnings);
-      const offrampAmount = calculateOfframpAmount(data.earnings);
+      const offrampAmount = calculateOfframpAmount(data);
 
       // Header Section
       let yPos = 40;
@@ -120,8 +125,12 @@ export async function generateEarningsPDF(data: EarningsData): Promise<Buffer> {
       const cardHeight = 80;
       const cardY = yPos;
       
-      // Card 1: Total Earnings (Primary Blue)
-      const totalEarningsFormatted = data.totalFiatValue ? `$${data.totalFiatValue.toFixed(2)}` : `${data.totalEarnings.toFixed(4)} tokens`;
+      // Card 1: Total Earnings (Primary Blue) - Prioritize USD value
+      const totalEarningsFormatted = data.totalFiatValue && data.totalFiatValue > 0 
+        ? `$${data.totalFiatValue.toFixed(2)}` 
+        : data.earnings.length > 0 
+          ? `${data.earnings[0].total.toFixed(2)} ${data.earnings[0].token}` 
+          : `${data.totalEarnings.toFixed(4)} tokens`;
       drawRoundedStatCard(doc, margin, cardY, cardWidth, cardHeight, totalEarningsFormatted, 'Total Earnings', '#2563EB');
       
       // Card 2: Offramp Amount (Success Blue-Green)
@@ -187,8 +196,11 @@ export async function generateEarningsPDF(data: EarningsData): Promise<Buffer> {
           doc.text(earning.network, xPos, yPos, { width: colWidths[1] });
           xPos += colWidths[1];
           
-          // Amount
-          doc.text(earning.total.toFixed(4), xPos, yPos, { width: colWidths[2] });
+          // Amount - Display with proper precision for stablecoins
+          const amountDisplay = earning.token === 'USDC' || earning.token === 'USDT' || earning.token === 'cUSD' 
+            ? earning.total.toFixed(2) 
+            : earning.total.toFixed(4);
+          doc.text(amountDisplay, xPos, yPos, { width: colWidths[2] });
           xPos += colWidths[2];
           
           // Count
@@ -327,12 +339,25 @@ function generateDynamicSubtitle(earnings: any[], totalEarnings: number): string
   }
 }
 
-function calculateOfframpAmount(earnings: any[]): number {
-  // In a real implementation, this would track actual offramp transactions
-  // For now, we'll estimate based on a percentage of total earnings
-  if (!earnings || earnings.length === 0) return 0;
+function calculateOfframpAmount(data: EarningsData): number {
+  // Use actual offramp data from backend if available
+  if (data.offrampSummary && data.offrampSummary.totalOfframped > 0) {
+    return data.offrampSummary.totalOfframped;
+  }
   
-  const totalFiatValue = earnings.reduce((sum, earning) => sum + (earning.fiatValue || 0), 0);
-  // Assume 30% of earnings have been offramped on average
-  return totalFiatValue * 0.3;
+  // Fallback: Calculate from earnings data if offrampSummary not available
+  if (!data.earnings || data.earnings.length === 0) return 0;
+  
+  // Look for offramp transactions in the earnings data
+  const offrampEarnings = data.earnings.filter(earning => 
+    earning.source && earning.source.includes('offramp')
+  );
+  
+  if (offrampEarnings.length > 0) {
+    // Sum up actual offramp amounts
+    return offrampEarnings.reduce((sum, earning) => sum + (earning.fiatValue || 0), 0);
+  }
+  
+  // If no offramp data available, return 0 instead of estimating
+  return 0;
 }

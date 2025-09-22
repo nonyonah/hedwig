@@ -472,11 +472,55 @@ export class BotIntegration {
       const { getBalances } = await import('../lib/cdp');
       
       if (chain === 'evm') {
-        const balances = await getBalances(address, 'evm');
-        if (balances && Array.isArray(balances) && balances.length > 0) {
-          return balances.map((b: any) => `${b.amount || b.balance || '0'} ${b.asset?.symbol || b.symbol || 'ETH'}`).join(', ');
+        // Try multiple networks to get comprehensive balance info - disabled Arbitrum and BSC networks
+        const networks = ['base', 'ethereum-sepolia'];
+        let allBalances: any[] = [];
+        
+        for (const network of networks) {
+          try {
+            const balances = await getBalances(address, network);
+            if (balances && Array.isArray(balances) && balances.length > 0) {
+              // Filter out zero balances for cleaner display
+              const nonZeroBalances = balances.filter((b: any) => {
+                const amount = parseFloat(b.amount || b.balance || '0');
+                return amount > 0;
+              });
+              
+              if (nonZeroBalances.length > 0) {
+                allBalances.push({
+                  network: network,
+                  balances: nonZeroBalances
+                });
+              }
+            }
+          } catch (networkError) {
+            console.warn(`[BotIntegration] Error fetching ${network} balances:`, networkError);
+            // Continue to next network
+          }
         }
-        return '0 ETH';
+        
+        if (allBalances.length > 0) {
+          let balanceText = '';
+          for (const networkData of allBalances) {
+            const network = networkData.network;
+            const isTestnet = network.includes('sepolia') || network.includes('testnet');
+            const networkEmoji = this.getNetworkEmoji(network);
+            const testnetIndicator = isTestnet ? ' 🧪' : '';
+            const networkName = this.formatNetworkName(network);
+            
+            balanceText += `\n${networkEmoji} ${networkName}${testnetIndicator}:\n`;
+            for (const balance of networkData.balances) {
+              const amount = parseFloat(balance.amount || balance.balance || '0');
+              const symbol = balance.asset?.symbol || balance.symbol || 'TOKEN';
+              if (amount > 0) {
+                balanceText += `  • ${amount.toFixed(6)} ${symbol}\n`;
+              }
+            }
+          }
+          return balanceText || '0 ETH';
+        }
+        
+        return '0 ETH (No balances found across networks)';
       } else if (chain === 'solana') {
         // For now, return a placeholder for Solana
         return 'Solana balance check coming soon';
@@ -2748,5 +2792,48 @@ export class BotIntegration {
 
     // Default to false for short, simple inputs
     return false;
+  }
+
+  // Helper method to get network-specific emojis
+  private getNetworkEmoji(network: string): string {
+    switch (network.toLowerCase()) {
+      case 'base':
+        return '🔵';
+      case 'ethereum':
+      case 'ethereum-sepolia':
+        return '💎';
+      case 'polygon':
+        return '🟣';
+      case 'celo':
+        return '🟡';
+      case 'lisk':
+        return '🟢';
+      case 'solana':
+        return '🟣';
+      default:
+        return '🌐';
+    }
+  }
+
+  // Helper method to format network names
+  private formatNetworkName(network: string): string {
+    switch (network.toLowerCase()) {
+      case 'base':
+        return 'Base';
+      case 'ethereum':
+        return 'Ethereum';
+      case 'ethereum-sepolia':
+        return 'Ethereum Sepolia';
+      case 'polygon':
+        return 'Polygon';
+      case 'celo':
+        return 'Celo';
+      case 'lisk':
+        return 'Lisk';
+      case 'solana':
+        return 'Solana';
+      default:
+        return network.toUpperCase().replace('-', ' ');
+    }
   }
 }

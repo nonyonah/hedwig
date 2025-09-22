@@ -1,5 +1,5 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { base, mainnet, bsc, bscTestnet } from 'wagmi/chains';
+import { base, mainnet, bsc, bscTestnet, polygon, arbitrum, arbitrumSepolia } from 'wagmi/chains';
 import { defineChain } from 'viem';
 
 // Define Celo Mainnet configuration
@@ -101,6 +101,6 @@ export const config = getDefaultConfig({
   appName: 'Hedwig Payment',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID',
   // Prefer Base Mainnet first for production deployment
-  chains: [base, mainnet, celoMainnet, liskMainnet], // Celo Mainnet and Lisk Mainnet now ENABLED
+  chains: [base, mainnet, polygon, arbitrum, arbitrumSepolia, bsc, bscTestnet, celoMainnet, liskMainnet], // Added testnet chains for testing
   ssr: true,
 });

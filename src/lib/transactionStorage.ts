@@ -215,25 +215,51 @@ class SupabaseTransactionStorage {
    */
   async cleanupExpired(): Promise<number> {
     const now = new Date();
+    
+    try {
+      // First, try the query with expires_at column
+      const { data, error } = await supabase
+        .from('pending_transactions')
+        .delete()
+        .or(`expires_at.lt.${now.toISOString()},status.eq.failed,status.eq.expired`)
+        .select('transaction_id');
 
-    // Only delete expired, failed, or pending transactions that have expired
-    const { data, error } = await supabase
-      .from('pending_transactions')
-      .delete()
-      .or(`expires_at.lt.${now.toISOString()},status.eq.failed,status.eq.expired`)
-      .select('transaction_id');
+      if (error) {
+        console.error('[TransactionStorage] Error cleaning up transactions:', error);
+        // If expires_at column doesn't exist, fall back to created_at based cleanup
+        if (error.code === '42703' && error.message.includes('expires_at')) {
+          console.warn('[TransactionStorage] expires_at column not found, using created_at fallback');
+          const fallbackTime = new Date(now.getTime() - this.TTL_MS);
+          
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('pending_transactions')
+            .delete()
+            .or(`created_at.lt.${fallbackTime.toISOString()},status.eq.failed,status.eq.expired`)
+            .select('transaction_id');
 
-    if (error) {
-      console.error('[TransactionStorage] Error cleaning up transactions:', error);
-      throw new Error(`Failed to cleanup transactions: ${error.message}`);
+          if (fallbackError) {
+            console.error('[TransactionStorage] Error cleaning up transactions (fallback):', fallbackError);
+            throw new Error(`Failed to cleanup transactions: ${fallbackError.message}`);
+          }
+
+          console.log(`[TransactionStorage] Cleaned up ${fallbackData?.length || 0} expired transactions (fallback)`);
+          return fallbackData?.length || 0;
+        }
+        
+        throw new Error(`Failed to cleanup transactions: ${error.message}`);
+      }
+
+      const cleanedCount = data?.length || 0;
+      if (cleanedCount > 0) {
+        console.log(`[TransactionStorage] Cleaned up ${cleanedCount} expired/failed transactions`);
+      }
+
+      return cleanedCount;
+    } catch (error) {
+      console.error('[TransactionStorage] Unexpected error during cleanup:', error);
+      // Don't throw here to prevent the cleanup interval from stopping
+      return 0;
     }
-
-    const cleanedCount = data?.length || 0;
-    if (cleanedCount > 0) {
-      console.log(`[TransactionStorage] Cleaned up ${cleanedCount} expired/failed transactions`);
-    }
-
-    return cleanedCount;
   }
 
   /**

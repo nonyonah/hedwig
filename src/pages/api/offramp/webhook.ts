@@ -38,7 +38,7 @@ export default async function handler(
     const { data: transaction, error: fetchError } = await supabase
       .from('offramp_transactions')
       .select('*')
-      .eq('order_id', payload.orderId)
+      .eq('paycrest_order_id', payload.orderId)
       .single();
 
     if (fetchError || !transaction) {

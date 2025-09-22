@@ -513,7 +513,7 @@ export class OfframpService {
           account_name: request.bankDetails.accountName
         },
         reference: `hedwig_${Date.now()}_${request.userId}`,
-        callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/offramp/webhook`
+        callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/paycrest`
       };
 
       const response = await axios.post(
@@ -737,17 +737,24 @@ export class OfframpService {
     const addresses: Record<string, Record<string, string>> = {
       'base': {
          'USDC': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-         'USDT': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb'
+         'USDT': '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
+         'cNGN': '0x46C85152bFe9f96829aA94755D9f915F9B10EF5F'
       },
       'ethereum': {
          'USDC': '0xA0b86a33E6441b8C4505E2c52C6b6046d5b0b6e6',
          'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7'
       },
+      'polygon': {
+         'USDC': '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+         'USDT': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+         'cNGN': '0x52828daa48C1a9A06F37500882b42daf0bE04C3B'
+      },
       'bsc': {
           'USDC': '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
           'USDT': '0x55d398326f99059fF775485246999027B3197955',
           'BNB': 'native',
-          'WBNB': '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c'
+          'WBNB': '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+          'cNGN': '0xa8AEA66B361a8d53e8865c62D142167Af28Af058'
         },
       'arbitrum-one': {
          'USDC': '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
@@ -759,13 +766,17 @@ export class OfframpService {
          'USDC': '0xcebA9300f2b948710d2653dD7B07f33A8B32118C', // Native USDC on Celo mainnet
          'CUSD': '0x765DE816845861e75A25fCA122bb6898B8B1282a', // cUSD on Celo mainnet
          'USDT': '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e',
-         'CELO': '0x471EcE3750Da237f93B8E339c536989b8978a438'
+         'CELO': '0x471EcE3750Da237f93B8E339c536989b8978a438',
+         'cNGN': '0x52828daa48C1a9A06F37500882b42daf0bE04C3B'
       },
       'lisk': {
          'USDT': '0x05D032ac25d322df992303dCa074EE7392C117b9', // Bridged USDT on Lisk mainnet
          'USDC': '0x3e7eF8f50246f725885102E8238CBba33F276747', // Bridged USDC on Lisk mainnet
          'ETH': 'native',
          'LSK': '0xac485391EB2d7D88253a7F1eF18C37f4242D1A24'
+      },
+      'solana': {
+         'USDT': 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
       },
     };
 

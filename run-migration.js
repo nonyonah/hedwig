@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 
 // Load environment variables
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ path: '.env.local' });
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -17,44 +17,45 @@ const supabase = createClient(
 
 async function runMigration() {
   try {
-    console.log('Running offramp_transactions migration...');
+    const sqlFile = process.argv[2];
+    if (!sqlFile) {
+      console.error('Please provide a SQL file name as an argument');
+      process.exit(1);
+    }
+
+    console.log(`Running migration from ${sqlFile}...`);
     
-    // Execute the key migration statements one by one
-     const statements = [
-       'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid() PRIMARY KEY',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS paycrest_order_id VARCHAR(255)',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS receive_address VARCHAR(255)',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(255)',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS gateway_id VARCHAR(255)',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS error_message TEXT',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS error_step VARCHAR(100)',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE',
-      'ALTER TABLE offramp_transactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()'
-    ];
+    // Read the SQL file
+    const sqlContent = readFileSync(join(__dirname, sqlFile), 'utf8');
+    
+    // Split SQL into individual statements and execute them
+    const statements = sqlContent
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--'));
     
     for (const statement of statements) {
-      console.log('Executing:', statement);
-      const { error } = await supabase.from('_temp').select('1').limit(0); // Test connection
-      
-      if (error && error.code !== 'PGRST116') {
-        console.error('Connection error:', error);
-        return;
-      }
-      
-      // Use raw SQL query
-      const { error: sqlError } = await supabase.rpc('exec_raw_sql', { query: statement });
-      
-      if (sqlError) {
-        console.error('Error executing statement:', sqlError);
-        console.error('Statement was:', statement);
-      } else {
-        console.log('✓ Statement executed successfully');
+      if (statement.trim()) {
+        console.log('Executing:', statement.substring(0, 100) + '...');
+        
+        const { error } = await supabase.rpc('exec_sql', { 
+          sql: statement 
+        });
+        
+        if (error) {
+          console.error('Error executing statement:', error);
+          console.error('Statement was:', statement);
+          // Continue with other statements
+        } else {
+          console.log('✓ Statement executed successfully');
+        }
       }
     }
     
     console.log('Migration completed!');
   } catch (error) {
-    console.error('Migration failed:', error);
+    console.error('Error running migration:', error);
+    process.exit(1);
   }
 }
 

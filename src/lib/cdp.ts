@@ -187,10 +187,23 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'solana',
     networkId: 'mainnet-beta',
   },
-  // DISABLED NETWORKS - These chains are defined but not active
+  // TESTNET NETWORKS - For testing transactions
+  'arbitrum-sepolia': {
+    name: 'arbitrum-sepolia',
+    chainId: 421614,
+  },
+  'bsc-testnet': {
+    name: 'bsc-testnet',
+    chainId: 97,
+  },
+  // MAINNET NETWORKS - Production chains
   'bsc': {
     name: 'bsc',
     chainId: 56,
+  },
+  'arbitrum': {
+    name: 'arbitrum',
+    chainId: 42161,
   },
   'lisk-sepolia': {
     name: 'lisk-sepolia',
@@ -219,7 +232,7 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
 };
 
 /**
- * Active networks - Mainnet networks are now ENABLED
+ * Active networks - Mainnet and testnet networks are now ENABLED
  */
 export const ACTIVE_NETWORKS = [
   'ethereum',
@@ -227,15 +240,20 @@ export const ACTIVE_NETWORKS = [
   'optimism',
   'celo',
   'lisk',
+  'arbitrum',
+  'bsc',
+  'arbitrum-sepolia',
+  'bsc-testnet',
   'solana'
 ];
 
 /**
  * Disabled networks - These are defined but not available for use
+ * Temporarily disabling BSC and Arbitrum mainnets for testnet testing
  */
 export const DISABLED_NETWORKS = [
   'bsc',
-  'bsc-testnet',
+  'arbitrum',
   'lisk',
   'celo', 
   'arbitrum-one',
@@ -664,6 +682,16 @@ export async function getBalances(address: string, network: string) {
         balances = await getCeloBalances(address);
       } else if (actualNetwork === 'lisk') {
         balances = await getLiskBalances(address);
+      } else if (actualNetwork === 'arbitrum') {
+        balances = await getArbitrumOneBalances(address);
+      } else if (actualNetwork === 'bsc') {
+        balances = await getBSCBalances(address);
+      } else if (actualNetwork === 'arbitrum-sepolia') {
+        console.log(`[CDP] Routing to getArbitrumSepoliaBalances for network: ${actualNetwork}`);
+        balances = await getArbitrumSepoliaBalances(address);
+      } else if (actualNetwork === 'bsc-testnet') {
+        console.log(`[CDP] Routing to getBSCTestnetBalances for network: ${actualNetwork}`);
+        balances = await getBSCTestnetBalances(address);
       } else if (actualNetwork === 'base') {
         // Try CDP first, fallback to Coinbase RPC if needed
         try {
@@ -958,19 +986,574 @@ async function getSolanaBalances(address: string, networkId: string) {
  * @param address - Wallet address
  * @returns Empty balances array
  */
-async function getBSCBalances(address: string): Promise<Balance[]> {
-  console.log(`[CDP] BSC is disabled - returning empty balances for ${address}`);
-  return [];
+/**
+ * Get BSC balances using Alchemy API
+ * @param address - Wallet address
+ * @returns Token balances
+ */
+async function getBSCBalances(address: string) {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  const alchemyUrl = process.env.ALCHEMY_URL_BSC || `https://bnb-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+
+  if (!alchemyApiKey) {
+    throw new Error('ALCHEMY_API_KEY not configured');
+  }
+
+  console.log(`[CDP] Fetching BSC balances using Alchemy for ${address}`);
+
+  try {
+    // Get BNB balance
+    const bnbBalanceResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      })
+    });
+
+    const bnbBalanceData = await bnbBalanceResponse.json();
+    if (bnbBalanceData.error) {
+      throw new Error(`Alchemy BNB balance error: ${bnbBalanceData.error.message}`);
+    }
+
+    // Get token balances using Alchemy's getTokenBalances endpoint
+    const tokenBalancesResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenBalances',
+        params: [
+          address,
+          [
+            '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', // USDC on BSC
+            '0x55d398326f99059ff775485246999027b3197955'  // USDT on BSC
+          ]
+        ]
+      })
+    });
+
+    const tokenBalancesData = await tokenBalancesResponse.json();
+    if (tokenBalancesData.error) {
+      throw new Error(`Alchemy token balances error: ${tokenBalancesData.error.message}`);
+    }
+
+    const balances: Balance[] = [];
+
+    // Add BNB balance (native token for BSC)
+    balances.push({
+      asset: { symbol: 'BNB', decimals: 18 },
+      amount: bnbBalanceData.result
+    });
+
+    // Process token balances
+    if (tokenBalancesData.result && tokenBalancesData.result.tokenBalances) {
+      for (const tokenBalance of tokenBalancesData.result.tokenBalances) {
+        if (tokenBalance.tokenBalance && tokenBalance.tokenBalance !== '0x0') {
+          try {
+            // Get token metadata
+            const metadataResponse = await fetch(alchemyUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                id: 1,
+                jsonrpc: '2.0',
+                method: 'alchemy_getTokenMetadata',
+                params: [tokenBalance.contractAddress]
+              })
+            });
+
+            const metadataData = await metadataResponse.json();
+            if (!metadataData.error && metadataData.result) {
+              const metadata = metadataData.result;
+              balances.push({
+                asset: { 
+                  symbol: metadata.symbol || 'UNKNOWN', 
+                  decimals: metadata.decimals || 18,
+                  contractAddress: tokenBalance.contractAddress
+                },
+                amount: tokenBalance.tokenBalance
+              });
+            }
+          } catch (metadataError) {
+            console.warn(`Failed to get metadata for token ${tokenBalance.contractAddress}:`, metadataError);
+            // Add token with default values if metadata fails
+            balances.push({
+              asset: { 
+                symbol: 'UNKNOWN', 
+                decimals: 18,
+                contractAddress: tokenBalance.contractAddress
+              },
+              amount: tokenBalance.tokenBalance
+            });
+          }
+        }
+      }
+    }
+
+    // If no USDC found, add it with 0 balance for consistency
+    const hasUsdc = balances.some(b => b.asset.symbol === 'USDC');
+    if (!hasUsdc) {
+      balances.push({
+        asset: { symbol: 'USDC', decimals: 18 },
+        amount: '0'
+      });
+    }
+
+    // If no USDT found, add it with 0 balance for consistency
+    const hasUsdt = balances.some(b => b.asset.symbol === 'USDT');
+    if (!hasUsdt) {
+      balances.push({
+        asset: { symbol: 'USDT', decimals: 18 },
+        amount: '0'
+      });
+    }
+
+    return { data: balances };
+  } catch (error) {
+    console.error('[CDP] Failed to get BSC balances:', error);
+    // Return default balances with 0 values instead of throwing
+    return {
+      data: [
+        { asset: { symbol: 'BNB', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDC', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDT', decimals: 18 }, amount: '0' }
+      ]
+    };
+  }
 }
 
 /**
- * Get Arbitrum One balances (disabled - placeholder function)
+ * Get Arbitrum One balances using Alchemy API
  * @param address - Wallet address
- * @returns Empty balances array
+ * @returns Token balances
  */
-async function getArbitrumOneBalances(address: string): Promise<Balance[]> {
-  console.log(`[CDP] Arbitrum One is disabled - returning empty balances for ${address}`);
-  return [];
+async function getArbitrumOneBalances(address: string) {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  const alchemyUrl = process.env.ALCHEMY_URL_ARB || `https://arb-mainnet.g.alchemy.com/v2/${alchemyApiKey}`;
+
+  if (!alchemyApiKey) {
+    throw new Error('ALCHEMY_API_KEY not configured');
+  }
+
+  console.log(`[CDP] Fetching Arbitrum balances using Alchemy for ${address}`);
+
+  try {
+    // Get ETH balance
+    const ethBalanceResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      })
+    });
+
+    const ethBalanceData = await ethBalanceResponse.json();
+    if (ethBalanceData.error) {
+      throw new Error(`Alchemy ETH balance error: ${ethBalanceData.error.message}`);
+    }
+
+    // Get token balances using Alchemy's getTokenBalances endpoint
+    const tokenBalancesResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenBalances',
+        params: [
+          address,
+          [
+            '0xaf88d065e77c8cc2239327c5edb3a432268e5831', // USDC on Arbitrum
+            '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9'  // USDT on Arbitrum
+          ]
+        ]
+      })
+    });
+
+    const tokenBalancesData = await tokenBalancesResponse.json();
+    if (tokenBalancesData.error) {
+      throw new Error(`Alchemy token balances error: ${tokenBalancesData.error.message}`);
+    }
+
+    const balances: Balance[] = [];
+
+    // Add ETH balance
+    balances.push({
+      asset: { symbol: 'ETH', decimals: 18 },
+      amount: ethBalanceData.result
+    });
+
+    // Process token balances
+    if (tokenBalancesData.result && tokenBalancesData.result.tokenBalances) {
+      for (const tokenBalance of tokenBalancesData.result.tokenBalances) {
+        if (tokenBalance.tokenBalance && tokenBalance.tokenBalance !== '0x0') {
+          try {
+            // Get token metadata
+            const metadataResponse = await fetch(alchemyUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                id: 1,
+                jsonrpc: '2.0',
+                method: 'alchemy_getTokenMetadata',
+                params: [tokenBalance.contractAddress]
+              })
+            });
+
+            const metadataData = await metadataResponse.json();
+            if (!metadataData.error && metadataData.result) {
+              const metadata = metadataData.result;
+              balances.push({
+                asset: { 
+                  symbol: metadata.symbol || 'UNKNOWN', 
+                  decimals: metadata.decimals || 18,
+                  contractAddress: tokenBalance.contractAddress
+                },
+                amount: tokenBalance.tokenBalance
+              });
+            }
+          } catch (metadataError) {
+            console.warn(`Failed to get metadata for token ${tokenBalance.contractAddress}:`, metadataError);
+            // Add token with default values if metadata fails
+            balances.push({
+              asset: { 
+                symbol: 'UNKNOWN', 
+                decimals: 18,
+                contractAddress: tokenBalance.contractAddress
+              },
+              amount: tokenBalance.tokenBalance
+            });
+          }
+        }
+      }
+    }
+
+    // If no USDC found, add it with 0 balance for consistency
+    const hasUsdc = balances.some(b => b.asset.symbol === 'USDC');
+    if (!hasUsdc) {
+      balances.push({
+        asset: { symbol: 'USDC', decimals: 6 },
+        amount: '0'
+      });
+    }
+
+    // If no USDT found, add it with 0 balance for consistency
+    const hasUsdt = balances.some(b => b.asset.symbol === 'USDT');
+    if (!hasUsdt) {
+      balances.push({
+        asset: { symbol: 'USDT', decimals: 6 },
+        amount: '0'
+      });
+    }
+
+    return { data: balances };
+  } catch (error) {
+    console.error('[CDP] Failed to get Arbitrum balances:', error);
+    // Return default balances with 0 values instead of throwing
+    return {
+      data: [
+        { asset: { symbol: 'ETH', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDC', decimals: 6 }, amount: '0' },
+        { asset: { symbol: 'USDT', decimals: 6 }, amount: '0' }
+      ]
+    };
+  }
+}
+
+/**
+ * Get Arbitrum Sepolia testnet balances using Alchemy API
+ * @param address - Wallet address
+ * @returns Token balances
+ */
+async function getArbitrumSepoliaBalances(address: string) {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  const alchemyUrl = `https://arb-sepolia.g.alchemy.com/v2/${alchemyApiKey}`;
+
+  if (!alchemyApiKey) {
+    console.error('[CDP] ALCHEMY_API_KEY not configured for Arbitrum Sepolia');
+    throw new Error('ALCHEMY_API_KEY not configured');
+  }
+
+  console.log(`[CDP] Fetching Arbitrum Sepolia balances using Alchemy for ${address}`);
+  console.log(`[CDP] Using Alchemy URL: ${alchemyUrl.replace(alchemyApiKey, '[REDACTED]')}`);
+
+  try {
+    // Get ETH balance
+    const ethBalanceResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      })
+    });
+
+    const ethBalanceData = await ethBalanceResponse.json();
+    if (ethBalanceData.error) {
+      throw new Error(`Alchemy ETH balance error: ${ethBalanceData.error.message}`);
+    }
+
+    // Get token balances using Alchemy's getTokenBalances endpoint
+    const tokenBalancesResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenBalances',
+        params: [
+          address,
+          [
+            '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'  // USDC on Arbitrum Sepolia testnet
+          ]
+        ]
+      })
+    });
+
+    const tokenBalancesData = await tokenBalancesResponse.json();
+    if (tokenBalancesData.error) {
+      throw new Error(`Alchemy token balances error: ${tokenBalancesData.error.message}`);
+    }
+
+    const balances: Balance[] = [];
+
+    // Add ETH balance
+    balances.push({
+      asset: { symbol: 'ETH', decimals: 18 },
+      amount: ethBalanceData.result
+    });
+
+    // Process token balances
+    if (tokenBalancesData.result && tokenBalancesData.result.tokenBalances) {
+      for (const tokenBalance of tokenBalancesData.result.tokenBalances) {
+        if (tokenBalance.tokenBalance && tokenBalance.tokenBalance !== '0x0') {
+          try {
+            // Get token metadata
+            const metadataResponse = await fetch(alchemyUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                id: 1,
+                jsonrpc: '2.0',
+                method: 'alchemy_getTokenMetadata',
+                params: [tokenBalance.contractAddress]
+              })
+            });
+
+            const metadataData = await metadataResponse.json();
+            if (!metadataData.error && metadataData.result) {
+              const metadata = metadataData.result;
+              balances.push({
+                asset: { 
+                  symbol: metadata.symbol || 'UNKNOWN', 
+                  decimals: metadata.decimals || 18,
+                  contractAddress: tokenBalance.contractAddress
+                },
+                amount: tokenBalance.tokenBalance
+              });
+            }
+          } catch (metadataError) {
+            console.warn(`Failed to get metadata for token ${tokenBalance.contractAddress}:`, metadataError);
+            // Add token with default values if metadata fails
+            balances.push({
+              asset: { 
+                symbol: 'UNKNOWN', 
+                decimals: 18,
+                contractAddress: tokenBalance.contractAddress
+              },
+              amount: tokenBalance.tokenBalance
+            });
+          }
+        }
+      }
+    }
+
+    // If no USDC found, add it with 0 balance for consistency
+    const hasUsdc = balances.some(b => b.asset.symbol === 'USDC');
+    if (!hasUsdc) {
+      balances.push({
+        asset: { symbol: 'USDC', decimals: 6 },
+        amount: '0'
+      });
+    }
+
+    return { data: balances };
+  } catch (error) {
+    console.error('[CDP] Failed to get Arbitrum Sepolia balances:', error);
+    // Return default balances with 0 values instead of throwing
+    return {
+      data: [
+        { asset: { symbol: 'ETH', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDC', decimals: 6 }, amount: '0' }
+      ]
+    };
+  }
+}
+
+/**
+ * Get BSC testnet balances using Alchemy API
+ * @param address - Wallet address
+ * @returns Token balances
+ */
+async function getBSCTestnetBalances(address: string) {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  const alchemyUrl = `https://bnb-testnet.g.alchemy.com/v2/${alchemyApiKey}`;
+
+  if (!alchemyApiKey) {
+    console.error('[CDP] ALCHEMY_API_KEY not configured for BSC testnet');
+    throw new Error('ALCHEMY_API_KEY not configured');
+  }
+
+  console.log(`[CDP] Fetching BSC testnet balances using Alchemy for ${address}`);
+  console.log(`[CDP] Using Alchemy URL: ${alchemyUrl.replace(alchemyApiKey, '[REDACTED]')}`);
+
+  try {
+    // Get BNB balance
+    const bnbBalanceResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'eth_getBalance',
+        params: [address, 'latest']
+      })
+    });
+
+    const bnbBalanceData = await bnbBalanceResponse.json();
+    if (bnbBalanceData.error) {
+      throw new Error(`Alchemy BNB balance error: ${bnbBalanceData.error.message}`);
+    }
+
+    // Get token balances using Alchemy's getTokenBalances endpoint
+    const tokenBalancesResponse = await fetch(alchemyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenBalances',
+        params: [
+          address,
+          [
+            '0x64544969ed7EBf5f083679233325356EbE738930'  // USDC on BSC testnet
+          ]
+        ]
+      })
+    });
+
+    const tokenBalancesData = await tokenBalancesResponse.json();
+    if (tokenBalancesData.error) {
+      throw new Error(`Alchemy token balances error: ${tokenBalancesData.error.message}`);
+    }
+
+    const balances: Balance[] = [];
+
+    // Add BNB balance (native token for BSC testnet)
+    balances.push({
+      asset: { symbol: 'BNB', decimals: 18 },
+      amount: bnbBalanceData.result
+    });
+
+    // Process token balances
+    if (tokenBalancesData.result && tokenBalancesData.result.tokenBalances) {
+      for (const tokenBalance of tokenBalancesData.result.tokenBalances) {
+        if (tokenBalance.tokenBalance && tokenBalance.tokenBalance !== '0x0') {
+          try {
+            // Get token metadata
+            const metadataResponse = await fetch(alchemyUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                id: 1,
+                jsonrpc: '2.0',
+                method: 'alchemy_getTokenMetadata',
+                params: [tokenBalance.contractAddress]
+              })
+            });
+
+            const metadataData = await metadataResponse.json();
+            if (!metadataData.error && metadataData.result) {
+              const metadata = metadataData.result;
+              balances.push({
+                asset: { 
+                  symbol: metadata.symbol || 'UNKNOWN', 
+                  decimals: metadata.decimals || 18,
+                  contractAddress: tokenBalance.contractAddress
+                },
+                amount: tokenBalance.tokenBalance
+              });
+            }
+          } catch (metadataError) {
+            console.warn(`Failed to get metadata for token ${tokenBalance.contractAddress}:`, metadataError);
+            // Add token with default values if metadata fails
+            balances.push({
+              asset: { 
+                symbol: 'UNKNOWN', 
+                decimals: 18,
+                contractAddress: tokenBalance.contractAddress
+              },
+              amount: tokenBalance.tokenBalance
+            });
+          }
+        }
+      }
+    }
+
+    // If no USDC found, add it with 0 balance for consistency
+    const hasUsdc = balances.some(b => b.asset.symbol === 'USDC');
+    if (!hasUsdc) {
+      balances.push({
+        asset: { symbol: 'USDC', decimals: 18 },
+        amount: '0'
+      });
+    }
+
+    return { data: balances };
+  } catch (error) {
+    console.error('[CDP] Failed to get BSC testnet balances:', error);
+    // Return default balances with 0 values instead of throwing
+    return {
+      data: [
+        { asset: { symbol: 'BNB', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDC', decimals: 18 }, amount: '0' }
+      ]
+    };
+  }
 }
 
 /**
@@ -1821,6 +2404,8 @@ export default {
   getOrCreateCdpWallet,
   getWallet,
   getBalances,
+  getArbitrumSepoliaBalances,
+  getBSCTestnetBalances,
   transferNativeToken,
   transferToken,
   getTransaction,

@@ -189,17 +189,18 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     // Calculate date range based on timeframe
     const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
 
-    // Fetch all earnings sources excluding completed transactions to prevent duplication
+    // Fetch all earnings sources including completed transactions from permanent storage
     console.log('[getEarningsSummary] About to fetch payment events for wallets:', walletAddresses);
-    const [paymentLinks, invoices, proposals, paymentEvents, offrampTransactions] = await Promise.all([
+    const [paymentLinks, invoices, proposals, paymentEvents, offrampTransactions, completedTransactions] = await Promise.all([
       fetchPaymentLinks(filter, startDate, endDate),
       fetchPaidInvoices(filter, startDate, endDate),
       fetchAcceptedProposals(filter, startDate, endDate),
       fetchPaymentEvents(filter, startDate, endDate),
-      fetchOfframpTransactions(filter, startDate, endDate)
+      fetchOfframpTransactions(filter, startDate, endDate),
+      fetchCompletedTransactions(filter, startDate, endDate)
     ]);
 
-    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events, ${offrampTransactions.length} offramp transactions`);
+    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events, ${offrampTransactions.length} offramp transactions, ${completedTransactions.length} completed transactions`);
 
     // Combine all earnings sources
     const allEarnings: any[] = [
@@ -237,6 +238,13 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         paid_amount: o.amount,
         title: 'Crypto Withdrawal',
         description: `Offramp to ${o.fiat_currency || 'USD'}`
+      })),
+      ...completedTransactions.map(t => ({
+        ...t,
+        source: 'completed_transaction' as const,
+        paid_amount: t.amount,
+        title: t.errorMessage || 'Completed Transaction',
+        description: `Transaction: ${t.transaction_hash || 'N/A'}`
       }))
     ];
 
@@ -303,8 +311,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
 
     // Process only stablecoin earnings sources
     for (const earning of stablecoinEarnings) {
-      const normalizedNetwork = formatChainName(earning.network);
-      const key = `${earning.token}-${normalizedNetwork}`;
+      const key = `${earning.token}-${earning.network}`;
       const amount = parseFloat(earning.paid_amount) || 0;
       
       // For stablecoins, use 1:1 USD conversion or actual price if available
@@ -325,7 +332,7 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       } else {
         earningsMap.set(key, {
           token: earning.token,
-          network: normalizedNetwork,
+          network: earning.network,
           total: amount,
           count: 1,
           payments: [earning],
@@ -463,7 +470,7 @@ async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | nu
       id: payment.id,
       amount: parseFloat(payment.amount_paid) || 0,
       token: payment.currency || 'Unknown',
-      network: formatChainName(payment.chain || 'Base'),
+      network: payment.chain || 'Base',
       paid_at: payment.created_at,
       transaction_hash: payment.tx_hash,
       payment_reason: 'Direct Transfer',
@@ -487,22 +494,37 @@ function getTokenSymbol(tokenAddress: string): string {
     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913': 'USDC',
     '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb': 'USDT',
     '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA': 'USDbC',
+    '0x46C85152bFe9f96829aA94755D9f915F9B10EF5F': 'cNGN', // Base cNGN
+    '0x0000000000000000000000000000000000000000': 'ETH', // Native ETH on Base
     // Ethereum - Removed ETH/WETH support
     '0xA0b86a33E6441b8C4505E2c52C6b6046d5b0b6e6': 'USDC',
     '0xdAC17F958D2ee523a2206206994597C13D831ec7': 'USDT',
+    // Polygon
+    '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359': 'USDC',
+    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': 'USDT',
+    '0x52828daa48C1a9A06F37500882b42daf0bE04C3B': 'cNGN', // Polygon cNGN
+    '0x0000000000000000000000000000000000000001': 'MATIC', // Native MATIC (using different address to avoid conflicts)
+    // Arbitrum
+    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
+    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',
+    '0x0000000000000000000000000000000000000002': 'ETH', // Native ETH on Arbitrum (using different address to avoid conflicts)
     // BSC
     '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d': 'USDC',
     '0x55d398326f99059fF775485246999027B3197955': 'USDT',
     '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c': 'WBNB',
-    // Arbitrum One - Removed ETH/WETH support
-    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
-    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',
+    '0xa8AEA66B361a8d53e8865c62D142167Af28Af058': 'cNGN', // BSC cNGN
+    '0x0000000000000000000000000000000000000003': 'BNB', // Native BNB (using different address to avoid conflicts)
     // Celo - Updated with correct addresses
+    '0xcebA9300f2b948710d2653dD7B07f33A8B32118C': 'USDC', // Celo USDC
     '0x765DE816845861e75A25fCA122bb6898B8B1282a': 'cUSD', // Celo Dollar
     '0x471EcE3750Da237f93B8E339c536989b8978a438': 'CELO',
+    '0x62492A644A588FD904270BeD06ad52B9abfEA1aE': 'cNGN', // Celo cNGN (correct address)
     // Lisk - Updated with correct addresses  
     '0x05D032ac25d322df992303dCa074EE7392C117b9': 'USDT', // Lisk USDT
-    '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f': 'LSK'
+    '0x3e7eF8f50246f725885102E8238CBba33F276747': 'USDC', // Lisk USDC
+    '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f': 'LSK',
+    // Solana
+    'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': 'USDT', // Solana USDT
   };
   return tokens[tokenAddress] || 'Unknown';
 }
@@ -1358,7 +1380,7 @@ function getDateRange(timeframe?: string, startDate?: string, endDate?: string):
 /**
  * Format chain names for display
  */
-export function formatChainName(network: string): string {
+function formatChainName(network: string): string {
   const chainMap: { [key: string]: string } = {
     'base': 'Base',
     'base-mainnet': 'Base',
