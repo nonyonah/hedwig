@@ -390,7 +390,11 @@ export async function getMonthlyLeaderboard(limit: number = 10, periodId?: strin
         points,
         referral_count,
         users!inner(
-          username
+          username,
+          telegram_username,
+          telegram_first_name,
+          telegram_last_name,
+          name
         )
       `)
       .order('points', { ascending: false })
@@ -435,9 +439,24 @@ export async function getMonthlyLeaderboard(limit: number = 10, periodId?: strin
     const result: MonthlyLeaderboardEntry[] = leaderboardData.map((entry, index) => {
       const userBadges = badgesData?.filter(badge => badge.user_id === entry.user_id) || [];
       
+      // Get the best available username using priority order
+      let displayUsername = entry.users?.username;
+      
+      // Priority: telegram_username > name > telegram_first_name + telegram_last_name > username
+      if (entry.users?.telegram_username) {
+        displayUsername = entry.users.telegram_username.startsWith('@') 
+          ? entry.users.telegram_username.substring(1) // Remove @ if present
+          : entry.users.telegram_username;
+      } else if (entry.users?.name) {
+        displayUsername = entry.users.name;
+      } else if (entry.users?.telegram_first_name) {
+        const lastName = entry.users.telegram_last_name ? ` ${entry.users.telegram_last_name}` : '';
+        displayUsername = `${entry.users.telegram_first_name}${lastName}`;
+      }
+      
       return {
         user_id: entry.user_id,
-        username: entry.users?.username,
+        username: displayUsername,
         points: entry.points,
         referral_count: entry.referral_count,
         badges: userBadges,

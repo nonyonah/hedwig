@@ -35,12 +35,16 @@ export async function setUserContext(userId: string, context: any[]) {
     .upsert([{ user_id: userId, context, last_active: new Date().toISOString() }], { onConflict: "user_id" });
 }
 
-export async function runLLM({
-  userId,
-  message,
-}: {
-  userId: string;
-  message: string;
+export async function runLLM({ 
+  userId, 
+  message, 
+  systemOverride,
+  generateNaturalResponse = false 
+}: { 
+  userId: string; 
+  message: string; 
+  systemOverride?: string;
+  generateNaturalResponse?: boolean;
 }) {
   // 1. Get last N messages for context
   let context = await getUserContext(userId);
@@ -51,11 +55,11 @@ export async function runLLM({
   }
 
   // 2. Compose prompt in chat format for conversion to Gemini
-  const systemMessage = `
+  const systemMessage = systemOverride || `
 You are Hedwig, a friendly and conversational crypto assistant for Telegram. You're helpful, engaging, and can maintain natural conversations while understanding user needs.
 
 IMPORTANT: Always respond ONLY with a JSON object in this format:
-{"intent": "<intent_name>", "params": { ... }}
+{"intent": "<intent_name>", "params": { ... }}${generateNaturalResponse ? ', "naturalResponse": "A friendly, conversational response"' : ''}
 
 CONVERSATIONAL GUIDELINES:
 - Be warm, friendly, and personable in your responses
@@ -88,6 +92,7 @@ Valid intents:
 - send_proposal: For sending proposals via email
 - view_proposals: For viewing existing proposals
 - edit_proposal: For editing existing proposals
+- send_reminder: For sending manual payment reminders to clients
 - offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
 - kyc_verification: For KYC status, identity verification, or compliance requirements
 - welcome: For greetings and help

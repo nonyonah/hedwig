@@ -37,7 +37,7 @@ function initializeBot() {
       // Create bot instance without polling for webhook mode
       bot = new TelegramBot(botToken, { polling: false });
       
-      // Initialize bot integration
+      // Initialize bot integration (without the telegram bot setup middleware)
       botIntegration = new BotIntegration(bot);
       
       // Setup Telegram menu button
@@ -73,19 +73,19 @@ async function setupTelegramMenu() {
 
     // Set bot commands
     await bot.setMyCommands([
-      { command: 'start', description: '🦉 Start Hedwig Bot' },
-      { command: 'help', description: '❓ Get help' },
-      { command: 'balance', description: '💰 Check wallet balance' },
-      { command: 'wallet', description: '👛 View wallet address' },
-      { command: 'send', description: '💸 Send crypto' },
-      { command: 'offramp', description: '🏦 Withdraw to bank account' },
-      { command: 'payment', description: '🔗 Create payment link' },
-      { command: 'invoice', description: '🧾 Create invoice' },
-      { command: 'proposal', description: '📝 Create proposal' },
-      { command: 'earnings_summary', description: '📊 View earnings summary' },
-      { command: 'business_dashboard', description: '📈 Business dashboard' },
-      { command: 'referral', description: '🔗 Get your referral link and stats' },
-      { command: 'leaderboard', description: '🏆 View referral leaderboard' },
+      { command: 'start', description: 'Start Hedwig Bot' },
+      { command: 'help', description: 'Get help' },
+      { command: 'balance', description: 'Check wallet balance' },
+      { command: 'wallet', description: 'View wallet address' },
+      { command: 'send', description: 'Send crypto' },
+      { command: 'offramp', description: 'Withdraw to bank account' },
+      { command: 'payment', description: 'Create payment link' },
+      { command: 'invoice', description: 'Create invoice' },
+      { command: 'proposal', description: 'Create proposal' },
+      { command: 'earnings_summary', description: 'View earnings summary' },
+      { command: 'business_dashboard', description: 'Business dashboard' },
+      { command: 'referral', description: 'Get your referral link and stats' },
+      { command: 'leaderboard', description: 'View referral leaderboard' },
     ]);
     
     console.log('[Webhook] Telegram menu button configured');
@@ -255,6 +255,15 @@ function setupBotHandlers() {
         switch (data) {
         case 'refresh_balances':
           const refreshBalanceResponse = await processWithAI('check balance', chatId);
+          if (refreshBalanceResponse && typeof refreshBalanceResponse === 'string' && refreshBalanceResponse.trim() !== '' && refreshBalanceResponse !== '__NO_MESSAGE__') {
+            await bot?.sendMessage(chatId, refreshBalanceResponse, { parse_mode: 'Markdown' });
+          } else if (refreshBalanceResponse && typeof refreshBalanceResponse === 'object' && refreshBalanceResponse.text) {
+            // Handle object response with reply_markup
+            await bot?.sendMessage(chatId, refreshBalanceResponse.text, {
+              reply_markup: refreshBalanceResponse.reply_markup,
+              parse_mode: 'Markdown'
+            });
+          }
           break;
           
         case 'start_send_token_flow':
@@ -267,11 +276,19 @@ function setupBotHandlers() {
 
         case 'check_balance':
           const balanceResponse = await processWithAI('check balance', chatId);
-          // The response will be sent by the processWithAI function
+          if (balanceResponse && typeof balanceResponse === 'string' && balanceResponse.trim() !== '' && balanceResponse !== '__NO_MESSAGE__') {
+            await bot?.sendMessage(chatId, balanceResponse, { parse_mode: 'Markdown' });
+          } else if (balanceResponse && typeof balanceResponse === 'object' && balanceResponse.text) {
+            // Handle object response with reply_markup
+            await bot?.sendMessage(chatId, balanceResponse.text, {
+              reply_markup: balanceResponse.reply_markup,
+              parse_mode: 'Markdown'
+            });
+          }
           break;
 
         case 'cancel_send':
-          await bot?.sendMessage(chatId, '❌ Transfer cancelled.');
+          await bot?.sendMessage(chatId, 'Transfer cancelled.');
           break;
           
         default:
@@ -283,7 +300,7 @@ function setupBotHandlers() {
               // Get user ID from chat ID
               const userId = await botIntegration?.getUserIdByChatId(chatId);
               if (!userId) {
-                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                await bot?.sendMessage(chatId, 'User not found. Please run /start first.');
                 return;
               }
               
@@ -302,7 +319,7 @@ function setupBotHandlers() {
               }
             } catch (error) {
               console.error('[Webhook] Error handling send confirmation:', error);
-              await bot?.sendMessage(chatId, '❌ Error processing transfer. Please try again.');
+              await bot?.sendMessage(chatId, 'Error processing transfer. Please try again.');
             }
             return;
           }
@@ -323,7 +340,7 @@ function setupBotHandlers() {
               
               const userId = await botIntegration?.getUserIdByChatId(chatId);
               if (!userId) {
-                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                await bot?.sendMessage(chatId, 'User not found. Please run /start first.');
                 return;
               }
               
@@ -344,7 +361,7 @@ function setupBotHandlers() {
               }
             } catch (error) {
               console.error('[Webhook] Error handling reminder type selection:', error);
-              await bot?.sendMessage(chatId, '❌ Failed to load items. Please try again.');
+              await bot?.sendMessage(chatId, 'Failed to load items. Please try again.');
             }
             return;
           }
@@ -366,7 +383,7 @@ function setupBotHandlers() {
               
               const userId = await botIntegration?.getUserIdByChatId(chatId);
               if (!userId) {
-                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                await bot?.sendMessage(chatId, 'User not found. Please run /start first.');
                 return;
               }
               
@@ -400,7 +417,7 @@ function setupBotHandlers() {
               }
             } catch (error) {
               console.error('[Webhook] Error handling reminder callback:', error);
-              await bot?.sendMessage(chatId, '❌ Failed to send reminder. Please try again.');
+              await bot?.sendMessage(chatId, 'Failed to send reminder. Please try again.');
             }
             return;
           }
@@ -432,7 +449,7 @@ function setupBotHandlers() {
               // Get user ID from chat ID
               const userId = await botIntegration?.getUserIdByChatId(chatId);
               if (!userId) {
-                await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+                await bot?.sendMessage(chatId, 'User not found. Please run /start first.');
                 return;
               }
               const result = await handleAction('offramp', { callback_data: data }, userId);
@@ -444,7 +461,7 @@ function setupBotHandlers() {
               }
             } catch (error) {
               console.error('[Webhook] Error handling offramp callback:', error);
-              await bot?.sendMessage(chatId, '❌ Error processing your request. Please try again.');
+              await bot?.sendMessage(chatId, 'Error processing your request. Please try again.');
             }
             return;
           }
@@ -456,7 +473,7 @@ function setupBotHandlers() {
             // Get user ID from chat ID
             const userId = await botIntegration?.getUserIdByChatId(chatId);
             if (!userId) {
-              await bot?.sendMessage(chatId, '❌ User not found. Please run /start first.');
+              await bot?.sendMessage(chatId, 'User not found. Please run /start first.');
               return;
             }
             
@@ -470,7 +487,7 @@ function setupBotHandlers() {
             }
             
             // Send processing message
-            await bot?.sendMessage(chatId, `📄 Generating your ${timeframe} earnings PDF report... Please wait.`);
+            await bot?.sendMessage(chatId, `Generating your ${timeframe} earnings PDF report... Please wait.`);
             
             // Import required functions
             const { getEarningsSummary } = await import('../../lib/earningsService');
@@ -575,19 +592,19 @@ function setupBotHandlers() {
               
               // Send PDF as document
               await bot?.sendDocument(chatId, pdfBuffer, {
-                caption: '📄 **Your Earnings Report is Ready!**\n\n🎨 This creative PDF includes:\n• Visual insights and charts\n• Motivational content\n• Professional formatting\n• Complete transaction breakdown\n• Multi-wallet earnings (EVM + Solana)\n\n💡 Keep building your financial future! 🚀',
+                caption: 'Your Earnings Report is Ready!\n\nThis creative PDF includes:\n• Visual insights and charts\n• Motivational content\n• Professional formatting\n• Complete transaction breakdown\n• Multi-wallet earnings (EVM + Solana)\n\nKeep building your financial future!',
                 parse_mode: 'Markdown'
               }, {
                 filename: `earnings-report-${timeframe}-${new Date().toISOString().split('T')[0]}.pdf`
               });
             } else {
-              await bot?.sendMessage(chatId, '📄 **No Data for PDF Generation**\n\nYou need some earnings data to generate a PDF report. Start receiving payments first!\n\n💡 Create payment links or invoices to begin tracking your earnings.', {
+              await bot?.sendMessage(chatId, 'No Data for PDF Generation\n\nYou need some earnings data to generate a PDF report. Start receiving payments first!\n\nCreate payment links or invoices to begin tracking your earnings.', {
                 parse_mode: 'Markdown'
               });
             }
           } catch (error) {
             console.error('[Webhook] Error handling earnings PDF callback:', error);
-            await bot?.sendMessage(chatId, '❌ Error generating PDF report. Please try again later.');
+            await bot?.sendMessage(chatId, 'Error generating PDF report. Please try again later.');
           }
           return;
         }
@@ -712,7 +729,7 @@ function setupBotHandlers() {
                   .single();
 
                 if (!user) {
-                  await bot?.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+                  await bot?.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
                   return;
                 }
 
@@ -739,12 +756,12 @@ function setupBotHandlers() {
                 } else if (typeof transferResult === 'string') {
                   await bot?.sendMessage(chatId, transferResult, { parse_mode: 'Markdown' });
                 } else {
-                  await bot?.sendMessage(chatId, '✅ Transfer completed successfully!');
+                  await bot?.sendMessage(chatId, 'Transfer completed successfully!');
                 }
               } catch (error) {
                 console.error('[webhook] Transfer error:', error);
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-                await bot?.sendMessage(chatId, `❌ Transfer failed: ${errorMessage}. Please try again.`);
+                await bot?.sendMessage(chatId, `Transfer failed: ${errorMessage}. Please try again.`);
               }
             } else {
               console.log('[Webhook] ===== TRANSACTION DETAILS PARSING FAILED =====');
@@ -761,11 +778,11 @@ function setupBotHandlers() {
                 networkValue: network,
                 tokenValue: token
               });
-              await bot?.sendMessage(chatId, '❌ Missing transaction details. Please start the send process again.');
+              await bot?.sendMessage(chatId, 'Missing transaction details. Please start the send process again.');
             }
           } catch (error) {
             console.error('[Webhook] Error handling confirm callback:', error);
-            await bot?.sendMessage(chatId, '❌ Error processing transaction. Please try again.');
+            await bot?.sendMessage(chatId, 'Error processing transaction. Please try again.');
           }
         } else {
           await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Unknown action' });
@@ -840,7 +857,7 @@ async function handleCommand(msg: any) {
         `• "What's my balance?"\n` +
         `• "Create an invoice for $100"\n` +
         `• "Show my earnings summary"\n\n` +
-        `💡 **Tip:** Use the menu button (☰) for quick access to commands!`,
+        `**Tip:** Use the menu button (☰) for quick access to commands!`,
         { parse_mode: 'Markdown' }
       );
       break;
@@ -879,11 +896,11 @@ async function handleCommand(msg: any) {
         if (botIntegration) {
           await botIntegration.handleOfframp(msg);
         } else {
-          await bot.sendMessage(chatId, '❌ Offramp feature is not available at the moment.');
+          await bot.sendMessage(chatId, 'Offramp feature is not available at the moment.');
         }
       } catch (e) {
         console.error('[Webhook] Error handling /offramp command:', e);
-        await bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try again.');
+        await bot.sendMessage(chatId, 'Sorry, something went wrong. Please try again.');
       }
       break;
     }
@@ -905,7 +922,7 @@ async function handleCommand(msg: any) {
             const proposalModule = new ProposalModule(bot);
             await proposalModule.handleProposalCreation(chatId, user.id);
           } else {
-            await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+            await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
           }
         } else {
           // Fallback to processWithAI but handle empty responses
@@ -917,7 +934,7 @@ async function handleCommand(msg: any) {
         }
       } catch (error) {
         console.error('[Webhook] Error in /proposal:', error);
-        await bot.sendMessage(chatId, '❌ Failed to start proposal creation. Please try again later.');
+        await bot.sendMessage(chatId, 'Failed to start proposal creation. Please try again later.');
       }
       break;
 
@@ -938,7 +955,7 @@ async function handleCommand(msg: any) {
             const invoiceModule = new InvoiceModule(bot);
             await invoiceModule.handleInvoiceCreation(chatId, user.id);
           } else {
-            await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+            await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
           }
         } else {
           // Fallback to processWithAI but handle empty responses
@@ -950,7 +967,7 @@ async function handleCommand(msg: any) {
         }
       } catch (error) {
         console.error('[Webhook] Error in /invoice:', error);
-        await bot.sendMessage(chatId, '❌ Failed to start invoice creation. Please try again later.');
+        await bot.sendMessage(chatId, 'Failed to start invoice creation. Please try again later.');
       }
       break;
 
@@ -998,7 +1015,7 @@ async function handleCommand(msg: any) {
       // Redirect to earnings summary for better user experience
       const redirectResponse = await processWithAI('show earnings summary', chatId);
       if (redirectResponse && isStringResponse(redirectResponse) && redirectResponse.trim() !== '' && redirectResponse !== '__NO_MESSAGE__') {
-        await bot.sendMessage(chatId, `📈 **Redirecting to Earnings Summary**\n\n${redirectResponse}`);
+        await bot.sendMessage(chatId, `Redirecting to Earnings Summary\n\n${redirectResponse}`);
       }
       break;
 
@@ -1016,7 +1033,7 @@ async function handleCommand(msg: any) {
           if (user) {
              await botIntegration.handleReferralCommand(chatId, user.id);
            } else {
-             await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+             await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
            }
         } else {
           const referralResponse = await processWithAI('show referral link and stats', chatId);
@@ -1026,7 +1043,7 @@ async function handleCommand(msg: any) {
         }
       } catch (error) {
         console.error('[Webhook] Error handling /referral command:', error);
-        await bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try again.');
+        await bot.sendMessage(chatId, 'Sorry, something went wrong. Please try again.');
       }
       break;
 
@@ -1044,7 +1061,7 @@ async function handleCommand(msg: any) {
           if (user) {
              await botIntegration.handleLeaderboardCommand(chatId);
            } else {
-             await bot.sendMessage(chatId, '❌ User not found. Please try /start to initialize your account.');
+             await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
            }
         } else {
           const leaderboardResponse = await processWithAI('show referral leaderboard', chatId);
@@ -1054,7 +1071,7 @@ async function handleCommand(msg: any) {
         }
       } catch (error) {
         console.error('[Webhook] Error handling /leaderboard command:', error);
-        await bot.sendMessage(chatId, '❌ Sorry, something went wrong. Please try again.');
+        await bot.sendMessage(chatId, 'Sorry, something went wrong. Please try again.');
       }
       break;
 
@@ -1097,13 +1114,13 @@ async function handleCommand(msg: any) {
               .eq('user_id', user.id);
           }
           
-          await bot.sendMessage(chatId, '✅ All ongoing actions have been cancelled. You can start fresh with any command.');
+          await bot.sendMessage(chatId, 'All ongoing actions have been cancelled. You can start fresh with any command.');
         } else {
-          await bot.sendMessage(chatId, '❌ Cancel feature is not available at the moment.');
+          await bot.sendMessage(chatId, 'Cancel feature is not available at the moment.');
         }
       } catch (error) {
         console.error('[Webhook] Error handling /cancel command:', error);
-        await bot.sendMessage(chatId, '❌ Error cancelling actions. Please try again.');
+        await bot.sendMessage(chatId, 'Error cancelling actions. Please try again.');
       }
       break;
 
@@ -1120,7 +1137,7 @@ async function handleCommand(msg: any) {
             .single() as { data: { id: string } | null };
 
           if (user) {
-            await bot.sendMessage(chatId, '📧 Please provide the email address to send the reminder to:');
+            await bot.sendMessage(chatId, 'Please provide the email address to send the reminder to:');
             
             // Set user state to expect email input for reminder
             await supabase
@@ -1134,23 +1151,23 @@ async function handleCommand(msg: any) {
                 onConflict: 'user_id,state_type'
               });
           } else {
-            await bot.sendMessage(chatId, '❌ User identification required for sending reminders.');
+            await bot.sendMessage(chatId, 'User identification required for sending reminders.');
           }
         } else {
-          await bot.sendMessage(chatId, '❌ Send reminder feature is not available at the moment.');
+          await bot.sendMessage(chatId, 'Send reminder feature is not available at the moment.');
         }
       } catch (error) {
         console.error('[Webhook] Error handling /send_reminder command:', error);
-        await bot.sendMessage(chatId, '❌ Error setting up reminder. Please try again.');
+        await bot.sendMessage(chatId, 'Error setting up reminder. Please try again.');
       }
       break;
 
     default:
       // For unknown commands, provide helpful guidance
       await bot.sendMessage(chatId, 
-        `❓ Unknown command: ${command}\n\n` +
-        `💡 Try these instead:\n` +
-        `• Use the menu button (☰) for quick commands\n` +
+        `Unknown command: ${command}\n\n` +
+        `Try these instead:\n` +
+        `• Use the menu button for quick commands\n` +
         `• Type /help to see all available commands\n` +
         `• Chat with me naturally: "Check my balance" or "Send 10 USDC"`
       );
@@ -1230,9 +1247,11 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
     // Use Telegram username for LLM context, but always use UUID for actions
     const llmUserId = user.telegram_username || user.id;
     
+    // Try to generate enhanced response with natural language
     const llmResponse = await runLLM({
       userId: llmUserId,
-      message
+      message,
+      generateNaturalResponse: true
     });
     
     if (!llmResponse) {
@@ -1261,7 +1280,34 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
     }
 
     if (parsedResponse && parsedResponse.intent) {
-      return await formatResponseForUser(parsedResponse, user.id, message, chatId);
+      // If we have a natural response, try to use it with enhanced processing
+      if (parsedResponse.naturalResponse) {
+        const actionResult = await formatResponseForUser(parsedResponse, user.id, message, chatId);
+        
+        // Use ResponseGenerator to create dynamic responses
+        try {
+          const { ResponseGenerator } = await import('../../lib/responseGenerator');
+          const enhancedResult = await ResponseGenerator.generateDynamicResponse({
+            userId: user.id,
+            userMessage: message,
+            intent: parsedResponse.intent,
+            params: parsedResponse.params,
+            actionResult: typeof actionResult === 'string' ? { text: actionResult } : actionResult,
+            userContext: {
+              name: user.name,
+              telegram_username: user.telegram_username
+            }
+          });
+          
+          return enhancedResult;
+        } catch (enhancementError) {
+          console.error('[processWithAI] Enhancement error:', enhancementError);
+          // Fallback to standard processing
+          return await formatResponseForUser(parsedResponse, user.id, message, chatId);
+        }
+      } else {
+        return await formatResponseForUser(parsedResponse, user.id, message, chatId);
+      }
     }
 
     console.log('[Webhook] Fallback, returning original string or stringified object.');

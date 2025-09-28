@@ -54,7 +54,7 @@ export class BotIntegration {
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
-          `💡 **No wallets found**\n\nYou need a wallet to view earnings. Create one first!`,
+          `I don't see any wallets associated with your account yet. To view your earnings, you'll need to create a wallet first. Would you like me to set one up for you?`,
           { 
             parse_mode: 'Markdown',
             reply_markup: {
@@ -91,101 +91,44 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error fetching earnings summary:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ **Error fetching earnings summary**\n\nPlease try again later.`,
+        `I'm having trouble retrieving your earnings information right now. This might be a temporary issue with our system. Please try again in a few moments, and if the problem persists, let me know!`,
         { parse_mode: 'Markdown' }
       );
     }
   }
 
-  async handleCheckBalance(chatId: number, userId: string) {
+  async handleCheckBalance(chatId: number, userId: string, requestedToken?: string, requestedNetwork?: string) {
     try {
-      // Send "checking balance" message
-      await this.bot.sendMessage(chatId, 
-        `💰 **Checking your wallet balances...**\n\n` +
-        `Please wait while I fetch your current balances.`,
-        { parse_mode: 'Markdown' }
-      );
+      // Use the same logic as actions.ts for consistency
+      const result = await handleAction('get_wallet_balance', {
+        parameters: {
+          token: requestedToken,
+          network: requestedNetwork
+        }
+      }, userId);
 
-      // First, get the actual user ID if this is a chatId
-      let actualUserId = userId;
-      if (/^\d+$/.test(userId)) {
-        // This looks like a chatId, get the user UUID
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', parseInt(userId))
-          .single();
-        
-        if (user) {
-          actualUserId = user.id;
-        } else {
-          // User doesn't exist yet, show wallet creation prompt
-          await this.bot.sendMessage(chatId, 
-        `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
-        {
+      // Check if this is a token-specific request (natural language response)
+      // Use the same logic as actions.ts for consistency
+      const isTokenSpecificRequest = requestedToken && ['USDC', 'USDT', 'CNGN', 'CUSD', 'SOL', 'ETH', 'CELO'].includes(requestedToken);
+      const isNetworkSpecific = requestedNetwork && ['solana', 'base', 'ethereum', 'optimism', 'celo', 'lisk', 'evm'].includes(requestedNetwork.toLowerCase());
+      
+      if (isTokenSpecificRequest || isNetworkSpecific) {
+        // Send natural language response without inline keyboard
+        await this.bot.sendMessage(chatId, result.text, {
           parse_mode: 'Markdown'
-        }
-      );
-          return;
-        }
+        });
+      } else {
+        // Send general balance with inline keyboard
+        await this.bot.sendMessage(chatId, result.text, {
+          parse_mode: 'Markdown',
+          reply_markup: result.reply_markup
+        });
       }
-      
-      // Get user's wallets from database
-      const { data: wallets, error } = await supabase
-        .from('wallets')
-        .select('address, chain')
-        .eq('user_id', actualUserId);
-      
-      if (error) {
-        console.error('[BotIntegration] Error fetching wallets:', error);
-        await this.bot.sendMessage(chatId, 
-          `❌ **Failed to fetch wallet information**\n\nPlease try again later.`,
-          { parse_mode: 'Markdown' }
-        );
-        return;
-      }
-      
-      if (!wallets || wallets.length === 0) {
-        await this.bot.sendMessage(chatId, 
-          `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
-          {
-            parse_mode: 'Markdown'
-          }
-        );
-        return;
-      }
-
-      // Display wallet balances
-      let balanceMessage = `💰 **Your Wallet Balances**\n\n`;
-      
-      for (const wallet of wallets) {
-        try {
-          const balance = await this.getWalletBalance(wallet.address, wallet.chain);
-          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} **${wallet.chain.toUpperCase()} Wallet:**\n`;
-          balanceMessage += `Address: \`${wallet.address}\`\n`;
-          balanceMessage += `Balance: ${balance}\n\n`;
-        } catch (error) {
-          console.error(`[BotIntegration] Error fetching balance for ${wallet.chain} wallet:`, error);
-          balanceMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} **${wallet.chain.toUpperCase()} Wallet:**\n`;
-          balanceMessage += `Address: \`${wallet.address}\`\n`;
-          balanceMessage += `Balance: Error fetching balance\n\n`;
-        }
-      }
-      
-      await this.bot.sendMessage(chatId, balanceMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔄 Refresh', callback_data: 'refresh_balance' }],
-            [{ text: '💸 Send Crypto', callback_data: 'send_crypto' }]
-          ]
-        }
-      });
       
     } catch (error) {
       console.error('[BotIntegration] Error checking balance:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ **Error checking balance**\n\nPlease try again later.`,
+        `I encountered an error while checking your balance. Please try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -196,8 +139,7 @@ export class BotIntegration {
     try {
       // Send "fetching wallet info" message
       await this.bot.sendMessage(chatId, 
-        `👛 **Fetching your wallet information...**\n\n` +
-        `Please wait while I retrieve your wallet addresses.`,
+        `Let me check your wallet information for you. This will just take a moment...`,
         { parse_mode: 'Markdown' }
       );
 
@@ -216,7 +158,7 @@ export class BotIntegration {
         } else {
           // User doesn't exist yet, show wallet creation prompt
           await this.bot.sendMessage(chatId, 
-          `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          `I don't see any wallets set up for your account yet. Don't worry - I'm working on creating them automatically for you. Please try checking again in just a moment!`,
           {
             parse_mode: 'Markdown'
           }
@@ -234,7 +176,7 @@ export class BotIntegration {
       if (error) {
         console.error('[BotIntegration] Error fetching wallets:', error);
         await this.bot.sendMessage(chatId, 
-          `❌ **Failed to fetch wallet information**\n\nPlease try again later.`,
+          `I'm having trouble accessing your wallet information right now. This might be a temporary issue with our database. Please try again in a few moments.`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -242,7 +184,7 @@ export class BotIntegration {
       
       if (!wallets || wallets.length === 0) {
         await this.bot.sendMessage(chatId, 
-          `💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!`,
+          `I don't see any wallets set up for your account yet. Don't worry - I'm working on creating them automatically for you. Please try checking again in just a moment!`,
           {
             parse_mode: 'Markdown'
           }
@@ -251,14 +193,14 @@ export class BotIntegration {
       }
 
       // Display wallet addresses
-      let walletMessage = `👛 **Your Wallet Addresses**\n\n`;
+      let walletMessage = `Here are your wallet addresses:\n\n`;
       
       for (const wallet of wallets) {
         walletMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} **${wallet.chain.toUpperCase()} Wallet:**\n`;
         walletMessage += `\`${wallet.address}\`\n\n`;
       }
       
-      walletMessage += `💡 **Tip:** You can use these addresses to receive crypto payments!`;
+      walletMessage += `You can use these addresses to receive crypto payments from clients or other users. Each address is specific to its blockchain network, so make sure to use the right one for the type of crypto you're expecting to receive.`;
       
       await this.bot.sendMessage(chatId, walletMessage, {
         parse_mode: 'Markdown',
@@ -273,7 +215,7 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error viewing wallet:', error);
       await this.bot.sendMessage(chatId, 
-        `❌ **Error fetching wallet information**\n\nPlease try again later.`,
+        `I'm having trouble accessing your wallet information right now. This might be a temporary issue with our system. Please try again in a few moments.`,
         { parse_mode: 'Markdown' }
       );
     }

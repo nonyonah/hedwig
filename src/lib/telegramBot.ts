@@ -67,11 +67,11 @@ export class TelegramBotService {
       try {
         const userId = await this.botIntegration.getUserIdByChatId(chatId);
         if (!userId) {
-          await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
+          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
           return;
         }
         const url = this.buildOfframpUrl(userId, chatId, 'Base');
-        await this.sendMessage(chatId, '💱 Start your cash-out with our secure mini app:', {
+        await this.sendMessage(chatId, 'Start your cash-out with our secure mini app:', {
           reply_markup: {
             inline_keyboard: [[{ text: 'Open Offramp', web_app: { url } }]]
           }
@@ -531,7 +531,7 @@ export class TelegramBotService {
         // Resolve user UUID by chatId using BotIntegration helper
         const userId = await this.botIntegration.getUserIdByChatId(chatId);
         if (!userId) {
-          await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
+          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
           break;
         }
         const url = this.buildOfframpUrl(userId, chatId, 'Base');
@@ -565,7 +565,7 @@ export class TelegramBotService {
         if (resolvedUserId) {
           await this.botIntegration.handleReferralCommand(chatId, resolvedUserId);
         } else {
-          await this.sendMessage(chatId, '❌ User not found. Please run /start first.');
+          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
         }
         break;
       }
@@ -602,26 +602,26 @@ export class TelegramBotService {
       console.error('[TelegramBot] Error tracking bot_started event:', error);
     }
 
-    const welcomeText = `👋 Hello ${userName}! Welcome to Hedwig AI Assistant!
+    const welcomeText = `Hello ${userName}! Welcome to Hedwig AI Assistant!
 
 I'm here to help you with:
-• 📄 Creating invoices
-• 💰 Payment tracking
-• 📊 Earnings summaries
-• 🔄 Token swaps
-• 💬 General assistance
+• Creating invoices
+• Payment tracking
+• Earnings summaries
+• Token swaps
+• General assistance
 
 Just send me a message and I'll help you out!`;
 
     const keyboard: TelegramBot.InlineKeyboardMarkup = {
       inline_keyboard: [
         [
-          { text: '📋 Help', callback_data: 'help' },
-          { text: 'ℹ️ About', callback_data: 'about' }
+          { text: 'Help', callback_data: 'help' },
+          { text: 'About', callback_data: 'about' }
         ],
         [
-          { text: '💰 Create Invoice', callback_data: 'create_invoice' },
-          { text: '📊 Check Earnings', callback_data: 'check_earnings' }
+          { text: 'Create Invoice', callback_data: 'create_invoice' },
+          { text: 'Check Earnings', callback_data: 'check_earnings' }
         ]
       ]
     };
@@ -633,7 +633,7 @@ Just send me a message and I'll help you out!`;
    * Send help message
    */
   private async sendHelpMessage(chatId: number): Promise<void> {
-    const helpText = `🤖 **Hedwig AI Assistant Help**
+    const helpText = `**Hedwig AI Assistant Help**
 
 **Available Commands:**
 /start - Start the bot
@@ -655,7 +655,7 @@ Just type your request in natural language, like:
 - "Send a payment reminder"
 - "I want to swap tokens"
 
-Feel free to ask me anything! 💬`;
+Feel free to ask me anything!`;
 
     await this.sendMessage(chatId, helpText);
   }
@@ -664,17 +664,17 @@ Feel free to ask me anything! 💬`;
    * Send about message
    */
   private async sendAboutMessage(chatId: number): Promise<void> {
-    const aboutText = `ℹ️ **About Hedwig**
+    const aboutText = `**About Hedwig**
 
 Hedwig is an AI-powered assistant for freelancers and businesses, helping you manage:
 
-🔹 Invoice creation and management
-🔹 Payment tracking and reminders
-🔹 Earnings analytics
-🔹 Crypto payments and swaps
-🔹 Business automation
+• Invoice creation and management
+• Payment tracking and reminders
+• Earnings analytics
+• Crypto payments and swaps
+• Business automation
 
-Built with ❤️ for the modern digital economy.
+Built with care for the modern digital economy.
 
 Version: 2.0.0
 Powered by: node-telegram-bot-api`;
@@ -686,27 +686,27 @@ Powered by: node-telegram-bot-api`;
    * Send menu with quick actions
    */
   private async sendMenuMessage(chatId: number): Promise<void> {
-    const menuText = `📋 **Quick Actions Menu**
+    const menuText = `**Quick Actions Menu**
 
 Choose an action below:`;
 
     const keyboard: TelegramBot.InlineKeyboardMarkup = {
       inline_keyboard: [
         [
-          { text: '💰 Create Invoice', callback_data: 'create_invoice' },
-          { text: '📊 Check Earnings', callback_data: 'check_earnings' }
+          { text: 'Create Invoice', callback_data: 'create_invoice' },
+          { text: 'Check Earnings', callback_data: 'check_earnings' }
         ],
         [
-          { text: '💸 Send Crypto', callback_data: 'send_crypto' },
-          { text: '🔄 Token Swap', callback_data: 'token_swap' }
+          { text: 'Send Crypto', callback_data: 'send_crypto' },
+          { text: 'Token Swap', callback_data: 'token_swap' }
         ],
         [
-          { text: '📈 Payment Status', callback_data: 'payment_status' },
-          { text: '💳 Check Balance', callback_data: 'check_balance' }
+          { text: 'Payment Status', callback_data: 'payment_status' },
+          { text: 'Check Balance', callback_data: 'check_balance' }
         ],
         [
-          { text: '📋 Help', callback_data: 'help' },
-          { text: 'ℹ️ About', callback_data: 'about' }
+          { text: 'Help', callback_data: 'help' },
+          { text: 'About', callback_data: 'about' }
         ]
       ]
     };
@@ -742,7 +742,7 @@ Choose an action below:`;
         .single();
 
       if (!user) {
-        return "❌ User not found. Please try /start to initialize your account.";
+        return "I don't see you in our system yet. Please try /start to initialize your account.";
       }
 
       // Use Telegram username as identifier for LLM, fallback to user UUID if no username

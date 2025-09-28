@@ -230,7 +230,7 @@ async function handleCreateWallets(userId: string) {
     const actualUserId = await resolveUserId(userId);
     if (!actualUserId) {
       return {
-        text: "❌ User not found. Please make sure you're registered with the bot.",
+        text: "I couldn't find your account. Please make sure you're registered with the bot.",
       };
     }
 
@@ -243,17 +243,17 @@ async function handleCreateWallets(userId: string) {
     console.log(`[handleCreateWallets] Solana wallet created:`, solanaWallet);
 
     return {
-      text: `🎉 **Wallets Created Successfully!**\n\n` +
-            `✅ **EVM Wallet**: ${evmWallet.address}\n` +
-            `✅ **Solana Wallet**: ${solanaWallet.address}\n\n` +
-            `Your wallets are now ready to use!\n\n` +
-            `You can send crypto or create payment links right away.\n\n` +
-            `🔒 Your wallets are secured by Coinbase's infrastructure.`
+      text: `Great news! I've successfully created your wallets for you.
+
+Your EVM wallet address is ${evmWallet.address}
+Your Solana wallet address is ${solanaWallet.address}
+
+Both wallets are now ready to use! You can start sending crypto or creating payment links right away. Your wallets are secured by Coinbase's infrastructure for maximum safety.`
     };
   } catch (error) {
     console.error('[handleCreateWallets] Error:', error);
     return {
-      text: "❌ Failed to create wallets. Please try again later or contact support."
+      text: "I encountered an issue while creating your wallets. Please try again in a moment, or reach out to support if the problem continues."
     };
   }
 }
@@ -263,7 +263,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     const actualUserId = await resolveUserId(userId);
     if (!actualUserId) {
       return {
-        text: "❌ User not found. Please make sure you're registered with the bot.",
+        text: "I couldn't find your account. Please make sure you're registered with the bot.",
       };
     }
 
@@ -279,14 +279,16 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
       };
     }
 
-    // Check if user requested specific network
+    // Check if user requested specific network or token
     const requestedNetwork = params?.parameters?.network?.toLowerCase();
+    const requestedToken = params?.parameters?.token?.toUpperCase();
     
     // Map specific chains to their categories
-    const evmChains = ['evm', 'base', 'ethereum', 'optimism', 'celo'];
+    const evmChains = ['evm', 'base', 'ethereum', 'optimism', 'celo', 'lisk'];
     const isEvmRequest = requestedNetwork && evmChains.includes(requestedNetwork);
     const isSolanaRequest = requestedNetwork === 'solana';
     const isSpecificChainRequest = requestedNetwork && (evmChains.includes(requestedNetwork) || requestedNetwork === 'solana');
+    const isTokenSpecificRequest = requestedToken && ['USDC', 'USDT', 'CNGN', 'CUSD', 'SOL', 'ETH', 'CELO'].includes(requestedToken);
 
     let evmBalances = "";
     let solanaBalances = "";
@@ -337,6 +339,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             let usdcBalance = '0';
             let cusdBalance = '0';
             let usdtBalance = '0';
+            let cngnBalance = '0';
             let additionalTokens: any[] = [];
             
             if (Array.isArray(balances)) {
@@ -347,12 +350,13 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               );
               
               // Network-specific token handling
-              let usdcToken, cusdToken, usdtToken;
+              let usdcToken, cusdToken, usdtToken, cngnToken;
               
               if (network === 'celo') {
-                // For Celo: USDC and cUSD (no USDT)
+                // For Celo: USDC, cUSD, and cNGN (no USDT)
                 usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC' || b.symbol === 'USDC');
                 cusdToken = balances.find((b: any) => b.asset?.symbol === 'cUSD' || b.symbol === 'cUSD');
+                cngnToken = balances.find((b: any) => b.asset?.symbol === 'cNGN' || b.symbol === 'cNGN');
                 const celoTokenToken = balances.find((b: any) => b.asset?.symbol === 'CELO_TOKEN' || b.symbol === 'CELO_TOKEN');
                 // Don't add cUSD to additionalTokens as it's already displayed in the main section
                 if (celoTokenToken) additionalTokens.push({ symbol: 'CELO Token', balance: (celoTokenToken as any)?.balance || (celoTokenToken as any)?.amount || '0' });
@@ -361,15 +365,17 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
                 const liskToken = balances.find((b: any) => b.asset?.symbol === 'LSK' || b.symbol === 'LSK');
                 if (liskToken) additionalTokens.push({ symbol: 'LSK', balance: (liskToken as any)?.balance || (liskToken as any)?.amount || '0' });
               } else {
-                // For other networks: USDC and USDT
+                // For other networks: USDC, USDT, and cNGN
                 usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC' || b.symbol === 'USDC');
                 usdtToken = balances.find((b: any) => b.asset?.symbol === 'USDT' || b.symbol === 'USDT');
+                cngnToken = balances.find((b: any) => b.asset?.symbol === 'cNGN' || b.symbol === 'cNGN');
               }
               
               nativeBalance = (nativeToken as any)?.balance || (nativeToken as any)?.amount || '0';
               usdcBalance = (usdcToken as any)?.balance || (usdcToken as any)?.amount || '0';
               cusdBalance = (cusdToken as any)?.balance || (cusdToken as any)?.amount || '0';
               usdtBalance = (usdtToken as any)?.balance || (usdtToken as any)?.amount || '0';
+              cngnBalance = (cngnToken as any)?.balance || (cngnToken as any)?.amount || '0';
             } else if (balances && typeof balances === 'object' && 'data' in balances) {
               // EVM ListTokenBalancesResult format (from CDP or Alchemy)
               const balanceArray = (balances as any).data || [];
@@ -378,29 +384,33 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               );
               
               // Network-specific token handling
-              let usdcToken, cusdToken, usdtToken;
+              let usdcToken, cusdToken, usdtToken, cngnToken;
               
               if (network === 'celo') {
-                // For Celo: USDC and cUSD (no USDT)
+                // For Celo: USDC, cUSD, and cNGN (no USDT)
                 usdcToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
                 cusdToken = balanceArray.find((b: any) => b.asset?.symbol === 'cUSD');
+                cngnToken = balanceArray.find((b: any) => b.asset?.symbol === 'cNGN');
                 const celoTokenToken = balanceArray.find((b: any) => b.asset?.symbol === 'CELO_TOKEN');
                 // Don't add cUSD to additionalTokens as it's already displayed in the main section
                 if (celoTokenToken) additionalTokens.push({ symbol: 'CELO Token', balance: formatBalance(celoTokenToken.amount, celoTokenToken.asset.decimals) });
               } else if (network === 'lisk') {
-                // For Lisk: LSK token
+                // For Lisk: USDT and LSK token
+                usdtToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDT');
                 const liskToken = balanceArray.find((b: any) => b.asset?.symbol === 'LSK');
                 if (liskToken) additionalTokens.push({ symbol: 'LSK', balance: formatBalance(liskToken.amount, liskToken.asset.decimals) });
               } else {
-                // For other networks: USDC and USDT
+                // For other networks: USDC, USDT, and cNGN
                 usdcToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
                 usdtToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDT');
+                cngnToken = balanceArray.find((b: any) => b.asset?.symbol === 'cNGN');
               }
               
               nativeBalance = nativeToken ? formatBalance(nativeToken.amount, nativeToken.asset.decimals) : '0';
               usdcBalance = usdcToken ? formatBalance(usdcToken.amount, usdcToken.asset.decimals) : '0';
               cusdBalance = cusdToken ? formatBalance(cusdToken.amount, cusdToken.asset.decimals) : '0';
               usdtBalance = usdtToken ? formatBalance(usdtToken.amount, usdtToken.asset.decimals) : '0';
+              cngnBalance = cngnToken ? formatBalance(cngnToken.amount, cngnToken.asset.decimals) : '0';
             }
             
             const networkName = network.replace('-sepolia', '').replace('-alfajores', '').replace('-testnet', '');
@@ -421,6 +431,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             const usdcBalanceNum = parseFloat(usdcBalance);
             const cusdBalanceNum = parseFloat(cusdBalance || '0');
             const usdtBalanceNum = parseFloat(usdtBalance);
+            const cngnBalanceNum = parseFloat(cngnBalance);
             
             // Determine native token symbol
             const nativeSymbol = network === 'lisk' ? 'ETH' : 
@@ -430,6 +441,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             let usdcDisplay = `${usdcBalanceNum.toFixed(2)} USDC`;
             let cusdDisplay = `${cusdBalanceNum.toFixed(2)} cUSD`;
             let usdtDisplay = `${usdtBalanceNum.toFixed(2)} USDT`;
+            let cngnDisplay = `${cngnBalanceNum.toFixed(2)} cNGN`;
             
             // Add USD equivalents if prices available
             const nativePriceKey = nativeSymbol === 'CELO' ? 'CELO' : 'ETH';
@@ -453,21 +465,30 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               usdtDisplay += ` ($${usdtUsd})`;
             }
             
+            if (tokenPrices.cNGN && cngnBalanceNum > 0) {
+              const cngnUsd = (cngnBalanceNum * tokenPrices.cNGN).toFixed(2);
+              cngnDisplay += ` ($${cngnUsd})`;
+            }
+            
             allEvmBalances += `${chainIcon} **${displayName}**\n`;
             allEvmBalances += `• ${nativeDisplay}\n`;
             
             // Network-specific token display
             if (network === 'celo') {
-              // For Celo: show USDC and cUSD
+              // For Celo: show USDC, cUSD, and cNGN
               allEvmBalances += `• ${usdcDisplay}\n`;
               allEvmBalances += `• ${cusdDisplay}\n`;
+              if (cngnBalanceNum > 0) {
+                allEvmBalances += `• ${cngnDisplay}\n`;
+              }
             } else if (network === 'lisk') {
-              // For Lisk: show LSK token
-              // No specific stablecoin display for Lisk mainnet
+              // For Lisk: show USDT
+              allEvmBalances += `• ${usdtDisplay}\n`;
             } else {
-              // For other networks: show USDC and USDT
+              // For other networks: show USDC, USDT, and cNGN
               allEvmBalances += `• ${usdcDisplay}\n`;
               allEvmBalances += `• ${usdtDisplay}\n`;
+              allEvmBalances += `• ${cngnDisplay}\n`;
             }
             
             // Add additional tokens for Celo and Lisk
@@ -494,10 +515,10 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
           }
         }
 
-        evmBalances = `💰 **Here are your balances**\n${allEvmBalances}`;
+        evmBalances = `Here are your balances\n${allEvmBalances}`;
       } catch (balanceError) {
         console.error(`[handleGetWalletBalance] Error fetching EVM balances:`, balanceError);
-        evmBalances = `💰 **Here are your balances**\n• Error fetching balances\n\n`;
+        evmBalances = `Here are your balances\n• Error fetching balances\n\n`;
       }
     }
 
@@ -578,10 +599,171 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     }
 
     // Format response based on context
-    if (isSolanaRequest) {
-      response = solanaBalances || "❌ No Solana wallet found.";
+    if (isTokenSpecificRequest && requestedNetwork) {
+      // Handle token-specific requests on specific networks
+      const networkName = requestedNetwork.charAt(0).toUpperCase() + requestedNetwork.slice(1);
+      
+      if (isSolanaRequest) {
+        // Extract specific token from Solana balances
+        if (requestedToken === 'SOL' || requestedToken === 'USDC' || requestedToken === 'USDT') {
+          const tokenMatch = solanaBalances.match(new RegExp(`• ([^\\n]*${requestedToken}[^\\n]*)`, 'i'));
+          if (tokenMatch) {
+            const tokenBalance = tokenMatch[1];
+            // Extract balance amount and USD value for natural language response
+            const balanceMatch = tokenBalance.match(/(\d+\.?\d*)\s+(\w+)(?:\s+\(~\$(\d+\.?\d*)\))?/);
+            if (balanceMatch) {
+              const amount = balanceMatch[1];
+              const symbol = balanceMatch[2];
+              const usdValue = balanceMatch[3];
+              
+              if (usdValue) {
+                response = `Your ${symbol} balance on Solana is ${amount} ${symbol} (approximately $${usdValue}).`;
+              } else {
+                response = `Your ${symbol} balance on Solana is ${amount} ${symbol}.`;
+              }
+            } else {
+              response = `Your ${requestedToken} balance on Solana is ${tokenBalance}.`;
+            }
+          } else {
+            response = `You don't have any ${requestedToken} on Solana.`;
+          }
+        } else {
+          response = `${requestedToken} is not supported on Solana. Available tokens: SOL, USDC, USDT.`;
+        }
+      } else if (isEvmRequest) {
+        // Extract specific token from EVM balances for the requested network
+        const networkSection = evmBalances.match(new RegExp(`([🔵🟡🟢💎🔴🟣🔹] \\*\\*${networkName}\\*\\*[\\s\\S]*?)(?=\\n[🔵🟡🟢💎🔴🟣🔹]|$)`, 'i'));
+        
+        if (networkSection) {
+          let tokenLine = '';
+          
+          // Map token names to their display patterns
+          const tokenPatterns: { [key: string]: string } = {
+            'USDC': 'USDC',
+            'USDT': 'USDT', 
+            'CNGN': 'cNGN',
+            'CUSD': 'cUSD',
+            'ETH': 'ETH',
+            'CELO': 'CELO'
+          };
+          
+          const pattern = tokenPatterns[requestedToken];
+          if (pattern) {
+            const tokenMatch = networkSection[1].match(new RegExp(`• ([^\\n]*${pattern}[^\\n]*)`, 'i'));
+            if (tokenMatch) {
+              tokenLine = tokenMatch[1];
+            }
+          }
+          
+          if (tokenLine) {
+            // Extract balance amount and USD value for natural language response
+            const balanceMatch = tokenLine.match(/(\d+\.?\d*)\s+(\w+)(?:\s+\(~\$(\d+\.?\d*)\))?/);
+            if (balanceMatch) {
+              const amount = balanceMatch[1];
+              const symbol = balanceMatch[2];
+              const usdValue = balanceMatch[3];
+              
+              if (usdValue) {
+                response = `Your ${symbol} balance on ${networkName} is ${amount} ${symbol} (approximately $${usdValue}).`;
+              } else {
+                response = `Your ${symbol} balance on ${networkName} is ${amount} ${symbol}.`;
+              }
+            } else {
+              response = `Your ${requestedToken} balance on ${networkName} is ${tokenLine}.`;
+            }
+          } else {
+            response = `You don't have any ${requestedToken} on ${networkName}.`;
+          }
+        } else {
+          response = `${networkName} network is not supported or not found.`;
+        }
+      } else {
+        response = `Please specify a valid network (Base, Celo, Lisk, Ethereum, or Solana) for ${requestedToken} balance.`;
+      }
+    } else if (isTokenSpecificRequest && !requestedNetwork) {
+      // Handle token-specific requests without network specification
+      let tokenFound = false;
+      let tokenBalances: string[] = [];
+      
+      // Search for token across all networks
+      if (requestedToken === 'SOL' || requestedToken === 'USDC' || requestedToken === 'USDT') {
+        // Check Solana first
+        const tokenMatch = solanaBalances.match(new RegExp(`• ([^\\n]*${requestedToken}[^\\n]*)`, 'i'));
+        if (tokenMatch) {
+          const tokenBalance = tokenMatch[1];
+          const balanceMatch = tokenBalance.match(/(\d+\.?\d*)\s+(\w+)(?:\s+\(~\$(\d+\.?\d*)\))?/);
+          if (balanceMatch) {
+            const amount = balanceMatch[1];
+            const symbol = balanceMatch[2];
+            const usdValue = balanceMatch[3];
+            
+            if (parseFloat(amount) > 0) {
+              tokenFound = true;
+              if (usdValue) {
+                tokenBalances.push(`${amount} ${symbol} on Solana (~$${usdValue})`);
+              } else {
+                tokenBalances.push(`${amount} ${symbol} on Solana`);
+              }
+            }
+          }
+        }
+      }
+      
+      // Check EVM networks for the token
+      const tokenPatterns: { [key: string]: string } = {
+        'USDC': 'USDC',
+        'USDT': 'USDT', 
+        'CNGN': 'cNGN',
+        'CUSD': 'cUSD',
+        'ETH': 'ETH',
+        'CELO': 'CELO'
+      };
+      
+      const pattern = tokenPatterns[requestedToken];
+      if (pattern) {
+        // Extract from each network section
+        const networkRegex = /([🔵🟡🟢💎🔴🟣🔹] \*\*([^*]+)\*\*[\s\S]*?)(?=\n[🔵🟡🟢💎🔴🟣🔹]|$)/g;
+        let networkMatch;
+        
+        while ((networkMatch = networkRegex.exec(evmBalances)) !== null) {
+          const networkSection = networkMatch[1];
+          const networkName = networkMatch[2];
+          
+          const tokenMatch = networkSection.match(new RegExp(`• ([^\\n]*${pattern}[^\\n]*)`, 'i'));
+          if (tokenMatch) {
+            const tokenLine = tokenMatch[1];
+            const balanceMatch = tokenLine.match(/(\d+\.?\d*)\s+(\w+)(?:\s+\(~\$(\d+\.?\d*)\))?/);
+            if (balanceMatch) {
+              const amount = balanceMatch[1];
+              const symbol = balanceMatch[2];
+              const usdValue = balanceMatch[3];
+              
+              if (parseFloat(amount) > 0) {
+                tokenFound = true;
+                if (usdValue) {
+                  tokenBalances.push(`${amount} ${symbol} on ${networkName} (~$${usdValue})`);
+                } else {
+                  tokenBalances.push(`${amount} ${symbol} on ${networkName}`);
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      if (tokenFound) {
+        if (tokenBalances.length === 1) {
+          response = `Your ${requestedToken} balance is ${tokenBalances[0]}.`;
+        } else {
+          response = `Your ${requestedToken} balances:\n${tokenBalances.map(b => `• ${b}`).join('\n')}`;
+        }
+      } else {
+        response = `You don't have any ${requestedToken} in your wallets.`;
+      }
+    } else if (isSolanaRequest) {
+      response = solanaBalances || "No Solana wallet found.";
     } else if (isEvmRequest) {
-      response = evmBalances || "❌ No EVM wallet found.";
+      response = evmBalances || "No EVM wallet found.";
     } else {
       // Show all balances for general requests
       if (!evmBalances && !solanaBalances) {
@@ -593,24 +775,33 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
 
     // Ensure response is never empty
     if (!response || response.trim() === "") {
-      response = "❌ Unable to fetch wallet balances. Please try again later.";
+      response = "Unable to fetch wallet balances. Please try again later.";
     }
 
-    return { 
-      text: response,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "🔄 Refresh", callback_data: "refresh_balances" },
-            { text: "📤 Send", callback_data: "start_send_token_flow" }
+    // Return different response format based on request type
+    if (isTokenSpecificRequest || (requestedNetwork && !isTokenSpecificRequest)) {
+      // For token-specific requests or network-specific requests, return natural language response without buttons
+      return { 
+        text: response
+      };
+    } else {
+      // For general balance requests, include the refresh and send buttons
+      return { 
+        text: response,
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "Refresh", callback_data: "refresh_balances" },
+              { text: "📤 Send", callback_data: "start_send_token_flow" }
+            ]
           ]
-        ]
-      }
-    };
+        }
+      };
+    }
   } catch (error) {
     console.error('[handleGetWalletBalance] Error:', error);
     return {
-      text: "❌ Failed to fetch wallet balances. Please try again later."
+      text: "Failed to fetch wallet balances. Please try again later."
     };
   }
 }
@@ -620,7 +811,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
     const actualUserId = await resolveUserId(userId);
     if (!actualUserId) {
       return {
-        text: "❌ User not found. Please make sure you're registered with the bot.",
+        text: "User not found. Please make sure you're registered with the bot.",
       };
     }
     
@@ -653,7 +844,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
     if (requestedNetwork === 'solana') {
       if (!solanaAddress) {
         return { 
-          text: "❌ No Solana wallet found.\n\n🎯 **Create Solana Wallet:**\nType: 'Create Solana wallet'",
+          text: "No Solana wallet found.\n\nCreate Solana Wallet:\nType: 'Create Solana wallet'",
           reply_markup: {
             inline_keyboard: [
               [{ text: "🌸 Create Solana Wallet", callback_data: "create_solana_wallet" }]
@@ -662,17 +853,17 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         };
       }
       return { 
-        text: `✅ **Your Solana Wallet**\n\n🌸 **Address:**\n\`${solanaAddress}\`\n\n💡 Use this address to receive SOL, USDC, and other SPL tokens on Solana network.\n\n🔒 Keep this address safe and share it only when receiving payments.`,
+        text: `Your Solana Wallet\n\nAddress:\n\`${solanaAddress}\`\n\nUse this address to receive SOL, USDC, and other SPL tokens on Solana network.\n\nKeep this address safe and share it only when receiving payments.`,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📋 Copy Solana Address", copy_text: { text: solanaAddress } }]
+            [{ text: "Copy Solana Address", copy_text: { text: solanaAddress } }]
           ]
         }
       };
     } else if (requestedNetwork === 'evm' || requestedNetwork === 'base') {
       if (!evmAddress) {
         return { 
-          text: "❌ No EVM wallet found.\n\n🎯 **Create EVM Wallet:**\nType: 'Create EVM wallet'",
+          text: "No EVM wallet found.\n\nCreate EVM Wallet:\nType: 'Create EVM wallet'",
           reply_markup: {
             inline_keyboard: [
               [{ text: "🟦 Create EVM Wallet", callback_data: "create_evm_wallet" }]
@@ -681,29 +872,29 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         };
       }
       return { 
-        text: `✅ **Your EVM Wallet**\n\n🟦 **Address:**\n\`${evmAddress}\`\n\n💡 Use this address to receive ETH, USDC, and other tokens on EVM networks.\n\n🔒 Keep this address safe and share it only when receiving payments.`,
+        text: `Your EVM Wallet\n\nAddress:\n\`${evmAddress}\`\n\nUse this address to receive ETH, USDC, and other tokens on EVM networks.\n\nKeep this address safe and share it only when receiving payments.`,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📋 Copy EVM Address", copy_text: { text: evmAddress } }]
+            [{ text: "Copy EVM Address", copy_text: { text: evmAddress } }]
           ]
         }
       };
     } else {
       // Show both addresses if they exist
-      let responseText = "✅ **Your Wallet Addresses**\n\n";
+      let responseText = "Your Wallet Addresses\n\n";
       let buttons: Array<{ text: string; copy_text?: { text: string }; callback_data?: string }> = [];
 
       if (evmAddress) {
         responseText += `🟦 **EVM Network:**\n\`${evmAddress}\`\n\n`;
-        buttons.push({ text: "📋 Copy EVM", copy_text: { text: evmAddress } });
+        buttons.push({ text: "Copy EVM", copy_text: { text: evmAddress } });
       }
 
       if (solanaAddress) {
         responseText += `🌸 **Solana Network:**\n\`${solanaAddress}\`\n\n`;
-        buttons.push({ text: "📋 Copy Solana", copy_text: { text: solanaAddress } });
+        buttons.push({ text: "Copy Solana", copy_text: { text: solanaAddress } });
       }
 
-      responseText += "💡 Use these addresses to receive deposits on their respective networks.\n\n🔒 Keep these addresses safe and share them only when receiving payments.";
+      responseText += "Use these addresses to receive deposits on their respective networks.\n\nKeep these addresses safe and share them only when receiving payments.";
 
       // If no wallets exist, wallets will be created automatically
       if (!evmAddress && !solanaAddress) {
@@ -730,7 +921,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
   } catch (error) {
     console.error('[handleGetWalletAddress] Error:', error);
     return {
-      text: "❌ Failed to fetch wallet addresses. Please try again later."
+      text: "Failed to fetch wallet addresses. Please try again later."
     };
   }
 }
@@ -784,7 +975,7 @@ export async function handleAction(
       const actualUserId = await resolveUserId(userId);
       if (!actualUserId) {
         return {
-          text: "❌ User not found. Please make sure you're registered with the bot.",
+          text: "User not found. Please make sure you're registered with the bot.",
         };
       }
       
@@ -812,7 +1003,7 @@ export async function handleAction(
   // Disabled features
   if (intent === "get_price" || intent === "currency_conversion" || intent === "exchange_rate") {
     return {
-      text: "🚧 **Currency conversion feature is currently disabled.**\n\nThis feature has been temporarily removed. Please use external tools for currency conversion needs.",
+      text: "Currency conversion is currently disabled. This feature has been temporarily removed, so please use external tools for currency conversion needs.",
     };
   }
 
@@ -852,10 +1043,12 @@ export async function handleAction(
         const solanaWallet = await createWallet(actualUserId, 'solana');
         
         return {
-          text: "🎉 **Welcome! I've created your wallets automatically.**\n\n" +
-                `✅ **EVM Wallet**: ${evmWallet.address}\n` +
-                `✅ **Solana Wallet**: ${solanaWallet.address}\n\n` +
-                `Your wallets are now ready! Please try your command again.`
+          text: `Welcome! I've automatically created your wallets for you.
+
+Your EVM wallet address is ${evmWallet.address}
+Your Solana wallet address is ${solanaWallet.address}
+
+Your wallets are now ready! Please try your command again.`
         };
       } catch (error) {
         console.error('[handleAction] Failed to auto-create wallets:', error);
@@ -1069,7 +1262,7 @@ export async function handleAction(
         const actualUserId = await resolveUserId(userId);
         if (!actualUserId) {
           return {
-            text: "❌ User not found. Please make sure you're registered with the bot.",
+            text: "I couldn't find your account. Please make sure you're registered with the bot.",
           };
         }
 
@@ -1126,7 +1319,7 @@ export async function handleAction(
         };
       } catch (error) {
         console.error('[handleAction] Business dashboard error:', error);
-        return { text: "❌ Failed to load business dashboard. Please try again later." };
+        return { text: "I couldn't load the business dashboard right now. Please try again later." };
       }
 
     case "get_spending":
@@ -1155,11 +1348,11 @@ export async function handleAction(
         //   const formatted = formatEarningsForAgent(summary, 'spending');
         //   return { text: formatted };
         // } else {
-          return { text: "💸 Spending feature temporarily unavailable. Your crypto is safe in your wallet!\n\n💡 Tip: Use the 'send' command to transfer crypto to others." };
+          return { text: "The spending feature is temporarily unavailable, but your crypto is safe in your wallet! You can use the 'send' command to transfer crypto to others." };
         // }
       } catch (error) {
         console.error('[handleAction] Spending error:', error);
-        return { text: "❌ Failed to fetch spending data. Please try again later." };
+        return { text: "I couldn't fetch your spending data right now. Please try again later." };
       }
 
     case "offramp":
@@ -1189,7 +1382,7 @@ export async function handleAction(
         const actualUserId = await resolveUserId(userId);
         if (!actualUserId) {
           return {
-            text: "❌ User not found. Please make sure you're registered with the bot.",
+            text: "User not found. Please make sure you're registered with the bot.",
           };
         }
 
@@ -1198,7 +1391,7 @@ export async function handleAction(
         
         if (totalPaid === 0) {
           return {
-            text: "📭 You have no paid payment links or invoices yet.\n\n💡 **Tip:** Once clients pay your invoices or payment links, they'll appear here for tracking."
+            text: "You don't have any paid payment links or invoices yet. Once clients pay your invoices or payment links, they'll appear here for tracking."
           };
         }
 
@@ -1225,34 +1418,22 @@ export async function handleAction(
         };
       } catch (error) {
         console.error('[handleAction] List paid items error:', error);
-        return { text: "❌ Failed to fetch paid items. Please try again later." };
+        return { text: "I couldn't fetch your paid items right now. Please try again later." };
       }
     
     case "help":
       return {
-        text: "🦉 **Hedwig Help**\n\n" +
-              "Available commands:\n" +
-              "• `create wallet` - Create new wallets\n" +
-              "• `balance` - Check wallet balances\n" +
-              "• `address` - Get wallet addresses\n" +
-              "• `send` - Send crypto to others\n" +
-              "• `earnings` - View earnings summary\n" +
-              "• `create payment link` - Create payment links\n" +
-              "• `help` - Show this help message\n\n" +
-              "More features coming soon!"
+        text: "Hi! I'm Hedwig, your freelance assistant. Here's what I can help you with:\n\n" +
+              "I can help you create wallets, check your balance, get wallet addresses, send crypto to others, view your earnings, create payment links, invoices, and proposals.\n\n" +
+              "Just ask me naturally - for example, you can say 'what's my balance?', 'show my wallet address', 'send 0.1 ETH to [address]', 'create payment link for 50 USDC', 'show my earnings', 'create invoice', or 'create proposal'.\n\n" +
+              "What would you like to do today?"
       };
     
     case "welcome":
       return {
-        text: "🦉 **Hi, I'm Hedwig!**\n\n" +
-              "I'm your freelance assistant. I can help you:\n\n" +
-              "💰 **Check wallet balances** - Just ask \"what's my balance?\"\n" +
-              "📍 **Get wallet addresses** - Ask \"show my wallet address\"\n" +
-              "💸 **Send crypto** - Say \"send 0.1 ETH to [address]\"\n" +
-              "🔗 **Create payment links** - Request \"create payment link for 50 USDC\"\n" +
-              "📊 **View earnings** - Ask \"show my earnings\"\n" +
-              "📄 **Create invoices** - Say \"create invoice\"\n" +
-              "📋 **Make proposals** - Request \"create proposal\"\n\n" +
+        text: "Hi! I'm Hedwig, your freelance assistant.\n\n" +
+              "I can help you check wallet balances, get wallet addresses, send crypto, create payment links, view earnings, create invoices, and make proposals.\n\n" +
+              "Just ask me naturally - for example, 'what's my balance?', 'show my wallet address', 'send 0.1 ETH to [address]', 'create payment link for 50 USDC', 'show my earnings', 'create invoice', or 'create proposal'.\n\n" +
               "What would you like to do today?"
       };
     
@@ -1827,20 +2008,20 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     // Check if we have all required information
     if (!amount || !token || !finalPaymentReason) {
       return {
-        text: "💳 **Create Payment Link**\n\n" +
+        text: "Create Payment Link\n\n" +
               "Please provide the following information:\n\n" +
-              "**Required Details:**\n" +
-              "• **Amount**: e.g., `100 USDC`\n" +
-              "• **Purpose**: What the payment is for\n" +
-              "• **Network** (optional): `base`, `ethereum`, `optimism`, `celo`, `lisk`\n" +
-              "• **Recipient Email** (optional): To send the link via email\n\n" +
-              "**Example Messages:**\n" +
+              "Required Details:\n" +
+              "• Amount: e.g., `100 USDC`\n" +
+              "• Purpose: What the payment is for\n" +
+              "• Network (optional): `base`, `ethereum`, `optimism`, `celo`, `lisk`\n" +
+              "• Recipient Email (optional): To send the link via email\n\n" +
+              "Example Messages:\n" +
               "• `Create payment link for 100 USDC for web development`\n" +
               "• `Payment link 50 USDC for consulting services`\n" +
               "• `Link for 25 USDC for design work, send to client@example.com`\n\n" +
-              "**💰 Supported Token:**\n" +
-              "• **USDC only** - All payment links use USDC stablecoin\n\n" +
-              "💡 **Tip**: Include all details in one message for faster processing!"
+              "Supported Token:\n" +
+              "• USDC only - All payment links use USDC stablecoin\n\n" +
+              "Tip: Include all details in one message for faster processing!"
       };
     }
 
@@ -1861,7 +2042,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
 
     if (!supportedTokens.includes(selectedToken)) {
       return {
-        text: `❌ Unsupported token: ${selectedToken}\n\nSupported tokens: ${supportedTokens.join(', ')}`
+        text: `Unsupported token: ${selectedToken}\n\nSupported tokens: ${supportedTokens.join(', ')}`
       };
     }
 
@@ -1894,19 +2075,19 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
       // Format success message
       const paymentUrl = result.paymentLink;
       
-      let successMessage = `✅ **Payment Link Created Successfully!** 💳\n\n` +
-                          `💰 **Amount**: ${amount} ${selectedToken}\n` +
-                          `🌐 **Network**: ${selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)}\n` +
-                          `💼 **For**: ${paymentReason}\n` +
-                          `👛 **Wallet**: \`${evmWallet.address.slice(0, 8)}...${evmWallet.address.slice(-6)}\`\n\n` +
-                          `🔗 **Payment Link**: ${paymentUrl}\n\n`;
+      let successMessage = `Payment Link Created Successfully!\n\n` +
+                          `Amount: ${amount} ${selectedToken}\n` +
+                          `Network: ${selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)}\n` +
+                          `For: ${paymentReason}\n` +
+                          `Wallet: \`${evmWallet.address.slice(0, 8)}...${evmWallet.address.slice(-6)}\`\n\n` +
+                          `Payment Link: ${paymentUrl}\n\n`;
 
       if (recipient_email) {
-        successMessage += `📧 **Email sent to**: ${recipient_email}\n\n`;
+        successMessage += `Email sent to: ${recipient_email}\n\n`;
       }
 
-      successMessage += `💡 **Share this link** with anyone who needs to pay you!\n` +
-                       `⏰ **Link expires** in 7 days\n\n` +
+      successMessage += `Share this link with anyone who needs to pay you!\n` +
+                       `Link expires in 7 days\n\n` +
                        `You'll be notified when payments are received.`;
 
       return {
@@ -1914,8 +2095,8 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "🔗 Open Payment Link", url: paymentUrl },
-              { text: "📊 View Earnings", callback_data: "view_earnings" }
+              { text: "Open Payment Link", url: paymentUrl },
+              { text: "View Earnings", callback_data: "view_earnings" }
             ]
           ]
         }
@@ -1924,7 +2105,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     } catch (error) {
       console.error('[handleCreatePaymentLink] API call error:', error);
       return {
-        text: `❌ **Failed to create payment link**\n\n` +
+        text: `Failed to create payment link\n\n` +
               `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
               `Please check:\n` +
               `• Your wallet is properly set up\n` +
@@ -1937,7 +2118,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
   } catch (error) {
     console.error('[handleCreatePaymentLink] Error:', error);
     return {
-      text: "❌ Failed to process payment link request. Please try again later."
+      text: "Failed to process payment link request. Please try again later."
     };
   }
 }
@@ -2379,17 +2560,17 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
     
     if (result.success) {
       return {
-        text: `✅ Reminder sent successfully!\n\n${result.message}`
+        text: `Reminder sent successfully!\n\n${result.message}`
       };
     } else {
       return {
-        text: `❌ Failed to send reminder: ${result.message}`
+        text: `Failed to send reminder: ${result.message}`
       };
     }
   } catch (error) {
     console.error('[sendManualReminder] Error:', error);
     return {
-      text: "❌ Failed to send reminder. Please try again later."
+      text: "Failed to send reminder. Please try again later."
     };
   }
 }
@@ -2432,7 +2613,7 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
     
     if (!user?.telegram_chat_id) {
       return {
-        text: "❌ Telegram chat ID not found. Please make sure you're using the Telegram bot."
+        text: "Telegram chat ID not found. Please make sure you're using the Telegram bot."
       };
     }
     
@@ -2451,7 +2632,7 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
   } catch (error) {
     console.error('[handleCreateInvoice] Error:', error);
     return {
-      text: "❌ Failed to start invoice creation. Please try again later."
+      text: "Failed to start invoice creation. Please try again later."
     };
   }
 }
@@ -2494,7 +2675,7 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
     
     if (!user?.telegram_chat_id) {
       return {
-        text: "❌ Telegram chat ID not found. Please make sure you're using the Telegram bot."
+        text: "Telegram chat ID not found. Please make sure you're using the Telegram bot."
       };
     }
     
@@ -2513,7 +2694,7 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
   } catch (error) {
     console.error('[handleCreateProposal] Error:', error);
     return {
-      text: "❌ Failed to start proposal creation. Please try again later."
+      text: "Failed to start proposal creation. Please try again later."
     };
   }
 }
@@ -3059,7 +3240,7 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
     const normalizedText = amountText.toLowerCase().trim();
     
     // Enhanced regex to capture amount, token, and optional chain
-    const chainMatch = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc\s+(?:on\s+)?(base|celo|lisk)/i);
+    const chainMatch = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc\s+(?:on\s+)?(base|celo|lisk|solana|sol)/i);
     const amountMatch = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc/i);
     
     let amount: number;
@@ -3069,6 +3250,27 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
       // User specified both amount and chain
       amount = parseFloat(chainMatch[1]);
       selectedChain = chainMatch[2].toLowerCase();
+      
+      // Normalize 'sol' to 'solana'
+      if (selectedChain === 'sol') {
+        selectedChain = 'solana';
+      }
+      
+      // Check if user requested Solana offramp
+      if (selectedChain === 'solana') {
+        return {
+          text: "❌ **Offramp Not Available on Solana**\n\n" +
+                "Offramp is currently not available on Solana network. Please use Base, Celo, or Lisk.\n\n" +
+                "**Supported Networks for Offramp:**\n" +
+                "🔵 Base • 🟡 Celo • 🟢 Lisk\n\n" +
+                "💡 **Tip:** You can still use Solana for regular transfers and swaps!",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+            ]
+          }
+        };
+      }
     } else if (amountMatch) {
       // User only specified amount, no chain
       amount = parseFloat(amountMatch[1]);
@@ -4626,13 +4828,11 @@ async function monitorOrderStatus(orderId: string, userId: string, sessionId: st
 async function handleSuccessfulWithdrawal(userId: string, orderId: string, orderData: any): Promise<void> {
   try {
     const message = {
-      text: `✅ **Withdrawal Successful!**\n\n` +
-            `🎉 Your withdrawal has been completed successfully!\n\n` +
-            `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-            `🏦 **Status:** Funds delivered to your bank account\n` +
-            `⏰ **Completion Time:** ${new Date().toLocaleString()}\n\n` +
-            `💡 **Your funds should appear in your account within the next 2 minutes.**\n\n` +
-            `Thank you for using Hedwig! 🚀`,
+      text: `Great news! Your withdrawal has been completed successfully.
+
+I've processed your withdrawal of ${orderData.expectedAmount || orderData.amount} USDC and the funds have been delivered to your bank account. The transaction was completed at ${new Date().toLocaleString()}.
+
+Your funds should appear in your account within the next 2 minutes. Thank you for using Hedwig!`,
       reply_markup: {
         inline_keyboard: [[
           { text: "📊 View History", callback_data: "offramp_history" },
@@ -4705,13 +4905,11 @@ async function handleFailedWithdrawal(userId: string, orderId: string, orderData
 async function handleRefundNotification(userId: string, orderId: string, orderData: any): Promise<void> {
   try {
     const message = {
-      text: `🔄 **Refund Processed**\n\n` +
-            `Your withdrawal has been refunded successfully.\n\n` +
-            `💰 **Refunded Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-            `📋 **Order ID:** ${orderId}\n` +
-            `⏰ **Refunded At:** ${new Date().toLocaleString()}\n\n` +
-            `✅ **Your USDC has been returned to your wallet.**\n\n` +
-            `You can try the withdrawal again or contact support if you need assistance.`,
+      text: `Your withdrawal has been refunded successfully.
+
+I've processed a refund of ${orderData.expectedAmount || orderData.amount} USDC for order ${orderId}, completed at ${new Date().toLocaleString()}. Your USDC has been returned to your wallet.
+
+You can try the withdrawal again or contact support if you need assistance.`,
       reply_markup: {
         inline_keyboard: [[
           { text: "🔄 Try Again", callback_data: "start_offramp" },
