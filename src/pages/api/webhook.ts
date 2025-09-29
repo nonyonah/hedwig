@@ -1294,8 +1294,8 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
             params: parsedResponse.params,
             actionResult: typeof actionResult === 'string' ? { text: actionResult } : actionResult,
             userContext: {
-              name: user.name,
-              telegram_username: user.telegram_username
+              name: user.name || undefined,
+              telegram_username: user.telegram_username || undefined
             }
           });
           
