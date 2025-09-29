@@ -39,6 +39,30 @@ export class ResponseGenerator {
       return actionResult;
     }
 
+    // For balance queries, skip dynamic response generation to avoid malformed JSON
+    if (intent === 'balance') {
+      console.log('[ResponseGenerator] Skipping dynamic response for balance query to prevent malformed JSON');
+      return actionResult;
+    }
+
+    // For earnings and spending queries, skip dynamic response generation to avoid malformed JSON
+    if (['get_earnings', 'earnings_summary', 'get_spending'].includes(intent)) {
+      console.log(`[ResponseGenerator] Skipping dynamic response for ${intent} query to prevent malformed JSON`);
+      return actionResult;
+    }
+
+    // For wallet and financial data queries, skip dynamic response generation to avoid malformed JSON
+    const financialDataIntents = [
+      'wallet_balance', 'get_wallet_balance', 'show_balance', 'wallet',
+      'get_wallet_address', 'instruction_deposit', 'earnings', 'show_earnings_summary',
+      'generate_earnings_pdf', 'earnings_pdf', 'business_dashboard', 'show_business_dashboard'
+    ];
+    
+    if (financialDataIntents.includes(intent)) {
+      console.log(`[ResponseGenerator] Skipping dynamic response for ${intent} query to prevent malformed JSON`);
+      return actionResult;
+    }
+
     // Generate a more natural, contextual response
     const responsePrompt = this.buildResponsePrompt(context);
     
@@ -54,7 +78,9 @@ export class ResponseGenerator {
       if (typeof generatedResponse === 'string') {
         try {
           parsedResponse = JSON.parse(generatedResponse);
-        } catch {
+        } catch (parseError) {
+          console.warn('[ResponseGenerator] Failed to parse LLM response as JSON:', parseError);
+          console.warn('[ResponseGenerator] Raw response:', generatedResponse);
           // If not JSON, treat as plain text
           return {
             text: generatedResponse,
@@ -66,8 +92,23 @@ export class ResponseGenerator {
         parsedResponse = generatedResponse;
       }
 
+      // Validate that we have a proper response structure
+      if (!parsedResponse || typeof parsedResponse !== 'object') {
+        console.warn('[ResponseGenerator] Invalid response structure:', parsedResponse);
+        return actionResult;
+      }
+
+      // Extract the response text, handling different possible structures
+      let responseText = parsedResponse.response || parsedResponse.text || parsedResponse.naturalResponse;
+      
+      // If we still don't have valid response text, fall back to original
+      if (!responseText || typeof responseText !== 'string') {
+        console.warn('[ResponseGenerator] No valid response text found in:', parsedResponse);
+        return actionResult;
+      }
+
       return {
-        text: parsedResponse.response || parsedResponse.text || actionResult.text,
+        text: responseText,
         reply_markup: actionResult.reply_markup,
         data: actionResult.data
       };
