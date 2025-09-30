@@ -1280,34 +1280,8 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
     }
 
     if (parsedResponse && parsedResponse.intent) {
-      // If we have a natural response, try to use it with enhanced processing
-      if (parsedResponse.naturalResponse) {
-        const actionResult = await formatResponseForUser(parsedResponse, user.id, message, chatId);
-        
-        // Use ResponseGenerator to create dynamic responses
-        try {
-          const { ResponseGenerator } = await import('../../lib/responseGenerator');
-          const enhancedResult = await ResponseGenerator.generateDynamicResponse({
-            userId: user.id,
-            userMessage: message,
-            intent: parsedResponse.intent,
-            params: parsedResponse.params,
-            actionResult: typeof actionResult === 'string' ? { text: actionResult } : actionResult,
-            userContext: {
-              name: user.name || undefined,
-              telegram_username: user.telegram_username || undefined
-            }
-          });
-          
-          return enhancedResult;
-        } catch (enhancementError) {
-          console.error('[processWithAI] Enhancement error:', enhancementError);
-          // Fallback to standard processing
-          return await formatResponseForUser(parsedResponse, user.id, message, chatId);
-        }
-      } else {
-        return await formatResponseForUser(parsedResponse, user.id, message, chatId);
-      }
+      // Use templated replies directly without dynamic response generation
+      return await formatResponseForUser(parsedResponse, user.id, message, chatId);
     }
 
     console.log('[Webhook] Fallback, returning original string or stringified object.');

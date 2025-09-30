@@ -602,26 +602,26 @@ export class TelegramBotService {
       console.error('[TelegramBot] Error tracking bot_started event:', error);
     }
 
-    const welcomeText = `Hello ${userName}! Welcome to Hedwig AI Assistant!
+    const welcomeText = `👋 Hello ${userName}! Welcome to Hedwig AI Assistant! 🦉
 
-I'm here to help you with:
-• Creating invoices
-• Payment tracking
-• Earnings summaries
-• Token swaps
-• General assistance
+🚀 I'm here to help you with:
+• 📄 Creating invoices
+• 💰 Payment tracking
+• 📊 Earnings summaries
+• 🔄 Token swaps
+• 💬 General assistance
 
-Just send me a message and I'll help you out!`;
+Just send me a message and I'll help you out! ✨`;
 
     const keyboard: TelegramBot.InlineKeyboardMarkup = {
       inline_keyboard: [
         [
-          { text: 'Help', callback_data: 'help' },
-          { text: 'About', callback_data: 'about' }
+          { text: '❓ Help', callback_data: 'help' },
+          { text: 'ℹ️ About', callback_data: 'about' }
         ],
         [
-          { text: 'Create Invoice', callback_data: 'create_invoice' },
-          { text: 'Check Earnings', callback_data: 'check_earnings' }
+          { text: '📄 Create Invoice', callback_data: 'create_invoice' },
+          { text: '📊 Check Earnings', callback_data: 'check_earnings' }
         ]
       ]
     };
@@ -633,29 +633,29 @@ Just send me a message and I'll help you out!`;
    * Send help message
    */
   private async sendHelpMessage(chatId: number): Promise<void> {
-    const helpText = `**Hedwig AI Assistant Help**
+    const helpText = `🦉 **Hedwig AI Assistant Help** 🦉
 
-**Available Commands:**
-/start - Start the bot
-/help - Show this help message
-/about - About Hedwig
-/menu - Show quick action menu
+📋 **Available Commands:**
+/start - 🚀 Start the bot
+/help - ❓ Show this help message
+/about - ℹ️ About Hedwig
+/menu - 📱 Show quick action menu
 
-**What I can do:**
-• Create professional invoices
-• Track your payments and earnings
-• Provide payment summaries
-• Help with token swaps
-• Answer questions about your business
+✨ **What I can do:**
+• 📄 Create professional invoices
+• 💰 Track your payments and earnings
+• 📊 Provide payment summaries
+• 🔄 Help with token swaps
+• 💬 Answer questions about your business
 
-**How to use:**
+🎯 **How to use:**
 Just type your request in natural language, like:
-- "Create an invoice for $500"
-- "Show me my earnings this month"
-- "Send a payment reminder"
-- "I want to swap tokens"
+- "Create an invoice for $500" 💵
+- "Show me my earnings this month" 📈
+- "Send a payment reminder" 📧
+- "I want to swap tokens" 🔄
 
-Feel free to ask me anything!`;
+Feel free to ask me anything! 😊`;
 
     await this.sendMessage(chatId, helpText);
   }
@@ -1067,23 +1067,23 @@ Now you can create personalized invoices and proposals. Type /help to see what I
   async setupBotCommands(): Promise<void> {
     try {
       const commands = [
-        { command: 'start', description: 'Start the bot and show main menu' },
-        { command: 'help', description: 'Show help and available commands' },
-        { command: 'cancel', description: 'Cancel current action or flow' },
-        { command: 'send_reminder', description: 'Send a payment reminder' },
-        { command: 'wallet', description: 'View wallet information' },
-        { command: 'balance', description: 'Check wallet balance' },
-        { command: 'send', description: 'Send crypto to someone' },
-        { command: 'offramp', description: 'Withdraw crypto to bank account' },
-        { command: 'earnings', description: 'View earnings summary' },
-        { command: 'summary', description: 'View earnings summary' },
-        { command: 'earnings_summary', description: 'View earnings summary' },
-        { command: 'business_dashboard', description: 'Access business dashboard' },
-        { command: 'invoice', description: 'Create an invoice' },
-        { command: 'proposal', description: 'Create a proposal' },
-        { command: 'paymentlink', description: 'Create a payment link' },
-        { command: 'referral', description: 'Get your referral link and stats' },
-        { command: 'leaderboard', description: 'View referral leaderboard' }
+        { command: 'start', description: '🚀 Start the bot and show main menu' },
+        { command: 'help', description: '❓ Show help and available commands' },
+        { command: 'cancel', description: '❌ Cancel current action or flow' },
+        { command: 'send_reminder', description: '📧 Send a payment reminder' },
+        { command: 'wallet', description: '👛 View wallet information' },
+        { command: 'balance', description: '💰 Check wallet balance' },
+        { command: 'send', description: '💸 Send crypto to someone' },
+        { command: 'offramp', description: '🏦 Withdraw crypto to bank account' },
+        { command: 'earnings', description: '📊 View earnings summary' },
+        { command: 'summary', description: '📈 View earnings summary' },
+        { command: 'earnings_summary', description: '💹 View earnings summary' },
+        { command: 'business_dashboard', description: '📋 Access business dashboard' },
+        { command: 'invoice', description: '📄 Create an invoice' },
+        { command: 'proposal', description: '📝 Create a proposal' },
+        { command: 'paymentlink', description: '🔗 Create a payment link' },
+        { command: 'referral', description: '🎁 Get your referral link and stats' },
+        { command: 'leaderboard', description: '🏆 View referral leaderboard' }
       ];
 
       await this.bot.setMyCommands(commands);
