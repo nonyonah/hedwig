@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { proposalGenerator } from './proposalGenerator';
+import { getEnvVar } from './envUtils';
 
 interface EmailAttachment {
   filename: string;
@@ -11,10 +12,26 @@ interface EmailOptions {
   subject: string;
   html: string;
   attachments?: EmailAttachment[];
+  replyTo?: string;
 }
 
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Ensure the app URL has a scheme and no trailing slash
+function ensureHttps(url: string): string {
+  try {
+    let u = (url || '').trim();
+    if (!u) return 'https://www.hedwigbot.xyz';
+    if (!/^https?:\/\//i.test(u)) {
+      u = `https://${u}`;
+    }
+    // remove trailing slashes
+    return u.replace(/\/+$/, '');
+  } catch {
+    return 'https://www.hedwigbot.xyz';
+  }
+}
 
 export async function sendEmailWithAttachment(options: EmailOptions): Promise<boolean> {
   try {
@@ -24,6 +41,10 @@ export async function sendEmailWithAttachment(options: EmailOptions): Promise<bo
       subject: options.subject,
       html: options.html,
     };
+
+    if (options.replyTo) {
+      emailData.reply_to = options.replyTo;
+    }
 
     // Add attachments if provided
     if (options.attachments && options.attachments.length > 0) {
@@ -61,6 +82,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
   const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
   const total = subtotal; // Total amount to be paid
   const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
+  const appUrl = ensureHttps(getEnvVar('NEXT_PUBLIC_APP_URL', 'https://www.hedwigbot.xyz'));
 
   return `
     <!DOCTYPE html>
@@ -211,7 +233,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
                                                             <tr>
                                                                 <td style="background-color: #8e01bb; border-radius: 8px;">
-                                                                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/invoice/${invoice.id}" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Pay Invoice</a>
+                                                                    <a href="${appUrl}/invoice/${invoice.id}" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Pay Invoice</a>
                                                                 </td>
                                                             </tr>
                                                         </table>

@@ -177,7 +177,10 @@ export class DynamicProposalGenerator {
       freelancerName: proposal.freelancer_name
     };
 
-    return this.generateNaturalProposal(inputs);
+    const baseContent = this.generateNaturalProposal(inputs);
+    const contactEmail = (proposal as any).freelancer_email || process.env.EMAIL_FROM || 'noreply@hedwigbot.xyz';
+    const contactLine = `\n\nYou can reach me at: ${contactEmail}`;
+    return `${baseContent}${contactLine}`;
   }
 
   generatePDFContent(proposal: ProposalData): {

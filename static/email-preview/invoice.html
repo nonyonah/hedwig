@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Invoice Email Preview</title>
+    <style>
+      body { font-family: Inter, Arial, sans-serif; background: #0F172A; color: #fff; margin: 0; }
+      .container { max-width: 720px; margin: 40px auto; padding: 24px; }
+      .card { background: linear-gradient(180deg, rgba(42,67,101,0.35) 0%, rgba(10,33,65,0.35) 100%); border: 1px solid #253550; border-radius: 16px; padding: 24px; }
+      .btn { display: inline-block; background: linear-gradient(180deg, #1883FF 0%, #0F55AD 100%);
+             color: #fff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; }
+      .muted { color: #C8D4E8; }
+      .header { display: flex; align-items: center; gap: 12px; }
+      .logo { width: 40px; height: 40px; border-radius: 8px; background: #123e79; display: grid; place-items: center; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="logo">H</div>
+        <div>
+          <div style="font-size: 20px; font-weight: 700;">Hedwig</div>
+          <div class="muted" style="font-size: 12px;">AI Assistant for Freelancers</div>
+        </div>
+      </div>
+      <div style="height: 16px"></div>
+      <div class="card">
+        <h2 style="margin-top:0">Invoice #INV-001</h2>
+        <p class="muted">This is a preview of the invoice email. The button below should link to the correct domain.</p>
+        <p><strong>Amount Due:</strong> $500.00</p>
+        <div style="height: 24px"></div>
+        <a class="btn" href="https://www.hedwigbot.xyz/invoice/cb47a596-3a2a-4832-a029-7df0bea669ad" target="_blank" rel="noopener noreferrer">Pay Invoice</a>
+        <div style="height: 12px"></div>
+        <div class="muted" style="font-size: 12px;">Expected link domain: https://www.hedwigbot.xyz</div>
+      </div>
+    </div>
+  </body>
+</html>
