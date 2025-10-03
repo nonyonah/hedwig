@@ -78,6 +78,20 @@ export class InvoiceReminderService {
       }
 
       // Send email reminder
+      const recipientEmail = invoice.client_email || '';
+      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail);
+      if (!recipientEmail || !isValidEmail) {
+        console.warn(`Skipping invoice reminder: invalid recipient email for invoice ${invoiceId}`, { recipientEmail });
+        await this.logReminder({
+          invoice_id: invoiceId,
+          reminder_type: reminderType,
+          message: `Invalid recipient email. ${message}`,
+          success: false,
+          error: 'Invalid or missing client email'
+        });
+        return false;
+      }
+
       const invoiceData = {
         id: invoiceId,
         invoice_number: invoice.invoice_number || invoiceId,
@@ -86,13 +100,13 @@ export class InvoiceReminderService {
         currency: invoice.token || 'USDC',
         due_date: invoice.due_date,
         client_name: invoice.client_name || 'Valued Client',
-        client_email: invoice.client_email || '',
+        client_email: recipientEmail,
         freelancer_name: invoice.users?.name || invoice.freelancer_name || 'Your Freelancer',
         custom_message: message
       };
       
       await sendEmail({
-        to: invoice.client_email || '',
+        to: recipientEmail,
         subject: `Payment Reminder: Invoice ${invoice.invoice_number || invoiceId}`,
         html: generateInvoiceEmailTemplate(invoiceData)
       });

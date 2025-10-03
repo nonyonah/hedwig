@@ -84,8 +84,22 @@ export class PaymentLinkReminderService {
       }
 
       // Send email reminder
+      const recipientEmail = paymentLink.recipient_email || '';
+      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail);
+      if (!recipientEmail || !isValidEmail) {
+        console.warn(`Skipping payment link reminder: invalid recipient email for payment link ${paymentLinkId}`, { recipientEmail });
+        await this.logReminder({
+          payment_link_id: paymentLinkId,
+          reminder_type: reminderType,
+          message: `Invalid recipient email. ${message}`,
+          success: false,
+          error: 'Invalid or missing recipient email'
+        });
+        return false;
+      }
+
       await sendPaymentLinkEmail({
-        recipientEmail: paymentLink.recipient_email || '',
+        recipientEmail,
         amount: parseFloat(paymentLink.amount),
         token: paymentLink.token || 'USDC',
         network: paymentLink.network || 'base',

@@ -18,15 +18,31 @@ export interface PendingTransaction {
 }
 
 class SupabaseTransactionStorage {
-  private readonly TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly TTL_MS = 24 * 60 * 60 * 1000; // 24 hours (unused, kept for compatibility)
+
+  private normalizeNetwork(network: string): string {
+    const n = (network || '').trim().toLowerCase();
+    switch (n) {
+      case 'base':
+      case 'solana':
+      case 'celo':
+      case 'lisk':
+      case 'arbitrum':
+        return n;
+    }
+    // Common aliases
+    if (n === 'eth' || n === 'ethereum' || n === 'base-mainnet') return 'base';
+    if (n === 'sol' || n === 'solana-mainnet') return 'solana';
+    if (n === 'celo-mainnet') return 'celo';
+    if (n.startsWith('lisk')) return 'lisk';
+    if (n === 'arb' || n === 'arbitrum-one') return 'arbitrum';
+    return n;
+  }
 
   /**
    * Store a pending transaction in Supabase
    */
   async store(transactionId: string, transaction: Omit<PendingTransaction, 'transactionId' | 'createdAt' | 'expiresAt'>): Promise<void> {
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.TTL_MS);
-
     const pendingTransaction = {
       transaction_id: transactionId,
       user_id: transaction.userId,
@@ -35,12 +51,11 @@ class SupabaseTransactionStorage {
       amount: transaction.amount,
       token_symbol: transaction.tokenSymbol,
       token_address: transaction.tokenAddress,
-      network: transaction.network,
+      network: this.normalizeNetwork(transaction.network),
       status: transaction.status,
       transaction_hash: transaction.transactionHash,
       error_message: transaction.errorMessage,
       metadata: transaction.metadata,
-      expires_at: expiresAt.toISOString(),
     };
 
     const { error } = await supabase
@@ -52,7 +67,7 @@ class SupabaseTransactionStorage {
       throw new Error(`Failed to store transaction: ${error.message}`);
     }
 
-    console.log(`[TransactionStorage] Stored transaction ${transactionId}, expires at ${expiresAt.toISOString()}`);
+    console.log(`[TransactionStorage] Stored transaction ${transactionId}`);
   }
 
   /**
@@ -78,15 +93,6 @@ class SupabaseTransactionStorage {
       return null;
     }
 
-    // Check if transaction has expired
-    const now = new Date();
-    const expiresAt = new Date(data.expires_at);
-    if (now > expiresAt) {
-      // Transaction has expired, remove it and return null
-      await this.remove(transactionId);
-      return null;
-    }
-
     return {
       transactionId: data.transaction_id,
       userId: data.user_id,
@@ -95,13 +101,13 @@ class SupabaseTransactionStorage {
       amount: data.amount,
       tokenSymbol: data.token_symbol,
       tokenAddress: data.token_address,
-      network: data.network,
+      network: this.normalizeNetwork(data.network),
       status: data.status,
       transactionHash: data.transaction_hash,
       errorMessage: data.error_message,
       metadata: data.metadata,
-      createdAt: new Date(data.created_at),
-      expiresAt: new Date(data.expires_at),
+      createdAt: data.created_at ? new Date(data.created_at) : new Date(),
+      expiresAt: data.expires_at ? new Date(data.expires_at) : (data.created_at ? new Date(data.created_at) : new Date()),
     };
   }
 
@@ -117,7 +123,7 @@ class SupabaseTransactionStorage {
     if (updates.amount !== undefined) updateData.amount = updates.amount;
     if (updates.tokenSymbol !== undefined) updateData.token_symbol = updates.tokenSymbol;
     if (updates.tokenAddress !== undefined) updateData.token_address = updates.tokenAddress;
-    if (updates.network !== undefined) updateData.network = updates.network;
+    if (updates.network !== undefined) updateData.network = this.normalizeNetwork(updates.network);
     if (updates.status !== undefined) updateData.status = updates.status;
     if (updates.transactionHash !== undefined) updateData.transaction_hash = updates.transactionHash;
     if (updates.errorMessage !== undefined) updateData.error_message = updates.errorMessage;
@@ -214,44 +220,21 @@ class SupabaseTransactionStorage {
    * Note: Completed transactions are moved to permanent storage, not deleted
    */
   async cleanupExpired(): Promise<number> {
-    const now = new Date();
-    
     try {
-      // First, try the query with expires_at column
       const { data, error } = await supabase
         .from('pending_transactions')
         .delete()
-        .or(`expires_at.lt.${now.toISOString()},status.eq.failed,status.eq.expired`)
+        .in('status', ['failed', 'expired'])
         .select('transaction_id');
 
       if (error) {
         console.error('[TransactionStorage] Error cleaning up transactions:', error);
-        // If expires_at column doesn't exist, fall back to created_at based cleanup
-        if (error.code === '42703' && error.message.includes('expires_at')) {
-          console.warn('[TransactionStorage] expires_at column not found, using created_at fallback');
-          const fallbackTime = new Date(now.getTime() - this.TTL_MS);
-          
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from('pending_transactions')
-            .delete()
-            .or(`created_at.lt.${fallbackTime.toISOString()},status.eq.failed,status.eq.expired`)
-            .select('transaction_id');
-
-          if (fallbackError) {
-            console.error('[TransactionStorage] Error cleaning up transactions (fallback):', fallbackError);
-            throw new Error(`Failed to cleanup transactions: ${fallbackError.message}`);
-          }
-
-          console.log(`[TransactionStorage] Cleaned up ${fallbackData?.length || 0} expired transactions (fallback)`);
-          return fallbackData?.length || 0;
-        }
-        
         throw new Error(`Failed to cleanup transactions: ${error.message}`);
       }
 
       const cleanedCount = data?.length || 0;
       if (cleanedCount > 0) {
-        console.log(`[TransactionStorage] Cleaned up ${cleanedCount} expired/failed transactions`);
+        console.log(`[TransactionStorage] Cleaned up ${cleanedCount} failed/expired transactions`);
       }
 
       return cleanedCount;
@@ -298,43 +281,24 @@ class SupabaseTransactionStorage {
       return [];
     }
 
-    // Filter out expired transactions and clean them up
-    const now = new Date();
-    const validTransactions: PendingTransaction[] = [];
-    const expiredIds: string[] = [];
+    const transactions: PendingTransaction[] = data.map((row: any) => ({
+      transactionId: row.transaction_id,
+      userId: row.user_id,
+      fromAddress: row.from_address,
+      toAddress: row.to_address,
+      amount: row.amount,
+      tokenSymbol: row.token_symbol,
+      tokenAddress: row.token_address,
+      network: this.normalizeNetwork(row.network),
+      status: row.status,
+      transactionHash: row.transaction_hash,
+      errorMessage: row.error_message,
+      metadata: row.metadata,
+      createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+      expiresAt: row.expires_at ? new Date(row.expires_at) : (row.created_at ? new Date(row.created_at) : new Date()),
+    }));
 
-    for (const row of data) {
-      const expiresAt = new Date(row.expires_at);
-      if (now > expiresAt) {
-        expiredIds.push(row.transaction_id);
-      } else {
-        validTransactions.push({
-          transactionId: row.transaction_id,
-          userId: row.user_id,
-          fromAddress: row.from_address,
-          toAddress: row.to_address,
-          amount: row.amount,
-          tokenSymbol: row.token_symbol,
-          tokenAddress: row.token_address,
-          network: row.network,
-          status: row.status,
-          transactionHash: row.transaction_hash,
-          errorMessage: row.error_message,
-          metadata: row.metadata,
-          createdAt: new Date(row.created_at),
-          expiresAt: new Date(row.expires_at),
-        });
-      }
-    }
-
-    // Clean up expired transactions in the background
-    if (expiredIds.length > 0) {
-      Promise.all(expiredIds.map(id => this.remove(id))).catch(error => {
-        console.error('[TransactionStorage] Error cleaning up expired transactions:', error);
-      });
-    }
-
-    return validTransactions;
+    return transactions;
   }
 
   /**
@@ -364,7 +328,7 @@ class SupabaseTransactionStorage {
       amount: row.amount,
       tokenSymbol: row.token_symbol,
       tokenAddress: row.token_address,
-      network: row.network,
+      network: this.normalizeNetwork(row.network),
       status: row.status,
       transactionHash: row.transaction_hash,
       errorMessage: row.error_message,

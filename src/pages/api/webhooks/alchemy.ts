@@ -200,6 +200,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } else {
         continue; // Skip unsupported transfers
       }
+
+      // Normalize network name to remove "mainnet" suffix and capture token address
+      const normalizedNetwork = event.event.network
+        .replace(/[-_]mainnet$/i, '')
+        .replace(/mainnet$/i, '')
+        .toLowerCase();
+      const tokenAddress = isUSDC ? transfer.rawContract.address : null;
       
       // Find the recipient user by wallet address (case-insensitive)
       console.log(`🔍 Looking up wallet address: ${transfer.toAddress}`);
@@ -273,6 +280,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tx_hash: transfer.hash,
             status: 'completed'
           });
+
+        // Record completed transaction for permanent storage
+        await supabase
+          .from('completed_transactions')
+          .upsert({
+            user_id: walletData.user_id,
+            from_address: transfer.fromAddress,
+            to_address: transfer.toAddress,
+            amount: amount,
+            token_symbol: currency,
+            token_address: tokenAddress,
+            network: normalizedNetwork,
+            status: 'completed',
+            transaction_hash: transfer.hash,
+            completed_at: new Date().toISOString(),
+            metadata: { paymentType: 'invoice', invoiceId: invoiceData.id }
+          }, { onConflict: 'transaction_hash' });
       } else {
         // Check for matching payment link
         const { data: paymentLinkData } = await supabase
@@ -301,6 +325,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               payer_wallet_address: transfer.fromAddress
             })
             .eq('id', paymentLinkData.id);
+
+          // Record completed transaction for permanent storage
+          await supabase
+            .from('completed_transactions')
+            .upsert({
+              user_id: walletData.user_id,
+              from_address: transfer.fromAddress,
+              to_address: transfer.toAddress,
+              amount: amount,
+              token_symbol: currency,
+              token_address: tokenAddress,
+              network: normalizedNetwork,
+              status: 'completed',
+              transaction_hash: transfer.hash,
+              completed_at: new Date().toISOString(),
+              metadata: { paymentType: 'payment_link', paymentLinkId: paymentLinkData.id }
+            }, { onConflict: 'transaction_hash' });
         } else if (paymentType === 'direct_transfer') {
           // For direct transfers, create a record in payments table for tracking
           await supabase
@@ -314,14 +355,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               recipient_wallet: transfer.toAddress,
               recipient_user_id: walletData.user_id
             });
+
+          // Record completed transaction for permanent storage
+          await supabase
+            .from('completed_transactions')
+            .upsert({
+              user_id: walletData.user_id,
+              from_address: transfer.fromAddress,
+              to_address: transfer.toAddress,
+              amount: amount,
+              token_symbol: currency,
+              token_address: tokenAddress,
+              network: normalizedNetwork,
+              status: 'completed',
+              transaction_hash: transfer.hash,
+              completed_at: new Date().toISOString(),
+              metadata: { paymentType: 'direct_transfer' }
+            }, { onConflict: 'transaction_hash' });
         }
       }
-
-      // Normalize network name to remove "mainnet" suffix
-      const normalizedNetwork = event.event.network
-        .replace(/[-_]mainnet$/i, '')
-        .replace(/mainnet$/i, '')
-        .toLowerCase();
 
       // Send notification via the payment-notifications webhook
       try {

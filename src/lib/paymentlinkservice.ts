@@ -225,6 +225,13 @@ export interface SendPaymentLinkEmailParams {
 export async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): Promise<void> {
   const { recipientEmail, amount, token, network, paymentLink, senderName, reason, isReminder } = params;
 
+  // Validate recipient email
+  const recipient = (recipientEmail || '').trim();
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient);
+  if (!recipient || !isValidEmail) {
+    throw new Error('Invalid recipient email');
+  }
+
   if (!process.env.RESEND_API_KEY) {
     throw new Error('RESEND_API_KEY is not configured');
   }
@@ -242,13 +249,13 @@ export async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): 
   const userEmail = userData?.email; // Keep user email for display purposes
 
   const emailHtml = generatePaymentLinkEmailTemplate({
-     sender_name: displayName,
-     amount,
-     token,
-     reason,
-     custom_message: params.customMessage,
-     payment_link: paymentLink
-   });
+    sender_name: displayName,
+    amount: Number(amount) || 0,
+    token: token || 'USDC',
+    reason: reason || 'Payment Request',
+    custom_message: params.customMessage,
+    payment_link: paymentLink || '#'
+  });
 
   const subject = isReminder 
     ? `Payment Reminder: ${amount} ${token.toUpperCase()} for ${reason}`
@@ -256,7 +263,7 @@ export async function sendPaymentLinkEmail(params: SendPaymentLinkEmailParams): 
 
   const result = await resend.emails.send({
     from: `${displayName} <${senderEmail}>`,
-    to: recipientEmail,
+    to: recipient,
     subject,
     html: emailHtml
   });

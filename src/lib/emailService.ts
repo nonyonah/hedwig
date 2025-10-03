@@ -35,9 +35,17 @@ function ensureHttps(url: string): string {
 
 export async function sendEmailWithAttachment(options: EmailOptions): Promise<boolean> {
   try {
+    // Validate recipient email to prevent mis-sends
+    const recipient = (options.to || '').trim();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient);
+    if (!recipient || !isValidEmail) {
+      console.warn('Skipping email send: invalid or empty recipient', { to: options.to });
+      return false;
+    }
+
     const emailData: any = {
       from: process.env.EMAIL_FROM || 'noreply@hedwigbot.xyz',
-      to: options.to,
+      to: recipient,
       subject: options.subject,
       html: options.html,
     };
@@ -78,7 +86,19 @@ export const sendEmail = sendEmailWithAttachment;
 
 // Template functions
 export function generateInvoiceEmailTemplate(invoice: any): string {
-  const subtotal = invoice.amount;
+  const amount = Number(invoice?.amount) || 0;
+  const currency = invoice?.currency || invoice?.token || 'USDC';
+  const invoiceNumber = invoice?.invoice_number || invoice?.invoiceNumber || '—';
+  const freelancerName = invoice?.freelancer_name || 'Freelancer';
+  const clientName = invoice?.client_name || 'Client';
+  const description = invoice?.project_description || 'Project work';
+  const deliverables = invoice?.deliverables;
+  const dueDateRaw = invoice?.due_date;
+  const dueDate = dueDateRaw ? new Date(dueDateRaw).toLocaleDateString() : '—';
+  const freelancerEmail = invoice?.freelancer_email || '';
+  const invoiceId = invoice?.id || invoice?.invoice_id || '';
+
+  const subtotal = amount;
   const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
   const total = subtotal; // Total amount to be paid
   const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
@@ -90,7 +110,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Invoice ${invoice.invoice_number}</title>
+        <title>Invoice ${invoiceNumber}</title>
         <!--[if mso]>
         <noscript>
           <xml>
@@ -128,8 +148,8 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                     <!-- Card Header -->
                                     <tr>
                                         <td style="padding: 32px 32px 24px 32px; text-align: center; border-bottom: 1px solid #f1f5f9;">
-                                            <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #262624;">Invoice ${invoice.invoice_number}</h2>
-                                            <p style="margin: 0; color: #64748b; font-size: 16px;">From ${invoice.freelancer_name}</p>
+                                            <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #262624;">Invoice ${invoiceNumber}</h2>
+                                            <p style="margin: 0; color: #64748b; font-size: 16px;">From ${freelancerName}</p>
                                         </td>
                                     </tr>
                                     
@@ -137,7 +157,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                     <tr>
                                         <td style="padding: 32px;">
                                             <!-- Greeting -->
-                                            <p style="margin: 0 0 24px 0; color: #262624; font-size: 16px; line-height: 1.5;">Dear ${invoice.client_name},</p>
+                                            <p style="margin: 0 0 24px 0; color: #262624; font-size: 16px; line-height: 1.5;">Dear ${clientName},</p>
                                             <p style="margin: 0 0 32px 0; color: #64748b; font-size: 16px; line-height: 1.5;">Please find your invoice for the following project:</p>
                                             
                                             <!-- Project Details -->
@@ -150,16 +170,16 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Description:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${invoice.project_description}</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${description}</td>
                                                             </tr>
                                                         </table>
                                                         
-                                                        ${invoice.deliverables ? `
+                                                        ${deliverables ? `
                                                         <!-- Deliverables Row -->
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Deliverables:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${invoice.deliverables}</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${deliverables}</td>
                                                             </tr>
                                                         </table>
                                                         ` : ''}
@@ -168,7 +188,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Due Date:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${invoice.due_date}</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${dueDate}</td>
                                                             </tr>
                                                         </table>
                                                     </td>
@@ -185,7 +205,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 8px;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px;">Invoice Amount:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500; text-align: right;">${subtotal.toLocaleString()} ${invoice.currency}</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500; text-align: right;">${subtotal.toLocaleString()} ${currency}</td>
                                                             </tr>
                                                         </table>
                                                         
@@ -193,7 +213,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 8px;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px;">Platform Fee (1% deducted):</td>
-                                                                <td style="color: #64748b; font-size: 14px; text-align: right;">-${platformFee.toLocaleString()} ${invoice.currency}</td>
+                                                                <td style="color: #64748b; font-size: 14px; text-align: right;">-${platformFee.toLocaleString()} ${currency}</td>
                                                             </tr>
                                                         </table>
                                                         
@@ -201,7 +221,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px;">Freelancer Receives:</td>
-                                                                <td style="color: #64748b; font-size: 14px; text-align: right;">${freelancerReceives.toLocaleString()} ${invoice.currency}</td>
+                                                                <td style="color: #64748b; font-size: 14px; text-align: right;">${freelancerReceives.toLocaleString()} ${currency}</td>
                                                             </tr>
                                                         </table>
                                                         
@@ -209,7 +229,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                             <tr>
                                                                 <td style="color: #262624; font-size: 18px; font-weight: 600;">Total Due:</td>
-                                                                <td style="color: #8e01bb; font-size: 24px; font-weight: 700; text-align: right;">${total.toLocaleString()} ${invoice.currency}</td>
+                                                                <td style="color: #8e01bb; font-size: 24px; font-weight: 700; text-align: right;">${total.toLocaleString()} ${currency}</td>
                                                             </tr>
                                                         </table>
                                                     </td>
@@ -233,7 +253,7 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
                                                             <tr>
                                                                 <td style="background-color: #8e01bb; border-radius: 8px;">
-                                                                    <a href="${appUrl}/invoice/${invoice.id}" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Pay Invoice</a>
+                                                                    ${invoiceId ? `<a href="${appUrl}/invoice/${invoiceId}" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Pay Invoice</a>` : `<span style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Invoice Link Unavailable</span>`}
                                                                 </td>
                                                             </tr>
                                                         </table>
@@ -246,8 +266,8 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
                                             
                                             <p style="margin: 0; color: #262624; font-size: 14px; line-height: 1.5;">
                                                 Best regards,<br>
-                                                <strong>${invoice.freelancer_name}</strong><br>
-                                                <span style="color: #64748b;">${invoice.freelancer_email}</span>
+                                                <strong>${freelancerName}</strong><br>
+                                                <span style="color: #64748b;">${freelancerEmail}</span>
                                             </p>
                                         </td>
                                     </tr>
@@ -265,6 +285,12 @@ export function generateInvoiceEmailTemplate(invoice: any): string {
 
 // Payment link email template
 export function generatePaymentLinkEmailTemplate(paymentData: any): string {
+  const senderName = paymentData?.sender_name || 'Your Service Provider';
+  const customMessage = paymentData?.custom_message;
+  const reason = paymentData?.reason || 'Payment Request';
+  const amount = Number(paymentData?.amount) || 0;
+  const token = paymentData?.token || 'USDC';
+  const paymentLink = paymentData?.payment_link || '#';
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -310,19 +336,19 @@ export function generatePaymentLinkEmailTemplate(paymentData: any): string {
                                     <tr>
                                         <td style="padding: 32px 32px 24px 32px; text-align: center; border-bottom: 1px solid #f1f5f9;">
                                             <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #262624;">Payment Request</h2>
-                                            <p style="margin: 0; color: #64748b; font-size: 16px;">from ${paymentData.sender_name || 'Your Service Provider'}</p>
+                                            <p style="margin: 0; color: #64748b; font-size: 16px;">from ${senderName}</p>
                                         </td>
                                     </tr>
                                     
                                     <!-- Card Content -->
                                     <tr>
                                         <td style="padding: 32px;">
-                                            ${paymentData.custom_message ? `
+                                            ${customMessage ? `
                                             <!-- Custom Message -->
                                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 24px; border-left: 4px solid #8e01bb;">
                                                 <tr>
                                                     <td>
-                                                        <p style="margin: 0; color: #262624; font-size: 16px; line-height: 1.5; font-style: italic;">${paymentData.custom_message}</p>
+                                                        <p style="margin: 0; color: #262624; font-size: 16px; line-height: 1.5; font-style: italic;">${customMessage}</p>
                                                     </td>
                                                 </tr>
                                             </table>
@@ -340,7 +366,7 @@ export function generatePaymentLinkEmailTemplate(paymentData: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px;">Description</td>
-                                                                <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${paymentData.reason || 'Payment Request'}</td>
+                                                                <td style="color: #262624; font-weight: 500; font-size: 14px; text-align: right;">${reason}</td>
                                                             </tr>
                                                         </table>
                                                     </td>
@@ -350,7 +376,7 @@ export function generatePaymentLinkEmailTemplate(paymentData: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 16px; font-weight: 500;">Total Amount</td>
-                                                                <td style="color: #262624; font-weight: 600; font-size: 20px; text-align: right;">${paymentData.amount} ${paymentData.token || 'USDC'}</td>
+                                                                <td style="color: #262624; font-weight: 600; font-size: 20px; text-align: right;">${amount} ${token}</td>
                                                             </tr>
                                                         </table>
                                                     </td>
@@ -361,7 +387,7 @@ export function generatePaymentLinkEmailTemplate(paymentData: any): string {
                                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 24px;">
                                                 <tr>
                                                     <td style="text-align: center;">
-                                                        <a href="${paymentData.payment_link}" style="display: inline-block; background-color: #8e01bb; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; line-height: 1.2;">Complete Payment</a>
+                                                        ${paymentLink !== '#' ? `<a href="${paymentLink}" style="display: inline-block; background-color: #8e01bb; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; line-height: 1.2;">Complete Payment</a>` : `<span style="display: inline-block; background-color: #8e01bb; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; line-height: 1.2;">Payment Link Unavailable</span>`}
                                                     </td>
                                                 </tr>
                                             </table>
@@ -370,8 +396,8 @@ export function generatePaymentLinkEmailTemplate(paymentData: any): string {
                                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc; border-radius: 8px; padding: 16px;">
                                                 <tr>
                                                     <td>
-                                                        <p style="margin: 0 0 8px 0; color: #64748b; font-size: 14px; font-weight: 500;">Alternative access:</p>
-                                                        <p style="margin: 0; word-break: break-all; color: #8e01bb; font-size: 12px; font-family: monospace;">${paymentData.payment_link}</p>
+                                                        ${paymentLink !== '#' ? `<p style="margin: 0 0 8px 0; color: #64748b; font-size: 14px; font-weight: 500;">Alternative access:</p>
+                                                        <p style="margin: 0; word-break: break-all; color: #8e01bb; font-size: 12px; font-family: monospace;">${paymentLink}</p>` : ''}
                                                     </td>
                                                 </tr>
                                             </table>
