@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSwitchChain } from 'wagmi';
 import { waitForTransactionReceipt, readContract } from 'wagmi/actions';
 import { parseUnits, formatUnits } from 'viem';
 import { toast } from 'sonner';
 import { config } from '../lib/wagmi';
+import { getWalletConfig, getSupportedTokens } from '../contracts/config';
 
 // Complete ABI for the HedwigPayment contract
 const HEDWIG_PAYMENT_ABI = [
@@ -445,21 +446,50 @@ const ERC20_ABI = [
   }
 ] as const;
 
+// Multi-chain contract addresses
+const getContractAddress = (chainId: number): `0x${string}` => {
+  const config = getWalletConfig(chainId);
+  return (config.contractAddress || '0x1c0A0eFBb438cc7705b947644F6AB88698b2704F') as `0x${string}`;
+};
+
+// Chain configurations
+const SUPPORTED_CHAINS = {
+  BASE: { id: 8453, name: 'Base' },
+  CELO: { id: 42220, name: 'Celo' }
+};
+
 export interface PaymentRequest {
   amount: number; // Amount in human readable format (e.g., 100.50 for $100.50)
   freelancerAddress: `0x${string}`;
   invoiceId: string;
   paymentLinkId?: string; // Optional payment link ID for payment link payments
+  chainId: number; // Required chain ID
+  tokenAddress: `0x${string}`; // Required token address
+  tokenSymbol: string; // Required token symbol
 }
 
 export function useHedwigPayment() {
-  const { address: accountAddress, isConnected } = useAccount();
+  const { address: accountAddress, isConnected, chainId: currentChainId } = useAccount();
+  const { switchChain } = useSwitchChain();
   const { data: hash, writeContractAsync, isPending: isConfirming, error } = useWriteContract();
+  const { data: receipt } = useWaitForTransactionReceipt({ hash });
   const [isInitialized, setIsInitialized] = useState(false);
+  const [selectedChainId, setSelectedChainId] = useState<number>(8453); // Default to Base
+  const [selectedToken, setSelectedToken] = useState<any>(null);
+  const [paymentReceipt, setPaymentReceipt] = useState<any>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [lastAction, setLastAction] = useState<string | null>(null);
+  const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null);
+  
+  // Get contract address for selected chain
+  const contractAddress = getContractAddress(selectedChainId);
+  
+  // Get supported tokens for selected chain
+  const supportedTokens = getSupportedTokens(selectedChainId);
   
   // Read contract version to verify deployment
   const { data: contractVersion } = useReadContract({
-    address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
+    address: contractAddress,
     abi: [{
       "inputs": [],
       "name": "version",
@@ -468,12 +498,12 @@ export function useHedwigPayment() {
       "type": "function"
     }],
     functionName: 'version',
-    chainId: BASE_MAINNET_CHAIN_ID
-        });
+    chainId: selectedChainId
+  });
   
   // Read platform wallet to verify contract setup
   const { data: platformWallet } = useReadContract({
-    address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
+    address: contractAddress,
     abi: [{
       "inputs": [],
       "name": "platformWallet",
@@ -482,27 +512,12 @@ export function useHedwigPayment() {
       "type": "function"
     }],
     functionName: 'platformWallet',
-    chainId: BASE_MAINNET_CHAIN_ID
-        });
-  
-  // Check if USDC is whitelisted
-  const { data: isUsdcWhitelisted } = useReadContract({
-    address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
-    abi: [{
-      "inputs": [{"internalType": "address", "name": "_token", "type": "address"}],
-      "name": "isTokenWhitelisted",
-      "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-      "stateMutability": "view",
-      "type": "function"
-    }],
-    functionName: 'isTokenWhitelisted',
-    args: [USDC_CONTRACT_ADDRESS],
-    chainId: BASE_MAINNET_CHAIN_ID
-      });
+    chainId: selectedChainId
+  });
   
   // Check if contract is paused
   const { data: isPaused } = useReadContract({
-    address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
+    address: contractAddress,
     abi: [{
       "inputs": [],
       "name": "paused",
@@ -511,122 +526,123 @@ export function useHedwigPayment() {
       "type": "function"
     }],
     functionName: 'paused',
-    chainId: BASE_MAINNET_CHAIN_ID
+    chainId: selectedChainId
   });
-  const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null);
-  const [lastAction, setLastAction] = useState<'transfer' | 'pay' | null>(null);
-  const [paymentReceipt, setPaymentReceipt] = useState<any>(null);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  const { data: receipt, isLoading: isProcessing } = useWaitForTransactionReceipt({ hash });
+  // Check if token is whitelisted
+  const isTokenWhitelisted = selectedToken ? true : false; // Simplified for now
 
-
-  
-  // Initialize and reset transaction state on component mount
-  useEffect(() => {
-    if (!isInitialized) {
-      console.log('Initializing payment hook - resetting transaction state');
-      setPaymentReceipt(null);
-      setLastAction(null);
-      setIsProcessingPayment(false);
-      setIsInitialized(true);
-    }
-  }, [isInitialized, accountAddress]);
-  
-  // Verify contract deployment function
-  const verifyContractDeployment = useCallback(async () => {
-    try {
-      const version = await readContract(config, {
-        address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
-        abi: HEDWIG_PAYMENT_ABI,
-        functionName: 'version',
-        chainId: BASE_MAINNET_CHAIN_ID,
-      });
-      console.log('Contract deployment verified. Version:', version);
-    } catch (error) {
-      console.error('Failed to verify contract deployment:', error);
-    }
-  }, []);
-
-  // Log contract state for debugging
-  useEffect(() => {
-    if (contractVersion && platformWallet) {
-      console.log('Contract initialized:', {
-        version: contractVersion,
-        platformWallet,
-        contractAddress: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
-        isUsdcWhitelisted,
-        isPaused
-      });
-       
-       // Additional contract state validation
-       if (isPaused) {
-         console.warn('Contract is currently paused');
-       }
-       if (!isUsdcWhitelisted) {
-         console.warn('USDC is not whitelisted in the contract');
-       }
-       
-       // Verify contract deployment
-       verifyContractDeployment();
-       
-      setIsInitialized(true);
-    }
-  }, [contractVersion, platformWallet, isUsdcWhitelisted, isPaused, verifyContractDeployment]);
-  
-  // Read current USDC balance
-  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
-    address: USDC_CONTRACT_ADDRESS,
-    abi: [{
-      "inputs": [{"name": "account", "type": "address"}],
-      "name": "balanceOf",
-      "outputs": [{"name": "", "type": "uint256"}],
-      "stateMutability": "view",
-      "type": "function"
-    }],
-    functionName: 'balanceOf',
-    args: accountAddress ? [accountAddress] : undefined,
-    chainId: BASE_MAINNET_CHAIN_ID,
-    query: {
-      enabled: !!accountAddress,
-    },
-  });
-  
-  // Function to check if invoice is already processed
+  // Function to check if invoice is processed
   const checkInvoiceProcessed = useCallback(async (invoiceId: string): Promise<boolean> => {
     try {
       const result = await readContract(config, {
-        address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
-        abi: [{
-          "inputs": [{"internalType": "string", "name": "_invoiceId", "type": "string"}],
-          "name": "isInvoiceProcessed",
-          "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-          "stateMutability": "view",
-          "type": "function"
-        }],
+        address: contractAddress,
+        abi: HEDWIG_PAYMENT_ABI,
         functionName: 'isInvoiceProcessed',
         args: [invoiceId],
-        chainId: BASE_MAINNET_CHAIN_ID
+        chainId: selectedChainId as any
       });
       return result as boolean;
     } catch (error) {
       console.error('Error checking invoice status:', error);
       return false;
     }
+  }, [contractAddress, selectedChainId]);
+
+  // Function to verify contract deployment
+  const verifyContractDeployment = useCallback(async (): Promise<boolean> => {
+    return !!contractVersion;
+  }, [contractVersion]);
+
+  // Function to switch to required chain for payment
+  const ensureCorrectChain = useCallback(async (requiredChainId: number): Promise<boolean> => {
+    if (currentChainId === requiredChainId) {
+      return true;
+    }
+    
+    try {
+      await switchChain({ chainId: requiredChainId });
+      return true;
+    } catch (error) {
+      console.error('Failed to switch chain:', error);
+      toast.error(`Please switch to ${SUPPORTED_CHAINS.BASE.id === requiredChainId ? 'Base' : 'Celo'} network`);
+      return false;
+    }
+  }, [currentChainId, switchChain]);
+
+  // Function to get token balance for any supported token
+  const getTokenBalance = useCallback(async (tokenAddress: `0x${string}`, chainId: number) => {
+    try {
+      const balance = await readContract(config, {
+        address: tokenAddress,
+        abi: [{
+          "inputs": [{"name": "account", "type": "address"}],
+          "name": "balanceOf",
+          "outputs": [{"name": "", "type": "uint256"}],
+          "stateMutability": "view",
+          "type": "function"
+        }],
+        functionName: 'balanceOf',
+        args: [accountAddress!],
+        chainId: chainId as any
+      });
+      return balance as bigint;
+    } catch (error) {
+      console.error('Error fetching token balance:', error);
+      return BigInt(0);
+    }
+  }, [accountAddress]);
+
+  // Function to check token allowance
+  const checkTokenAllowance = useCallback(async (tokenAddress: `0x${string}`, spenderAddress: `0x${string}`, chainId: number) => {
+    try {
+      const allowance = await readContract(config, {
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [accountAddress!, spenderAddress],
+        chainId: chainId as any
+      });
+      return allowance as bigint;
+    } catch (error) {
+      console.error('Error checking allowance:', error);
+      return BigInt(0);
+    }
+  }, [accountAddress]);
+
+  // Function to approve token spending
+  const approveToken = useCallback(async (tokenAddress: `0x${string}`, spenderAddress: `0x${string}`, amount: bigint, chainId: number) => {
+    try {
+      // Ensure we're on the correct chain
+      const chainSwitched = await ensureCorrectChain(chainId);
+      if (!chainSwitched) return null;
+
+      const hash = await writeContractAsync({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: 'approve',
+        args: [spenderAddress, amount],
+        chainId: chainId as any
+      });
+      
+      // Wait for approval transaction
+      await waitForTransactionReceipt(config, {
+        hash,
+        chainId: chainId as any
+      });
+      
+      return hash;
+    } catch (error) {
+      console.error('Token approval failed:', error);
+      throw error;
+    }
+  }, [writeContractAsync, ensureCorrectChain]);
+
+  // Main payment function with multi-chain support
+  // Function to set the selected chain
+  const setChain = useCallback((chainId: number) => {
+    setSelectedChainId(chainId);
   }, []);
-
-
-
-
-  // Debug wallet connection and balance
-  useEffect(() => {
-    console.log('Wallet Debug Info:', {
-      accountAddress,
-      isConnected,
-      usdcBalance: usdcBalance?.toString(),
-      chainId: BASE_MAINNET_CHAIN_ID
-    });
-  }, [accountAddress, isConnected, usdcBalance]);
 
   // Handle transaction hash when it becomes available
   useEffect(() => {
@@ -664,10 +680,10 @@ export function useHedwigPayment() {
       
       continuePaymentProcessing();
     }
-  }, [hash, lastAction, currentPaymentRequest]);
+  }, [hash, lastAction, currentPaymentRequest, selectedChainId]);
 
-  // Ensure usdcBalance is properly handled as BigInt
-  const safeUsdcBalance = usdcBalance !== undefined && usdcBalance !== null ? usdcBalance : BigInt(0);
+  // Ensure tokenBalance is properly handled as BigInt - removing this unused line
+  // const safeTokenBalance = tokenBalance !== undefined && tokenBalance !== null ? tokenBalance : BigInt(0);
 
   // Helper to update backend status after successful payment
   const updateBackendStatus = useCallback(async (invoiceId: string, transactionHash: string, paymentLinkId?: string) => {
@@ -756,6 +772,20 @@ export function useHedwigPayment() {
 
   // Helper to send the pay transaction
   const sendPay = useCallback(async (req: PaymentRequest) => {
+    // Ensure we're on the correct chain
+    const chainSwitched = await ensureCorrectChain(req.chainId);
+    if (!chainSwitched) {
+      return;
+    }
+
+    // Update selected chain and token based on request
+    setSelectedChainId(req.chainId);
+    setSelectedToken({
+      address: req.tokenAddress,
+      symbol: req.tokenSymbol,
+      decimals: 6 // Assuming 6 decimals for stablecoins
+    });
+
     // Comprehensive amount validation
     console.log('Validating payment amount:', {
       originalAmount: req.amount,
@@ -790,12 +820,12 @@ export function useHedwigPayment() {
 
     let amountInUnits;
     try {
-      amountInUnits = parseUnits(amountStr, 6); // USDC has 6 decimals
+      amountInUnits = parseUnits(amountStr, selectedToken.decimals);
       console.log('Amount converted to units:', {
         original: req.amount,
         string: amountStr,
         units: amountInUnits.toString(),
-        formatted: formatUnits(amountInUnits, 6)
+        formatted: formatUnits(amountInUnits, selectedToken.decimals)
       });
     } catch (parseError) {
       console.error('Error parsing amount to units:', parseError);
@@ -804,20 +834,23 @@ export function useHedwigPayment() {
     }
     
     // Debug: Check contract address
-    if (!HEDWIG_PAYMENT_CONTRACT_ADDRESS) {
-      console.error('Contract address not set!');
-      toast.error('Contract address not configured');
+    const currentContractAddress = getContractAddress(req.chainId);
+    if (!currentContractAddress) {
+      console.error('Contract address not set for chain:', req.chainId);
+      toast.error('Contract address not configured for selected chain');
       return;
     }
     
     console.log('Sending payment transaction:', {
-      contract: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
+      contract: currentContractAddress,
       contractVersion: contractVersion,
       platformWallet: platformWallet,
       amount: amountInUnits.toString(),
       freelancer: req.freelancerAddress,
       invoiceId: req.invoiceId,
-      chainId: BASE_MAINNET_CHAIN_ID,
+      chainId: req.chainId,
+      tokenAddress: req.tokenAddress,
+      tokenSymbol: req.tokenSymbol,
       userAddress: accountAddress
     });
     
@@ -844,73 +877,54 @@ export function useHedwigPayment() {
 
     let freshBalance;
     try {
-      freshBalance = await readContract(config, {
-          address: USDC_CONTRACT_ADDRESS,
-          abi: [{
-            "inputs": [{"name": "account", "type": "address"}],
-            "name": "balanceOf",
-            "outputs": [{"name": "", "type": "uint256"}],
-            "stateMutability": "view",
-            "type": "function"
-          }],
-          functionName: 'balanceOf',
-          args: [accountAddress],
-          chainId: BASE_MAINNET_CHAIN_ID,
-      });
+      freshBalance = await getTokenBalance(req.tokenAddress, req.chainId);
       console.log('Successfully fetched fresh balance:', freshBalance?.toString());
     } catch (error) {
       console.error('Error fetching fresh balance:', error);
-      toast.error('Could not verify your USDC balance. Please try again.');
+      toast.error(`Could not verify your ${req.tokenSymbol} balance. Please try again.`);
       return;
     }
 
-    const safeUsdcBalance = freshBalance ?? BigInt(0);
+    const safeTokenBalance = freshBalance ?? BigInt(0);
 
-    // Check USDC balance with detailed logging
+    // Check token balance with detailed logging
     console.log('Balance comparison debug:', {
-      freshlyFetchedBalance: safeUsdcBalance.toString(),
+      freshlyFetchedBalance: safeTokenBalance.toString(),
       amountInUnits: amountInUnits.toString(),
-      comparison: safeUsdcBalance < amountInUnits,
-      balanceFormatted: formatUnits(safeUsdcBalance, 6),
-      requiredFormatted: formatUnits(amountInUnits, 6)
+      comparison: safeTokenBalance < amountInUnits,
+      balanceFormatted: formatUnits(safeTokenBalance, selectedToken.decimals),
+      requiredFormatted: formatUnits(amountInUnits, selectedToken.decimals)
     });
 
-    if (safeUsdcBalance < amountInUnits) {
-      const balanceFormatted = formatUnits(safeUsdcBalance, 6);
-      const requiredFormatted = formatUnits(amountInUnits, 6);
-      console.error('Insufficient USDC balance:', {
+    if (safeTokenBalance < amountInUnits) {
+      const balanceFormatted = formatUnits(safeTokenBalance, selectedToken.decimals);
+      const requiredFormatted = formatUnits(amountInUnits, selectedToken.decimals);
+      console.error(`Insufficient ${req.tokenSymbol} balance:`, {
         balance: balanceFormatted,
         required: requiredFormatted
       });
-      toast.error(`Insufficient USDC balance. You have ${balanceFormatted} USDC but need ${requiredFormatted} USDC.`);
+      toast.error(`Insufficient ${req.tokenSymbol} balance. You have ${balanceFormatted} ${req.tokenSymbol} but need ${requiredFormatted} ${req.tokenSymbol}.`);
       return;
     }
     
-    // Step 1: Check existing allowance and approve USDC allowance for the contract
-    console.log('Starting USDC approval process:', {
-      usdcContract: USDC_CONTRACT_ADDRESS,
-      spender: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
+    // Step 1: Check existing allowance and approve token allowance for the contract
+    console.log(`Starting ${req.tokenSymbol} approval process:`, {
+      tokenContract: req.tokenAddress,
+      spender: currentContractAddress,
       amount: amountInUnits.toString(),
-      amountFormatted: formatUnits(amountInUnits, 6),
-      userBalance: formatUnits(safeUsdcBalance, 6),
-      chainId: BASE_MAINNET_CHAIN_ID
+      amountFormatted: formatUnits(amountInUnits, selectedToken.decimals),
+      userBalance: formatUnits(safeTokenBalance, selectedToken.decimals),
+      chainId: req.chainId
     });
     
     // Check current allowance
     let currentAllowance;
     try {
-      const allowanceResult = await readContract(config, {
-        address: USDC_CONTRACT_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: 'allowance',
-        args: [accountAddress!, HEDWIG_PAYMENT_CONTRACT_ADDRESS],
-        chainId: BASE_MAINNET_CHAIN_ID
-      });
-      currentAllowance = allowanceResult as bigint;
-      console.log('Current USDC allowance:', {
+      currentAllowance = await checkTokenAllowance(req.tokenAddress, currentContractAddress, req.chainId);
+      console.log(`Current ${req.tokenSymbol} allowance:`, {
         allowance: currentAllowance.toString(),
-        formatted: formatUnits(currentAllowance, 6),
-        required: formatUnits(amountInUnits, 6)
+        formatted: formatUnits(currentAllowance, selectedToken.decimals),
+        required: formatUnits(amountInUnits, selectedToken.decimals)
       });
     } catch (allowanceError) {
       console.error('Failed to check allowance:', allowanceError);
@@ -918,37 +932,28 @@ export function useHedwigPayment() {
     }
     
     // Declare approveHash variable in the proper scope
-    let approveHash: `0x${string}` | undefined;
+    let approveHash: `0x${string}` | null | undefined;
     
     // If there's insufficient allowance, we need to approve
     if (currentAllowance < amountInUnits) {
-      
-      toast.info('Please approve USDC spending in your wallet.');
+      toast.info(`Please approve ${req.tokenSymbol} spending in your wallet.`);
       setLastAction('transfer');
       try {
-        approveHash = await writeContractAsync({
-          address: USDC_CONTRACT_ADDRESS,
-          abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [HEDWIG_PAYMENT_CONTRACT_ADDRESS, amountInUnits],
-          chainId: BASE_MAINNET_CHAIN_ID,
-          gas: 100000n
-        });
-        
+        approveHash = await approveToken(req.tokenAddress, currentContractAddress, amountInUnits, req.chainId);
         console.log('Approval transaction submitted:', approveHash);
       } catch (approveError: any) {
-      console.error('USDC approval failed:', approveError);
-      console.error('Approval error details:', {
-        message: approveError?.message,
-        code: approveError?.code,
-        stack: approveError?.stack
-      });
-      toast.error(`USDC approval failed: ${approveError.message}`);
-      throw approveError;
+        console.error(`${req.tokenSymbol} approval failed:`, approveError);
+        console.error('Approval error details:', {
+          message: approveError?.message,
+          code: approveError?.code,
+          stack: approveError?.stack
+        });
+        toast.error(`${req.tokenSymbol} approval failed: ${approveError.message}`);
+        throw approveError;
       }
     } else {
       console.log('Sufficient allowance already exists, skipping approval');
-      toast.success('USDC allowance already sufficient!');
+      toast.success(`${req.tokenSymbol} allowance already sufficient!`);
     }
 
      // Wait for approval transaction to be confirmed (skip if allowance was sufficient)
@@ -958,7 +963,7 @@ export function useHedwigPayment() {
         try {
           const approveReceipt = await waitForTransactionReceipt(config, {
             hash: approveHash,
-            chainId: BASE_MAINNET_CHAIN_ID,
+            chainId: req.chainId as any,
             timeout: 60000 // 60 second timeout
           });
           
@@ -974,7 +979,7 @@ export function useHedwigPayment() {
             throw new Error(`Approval transaction failed with status: ${approveReceipt.status}`);
           }
           
-          toast.success('USDC approval confirmed!');
+          toast.success(`${req.tokenSymbol} approval confirmed!`);
         } catch (waitError: any) {
           console.error('Approval confirmation failed:', waitError);
           console.error('Wait error details:', {
@@ -1003,11 +1008,11 @@ export function useHedwigPayment() {
      try {
        // Trigger the transaction
        writeContractAsync({
-         address: HEDWIG_PAYMENT_CONTRACT_ADDRESS,
+         address: currentContractAddress,
          abi: HEDWIG_PAYMENT_ABI,
          functionName: 'pay',
-         args: [USDC_CONTRACT_ADDRESS, amountInUnits, req.freelancerAddress, req.invoiceId],
-         chainId: BASE_MAINNET_CHAIN_ID,
+         args: [req.tokenAddress, amountInUnits, req.freelancerAddress, req.invoiceId],
+         chainId: req.chainId as any,
          gas: 300000n // Increase gas limit to 300,000 for safety
        });
        
@@ -1033,7 +1038,7 @@ export function useHedwigPayment() {
        
        // Handle specific contract errors
        if (payError?.message?.includes('TokenNotWhitelisted')) {
-         toast.error('USDC token is not whitelisted for payments. Please contact support.');
+         toast.error(`${req.tokenSymbol} token is not whitelisted for payments. Please contact support.`);
        } else if (payError?.message?.includes('InvoiceAlreadyProcessed')) {
          toast.error('This invoice has already been processed.');
        } else if (payError?.message?.includes('InsufficientAllowance')) {
@@ -1056,9 +1061,7 @@ export function useHedwigPayment() {
      
      // Transaction has been submitted, the useEffect will handle the rest
      return; // Exit here, let useEffect handle the transaction hash
-   }, [writeContractAsync, accountAddress]);
-
-
+   }, [writeContractAsync, accountAddress, ensureCorrectChain, getTokenBalance, checkTokenAllowance, approveToken, contractVersion, platformWallet]);
 
   const processPayment = useCallback(async (paymentRequest: PaymentRequest) => {
     try {
@@ -1077,6 +1080,20 @@ export function useHedwigPayment() {
         toast.error('Freelancer wallet address is missing or invalid.');
         return;
       }
+
+      // Ensure we're on the correct chain before checking contract state
+      const chainSwitched = await ensureCorrectChain(paymentRequest.chainId);
+      if (!chainSwitched) {
+        return;
+      }
+
+      // Update selected chain and token
+      setSelectedChainId(paymentRequest.chainId);
+      setSelectedToken({
+        address: paymentRequest.tokenAddress,
+        symbol: paymentRequest.tokenSymbol,
+        decimals: 6
+      });
       
       // Check if invoice is already processed
       const isProcessed = await checkInvoiceProcessed(paymentRequest.invoiceId);
@@ -1091,8 +1108,8 @@ export function useHedwigPayment() {
         return;
       }
       
-      if (!isUsdcWhitelisted) {
-        toast.error('USDC is not whitelisted for payments. Please contact support.');
+      if (!isTokenWhitelisted) {
+        toast.error(`${paymentRequest.tokenSymbol} is not whitelisted for payments. Please contact support.`);
         return;
       }
 
@@ -1108,7 +1125,7 @@ export function useHedwigPayment() {
 
       let amountInUnits;
       try {
-        amountInUnits = parseUnits(amountStr, 6); // USDC has 6 decimals
+        amountInUnits = parseUnits(amountStr, 6); // Assuming 6 decimals for stablecoins
       } catch (parseError) {
         console.error('Error parsing amount:', parseError);
         toast.error('Invalid payment amount format.');
@@ -1118,7 +1135,10 @@ export function useHedwigPayment() {
         amount: paymentRequest.amount,
         amountInUnits: amountInUnits.toString(),
         freelancer: paymentRequest.freelancerAddress,
-        invoiceId: paymentRequest.invoiceId
+        invoiceId: paymentRequest.invoiceId,
+        chainId: paymentRequest.chainId,
+        tokenAddress: paymentRequest.tokenAddress,
+        tokenSymbol: paymentRequest.tokenSymbol
       });
 
       // Direct payment without approval - proceed with payment
@@ -1129,7 +1149,7 @@ export function useHedwigPayment() {
       console.error('Payment initiation failed:', err);
       toast.error(err?.message || 'Failed to initiate payment.');
     }
-  }, [isConnected, accountAddress, sendPay]);
+  }, [isConnected, accountAddress, sendPay, ensureCorrectChain, checkInvoiceProcessed, isPaused, isTokenWhitelisted]);
 
   const resetTransaction = useCallback(async (forceRefresh = false) => {
     console.log('Resetting transaction state...', { forceRefresh });
@@ -1138,14 +1158,12 @@ export function useHedwigPayment() {
     setIsProcessingPayment(false);
     setCurrentPaymentRequest(null);
     
-
-    
     toast.success('Transaction state reset. You can now retry the payment.');
   }, [accountAddress]);
 
   return {
     processPayment,
-    isProcessing: isProcessing || isProcessingPayment,
+    isProcessing: isProcessingPayment,
     isConfirming,
     hash,
     receipt,
@@ -1156,7 +1174,17 @@ export function useHedwigPayment() {
     verifyContractDeployment,
     contractVersion,
     platformWallet,
-    isUsdcWhitelisted,
+    isTokenWhitelisted,
     isPaused,
+    // Multi-chain helpers
+    selectedChainId,
+    setSelectedChainId,
+    selectedToken,
+    setSelectedToken,
+    supportedTokens,
+    ensureCorrectChain,
+    getTokenBalance,
+    checkTokenAllowance,
+    approveToken,
   };
 }

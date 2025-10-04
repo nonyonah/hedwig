@@ -311,10 +311,16 @@ const Proposal = () => {
       return;
     }
 
+    // Use Base mainnet as default chain and USDC as default token
+    const defaultToken = SUPPORTED_TOKENS.USDC; // USDC token
+    
     processPayment({
       amount: total, // Use the total amount including the fee
       freelancerAddress: proposalData.freelancer.walletAddress as `0x${string}`,
       invoiceId: proposalData.id, // Using proposal id as invoiceId for tracking
+      chainId: BASE_MAINNET_CONFIG.chainId, // Base mainnet chain ID
+      tokenAddress: defaultToken.address as `0x${string}`,
+      tokenSymbol: defaultToken.symbol,
     });
   };
 

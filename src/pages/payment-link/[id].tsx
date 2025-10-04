@@ -9,7 +9,7 @@ import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-
+import { getSupportedTokens } from '@/contracts/config';
 
 // ERC20_ABI is now shared from '@/lib/abi/erc20'
 
@@ -44,7 +44,12 @@ interface PaymentData {
 
 // flutterwaveService is imported from the service file
 
-function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: number }) {
+function PaymentFlow({ paymentData, total, selectedChain, selectedToken }: { 
+  paymentData: PaymentData, 
+  total: number,
+  selectedChain: number,
+  selectedToken: { address: string; symbol: string; decimals: number }
+}) {
   const freelancerReceives = total * 0.99; // Amount after 1% platform fee
   const { isConnected } = useAccount();
 
@@ -71,6 +76,9 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
       amount: total, // send total amount including platform fee
       freelancerAddress: paymentData.walletAddress as `0x${string}`,
       invoiceId: paymentData.id,
+      chainId: selectedChain,
+      tokenAddress: selectedToken.address as `0x${string}`,
+      tokenSymbol: selectedToken.symbol,
     });
   };
 
@@ -97,7 +105,7 @@ function PaymentFlow({ paymentData, total }: { paymentData: PaymentData, total: 
           ) : paymentReceipt ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
           ) : (
-            <>Pay • ${freelancerReceives.toFixed(2)}</>
+            <>Pay • ${freelancerReceives.toFixed(2)} {selectedToken.symbol}</>
           )}
       </Button>
       
@@ -124,10 +132,27 @@ export default function PaymentLinkPage() {
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | null>(null);
-  const [selectedCurrency, setSelectedCurrency] = useState("USDC");
-  const [selectedNetwork, setSelectedNetwork] = useState("Base");
-  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
-  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [selectedChain, setSelectedChain] = useState<number>(8453); // Default to Base
+  const [selectedToken, setSelectedToken] = useState<{ address: string; symbol: string; decimals: number } | null>(null);
+  const [showChainModal, setShowChainModal] = useState(false);
+  const [showTokenModal, setShowTokenModal] = useState(false);
+
+  // Chain options
+  const chainOptions = [
+    { id: 8453, name: "Base", color: "bg-blue-500" },
+    { id: 42220, name: "Celo", color: "bg-green-500" },
+  ];
+
+  // Get supported tokens for selected chain
+  const supportedTokensObj = getSupportedTokens(selectedChain);
+  const supportedTokens = Object.values(supportedTokensObj);
+
+  // Set default token when chain changes
+  useEffect(() => {
+    if (supportedTokens.length > 0 && !selectedToken) {
+      setSelectedToken(supportedTokens[0]);
+    }
+  }, [selectedChain, supportedTokens, selectedToken]);
 
   // Validate and calculate amounts with proper fallbacks
   const rawAmount = paymentData?.amount || 0;
@@ -137,7 +162,6 @@ export default function PaymentLinkPage() {
   const platformFee = subtotal * 0.01; // 1% platform fee deducted from payment
   const total = subtotal; // Total amount to be paid
   const freelancerReceives = subtotal - platformFee; // Amount freelancer receives after fee deduction
-  // Note: Only Base Mainnet USDC is supported for now
 
   // Set up real-time subscription for payment status updates
   useRealtimeSubscription({
@@ -230,35 +254,6 @@ export default function PaymentLinkPage() {
     toast.success('Payment link copied to clipboard!')
   }
 
-  // Currency options
-  const currencies = [
-    { label: "USDC", value: "USDC" },
-    { label: "USD Coin", value: "USD_COIN" },
-  ];
-
-  // Network options
-  const networks = [
-    { label: "Base", value: "Base" },
-    { label: "Ethereum", value: "Ethereum" },
-    { label: "Polygon", value: "Polygon" },
-  ];
-
-  // Payment options (disabled)
-  const paymentOptions = [
-    {
-      id: 0,
-      type: "Pay with crypto",
-      description: "Connect your wallet to pay with cryptocurrency",
-      icon: Wallet,
-    },
-    {
-      id: 1,
-      type: "Pay with bank",
-      description: "Pay directly from your bank account",
-      icon: Building,
-    },
-  ];
-
   const DropdownModal = ({
     visible,
     onClose,
@@ -266,13 +261,15 @@ export default function PaymentLinkPage() {
     selectedValue,
     onSelect,
     title,
+    type = 'default'
   }: {
     visible: boolean;
     onClose: () => void;
-    options: { label: string; value: string }[];
-    selectedValue: string;
-    onSelect: (value: string) => void;
+    options: any[];
+    selectedValue: any;
+    onSelect: (value: any) => void;
     title: string;
+    type?: 'chain' | 'token' | 'default';
   }) => {
     if (!visible) return null;
 
@@ -285,15 +282,23 @@ export default function PaymentLinkPage() {
           <div className="space-y-2">
             {options.map((item) => (
               <button
-                key={item.value}
+                key={type === 'chain' ? item.id : item.symbol}
                 onClick={() => {
-                  onSelect(item.value);
+                  onSelect(type === 'chain' ? item.id : item);
                   onClose();
                 }}
                 className="w-full flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                <span className="text-slate-900 font-medium">{item.label}</span>
-                {selectedValue === item.value && (
+                <div className="flex items-center">
+                  {type === 'chain' && (
+                    <div className={`w-3 h-3 rounded-full ${item.color} mr-3`}></div>
+                  )}
+                  <span className="text-slate-900 font-medium">
+                    {type === 'chain' ? item.name : item.symbol}
+                  </span>
+                </div>
+                {((type === 'chain' && selectedValue === item.id) || 
+                  (type === 'token' && selectedValue?.symbol === item.symbol)) && (
                   <Check className="w-5 h-5 text-blue-500" />
                 )}
               </button>
@@ -357,6 +362,45 @@ export default function PaymentLinkPage() {
 
 
 
+          {/* Chain and Token Selection */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5">
+            <h2 className="text-base font-semibold text-slate-900 mb-4">
+              Payment Network & Token
+            </h2>
+            
+            {/* Chain Selection */}
+            <div className="mb-4">
+              <label className="text-sm text-gray-600 mb-2 block">Network</label>
+              <button
+                onClick={() => setShowChainModal(true)}
+                className="w-full flex items-center justify-between px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center">
+                  <div className={`w-3 h-3 rounded-full ${chainOptions.find(c => c.id === selectedChain)?.color} mr-3`}></div>
+                  <span className="text-slate-900 font-medium">
+                    {chainOptions.find(c => c.id === selectedChain)?.name}
+                  </span>
+                </div>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Token Selection */}
+            <div>
+              <label className="text-sm text-gray-600 mb-2 block">Token</label>
+              <button
+                onClick={() => setShowTokenModal(true)}
+                className="w-full flex items-center justify-between px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={!selectedToken}
+              >
+                <span className="text-slate-900 font-medium">
+                  {selectedToken?.symbol || 'Select Token'}
+                </span>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+          </div>
+
           {/* Payment Details Section */}
           <div className="bg-white border border-gray-100 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-5">
@@ -411,7 +455,7 @@ export default function PaymentLinkPage() {
             <div className="flex justify-between items-center mb-3">
               <span className="text-gray-600 text-sm">Price</span>
               <span className="text-sm font-semibold text-slate-900">
-                {validAmount} {selectedCurrency}
+                {validAmount} {selectedToken?.symbol || 'USDC'}
               </span>
             </div>
 
@@ -419,46 +463,22 @@ export default function PaymentLinkPage() {
             <div className="flex justify-between items-center">
               <span className="text-gray-600 text-sm">Network</span>
               <div className="flex items-center">
-                <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+                <div className={`w-2 h-2 rounded-full ${chainOptions.find(c => c.id === selectedChain)?.color} mr-2`}></div>
                 <span className="text-sm font-semibold text-slate-900">
-                  {selectedNetwork}
+                  {chainOptions.find(c => c.id === selectedChain)?.name}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Select Payment Method Section - Commented Out */}
-          {/* 
-          <div className="bg-white border border-gray-100 rounded-2xl p-5">
-            <h2 className="text-base font-semibold text-slate-900 mb-3">
-              Select Payment Method
-            </h2>
-
-            {paymentOptions.map((option) => (
-              <div
-                key={option.id}
-                className="flex items-center p-3 rounded-xl border-2 border-gray-200 bg-gray-50 mb-2 opacity-60 cursor-not-allowed"
-              >
-                <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3">
-                  <option.icon className="w-4 h-4 text-gray-500" />
-                </div>
-
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-slate-900 mb-1">
-                    {option.type}
-                  </h3>
-                  <p className="text-xs text-gray-600">{option.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          */}
-
-
-
           {/* Payment Flow - Only show if pending and not expired */}
-          {!isExpired && paymentData.status === 'pending' && (
-            <PaymentFlow paymentData={paymentData} total={total} />
+          {!isExpired && paymentData.status === 'pending' && selectedToken && (
+            <PaymentFlow 
+              paymentData={paymentData} 
+              total={total} 
+              selectedChain={selectedChain}
+              selectedToken={selectedToken}
+            />
           )}
 
           {/* Payment Completed Section */}
@@ -479,24 +499,29 @@ export default function PaymentLinkPage() {
         </div>
       </div>
 
-      {/* Currency Dropdown Modal */}
+      {/* Chain Dropdown Modal */}
       <DropdownModal
-        visible={showCurrencyModal}
-        onClose={() => setShowCurrencyModal(false)}
-        options={currencies}
-        selectedValue={selectedCurrency}
-        onSelect={setSelectedCurrency}
-        title="Select Currency"
+        visible={showChainModal}
+        onClose={() => setShowChainModal(false)}
+        options={chainOptions}
+        selectedValue={selectedChain}
+        onSelect={(chainId) => {
+          setSelectedChain(chainId);
+          setSelectedToken(null); // Reset token when chain changes
+        }}
+        title="Select Network"
+        type="chain"
       />
 
-      {/* Network Dropdown Modal */}
+      {/* Token Dropdown Modal */}
       <DropdownModal
-        visible={showNetworkModal}
-        onClose={() => setShowNetworkModal(false)}
-        options={networks}
-        selectedValue={selectedNetwork}
-        onSelect={setSelectedNetwork}
-        title="Select Network"
+        visible={showTokenModal}
+        onClose={() => setShowTokenModal(false)}
+        options={supportedTokens}
+        selectedValue={selectedToken}
+        onSelect={setSelectedToken}
+        title="Select Token"
+        type="token"
       />
     </div>
   );

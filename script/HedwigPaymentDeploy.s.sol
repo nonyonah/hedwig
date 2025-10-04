@@ -25,7 +25,7 @@ contract HedwigPaymentDeploy is Script {
     address constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     
     // Celo Mainnet - Using cUSD instead of USDC
-    address constant CELO_CUSD = 0x765de816845861e75a25fca122bb6898b8b1282a;
+    address constant CELO_CUSD = 0x765DE816845861e75A25fCA122bb6898B8B1282a;
     
     // Celo Alfajores Testnet (Circle USDC)
     address constant CELO_ALFAJORES_USDC = 0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B; // Circle USDC on Alfajores

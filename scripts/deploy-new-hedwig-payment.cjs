@@ -29,7 +29,7 @@ const NETWORK_CONFIGS = {
   'celo-mainnet': {
     rpcUrl: 'https://forno.celo.org',
     chainId: 42220,
-    usdcAddress: '0x765de816845861e75a25fca122bb6898b8b1282a', // cUSD instead of USDC
+    usdcAddress: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C', // cUSD instead of USDC
     isTestnet: false
   },
   'lisk-sepolia': {
@@ -50,7 +50,7 @@ async function main() {
   console.log('=== Deploying Enhanced HedwigPayment Contract ===');
   
   // Network configuration
-  const network = process.env.NETWORK || 'base-sepolia';
+  const network = process.env.NETWORK || 'celo-mainnet';
   const networkConfig = NETWORK_CONFIGS[network];
   
   if (!networkConfig) {

@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button';
 // Card components removed - using new design without cards
 import { Badge } from '@/components/ui/badge';
 // Separator component removed - using new design without separators
-import { Download, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { Download, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2, RefreshCw, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { getSupportedTokens } from '@/contracts/config';
 
 interface InvoiceItem {
   id: string;
@@ -61,7 +62,17 @@ const getSupabaseClient = () => {
   return createClient(supabaseUrl, supabaseAnonKey);
 };
 
-function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subtotal: number }) {
+function PaymentFlow({ 
+  invoiceData, 
+  subtotal, 
+  selectedChain, 
+  selectedToken 
+}: { 
+  invoiceData: InvoiceData; 
+  subtotal: number;
+  selectedChain: number;
+  selectedToken: any;
+}) {
   const { isConnected } = useAccount();
   const { 
     processPayment, 
@@ -91,6 +102,9 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
       amount: subtotal,
       freelancerAddress: invoiceData.fromCompany.walletAddress as `0x${string}`,
       invoiceId: invoiceData.id,
+      chainId: selectedChain,
+      tokenAddress: selectedToken.address,
+      tokenSymbol: selectedToken.symbol,
     });
   };
 
@@ -117,7 +131,7 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
         ) : paymentReceipt ? (
           <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
         ) : (
-          <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} USDC</>
+          <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} {selectedToken?.symbol || 'USDC'}</>
         )}
       </Button>
       
@@ -133,6 +147,67 @@ function PaymentFlow({ invoiceData, subtotal }: { invoiceData: InvoiceData; subt
   );
 }
 
+const DropdownModal = ({
+  visible,
+  onClose,
+  options,
+  selectedValue,
+  onSelect,
+  title,
+  type = 'default'
+}: {
+  visible: boolean;
+  onClose: () => void;
+  options: any[];
+  selectedValue: any;
+  onSelect: (value: any) => void;
+  title: string;
+  type?: 'chain' | 'token' | 'default';
+}) => {
+  if (!visible) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4">
+        <h3 className="text-lg font-semibold text-slate-900 text-center mb-4">
+          {title}
+        </h3>
+        <div className="space-y-2">
+          {options.map((item) => (
+            <button
+              key={type === 'chain' ? item.id : item.symbol}
+              onClick={() => {
+                onSelect(type === 'chain' ? item.id : item);
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center">
+                {type === 'chain' && (
+                  <div className={`w-3 h-3 rounded-full ${item.color} mr-3`}></div>
+                )}
+                <span className="text-slate-900 font-medium">
+                  {type === 'chain' ? item.name : item.symbol}
+                </span>
+              </div>
+              {((type === 'chain' && selectedValue === item.id) || 
+                (type === 'token' && selectedValue?.symbol === item.symbol)) && (
+                <Check className="w-5 h-5 text-blue-500" />
+              )}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onClose}
+          className="w-full mt-4 py-2 text-gray-500 hover:text-gray-700"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export default function InvoicePage() {
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
@@ -142,6 +217,29 @@ export default function InvoicePage() {
 
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Chain and token selection state
+  const [selectedChain, setSelectedChain] = useState(8453); // Default to Base
+  const [selectedToken, setSelectedToken] = useState<any>(null);
+  const [showChainModal, setShowChainModal] = useState(false);
+  const [showTokenModal, setShowTokenModal] = useState(false);
+
+  // Chain options
+  const chainOptions = [
+    { id: 8453, name: 'Base', color: 'bg-blue-500' },
+    { id: 42220, name: 'Celo', color: 'bg-green-500' }
+  ];
+
+  // Get supported tokens for selected chain
+  const supportedTokensObj = getSupportedTokens(selectedChain);
+  const supportedTokens = Object.values(supportedTokensObj);
+
+  // Set default token when chain changes
+  useEffect(() => {
+    if (supportedTokens.length > 0) {
+      setSelectedToken(supportedTokens[0]);
+    }
+  }, [selectedChain, supportedTokens]);
 
   // Set up real-time subscription for invoice status updates
   useRealtimeSubscription({
@@ -537,11 +635,52 @@ export default function InvoicePage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Total to Pay:</span>
-                <span className="font-bold">${total.toLocaleString()} USDC</span>
+                <span className="font-bold">${total.toLocaleString()} {selectedToken?.symbol || 'USDC'}</span>
               </div>
             </div>
 
-            <PaymentFlow invoiceData={invoiceData} subtotal={total} />
+            {/* Chain and Token Selection */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Chain
+                </label>
+                <button
+                  onClick={() => setShowChainModal(true)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center">
+                    <div className={`w-3 h-3 rounded-full ${chainOptions.find(c => c.id === selectedChain)?.color} mr-3`}></div>
+                    <span className="text-gray-900 font-medium">
+                      {chainOptions.find(c => c.id === selectedChain)?.name}
+                    </span>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Token
+                </label>
+                <button
+                  onClick={() => setShowTokenModal(true)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <span className="text-gray-900 font-medium">
+                    {selectedToken?.symbol || 'Select Token'}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            <PaymentFlow 
+              invoiceData={invoiceData} 
+              subtotal={total} 
+              selectedChain={selectedChain}
+              selectedToken={selectedToken}
+            />
           </div>
         ) : (
           <div className="p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-100">
@@ -560,7 +699,7 @@ export default function InvoicePage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Amount Paid:</span>
-                <span className="font-bold">${total.toLocaleString()} USDC</span>
+                <span className="font-bold">${total.toLocaleString()} {selectedToken?.symbol || 'USDC'}</span>
               </div>
             </div>
 
@@ -570,6 +709,28 @@ export default function InvoicePage() {
             </div>
           </div>
         )}
+
+        {/* Chain Selection Modal */}
+        <DropdownModal
+          visible={showChainModal}
+          onClose={() => setShowChainModal(false)}
+          options={chainOptions}
+          selectedValue={selectedChain}
+          onSelect={setSelectedChain}
+          title="Select Chain"
+          type="chain"
+        />
+
+        {/* Token Selection Modal */}
+        <DropdownModal
+          visible={showTokenModal}
+          onClose={() => setShowTokenModal(false)}
+          options={supportedTokens}
+          selectedValue={selectedToken}
+          onSelect={setSelectedToken}
+          title="Select Token"
+          type="token"
+        />
       </div>
     </div>
   );

@@ -1,0 +1,11 @@
+{
+  "contractAddress": "0xF1c485Ba184262F1EAC91584f6B26fdcaa3F794a",
+  "platformWallet": "0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc",
+  "usdcAddress": "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+  "deploymentTransaction": "0x30fd44b5e72ae29b0551adf346f17b9d83e9ad0a61b16b28bb5e65a4a09f5d18",
+  "deployer": "0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d",
+  "timestamp": "2025-10-03T22:45:18.364Z",
+  "network": "celo-mainnet",
+  "chainId": 42220,
+  "gasUsed": "3000000"
+}

@@ -16,6 +16,15 @@ export const BASE_MAINNET_CONFIG: WalletConfig = {
   chainId: 8453
 };
 
+// Celo Chain Configuration
+export const CELO_MAINNET_CONFIG: WalletConfig = {
+  platformWallet: process.env.HEDWIG_PLATFORM_WALLET_CELO || '0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc',
+  platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '100'), // Default 1%
+  contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_CELO || '',
+  rpcUrl: process.env.CELO_RPC_URL || 'https://forno.celo.org',
+  chainId: 42220
+};
+
 // Testnet Configuration (for development)
 export const BASE_SEPOLIA_CONFIG: WalletConfig = {
   platformWallet: process.env.HEDWIG_PLATFORM_WALLET_TESTNET || '0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d',
@@ -47,6 +56,28 @@ export const SUPPORTED_TOKENS = {
   }
 };
 
+// Supported Tokens on Celo Mainnet
+export const CELO_SUPPORTED_TOKENS = {
+  cUSD: {
+    address: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+    symbol: 'cUSD',
+    decimals: 18,
+    name: 'Celo Dollar'
+  },
+  USDC: {
+    address: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
+    symbol: 'USDC',
+    decimals: 6,
+    name: 'USD Coin'
+  },
+  USDT: {
+    address: '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e',
+    symbol: 'USDT',
+    decimals: 6,
+    name: 'Tether USD'
+  }
+};
+
 // Token addresses for other chains (disabled)
 export const CHAIN_TOKENS = {
   ethereum: {
@@ -67,7 +98,7 @@ export const CHAIN_TOKENS = {
     WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1'
   },
   celo: {
-    USDC: '', // To be added when enabled
+    USDC: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
     USDT: '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e',
     CELO: '0x471EcE3750Da237f93B8E339c536989b8978a438'
   },
@@ -109,10 +140,25 @@ export function validateWalletConfig(config: WalletConfig): { isValid: boolean; 
   };
 }
 
-// Get current configuration based on environment
-export function getWalletConfig(): WalletConfig {
+// Get current configuration based on environment and chain
+export function getWalletConfig(chainId?: number): WalletConfig {
+  if (chainId === 42220) {
+    return CELO_MAINNET_CONFIG;
+  }
+  // Default to Base mainnet
   const isProduction = process.env.NODE_ENV === 'production';
   return isProduction ? BASE_MAINNET_CONFIG : BASE_MAINNET_CONFIG;
+}
+
+// Get supported tokens for a specific chain
+export function getSupportedTokens(chainId: number) {
+  switch (chainId) {
+    case 42220: // Celo
+      return CELO_SUPPORTED_TOKENS;
+    case 8453: // Base
+    default:
+      return SUPPORTED_TOKENS;
+  }
 }
 
 // Alias for getCurrentConfig (used by admin API)
