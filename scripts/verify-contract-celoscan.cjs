@@ -6,7 +6,8 @@ const querystring = require('querystring');
 // Configuration for Celo
 const CONTRACT_ADDRESS = '0xF1c485Ba184262F1EAC91584f6B26fdcaa3F794a';
 const API_KEY = process.env.CELOSCAN_API_KEY || 'KIKD68NXYAGXSKPN9WPN531883PE16BMRV'; // You'll need to get this from Celoscan
-const CELOSCAN_API_URL = 'https://api.celoscan.io/api';
+const CELOSCAN_API_URL = 'https://api.celoscan.io/v2/api';
+const CELO_CHAIN_ID = '42220'; // Celo mainnet chain ID
 
 // Read contract source code - using single file verification
 const contractPath = path.join(__dirname, '..', 'src', 'HedwigPayment.sol');
@@ -14,6 +15,7 @@ const sourceCode = fs.readFileSync(contractPath, 'utf8');
 
 // Verification parameters for Celo
 const verificationData = {
+    chainid: CELO_CHAIN_ID,
     apikey: API_KEY,
     module: 'contract',
     action: 'verifysourcecode',
@@ -34,9 +36,9 @@ function makeRequest(data) {
         const postData = querystring.stringify(data);
         
         const options = {
-            hostname: 'api.celoscan.io',
+            hostname: 'api.etherscan.io',
             port: 443,
-            path: '/api',
+            path: '/v2/api',
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',

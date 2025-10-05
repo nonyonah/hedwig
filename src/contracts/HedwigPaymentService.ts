@@ -184,34 +184,81 @@ export class HedwigPaymentService {
   }
 
   /**
-   * Listen for payment events
+   * Listen for payment events with error handling
    */
   async listenForPayments(callback: (event: PaymentReceivedEvent) => void): Promise<void> {
-    this.contract.on('PaymentReceived', (
-      payer: string,
-      freelancer: string,
-      token: string,
-      amount: bigint,
-      fee: bigint,
-      freelancerPayout: bigint,
-      invoiceId: string,
-      timestamp: bigint,
-      event: any
-    ) => {
-      const paymentEvent: PaymentReceivedEvent = {
-        payer,
-        freelancer,
-        token,
-        amount,
-        fee,
-        invoiceId,
-        transactionHash: event.transactionHash,
-        blockNumber: event.blockNumber,
-        timestamp: Number(timestamp)
-      };
+    try {
+      // Add error handler for the provider
+      this.provider.on('error', (error: any) => {
+        if (error.message && error.message.includes('eth_getFilterChanges')) {
+          console.debug('Filter error handled gracefully:', error.message);
+          // Attempt to restart the listener
+          this.restartEventListener(callback);
+        } else {
+          console.error('Provider error:', error);
+        }
+      });
+
+      this.contract.on('PaymentReceived', (
+        payer: string,
+        freelancer: string,
+        token: string,
+        amount: bigint,
+        fee: bigint,
+        freelancerPayout: bigint,
+        invoiceId: string,
+        timestamp: bigint,
+        event: any
+      ) => {
+        try {
+          const paymentEvent: PaymentReceivedEvent = {
+            payer,
+            freelancer,
+            token,
+            amount,
+            fee,
+            invoiceId,
+            transactionHash: event.transactionHash,
+            blockNumber: event.blockNumber,
+            timestamp: Number(timestamp)
+          };
+          
+          callback(paymentEvent);
+        } catch (error) {
+          console.error('Error processing payment event:', error);
+        }
+      });
+
+      // Add error handler for contract events
+      this.contract.on('error', (error: any) => {
+        if (error.message && error.message.includes('eth_getFilterChanges')) {
+          console.debug('Contract filter error handled gracefully:', error.message);
+        } else {
+          console.error('Contract error:', error);
+        }
+      });
+    } catch (error) {
+      console.error('Error setting up payment listener:', error);
+    }
+  }
+
+  /**
+   * Restart event listener after filter expiration
+   */
+  private async restartEventListener(callback: (event: PaymentReceivedEvent) => void): Promise<void> {
+    try {
+      // Remove existing listeners
+      this.stopListening();
       
-      callback(paymentEvent);
-    });
+      // Wait a bit before restarting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Restart the listener
+      await this.listenForPayments(callback);
+      console.debug('Event listener restarted successfully');
+    } catch (error) {
+      console.error('Error restarting event listener:', error);
+    }
   }
 
   /**
@@ -265,6 +312,8 @@ export class HedwigPaymentService {
    */
   stopListening(): void {
     this.contract.removeAllListeners('PaymentReceived');
+    this.contract.removeAllListeners('error');
+    this.provider.removeAllListeners('error');
   }
 
   /**

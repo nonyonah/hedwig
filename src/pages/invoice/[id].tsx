@@ -64,16 +64,21 @@ const getSupabaseClient = () => {
 
 function PaymentFlow({ 
   invoiceData, 
-  subtotal, 
-  selectedChain, 
-  selectedToken 
+  subtotal,
+  selectedChain,
+  selectedToken
 }: { 
   invoiceData: InvoiceData; 
   subtotal: number;
-  selectedChain: number;
-  selectedToken: any;
+  selectedChain: { id: number; name: string; color: string };
+  selectedToken: { address: string; symbol: string; decimals: number };
 }) {
   const { isConnected } = useAccount();
+
+  // Use selected chain and token
+  const chainId = selectedChain.id;
+  const tokenConfig = selectedToken;
+
   const { 
     processPayment, 
     isConfirming, 
@@ -102,9 +107,9 @@ function PaymentFlow({
       amount: subtotal,
       freelancerAddress: invoiceData.fromCompany.walletAddress as `0x${string}`,
       invoiceId: invoiceData.id,
-      chainId: selectedChain,
-      tokenAddress: selectedToken.address,
-      tokenSymbol: selectedToken.symbol,
+      chainId: chainId,
+      tokenAddress: tokenConfig.address as `0x${string}`,
+      tokenSymbol: tokenConfig.symbol,
     });
   };
 
@@ -131,7 +136,7 @@ function PaymentFlow({
         ) : paymentReceipt ? (
           <><CheckCircle className="h-4 w-4 mr-2" /> Payment Successful</>
         ) : (
-          <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} {selectedToken?.symbol || 'USDC'}</>
+          <><Wallet className="h-4 w-4 mr-2" /> Pay ${subtotal.toLocaleString()} {tokenConfig?.symbol || 'USDC'}</>
         )}
       </Button>
       
@@ -218,28 +223,40 @@ export default function InvoicePage() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Chain and token selection state
-  const [selectedChain, setSelectedChain] = useState(8453); // Default to Base
-  const [selectedToken, setSelectedToken] = useState<any>(null);
+  // Network selection state
+  const [selectedChain, setSelectedChain] = useState({ id: 8453, name: 'Base', color: 'bg-blue-500' });
   const [showChainModal, setShowChainModal] = useState(false);
-  const [showTokenModal, setShowTokenModal] = useState(false);
 
-  // Chain options
+  // Chain options for Base and Celo
   const chainOptions = [
     { id: 8453, name: 'Base', color: 'bg-blue-500' },
     { id: 42220, name: 'Celo', color: 'bg-green-500' }
   ];
 
-  // Get supported tokens for selected chain
-  const supportedTokensObj = getSupportedTokens(selectedChain);
-  const supportedTokens = Object.values(supportedTokensObj);
-
-  // Set default token when chain changes
-  useEffect(() => {
-    if (supportedTokens.length > 0) {
-      setSelectedToken(supportedTokens[0]);
+  // Get USDC token for selected chain
+  const getUSDCForChain = (chainId: number) => {
+    if (chainId === 8453) { // Base
+      return {
+        address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        symbol: 'USDC',
+        decimals: 6
+      };
+    } else if (chainId === 42220) { // Celo
+      return {
+        address: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
+        symbol: 'USDC',
+        decimals: 6
+      };
     }
-  }, [selectedChain, supportedTokens]);
+    // Default to Base USDC
+    return {
+      address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      symbol: 'USDC',
+      decimals: 6
+    };
+  };
+
+  const selectedToken = getUSDCForChain(selectedChain.id);
 
   // Set up real-time subscription for invoice status updates
   useRealtimeSubscription({
@@ -633,51 +650,26 @@ export default function InvoicePage() {
                   }
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-gray-600">Total to Pay:</span>
-                <span className="font-bold">${total.toLocaleString()} {selectedToken?.symbol || 'USDC'}</span>
-              </div>
-            </div>
-
-            {/* Chain and Token Selection */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Chain
-                </label>
-                <button
-                  onClick={() => setShowChainModal(true)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center">
-                    <div className={`w-3 h-3 rounded-full ${chainOptions.find(c => c.id === selectedChain)?.color} mr-3`}></div>
-                    <span className="text-gray-900 font-medium">
-                      {chainOptions.find(c => c.id === selectedChain)?.name}
-                    </span>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Token
-                </label>
-                <button
-                  onClick={() => setShowTokenModal(true)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <span className="text-gray-900 font-medium">
-                    {selectedToken?.symbol || 'Select Token'}
-                  </span>
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                </button>
+                <div className="flex items-center space-x-2">
+                  <span className="font-bold">${total.toLocaleString()} USDC</span>
+                  <span className="text-gray-400">on</span>
+                  <button
+                    onClick={() => setShowChainModal(true)}
+                    className="flex items-center px-3 py-1 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className={`w-3 h-3 rounded-full ${selectedChain.color} mr-2`}></div>
+                    <span className="text-gray-900 font-medium text-sm">{selectedChain.name}</span>
+                    <ChevronDown className="h-3 w-3 ml-1 text-gray-400" />
+                  </button>
+                </div>
               </div>
             </div>
 
             <PaymentFlow 
               invoiceData={invoiceData} 
-              subtotal={total} 
+              subtotal={total}
               selectedChain={selectedChain}
               selectedToken={selectedToken}
             />
@@ -710,28 +702,22 @@ export default function InvoicePage() {
           </div>
         )}
 
-        {/* Chain Selection Modal */}
-        <DropdownModal
-          visible={showChainModal}
-          onClose={() => setShowChainModal(false)}
-          options={chainOptions}
-          selectedValue={selectedChain}
-          onSelect={setSelectedChain}
-          title="Select Chain"
-          type="chain"
-        />
 
-        {/* Token Selection Modal */}
-        <DropdownModal
-          visible={showTokenModal}
-          onClose={() => setShowTokenModal(false)}
-          options={supportedTokens}
-          selectedValue={selectedToken}
-          onSelect={setSelectedToken}
-          title="Select Token"
-          type="token"
-        />
       </div>
+
+      {/* Chain Selection Modal */}
+      <DropdownModal
+        visible={showChainModal}
+        onClose={() => setShowChainModal(false)}
+        options={chainOptions}
+        selectedValue={selectedChain}
+        onSelect={(chain) => {
+          setSelectedChain(chain);
+          setShowChainModal(false);
+        }}
+        title="Select Network"
+        type="chain"
+      />
     </div>
   );
 }
