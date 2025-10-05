@@ -188,17 +188,6 @@ export class HedwigPaymentService {
    */
   async listenForPayments(callback: (event: PaymentReceivedEvent) => void): Promise<void> {
     try {
-      // Add error handler for the provider
-      this.provider.on('error', (error: any) => {
-        if (error.message && error.message.includes('eth_getFilterChanges')) {
-          console.debug('Filter error handled gracefully:', error.message);
-          // Attempt to restart the listener
-          this.restartEventListener(callback);
-        } else {
-          console.error('Provider error:', error);
-        }
-      });
-
       this.contract.on('PaymentReceived', (
         payer: string,
         freelancer: string,
@@ -226,19 +215,20 @@ export class HedwigPaymentService {
           callback(paymentEvent);
         } catch (error) {
           console.error('Error processing payment event:', error);
-        }
-      });
-
-      // Add error handler for contract events
-      this.contract.on('error', (error: any) => {
-        if (error.message && error.message.includes('eth_getFilterChanges')) {
-          console.debug('Contract filter error handled gracefully:', error.message);
-        } else {
-          console.error('Contract error:', error);
+          // If there's an eth_getFilterChanges error, attempt to restart
+          if (error instanceof Error && error.message.includes('eth_getFilterChanges')) {
+            console.debug('Filter error detected, attempting to restart listener');
+            this.restartEventListener(callback);
+          }
         }
       });
     } catch (error) {
       console.error('Error setting up payment listener:', error);
+      // If there's an eth_getFilterChanges error, attempt to restart
+      if (error instanceof Error && error.message.includes('eth_getFilterChanges')) {
+        console.debug('Filter error detected during setup, attempting to restart listener');
+        this.restartEventListener(callback);
+      }
     }
   }
 
