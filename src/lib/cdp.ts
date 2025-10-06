@@ -23,7 +23,7 @@ interface Balance {
   asset: Asset;
   amount: string;
 }
-import { parseUnits } from 'viem';
+import { parseUnits, formatUnits, encodeFunctionData } from 'viem';
 import { loadServerEnvironment } from './serverEnv';
 import { createClient } from '@supabase/supabase-js';
 import { Connection, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -175,6 +175,10 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
     name: 'ethereum',
     chainId: 1,
   },
+  'polygon': {
+    name: 'polygon',
+    chainId: 137,
+  },
   'optimism-sepolia': {
     name: 'optimism-sepolia',
     chainId: 11155420,
@@ -237,6 +241,7 @@ export const SUPPORTED_NETWORKS: Record<string, NetworkConfig> = {
 export const ACTIVE_NETWORKS = [
   'ethereum',
   'base',
+  'polygon',
   'optimism',
   'celo',
   'lisk',
@@ -278,6 +283,13 @@ export const TOKEN_CONTRACTS = {
     'USDC': '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
     'USDT': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
     'ETH': 'native' // Native ETH
+  },
+  // Polygon Mainnet
+  'polygon': {
+    'USDC': '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Native USDC on Polygon
+    'USDT': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', // Bridged USDT on Polygon
+    'MATIC': 'native', // Native MATIC
+    'cNGN': '0x52828daa48C1a9A06F37500882b42daf0bE04C3B' // cNGN on Polygon
   },
   // BSC (Binance Smart Chain) - DISABLED
   'bsc': {
@@ -411,7 +423,7 @@ export async function createWallet(userId: string, network: string = 'evm') {
     
     // Fetch user details to get a unique name for the account
     // Handle both UUID and username identifiers
-    let userQuery = supabase.from('users').select('phone_number, id');
+    let userQuery = supabase.from('users').select('phone_number, telegram_username, telegram_id, id');
     
     // Check if userId looks like a UUID (contains hyphens and is 36 chars) or is a username
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
@@ -433,16 +445,32 @@ export async function createWallet(userId: string, network: string = 'evm') {
     // Use the actual user UUID for wallet creation
     const actualUserId = user.id;
 
-    // Format the phone number to create a valid account name
-    // CDP requires alphanumeric characters and hyphens, between 2 and 36 characters
-    let accountName = user.phone_number;
-    // Remove any non-alphanumeric characters except hyphens
-    accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
-    // If it starts with a plus, replace it with 'p'
-    if (accountName.startsWith('+')) {
-      accountName = 'p' + accountName.substring(1);
+    // Create account name using the same priority logic as transfer function
+    // Priority: telegram_username > telegram_id > phone_number
+    let accountName: string;
+    
+    if (user.telegram_username) {
+      // Use telegram username (this is what's used in webhook.ts)
+      accountName = user.telegram_username;
+    } else if (user.telegram_id) {
+      // Use telegram ID with prefix (fallback case)
+      accountName = `telegram${user.telegram_id}`;
+    } else {
+      // Use phone number (original logic)
+      accountName = user.phone_number;
+      accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
+      if (accountName.startsWith('+')) {
+        accountName = 'p' + accountName.substring(1);
+      }
+      if (accountName.length < 2) {
+        accountName = 'user-' + accountName;
+      } else if (accountName.length > 36) {
+        accountName = accountName.substring(0, 36);
+      }
     }
-    // Ensure it's between 2 and 36 characters
+    
+    // Ensure account name meets CDP requirements
+    accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
     if (accountName.length < 2) {
       accountName = 'user-' + accountName;
     } else if (accountName.length > 36) {
@@ -679,6 +707,8 @@ export async function getBalances(address: string, network: string) {
       // For networks not supported by CDP, use alternative methods
       if (actualNetwork === 'ethereum') {
         balances = await getEthereumBalances(address);
+      } else if (actualNetwork === 'polygon') {
+        balances = await getPolygonBalances(address);
       } else if (actualNetwork === 'celo') {
         balances = await getCeloBalances(address);
       } else if (actualNetwork === 'lisk') {
@@ -1638,7 +1668,7 @@ export async function transferNativeToken(
       // Get user details to recreate the same account name used during wallet creation
       const { data: user, error: userError } = await supabase
         .from('users')
-        .select('phone_number')
+        .select('phone_number, telegram_username, telegram_id')
         .eq('id', walletData.user_id)
         .single();
       
@@ -1647,12 +1677,32 @@ export async function transferNativeToken(
         throw new Error(`Could not get user details for wallet: ${fromAddress}`);
       }
       
-      // Format the phone number to create the same account name as during wallet creation
-      let accountName = user.phone_number;
-      accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
-      if (accountName.startsWith('+')) {
-        accountName = 'p' + accountName.substring(1);
+      // Recreate the account name using the same logic as wallet creation
+      // Priority: telegram_username > telegram_id > phone_number
+      let accountName: string;
+      
+      if (user.telegram_username) {
+        // Use telegram username (this is what's used in webhook.ts)
+        accountName = user.telegram_username;
+      } else if (user.telegram_id) {
+        // Use telegram ID with prefix (fallback case)
+        accountName = `telegram${user.telegram_id}`;
+      } else {
+        // Use phone number (original logic)
+        accountName = user.phone_number;
+        accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
+        if (accountName.startsWith('+')) {
+          accountName = 'p' + accountName.substring(1);
+        }
+        if (accountName.length < 2) {
+          accountName = 'user-' + accountName;
+        } else if (accountName.length > 36) {
+          accountName = accountName.substring(0, 36);
+        }
       }
+      
+      // Ensure account name meets CDP requirements
+      accountName = accountName.replace(/[^a-zA-Z0-9-]/g, '');
       if (accountName.length < 2) {
         accountName = 'user-' + accountName;
       } else if (accountName.length > 36) {
@@ -1789,6 +1839,133 @@ export async function transferToken(
     const amountStr = String(amount);
     const parsedAmount = parseUnits(amountStr, decimals).toString();
     
+    // For CDP transactions, we need to check the balance of the actual CDP account, not the original fromAddress
+    let balanceCheckAddress = fromAddress;
+    
+    // If this is a CDP transaction (not viem), get the CDP account address first
+    if (!networkConfig.chainId) {
+      // Get the correct account name from wallet creation
+      try {
+        const { data: walletData, error: walletError } = await supabase
+          .from('wallets')
+          .select('user_id')
+          .eq('address', fromAddress)
+          .eq('chain', isEVM ? 'evm' : 'solana')
+          .single();
+        
+        if (walletData && !walletError) {
+          const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('phone_number')
+            .eq('id', walletData.user_id)
+            .single();
+          
+          if (user && !userError) {
+            let correctAccountName = user.phone_number;
+            correctAccountName = correctAccountName.replace(/[^a-zA-Z0-9-]/g, '');
+            if (correctAccountName.startsWith('+')) {
+              correctAccountName = 'p' + correctAccountName.substring(1);
+            }
+            if (correctAccountName.length < 2) {
+              correctAccountName = 'user-' + correctAccountName;
+            } else if (correctAccountName.length > 36) {
+              correctAccountName = correctAccountName.substring(0, 36);
+            }
+            
+            console.log(`[CDP] Getting CDP account for balance check with correct name: ${correctAccountName}`);
+            const tempAccount = await evmClient.getOrCreateAccount({ name: correctAccountName });
+            if (tempAccount && tempAccount.address) {
+              balanceCheckAddress = tempAccount.address;
+              console.log(`[CDP] Will check balance of CDP account: ${balanceCheckAddress} instead of original: ${fromAddress}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`[CDP] Failed to get CDP account for balance check, using original address:`, error);
+      }
+    }
+    
+    // Check balance before transfer
+    console.log(`[CDP] ===== BALANCE VALIDATION STARTED =====`);
+    console.log(`[CDP] Checking balance for address: ${balanceCheckAddress}`);
+    console.log(`[CDP] Original fromAddress: ${fromAddress}`);
+    console.log(`[CDP] Network: ${network}`);
+    console.log(`[CDP] Token address: ${tokenAddress}`);
+    console.log(`[CDP] Transfer amount (parsed): ${parsedAmount}`);
+    console.log(`[CDP] Token decimals: ${decimals}`);
+    
+    const balances = await getBalances(balanceCheckAddress, network);
+    
+    if (!balances || !balances.data) {
+      console.error(`[CDP] Failed to fetch wallet balance for ${balanceCheckAddress} on ${network}`);
+      throw new Error(`Unable to fetch wallet balance for ${balanceCheckAddress}`);
+    }
+    
+    console.log(`[CDP] Retrieved ${balances.data.length} token balances`);
+    console.log(`[CDP] Available tokens:`, balances.data.map(b => ({ 
+      symbol: b.asset.symbol, 
+      address: b.asset.contractAddress,
+      amount: b.amount,
+      decimals: b.asset.decimals
+    })));
+    
+    // Find the token balance by address or symbol
+    let tokenBalance = balances.data.find(b => 
+      (b.asset.contractAddress && b.asset.contractAddress.toLowerCase() === tokenAddress.toLowerCase()) ||
+      (b.asset.symbol && tokenAddress.toLowerCase().includes(b.asset.symbol.toLowerCase()))
+    );
+    
+    // If not found by address, try to find by common token symbols
+    if (!tokenBalance) {
+      const commonTokens = ['USDC', 'USDT', 'ETH', 'SOL', 'CELO', 'LSK', 'BNB'];
+      for (const symbol of commonTokens) {
+        if (tokenAddress.toLowerCase().includes(symbol.toLowerCase())) {
+          tokenBalance = balances.data.find(b => 
+            b.asset.symbol.toLowerCase() === symbol.toLowerCase()
+          );
+          if (tokenBalance) {
+            console.log(`[CDP] Found token by symbol match: ${symbol}`);
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!tokenBalance) {
+      console.error(`[CDP] Token balance not found for address ${tokenAddress}`);
+      console.error(`[CDP] Available tokens:`, 
+        balances.data.map(b => ({ symbol: b.asset.symbol, address: b.asset.contractAddress })));
+      throw new Error(`Token balance not found for ${tokenAddress}. Available tokens: ${balances.data.map(b => b.asset.symbol).join(', ')}`);
+    }
+    
+    console.log(`[CDP] Found token balance:`, {
+      symbol: tokenBalance.asset.symbol,
+      address: tokenBalance.asset.contractAddress,
+      amount: tokenBalance.amount,
+      decimals: tokenBalance.asset.decimals
+    });
+    
+    // Convert balance to same units for comparison
+    const balanceAmount = BigInt(tokenBalance.amount);
+    const transferAmount = BigInt(parsedAmount);
+    
+    console.log(`[CDP] Balance comparison:`);
+    console.log(`[CDP] - Current balance (raw): ${balanceAmount.toString()}`);
+    console.log(`[CDP] - Transfer amount (raw): ${transferAmount.toString()}`);
+    console.log(`[CDP] - Current balance (formatted): ${formatUnits(balanceAmount, decimals)} ${tokenBalance.asset.symbol}`);
+    console.log(`[CDP] - Transfer amount (formatted): ${formatUnits(transferAmount, decimals)} ${tokenBalance.asset.symbol}`);
+    
+    if (balanceAmount < transferAmount) {
+      const formattedBalance = formatUnits(balanceAmount, decimals);
+      const formattedTransfer = formatUnits(transferAmount, decimals);
+      const errorMsg = `Insufficient balance. Available: ${formattedBalance} ${tokenBalance.asset.symbol}, Required: ${formattedTransfer} ${tokenBalance.asset.symbol}`;
+      console.error(`[CDP] ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+    
+    console.log(`[CDP] ===== BALANCE VALIDATION PASSED =====`);
+    console.log(`[CDP] Proceeding with transfer...`);
+    
     // Send transaction
     let txHash;
     if (networkConfig.chainId) {
@@ -1867,31 +2044,109 @@ export async function transferToken(
         // ERC-20 transfer with CDP for other networks
         console.log(`Initiating token transfer on ${network}...`);
         
-        // Format the address to create a valid account name for CDP
-        // CDP requires alphanumeric characters and hyphens, between 2 and 36 characters
-        let accountName = fromAddress.toLowerCase().replace(/[^a-zA-Z0-9-]/g, '');
-        if (accountName.length > 36) {
-          accountName = accountName.substring(0, 36);
-        }
-        if (accountName.length < 2) {
-          accountName = 'addr-' + accountName;
-        }
+        // Use the account name from wallet creation (already retrieved above)
+        console.log(`[CDP] Using account name from wallet creation: ${accountName}`);
         
         // Get or create account for the sender
+        console.log(`[CDP] Getting account with name: ${accountName}`);
         const account = await evmClient.getOrCreateAccount({ name: accountName });
         
-        console.log(`[CDP] Using default network: ${networkConfig.name}`);
+        if (!account || !account.address) {
+          throw new Error(`Failed to get or create account for ${accountName}`);
+        }
+        
+        console.log(`[CDP] Account retrieved: ${account.address}`);
+        
+        // Verify the account address matches the fromAddress
+        if (account.address.toLowerCase() !== fromAddress.toLowerCase()) {
+          console.warn(`[CDP] Account address mismatch: expected ${fromAddress}, got ${account.address}`);
+          // Continue anyway as this might be expected in some cases
+        }
+        
+        console.log(`[CDP] Using network: ${networkConfig.name}`);
         const networkClient = await account.useNetwork(networkConfig.name as any);
+        
+        if (!networkClient) {
+          throw new Error(`Failed to get network client for ${networkConfig.name}`);
+        }
+
+        // Use proper viem encoding for ERC20 transfer function
+        const erc20Abi = [
+          {
+            name: "transfer",
+            type: "function",
+            stateMutability: "nonpayable",
+            inputs: [
+              { name: "to", type: "address" },
+              { name: "value", type: "uint256" },
+            ],
+            outputs: [{ name: "", type: "bool" }],
+          },
+        ] as const;
+
+        const transferData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: "transfer",
+          args: [toAddress as `0x${string}`, BigInt(parsedAmount)],
+        });
+
+        console.log(`[CDP] ERC20 transfer data:`, transferData);
+        console.log(`[CDP] Transfer details:`, {
+          tokenContract: tokenAddress,
+          recipient: toAddress,
+          amount: parsedAmount,
+          formattedAmount: formatUnits(BigInt(parsedAmount), decimals)
+        });
 
         const transactionConfig: any = {
           transaction: {
             to: tokenAddress as `0x${string}`,
-            data: `0xa9059cbb${toAddress.slice(2).padStart(64, '0')}${BigInt(parsedAmount).toString(16).padStart(64, '0')}` as `0x${string}`,
+            data: transferData,
           },
         };
 
-        const tx = await networkClient.sendTransaction(transactionConfig);
-        txHash = tx.transactionHash;
+        console.log(`[CDP] Sending ERC20 transfer transaction...`);
+        console.log(`[CDP] Transaction config:`, JSON.stringify(transactionConfig, null, 2));
+        
+        try {
+          const tx = await networkClient.sendTransaction(transactionConfig);
+          
+          if (!tx || !tx.transactionHash) {
+            throw new Error('Transaction failed: No transaction hash returned');
+          }
+          
+          txHash = tx.transactionHash;
+          console.log(`[CDP] ERC20 transfer transaction sent successfully: ${txHash}`);
+        } catch (txError: any) {
+          console.error(`[CDP] Transaction failed:`, txError);
+          
+          // Check if it's a balance-related error
+          if (txError.message && (
+            txError.message.includes('transfer amount exceeds balance') ||
+            txError.message.includes('insufficient balance') ||
+            txError.message.includes('ERC20: transfer amount exceeds balance')
+          )) {
+            // Re-check balance to provide better error message
+            console.log(`[CDP] Re-checking balance after transaction failure...`);
+            try {
+              const currentBalances = await getBalances(account.address, network);
+              const currentTokenBalance = currentBalances.data?.find(b => 
+                (b.asset.contractAddress && b.asset.contractAddress.toLowerCase() === tokenAddress.toLowerCase()) ||
+                (b.asset.symbol && tokenAddress.toLowerCase().includes(b.asset.symbol.toLowerCase()))
+              );
+              
+              if (currentTokenBalance) {
+                const currentAmount = formatUnits(BigInt(currentTokenBalance.amount), decimals);
+                const requestedAmount = formatUnits(BigInt(parsedAmount), decimals);
+                throw new Error(`Insufficient balance: You have ${currentAmount} ${currentTokenBalance.asset.symbol}, but tried to transfer ${requestedAmount} ${currentTokenBalance.asset.symbol}`);
+              }
+            } catch (balanceCheckError) {
+              console.error(`[CDP] Failed to re-check balance:`, balanceCheckError);
+            }
+          }
+          
+          throw txError;
+        }
       }
     } else {
       // SPL token transfer - build and sign transaction
@@ -2364,6 +2619,109 @@ async function getLiskBalances(address: string) {
       data: [
         { asset: { symbol: 'ETH', decimals: 18 }, amount: '0' },
         { asset: { symbol: 'LSK', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDT', decimals: 6 }, amount: '0' }
+      ]
+    };
+  }
+}
+
+/**
+ * Get Polygon balances
+ * @param address - Wallet address
+ * @returns Token balances
+ */
+async function getPolygonBalances(address: string) {
+  try {
+    console.log(`[CDP] Fetching Polygon balances for address: ${address}`);
+    
+    const balances: Balance[] = [];
+    
+    // Fetch native MATIC balance
+    try {
+      const maticResponse = await fetch(`https://polygon-rpc.com`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_getBalance',
+          params: [address, 'latest'],
+          id: 1
+        })
+      });
+      
+      const maticData = await maticResponse.json();
+      if (maticData.result) {
+        const maticBalance = (parseInt(maticData.result, 16) / 1e18).toString();
+        balances.push({ asset: { symbol: 'MATIC', decimals: 18 }, amount: maticBalance });
+      }
+    } catch (error) {
+      console.error('[CDP] Error fetching MATIC balance:', error);
+      balances.push({ asset: { symbol: 'MATIC', decimals: 18 }, amount: '0' });
+    }
+    
+    // Fetch USDC balance
+    try {
+      const usdcContract = TOKEN_CONTRACTS['polygon']['USDC'];
+      const usdcResponse = await fetch(`https://polygon-rpc.com`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_call',
+          params: [{
+            to: usdcContract,
+            data: `0x70a08231000000000000000000000000${address.slice(2)}`
+          }, 'latest'],
+          id: 2
+        })
+      });
+      
+      const usdcData = await usdcResponse.json();
+      if (usdcData.result) {
+        const usdcBalance = (parseInt(usdcData.result, 16) / 1e6).toString();
+        balances.push({ asset: { symbol: 'USDC', decimals: 6, contractAddress: usdcContract }, amount: usdcBalance });
+      }
+    } catch (error) {
+      console.error('[CDP] Error fetching USDC balance:', error);
+      balances.push({ asset: { symbol: 'USDC', decimals: 6 }, amount: '0' });
+    }
+    
+    // Fetch USDT balance
+    try {
+      const usdtContract = TOKEN_CONTRACTS['polygon']['USDT'];
+      const usdtResponse = await fetch(`https://polygon-rpc.com`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_call',
+          params: [{
+            to: usdtContract,
+            data: `0x70a08231000000000000000000000000${address.slice(2)}`
+          }, 'latest'],
+          id: 3
+        })
+      });
+      
+      const usdtData = await usdtResponse.json();
+      if (usdtData.result) {
+        const usdtBalance = (parseInt(usdtData.result, 16) / 1e6).toString();
+        balances.push({ asset: { symbol: 'USDT', decimals: 6, contractAddress: usdtContract }, amount: usdtBalance });
+      }
+    } catch (error) {
+      console.error('[CDP] Error fetching USDT balance:', error);
+      balances.push({ asset: { symbol: 'USDT', decimals: 6 }, amount: '0' });
+    }
+    
+    console.log(`[CDP] Polygon balances fetched:`, balances);
+    return { balances };
+    
+  } catch (error) {
+    console.error('[CDP] Error fetching Polygon balances:', error);
+    return {
+      balances: [
+        { asset: { symbol: 'MATIC', decimals: 18 }, amount: '0' },
+        { asset: { symbol: 'USDC', decimals: 6 }, amount: '0' },
         { asset: { symbol: 'USDT', decimals: 6 }, amount: '0' }
       ]
     };

@@ -1677,7 +1677,7 @@ export class BotIntegration {
       `• Track payments\n` +
       `• View transaction history\n\n` +
       `💱 **Currency Tools**\n` +
-      `• Check USD/NGN/KES rates\n` +
+      `• Check USD/NGN/GHS rates\n` +
       `• Convert between currencies\n` +
       `• Example: \"What's 100 USD in NGN?\"\n\n` +
       `Just type naturally what you want to do, or use the menu below!`,
@@ -1707,7 +1707,7 @@ export class BotIntegration {
           '❓ **Invalid Query**\n\n' +
           'Please use format like:\n' +
           '• "USDC to NGN"\n' +
-          '• "1 USDC → KES"\n' +
+          '• "1 USDC → GHS"\n' +
           '• "rates" for all rates',
           { parse_mode: 'Markdown' }
         );
@@ -2069,7 +2069,7 @@ export class BotIntegration {
         await this.handleEarningsWithWallet(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
-      } else if (data.startsWith('offramp_')) {
+      } else if (data.startsWith('offramp_') || data.startsWith('payout_') || data.startsWith('select_bank_') || data.startsWith('retry_tx_') || data.startsWith('tx_status_') || data.startsWith('check_status_') || data === 'back_to_payout' || data === 'back_to_banks' || data === 'check_kyc_status' || data === 'start_kyc' || data === 'kyc_info' || data === 'contact_support' || data === 'action_offramp' || data === 'start_offramp' || data === 'offramp_history') {
         // Use the new actions-based offramp callback handling
         try {
           const result = await handleAction('offramp_callback', {
@@ -2563,17 +2563,17 @@ export class BotIntegration {
                 return true;
               }
               if (intent === 'get_price') {
-                // Only allow USD/NGN/KES (and synonyms)
-                const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'KES'];
+                // Only allow USD/NGN/GHS (and synonyms)
+    const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'GHS'];
                 const input = params.original_message || message.text;
                 const lowerInput = input.toLowerCase();
-                const containsValidPair = (lowerInput.includes('usd') || lowerInput.includes('dollar')) && (lowerInput.includes('ngn') || lowerInput.includes('naira') || lowerInput.includes('kes'));
+                const containsValidPair = (lowerInput.includes('usd') || lowerInput.includes('dollar')) && (lowerInput.includes('ngn') || lowerInput.includes('naira') || lowerInput.includes('ghs') || lowerInput.includes('cedi'));
                 if (containsValidPair) {
                   const result = await handleCurrencyConversion(input);
                   await this.bot.sendMessage(message.chat.id, result.text);
                   return true;
                 } else {
-                  await this.bot.sendMessage(message.chat.id, '❌ Only USD to NGN or KES (and vice versa) conversions are supported.');
+                  await this.bot.sendMessage(message.chat.id, '❌ Only USD to NGN or GHS (and vice versa) conversions are supported.');
                   return true;
                 }
               }
@@ -2668,9 +2668,9 @@ export class BotIntegration {
     
     // Check for currency conversion patterns first
     const currencyPatterns = [
-      /(convert|what['']?s|what is|exchange rate|rate of|how much is).*(usd|dollar|ngn|naira|kes|shilling)/i,
-      /(usd|dollar|ngn|naira|kes|shilling).*(to|in|\?).*/i,
-      /\d+\s*(usd|dollar|ngn|naira|kes|shilling).*(to|in|\?|is)/i,
+      /(convert|what['']?s|what is|exchange rate|rate of|how much is).*(usd|dollar|ngn|naira|ghs|cedi)/i,
+        /(usd|dollar|ngn|naira|ghs|cedi).*(to|in|\?).*/i,
+        /\d+\s*(usd|dollar|ngn|naira|ghs|cedi).*(to|in|\?|is)/i,
       /^\/rate\b/i
     ];
     

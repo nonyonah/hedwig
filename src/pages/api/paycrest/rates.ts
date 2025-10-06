@@ -6,9 +6,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
 
     // Fetch the current rate in the requested pattern
-    const fetchRate = async (token: string, amount: number, currency: 'NGN' | 'KSH' | 'KES', network?: string) => {
-      // Normalize KSH -> KES
-      const fiat = currency.toUpperCase() === 'KSH' ? 'KES' : currency.toUpperCase();
+    const fetchRate = async (token: string, amount: number, currency: 'NGN' | 'GHS', network?: string) => {
+      // Use currency as-is (GHS or NGN)
+      const fiat = currency.toUpperCase();
       const base = `${PAYCREST_API_BASE_URL}/rates/${token}/${amount}/${fiat}`;
       const url = network ? `${base}?network=${encodeURIComponent(network)}` : base;
 
@@ -27,16 +27,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return rateData.data as string; // upstream returns string
     };
 
-    // Using USDC with NGN and KES on 'base' network by default
-    const [ngnRate, kesRate] = await Promise.all([
+    // Using USDC with NGN and GHS on 'base' network by default
+    const [ngnRate, ghsRate] = await Promise.all([
       fetchRate('USDC', 1, 'NGN', 'base'),
-      fetchRate('USDC', 1, 'KES', 'base'),
+      fetchRate('USDC', 1, 'GHS', 'base'),
     ]);
 
     // Parse rates to numbers since upstream returns strings
     const parsedRates = {
       NGN: parseFloat(ngnRate),
-      KSH: parseFloat(kesRate)
+      GHS: parseFloat(ghsRate)
     };
 
     res.status(200).json({ success: true, rates: parsedRates });

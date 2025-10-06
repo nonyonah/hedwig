@@ -28,7 +28,7 @@ export default async function handler(
     }
 
     // Validate supported currencies
-    const supportedCurrencies = ['NGN', 'KES'];
+    const supportedCurrencies = ['NGN', 'GHS'];
     if (!supportedCurrencies.includes(currency.toUpperCase())) {
       return res.status(400).json({
         error: `Unsupported currency: ${currency}`,

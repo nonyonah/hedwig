@@ -43,7 +43,7 @@ const SUPPORTED_TOKENS = {
 export interface ServerOfframpRequest {
   userId: string; // Telegram user ID or database user ID
   amount: number;
-  currency: string; // 'NGN', 'KES', etc.
+  currency: string; // 'NGN', 'GHS', etc.
   bankDetails: {
     accountNumber: string;
     bankCode: string;

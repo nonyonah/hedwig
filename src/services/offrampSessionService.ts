@@ -8,8 +8,11 @@ const supabase = createClient(
 export interface OfframpSession {
   id: string;
   userId: string;
-  step: 'amount' | 'payout_method' | 'bank_selection' | 'account_number' | 'confirmation' | 'final_confirmation' | 'processing' | 'completed' | 'creating_order' | 'awaiting_transfer' | 'transferring_tokens' | 'transfer_completed';
+  step: 'network_selection' | 'amount' | 'payout_method' | 'bank_selection' | 'account_number' | 'confirmation' | 'final_confirmation' | 'processing' | 'completed' | 'creating_order' | 'awaiting_transfer' | 'transferring_tokens' | 'transfer_completed';
   data: {
+    selected_network?: string;
+    available_balance?: number;
+    supported_tokens?: string[];
     amount?: number;
     token?: string;
     payoutMethod?: string;
@@ -40,7 +43,7 @@ export class OfframpSessionService {
   /**
    * Create a new offramp session for a user
    */
-  async createSession(userId: string): Promise<OfframpSession> {
+  async createSession(userId: string, step: OfframpSession['step'] = 'amount'): Promise<OfframpSession> {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + OfframpSessionService.SESSION_TIMEOUT);
     
@@ -54,7 +57,7 @@ export class OfframpSessionService {
     
     const sessionData = {
       user_id: userId,
-      step: 'amount',
+      step: step,
       data: {},
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
@@ -71,7 +74,7 @@ export class OfframpSessionService {
       throw new Error(`Failed to create offramp session: ${error.message}`);
     }
 
-    console.log(`[OfframpSession] Created new session: ${data.id} for user: ${userId}`);
+    console.log(`[OfframpSession] Created new session: ${data.id} for user: ${userId} with step: ${step}`);
     return this.mapDbToSession(data);
   }
 
@@ -79,19 +82,29 @@ export class OfframpSessionService {
    * Get active session for a user
    */
   async getActiveSession(userId: string): Promise<OfframpSession | null> {
+    const now = new Date().toISOString();
+    console.log(`[OfframpSession] Getting active session for user: ${userId} at ${now}`);
+    
     const { data, error } = await supabase
       .from('offramp_sessions')
       .select('*')
       .eq('user_id', userId)
-      .gt('expires_at', new Date().toISOString())
+      .gt('expires_at', now)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
-    if (error || !data) {
+    if (error) {
+      console.log(`[OfframpSession] Error getting session for user ${userId}:`, error.message);
+      return null;
+    }
+    
+    if (!data) {
+      console.log(`[OfframpSession] No active session found for user: ${userId}`);
       return null;
     }
 
+    console.log(`[OfframpSession] Found active session: ${data.id} for user: ${userId} (step: ${data.step})`);
     return this.mapDbToSession(data);
   }
 

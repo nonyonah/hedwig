@@ -34,7 +34,7 @@ export class RateQueryService {
       }
 
       const rates: Record<string, number> = {};
-      const supportedCurrencies = ['NGN', 'KES'];
+      const supportedCurrencies = ['NGN', 'GHS'];
 
       // Fetch rates for all supported currencies
       for (const currency of supportedCurrencies) {
@@ -97,7 +97,7 @@ export class RateQueryService {
       let message = `💱 **Exchange Rates for ${result.amount} ${result.token}**\n\n`;
       
       for (const [currency, rate] of Object.entries(result.rates)) {
-        const symbol = currency === 'NGN' ? '₦' : currency === 'KES' ? 'KSh' : currency;
+        const symbol = currency === 'NGN' ? '₦' : currency === 'GHS' ? 'GH₵' : currency;
         const total = rate * (result.amount || 1);
         message += `• ${currency}: ${symbol}${total.toLocaleString()}\n`;
       }

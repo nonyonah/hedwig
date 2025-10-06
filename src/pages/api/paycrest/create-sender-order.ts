@@ -9,11 +9,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     if (!PAYCREST_API_KEY) return res.status(500).json({ error: 'Paycrest API key not configured' });
 
-    const { amountUSD, currency } = req.body as { amountUSD: number | string; currency: 'NGN' | 'KSH' | 'KES' };
+    const { amountUSD, currency } = req.body as { amountUSD: number | string; currency: 'NGN' | 'GHS' };
     if (!amountUSD || !currency) return res.status(400).json({ error: 'Missing amountUSD or currency' });
 
-    // Normalize currency to Paycrest standard (ngn/kes)
-    const fiatNorm = String(currency).toLowerCase() === 'ksh' ? 'kes' : String(currency).toLowerCase();
+    // Normalize currency to Paycrest standard (ngn/ghs)
+    const fiatNorm = String(currency).toLowerCase();
 
     // Follow Sender API create order with retry/backoff
     const payload = {

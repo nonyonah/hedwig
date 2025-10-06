@@ -17,9 +17,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Normalize currency code to Paycrest standard (lowercase)
     const normalized = currency.toString().toLowerCase();
-    const currencyCode = normalized === 'ksh' ? 'kes' : normalized; // map legacy KSH -> KES
-    if (!['ngn', 'kes'].includes(currencyCode)) {
-      return res.status(400).json({ error: 'Unsupported currency. Use NGN or KES.' });
+    const currencyCode = normalized; // Use currency as-is
+  if (!['ngn', 'ghs'].includes(currencyCode)) {
+    return res.status(400).json({ error: 'Unsupported currency. Use NGN or GHS.' });
     }
 
     const url = `${PAYCREST_API_URL}/institutions/${currencyCode}`;

@@ -6,6 +6,7 @@ ALTER TABLE offramp_sessions DROP CONSTRAINT IF EXISTS offramp_sessions_step_che
 -- Add the new check constraint with all step values including the new ones
 ALTER TABLE offramp_sessions ADD CONSTRAINT offramp_sessions_step_check 
 CHECK (step IN (
+  'network_selection',
   'amount', 
   'payout_method', 
   'bank_selection', 

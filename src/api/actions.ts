@@ -2710,15 +2710,58 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
       };
     }
 
-    // Handle callback data for session navigation
-    if (params.callback_data) {
-      // Check for existing active session only when handling callbacks
-      let session = await offrampSessionService.getActiveSession(actualUserId);
-      return await handleOfframpCallback(params.callback_data, actualUserId, session);
+    // Handle callback data for session navigation (check both callback_data and callbackData)
+    const callbackData = params.callback_data || params.callbackData;
+    if (callbackData) {
+      console.log(`[handleOfframp] Processing callback: ${callbackData}`);
+      
+      // Extract session ID from callback data if present (format: action_sessionId)
+      let session: any = null;
+      let sessionId: string | null = null;
+      let cleanCallbackData = callbackData;
+      
+      // Check if callback data contains a session ID (ends with underscore + UUID)
+      const sessionIdMatch = callbackData.match(/^(.+)_([a-f0-9-]{36})$/);
+      if (sessionIdMatch) {
+        cleanCallbackData = sessionIdMatch[1];
+        sessionId = sessionIdMatch[2];
+        console.log(`[handleOfframp] Extracted session ID: ${sessionId} from callback: ${callbackData}`);
+        
+        // Get session by ID instead of searching for active session
+        session = await offrampSessionService.getSessionById(sessionId!);
+        if (!session) {
+          console.log(`[handleOfframp] Session ${sessionId} not found or expired`);
+          return {
+            text: "❌ Session expired. Please start a new withdrawal by typing 'offramp' or using the /offramp command.",
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "🏦 Start New Withdrawal", callback_data: "action_offramp" }]
+              ]
+            }
+          };
+        }
+      } else {
+        // Fallback to active session lookup for legacy callbacks
+        session = await offrampSessionService.getActiveSession(actualUserId);
+      }
+      
+      console.log(`[handleOfframp] Callback ${cleanCallbackData} - Session found:`, session ? `${session.id} (step: ${session.step})` : 'null');
+      const result = await handleOfframpCallback(cleanCallbackData, actualUserId, session);
+      console.log(`[handleOfframp] Callback processed, returning result`);
+      return result;
+    }
+
+    console.log(`[handleOfframp] No callback data, processing text input: "${params.text}"`);
+
+    // If no text is provided, start a new offramp flow
+    if (!params.text || params.text === 'undefined' || params.text.trim() === '') {
+      console.log('[handleOfframp] No text input provided, starting new offramp flow');
+      return await startOfframpFlow(actualUserId);
     }
 
     // Check for existing session first
     let session = await offrampSessionService.getActiveSession(actualUserId);
+    console.log(`[handleOfframp] Session check for text input - Session found:`, session ? `${session.id} (step: ${session.step})` : 'null');
     
     // If there's an existing session, continue with it (for text input like account numbers)
     // BUT only if the text is not a command to start fresh offramp
@@ -2728,7 +2771,7 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
     }
     
     // Clear session only when starting completely fresh (no existing session or explicit new start)
-    if (session) {
+    if (session && params.text && params.text.toLowerCase().includes('offramp')) {
       console.log('[handleOfframp] Clearing existing session to start fresh');
       await offrampSessionService.clearSession(session.id);
       session = null;
@@ -2769,7 +2812,7 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
                 { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
               ],
               [
-                { text: "🇰🇪 Bank Account (KES)", callback_data: "payout_bank_kes" }
+                { text: "🇬🇭 Bank Account (GHS)", callback_data: "payout_bank_ghs" }
               ],
               [
                 { text: "⬅️ Back", callback_data: "offramp_edit" },
@@ -2781,15 +2824,9 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
       }
     }
 
-    // Only start new offramp flow if no callback data was provided
-    // If callback_data exists, it means we're handling a button press, not starting fresh
-    if (!params.callback_data) {
-      return await startOfframpFlow(actualUserId);
-    }
-    
-    // If we reach here with callback_data but no session, something went wrong
+    // If we reach here, something unexpected happened
     return {
-      text: "❌ Session expired. Please start a new withdrawal by typing 'offramp' or using the /offramp command."
+      text: "❌ An unexpected error occurred. Please try starting a new withdrawal."
     };
     
   } catch (error) {
@@ -2911,115 +2948,47 @@ async function validateOfframpAmount(amount: number, userId: string): Promise<{v
   return { valid: true };
 }
 
-// Start new offramp flow
+// Helper function to generate callback data with session ID
+function generateCallbackData(action: string, sessionId?: string): string {
+  return sessionId ? `${action}_${sessionId}` : action;
+}
+
+// Start new offramp flow - Network selection first
 async function startOfframpFlow(userId: string): Promise<ActionResult> {
   try {
-    // Get user wallets and check USDC balance across supported chains
+    // Get user wallets to ensure they exist
     const { data: wallets, error: walletsError } = await supabase
       .from('wallets')
       .select('address, chain')
       .eq('user_id', userId);
 
-    // Map to expected format
-    const userWallets = wallets?.map(wallet => ({
-      wallet_address: wallet.address,
-      network: wallet.chain
-    }));
-
-    if (walletsError || !userWallets || userWallets.length === 0) {
+    if (walletsError || !wallets || wallets.length === 0) {
       return {
         text: "Your wallets are being set up automatically. Please try again in a moment."
       };
     }
 
-    let totalUsdcBalance = 0;
-    let balanceMessages: string[] = [];
-    const supportedChains = ['base', 'celo', 'lisk']; // Supported chains for offramp
-    const chainBalances: { [key: string]: number } = {};
-
-    // Check balances for each wallet on supported chains
-    for (const wallet of userWallets) {
-      // Only check balances for supported chains
-      if (!supportedChains.includes(wallet.network.toLowerCase())) {
-        continue;
-      }
-
-      try {
-        const balances = await getBalances(wallet.wallet_address, wallet.network);
-        
-        // Handle different response structures
-        let balanceArray;
-        if (balances && balances.data && Array.isArray(balances.data)) {
-          balanceArray = balances.data;
-        } else if (Array.isArray(balances)) {
-          balanceArray = balances;
-        } else {
-          console.warn(`Invalid balances response for ${wallet.wallet_address}:`, balances);
-          continue;
-        }
-
-        // Process each balance
-        for (const balance of balanceArray) {
-          if (balance.asset && balance.asset.symbol === 'USDC') {
-            // Convert from wei to human readable format
-            const decimals = balance.asset.decimals || 6;
-            // Handle hex string amounts properly
-            let rawAmount: bigint;
-            if (typeof balance.amount === 'string' && balance.amount.startsWith('0x')) {
-              rawAmount = BigInt(balance.amount);
-            } else {
-              rawAmount = BigInt(balance.amount || '0');
-            }
-            const amount = Number(rawAmount) / Math.pow(10, decimals);
-            
-            if (amount > 0) {
-              totalUsdcBalance += amount;
-              chainBalances[wallet.network.toLowerCase()] = amount;
-              
-              // Format chain name for display
-              let chainName = wallet.network.charAt(0).toUpperCase() + wallet.network.slice(1);
-              balanceMessages.push(`💰 ${amount.toFixed(6)} USDC on ${chainName}`);
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`Error getting balance for wallet ${wallet.wallet_address}:`, error);
-      }
-    }
-
-    if (totalUsdcBalance === 0) {
-      return {
-        text: "❌ No USDC balance found on supported chains (Base, Celo, Lisk). Please deposit USDC to your wallet first."
-      };
-    }
-
-    // Check minimum amount (equivalent to $1 USD)
-    if (totalUsdcBalance < 1) {
-      return {
-        text: `❌ Insufficient balance for offramp. Minimum required: $1 USD equivalent.\n\nYour current balance: ${totalUsdcBalance.toFixed(6)} USDC`
-      };
-    }
-
-    // Create new session
-    const session = await offrampSessionService.createSession(userId);
-    
-    const balanceText = balanceMessages.join('\n');
+    // Create new session with network_selection step
+    const session = await offrampSessionService.createSession(userId, 'network_selection');
     
     return {
-      text: `🏦 **Multi-Chain USDC Withdrawal - Step 1 of 5**\n\n` +
-            `💰 **Your Available USDC Balance:**\n${balanceText}\n\n` +
-            `**Total:** ${totalUsdcBalance.toFixed(6)} USDC\n\n` +
-            `💡 **How much USDC would you like to withdraw and from which chain?**\n\n` +
-            `You can specify both amount and chain:\n` +
-            `• "50 USDC on Base"\n` +
-            `• "100.5 USDC on Celo"\n` +
-            `• "25 USDT on Lisk"\n\n` +
-            `Or just enter the amount and we'll help you choose the chain:\n` +
-            `• "50 USDC"`,
+      text: `🏦 **USDC/USDT Withdrawal - Step 1 of 5**\n\n` +
+            `💡 **Select the network you want to withdraw from:**\n\n` +
+            `🔵 **Base Network** - USDC, cNGN\n` +
+            `🟢 **Celo Network** - USDC, cUSD\n` +
+            `🟣 **Lisk Network** - USDT\n\n` +
+            `We'll check your balance on the selected network and proceed with the withdrawal.`,
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "❌ Cancel", callback_data: "offramp_cancel" }
+            { text: "🔵 Base Network", callback_data: generateCallbackData("offramp_network_base", session.id) },
+            { text: "🟢 Celo Network", callback_data: generateCallbackData("offramp_network_celo", session.id) }
+          ],
+          [
+            { text: "🟣 Lisk Network", callback_data: generateCallbackData("offramp_network_lisk", session.id) }
+          ],
+          [
+            { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
           ]
         ]
       }
@@ -3039,9 +3008,11 @@ async function handleOfframpStep(session: any, params: ActionParams, userId: str
     console.log('[handleOfframpStep] Session step:', session.step, 'Callback:', params.callback_data);
     
     switch (session.step) {
+      case 'network_selection':
+        return await handleNetworkSelectionStep(session, params, userId);
       case 'amount':
         return await handleAmountStep(session, params, userId);
-      case 'payout_method':
+      case 'chain_selection':
         return await handleChainSelectionStep(session, params, userId);
       case 'payout_method':
         return await handlePayoutMethodStep(session, params, userId);
@@ -3100,7 +3071,36 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
     if (callbackData === 'offramp_edit' && session) {
       // Go back to amount step
       await offrampSessionService.updateSession(session.id, 'amount', {});
+      const stepParams = { callback_data: callbackData };
+      return await handleOfframpStep(session, stepParams, userId);
+    }
+
+    if (callbackData === 'offramp_restart' && session) {
+      // Go back to network selection step
+      await offrampSessionService.updateSession(session.id, 'network_selection', {});
+      const stepParams = { callback_data: callbackData };
+      return await handleOfframpStep(session, stepParams, userId);
+    }
+    
+    // Handle action_offramp callback to start new flow
+    if (callbackData === 'action_offramp') {
       return await startOfframpFlow(userId);
+    }
+    
+    // Handle network selection callbacks only if there's an active session
+    if (callbackData === 'offramp_network_base' || callbackData === 'offramp_network_celo' || callbackData === 'offramp_network_lisk') {
+      if (!session) {
+        return {
+          text: "❌ Session expired. Please start a new withdrawal by typing 'offramp' or using the /offramp command.",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "🏦 Start New Withdrawal", callback_data: "action_offramp" }]
+            ]
+          }
+        };
+      }
+      const stepParams = { callback_data: callbackData };
+      return await handleOfframpStep(session, stepParams, userId);
     }
     
     // Handle step-specific callbacks by routing to appropriate step handler
@@ -3110,7 +3110,7 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
     }
     
     return {
-      text: "❌ Invalid action. Please try again."
+      text: "❌ Session expired. Please start a new withdrawal by typing 'offramp' or using the /offramp command."
     };
     
   } catch (error) {
@@ -3121,113 +3121,220 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
   }
 }
 
-// Handle amount input step
-async function handleAmountStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+// Handle network selection step
+async function handleNetworkSelectionStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
   try {
-    // Check if we should skip amount step (when amount is already provided from intent parsing)
-    if (params.skipAmountStep && params.amount && params.token && params.chain) {
-      console.log('[handleAmountStep] Skipping amount input, using provided values:', {
-        amount: params.amount,
-        token: params.token,
-        chain: params.chain
-      });
-      
-      // Update session with the provided values
-      session.amount = params.amount;
-      session.selectedChain = params.chain;
-      
-      // Validate the amount and proceed to payout method
-      if (parseFloat(params.amount) <= 0) {
-        return {
-          text: "❌ Please enter a valid amount greater than 0.",
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
-            ]
-          }
-        };
-      }
-      
-      // Check balance on the specified chain
-      const { data: userData } = await supabase
-        .from('users')
-        .select('wallets')
-        .eq('id', userId)
-        .single();
-
-      if (!userData?.wallets) {
-        return {
-          text: "❌ No wallets found. Please create a wallet first.",
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
-            ]
-          }
-        };
-      }
-
-      const wallets = userData.wallets;
-      const chainWallet = wallets[params.chain];
-      
-      if (!chainWallet) {
-        return {
-          text: `❌ No wallet found for ${params.chain.charAt(0).toUpperCase() + params.chain.slice(1)} chain.`,
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
-            ]
-          }
-        };
-      }
-
-      // Get balance for the specified chain
-      const balances = await getBalances(chainWallet.address, params.chain);
-      const balance = balances.usdc || 0;
-      
-      if (balance < params.amount) {
-        return {
-          text: `❌ Insufficient balance on ${params.chain.charAt(0).toUpperCase() + params.chain.slice(1)}.\n\nYour balance: ${balance.toFixed(2)} USDC\nRequested: ${params.amount} USDC`,
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
-            ]
-          }
-        };
-      }
-      
-      // Update session and proceed to payout method
-      await supabase
-        .from('offramp_sessions')
-        .update({
-          data: {
-            ...session.data,
-            amount: params.amount,
-            token: params.token,
-            selectedChain: params.chain
-          },
-          step: 'payout_method',
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId)
-        .gt('expires_at', new Date().toISOString());
-
-      // Show balance and proceed to payout method selection
+    const callbackData = params.callback_data;
+    
+    // If no specific network callback, show the network selection menu
+    if (!callbackData || callbackData === 'offramp_restart') {
       return {
-        text: `✅ Withdrawing ${params.amount} USDC from ${params.chain.charAt(0).toUpperCase() + params.chain.slice(1)}\n\nYour balance: ${balance.toFixed(2)} USDC\n\nPlease select your payout method:`,
+        text: `🏦 **USDC/USDT Withdrawal - Step 1 of 5**\n\n` +
+              `💡 **Select the network you want to withdraw from:**\n\n` +
+              `🔵 **Base Network** - USDC, cNGN\n` +
+              `🟢 **Celo Network** - USDC, cUSD\n` +
+              `🟣 **Lisk Network** - USDT\n\n` +
+              `We'll check your balance on the selected network and proceed with the withdrawal.`,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🏦 Bank Transfer (NGN)", callback_data: "payout_method_bank_ngn" }],
-            [{ text: "🏦 Bank Transfer (KES)", callback_data: "payout_method_bank_kes" }],
+            [
+              { text: "🔵 Base Network", callback_data: generateCallbackData("offramp_network_base", session.id) },
+              { text: "🟢 Celo Network", callback_data: generateCallbackData("offramp_network_celo", session.id) }
+            ],
+            [
+              { text: "🟣 Lisk Network", callback_data: generateCallbackData("offramp_network_lisk", session.id) }
+            ],
+            [
+              { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
+            ]
+          ]
+        }
+      };
+    }
+    
+    // Parse network selection from callback
+    let selectedNetwork: string;
+    let networkDisplayName: string;
+    let supportedTokens: string[];
+    
+    if (callbackData === 'offramp_network_base') {
+      selectedNetwork = 'base';
+      networkDisplayName = 'Base Network';
+      supportedTokens = ['USDC', 'cNGN'];
+    } else if (callbackData === 'offramp_network_celo') {
+      selectedNetwork = 'celo';
+      networkDisplayName = 'Celo Network';
+      supportedTokens = ['USDC', 'cUSD'];
+    } else if (callbackData === 'offramp_network_lisk') {
+      selectedNetwork = 'lisk';
+      networkDisplayName = 'Lisk Network';
+      supportedTokens = ['USDT'];
+    } else {
+      return {
+        text: "❌ Invalid network selection. Please try again.",
+        reply_markup: {
+          inline_keyboard: [
             [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
           ]
         }
       };
+    }
+
+    // Map networks to their corresponding blockchain chains
+    const networkToChainMap: { [key: string]: string } = {
+      'base': 'evm',
+      'celo': 'evm', 
+      'lisk': 'evm'
+    };
+
+    const requiredChain = networkToChainMap[selectedNetwork];
+    if (!requiredChain) {
+      return {
+        text: "❌ Unsupported network selected. Please try again.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    // Check balance on selected network
+    const { data: wallets, error: walletsError } = await supabase
+      .from('wallets')
+      .select('address, chain')
+      .eq('user_id', userId);
+
+    if (walletsError || !wallets || wallets.length === 0) {
+      return {
+        text: "❌ No wallets found. Please create a wallet first.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    // Get balance for the selected network
+    let totalBalance = 0;
+    const balanceDetails: string[] = [];
+
+    console.log(`[handleNetworkSelectionStep] Checking balances for network: ${selectedNetwork} (requires chain: ${requiredChain})`);
+    console.log(`[handleNetworkSelectionStep] Supported tokens: ${supportedTokens.join(', ')}`);
+    console.log(`[handleNetworkSelectionStep] Found ${wallets.length} wallets`);
+
+    for (const wallet of wallets) {
+      console.log(`[handleNetworkSelectionStep] Checking wallet: ${wallet.address}, chain: ${wallet.chain}`);
+      if (wallet.chain === requiredChain) {
+        console.log(`[handleNetworkSelectionStep] Wallet matches selected network, getting balances...`);
+        try {
+          const balancesResponse = await getBalances(wallet.address, selectedNetwork);
+          console.log(`[handleNetworkSelectionStep] Raw balances response:`, JSON.stringify(balancesResponse, null, 2));
+          
+          // Extract the data array from the response
+          const balances = balancesResponse?.data || [];
+          console.log(`[handleNetworkSelectionStep] Extracted balances array:`, JSON.stringify(balances, null, 2));
+          
+          for (const balance of balances) {
+            const symbol = balance.asset.symbol?.toUpperCase();
+            console.log(`[handleNetworkSelectionStep] Processing balance for symbol: ${symbol}, raw amount: ${balance.amount}`);
+            
+            if (supportedTokens.includes(symbol)) {
+              console.log(`[handleNetworkSelectionStep] Symbol ${symbol} is supported`);
+              const decimals = balance.asset.decimals || 6;
+              let rawAmount: bigint;
+              if (typeof balance.amount === 'string' && balance.amount.startsWith('0x')) {
+                rawAmount = BigInt(balance.amount);
+              } else {
+                rawAmount = BigInt(balance.amount || '0');
+              }
+              const balanceAmount = Number(rawAmount) / Math.pow(10, decimals);
+              console.log(`[handleNetworkSelectionStep] Calculated balance: ${balanceAmount} ${symbol} (decimals: ${decimals})`);
+              totalBalance += balanceAmount;
+              
+              if (balanceAmount > 0) {
+                balanceDetails.push(`${formatBalance(balanceAmount.toString())} ${symbol}`);
+              }
+            } else {
+              console.log(`[handleNetworkSelectionStep] Symbol ${symbol} is NOT supported`);
+            }
+          }
+        } catch (error) {
+          console.error(`[handleNetworkSelectionStep] Error getting balance for wallet ${wallet.address}:`, error);
+        }
+      } else {
+        console.log(`[handleNetworkSelectionStep] Wallet chain ${wallet.chain} does not match required chain ${requiredChain} for network ${selectedNetwork}`);
+      }
+    }
+
+    console.log(`[handleNetworkSelectionStep] Final totalBalance: ${totalBalance}`);
+    console.log(`[handleNetworkSelectionStep] Balance details: ${balanceDetails.join(', ')}`);
+
+    if (totalBalance === 0) {
+      return {
+        text: `❌ **No Balance Found**\n\n` +
+              `You don't have any ${supportedTokens.join(' or ')} balance on ${networkDisplayName}.\n\n` +
+              `Please deposit tokens to your wallet first or select a different network.`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔄 Select Different Network", callback_data: "offramp_restart" }],
+            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+          ]
+        }
+      };
+    }
+
+    // Update session with selected network and proceed to amount step
+    await offrampSessionService.updateSession(session.id, 'amount', {
+      selected_network: selectedNetwork,
+      available_balance: totalBalance,
+      supported_tokens: supportedTokens
+    });
+
+    return {
+      text: `✅ **${networkDisplayName} Selected**\n\n` +
+            `💰 **Available Balance:**\n${balanceDetails.join('\n')}\n\n` +
+            `💡 **Step 2 of 5: Enter Withdrawal Amount**\n\n` +
+            `Please enter the amount you want to withdraw (minimum: $1 USD):`,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+        ]
+      }
+    };
+
+  } catch (error) {
+    console.error('[handleNetworkSelectionStep] Error:', error);
+    return {
+      text: "❌ An error occurred while checking your balance. Please try again.",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
+        ]
+      }
+    };
+  }
+}
+
+// Handle amount input step
+async function handleAmountStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
+  try {
+    // Get selected network from session
+    const selectedNetwork = session.data?.selected_network;
+    const availableBalance = session.data?.available_balance || 0;
+    const supportedTokens = session.data?.supported_tokens || [];
+
+    if (!selectedNetwork) {
+      // No network selected, restart flow
+      await offrampSessionService.updateSession(session.id, 'network_selection', {});
+      return await startOfframpFlow(userId);
     }
 
     const amountText = params.text?.trim();
     if (!amountText) {
       return {
-        text: "❌ Please enter a valid amount with token symbol and optionally the chain.\n\nExample: 50 USDC on Base or 100.5 USDC on Celo",
+        text: `❌ Please enter the amount you want to withdraw.\n\nExample: 50 or 100.5\n\nAvailable balance: ${formatBalance(availableBalance.toString())} ${supportedTokens.join('/')}`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
@@ -3236,47 +3343,12 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
       };
     }
 
-    // Parse amount, token, and chain from text (e.g., "50 USDC on Base" or "100.5 USDC")
-    const normalizedText = amountText.toLowerCase().trim();
+    // Parse amount from text (simple number parsing since network is already selected)
+    const amountMatch = amountText.match(/(\d+(?:\.\d+)?)/);
     
-    // Enhanced regex to capture amount, token, and optional chain
-    const chainMatch = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc\s+(?:on\s+)?(base|celo|lisk|solana|sol)/i);
-    const amountMatch = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc/i);
-    
-    let amount: number;
-    let selectedChain: string | null = null;
-    
-    if (chainMatch) {
-      // User specified both amount and chain
-      amount = parseFloat(chainMatch[1]);
-      selectedChain = chainMatch[2].toLowerCase();
-      
-      // Normalize 'sol' to 'solana'
-      if (selectedChain === 'sol') {
-        selectedChain = 'solana';
-      }
-      
-      // Check if user requested Solana offramp
-      if (selectedChain === 'solana') {
-        return {
-          text: "❌ **Offramp Not Available on Solana**\n\n" +
-                "Offramp is currently not available on Solana network. Please use Base, Celo, or Lisk.\n\n" +
-                "**Supported Networks for Offramp:**\n" +
-                "🔵 Base • 🟡 Celo • 🟢 Lisk\n\n" +
-                "💡 **Tip:** You can still use Solana for regular transfers and swaps!",
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
-            ]
-          }
-        };
-      }
-    } else if (amountMatch) {
-      // User only specified amount, no chain
-      amount = parseFloat(amountMatch[1]);
-    } else {
+    if (!amountMatch) {
       return {
-        text: "❌ Please enter the amount with USDC token symbol and optionally the chain.\n\nExample: 50 USDC on Base or 100.5 USDC",
+        text: `❌ Please enter a valid number.\n\nExample: 50 or 100.5\n\nAvailable balance: ${formatBalance(availableBalance.toString())} ${supportedTokens.join('/')}`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
@@ -3284,10 +3356,12 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
         }
       };
     }
+
+    const amount = parseFloat(amountMatch[1]);
 
     if (isNaN(amount) || amount <= 0) {
       return {
-        text: "❌ Please enter a valid positive amount.\n\nExample: 50 USDC on Base or 100.5 USDC",
+        text: `❌ Please enter a valid positive amount.\n\nExample: 50 or 100.5\n\nAvailable balance: ${formatBalance(availableBalance.toString())} ${supportedTokens.join('/')}`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
@@ -3307,152 +3381,47 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
       };
     }
 
-    // Check user's USDC balance across supported chains
-    const { data: wallets } = await supabase
-      .from('wallets')
-      .select('address, chain')
-      .eq('user_id', userId);
-
-    const userWallets = wallets?.map(wallet => ({
-      wallet_address: wallet.address,
-      network: wallet.chain
-    }));
-
-    const supportedChains = ['base', 'celo', 'lisk'];
-    const chainBalances: { [key: string]: number } = {};
-    let totalUsdcBalance = 0;
-
-    if (userWallets) {
-      for (const wallet of userWallets) {
-        // Only check balances for supported chains
-        if (!supportedChains.includes(wallet.network.toLowerCase())) {
-          continue;
-        }
-
-        try {
-          const balances = await getBalances(wallet.wallet_address, wallet.network);
-          let balanceArray = balances?.data || balances || [];
-          
-          for (const balance of balanceArray) {
-            if (balance.asset?.symbol === 'USDC') {
-              const decimals = balance.asset.decimals || 6;
-              let rawAmount: bigint;
-              if (typeof balance.amount === 'string' && balance.amount.startsWith('0x')) {
-                rawAmount = BigInt(balance.amount);
-              } else {
-                rawAmount = BigInt(balance.amount || '0');
-              }
-              const balanceAmount = Number(rawAmount) / Math.pow(10, decimals);
-              
-              if (balanceAmount > 0) {
-                totalUsdcBalance += balanceAmount;
-                chainBalances[wallet.network.toLowerCase()] = balanceAmount;
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`Error getting balance for wallet ${wallet.wallet_address}:`, error);
-        }
-      }
-    }
-
-    // If user specified a chain, check if they have sufficient balance on that chain
-    if (selectedChain) {
-      const chainBalance = chainBalances[selectedChain] || 0;
-      
-      if (chainBalance < amount) {
-        const chainName = selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1);
-        return {
-          text: `❌ Insufficient balance on ${chainName}.\n\nRequested: ${amount} USDC\nAvailable on ${chainName}: ${chainBalance.toFixed(6)} USDC\n\nPlease choose a different chain or lower amount.`,
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
-            ]
-          }
-        };
-      }
-
-      // User has sufficient balance on selected chain, proceed to payout method
-      await offrampSessionService.updateSession(session.id, 'payout_method', {
-        amount: amount,
-        token: 'USDC',
-        selected_chain: selectedChain
-      });
-
-      const chainName = selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1);
+    // Check if user has sufficient balance on selected network
+    if (amount > availableBalance) {
+      const networkDisplayName = selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1);
       return {
-        text: `🏦 **Multi-Chain USDC Withdrawal - Step 2 of 5**\n\n` +
-              `💰 **Amount:** ${amount} USDC\n` +
-              `🔗 **Chain:** ${chainName}\n\n` +
-              `💳 **Choose your payout method:**\n\n` +
-              `We support bank account withdrawals to:`,
+        text: `❌ **Insufficient Balance**\n\n` +
+              `Requested: ${amount} ${supportedTokens.join('/')}\n` +
+              `Available: ${formatBalance(availableBalance.toString())} ${supportedTokens.join('/')}\n` +
+              `Network: ${networkDisplayName}\n\n` +
+              `Please enter a lower amount.`,
         reply_markup: {
           inline_keyboard: [
-            [
-              { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
-            ],
-            [
-              { text: "🇰🇪 Bank Account (KES)", callback_data: "payout_bank_kes" }
-            ],
-            [
-              { text: "⬅️ Back", callback_data: "offramp_edit" },
-              { text: "❌ Cancel", callback_data: "offramp_cancel" }
-            ]
-          ]
-        }
-      };
-    }
-
-    // User didn't specify chain, check total balance first
-    if (amount > totalUsdcBalance) {
-      return {
-        text: `❌ Insufficient balance across all chains.\n\nRequested: ${amount} USDC\nTotal Available: ${totalUsdcBalance.toFixed(6)} USDC\n\nPlease enter a lower amount.`,
-        reply_markup: {
-          inline_keyboard: [
+            [{ text: "🔄 Select Different Network", callback_data: "offramp_restart" }],
             [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
           ]
         }
       };
     }
 
-    // User has sufficient balance but didn't specify chain, show chain selection
-    const availableChains = Object.entries(chainBalances)
-      .filter(([_, balance]) => balance >= amount)
-      .map(([chain, balance]) => {
-        const chainName = chain.charAt(0).toUpperCase() + chain.slice(1);
-        return {
-          text: `${chainName} (${balance.toFixed(6)} USDC)`,
-          callback_data: `chain_select_${chain}_${amount}`
-        };
-      });
-
-    if (availableChains.length === 0) {
-      return {
-        text: `❌ No single chain has sufficient balance for ${amount} USDC.\n\nPlease enter a lower amount or specify a different chain.`,
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
-          ]
-        }
-      };
-    }
-
-    // Store amount in session for payout method selection
+    // User has sufficient balance, proceed to payout method
     await offrampSessionService.updateSession(session.id, 'payout_method', {
+      ...session.data,
       amount: amount,
-      token: 'USDC'
+      token: supportedTokens[0] // Use the first supported token
     });
 
+    const networkDisplayName = selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1);
     return {
-      text: `🏦 **Multi-Chain USDC Withdrawal - Step 2 of 5**\n\n` +
-            `💰 **Amount:** ${amount} USDC\n\n` +
-            `🔗 **Choose which chain to withdraw from:**\n\n` +
-            `Select the chain with sufficient balance:`,
+      text: `🏦 **Withdrawal - Step 3 of 5**\n\n` +
+            `💰 **Amount:** ${amount} ${supportedTokens[0]}\n` +
+            `🔗 **Network:** ${networkDisplayName}\n\n` +
+            `💳 **Choose your payout method:**`,
       reply_markup: {
         inline_keyboard: [
-          ...availableChains.map(chain => [chain]),
           [
-            { text: "⬅️ Back", callback_data: "offramp_edit" },
+            { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
+          ],
+          [
+            { text: "🇬🇭 Bank Account (GHS)", callback_data: "payout_bank_ghs" }
+          ],
+          [
+            { text: "⬅️ Back", callback_data: "offramp_restart" },
             { text: "❌ Cancel", callback_data: "offramp_cancel" }
           ]
         ]
@@ -3499,7 +3468,7 @@ async function handleChainSelectionStep(session: any, params: ActionParams, user
                 { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
               ],
               [
-                { text: "🇰🇪 Bank Account (KES)", callback_data: "payout_bank_kes" }
+                { text: "🇬🇭 Bank Account (GHS)", callback_data: "payout_bank_ghs" }
               ],
               [
                 { text: "⬅️ Back", callback_data: "offramp_edit" },
@@ -3544,14 +3513,14 @@ async function handlePayoutMethodStep(session: any, params: ActionParams, userId
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "🇳🇬 Bank Account (NGN)", callback_data: "payout_bank_ngn" }
+              { text: "🇳🇬 Bank Account (NGN)", callback_data: generateCallbackData("payout_bank_ngn", session.id) }
             ],
             [
-              { text: "🇰🇪 Bank Account (KES)", callback_data: "payout_bank_kes" }
+              { text: "🇬🇭 Bank Account (GHS)", callback_data: generateCallbackData("payout_bank_ghs", session.id) }
             ],
             [
-              { text: "⬅️ Back", callback_data: "offramp_edit" },
-              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              { text: "⬅️ Back", callback_data: generateCallbackData("offramp_edit", session.id) },
+              { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
             ]
           ]
         }
@@ -3566,10 +3535,10 @@ async function handlePayoutMethodStep(session: any, params: ActionParams, userId
       currency = 'NGN';
       currencyFlag = '🇳🇬';
       currencyName = 'Nigerian Naira';
-    } else if (params.callback_data === 'payout_bank_kes') {
-      currency = 'KES';
-      currencyFlag = '🇰🇪';
-      currencyName = 'Kenyan Shilling';
+    } else if (params.callback_data === 'payout_bank_ghs') {
+      currency = 'GHS';
+      currencyFlag = '🇬🇭';
+      currencyName = 'Ghanaian Cedi';
     } else {
       console.log('[handlePayoutMethodStep] Invalid callback_data:', params.callback_data);
       return {
@@ -3699,8 +3668,8 @@ async function handleBankSelectionStep(session: any, params: ActionParams, userI
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "⬅️ Back", callback_data: "back_to_banks" },
-                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+                { text: "⬅️ Back", callback_data: generateCallbackData("back_to_banks", session.id) },
+                { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
               ]
             ]
           }
@@ -3746,8 +3715,8 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "⬅️ Back", callback_data: "back_to_payout" },
-                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+                { text: "⬅️ Back", callback_data: generateCallbackData("back_to_payout", session.id) },
+                { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
               ]
             ]
           }
@@ -3755,12 +3724,12 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
       }
 
       const bankButtons = supportedBanks.map(bank => [
-        { text: bank.name, callback_data: `select_bank_${bank.code}_${bank.name}_${currency}` }
+        { text: bank.name, callback_data: generateCallbackData(`select_bank_${bank.code}_${bank.name}_${currency}`, session.id) }
       ]);
 
       bankButtons.push([
-        { text: "⬅️ Back", callback_data: "back_to_payout" },
-        { text: "❌ Cancel", callback_data: "offramp_cancel" }
+        { text: "⬅️ Back", callback_data: generateCallbackData("back_to_payout", session.id) },
+        { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
       ]);
 
       return {
@@ -3780,8 +3749,8 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "⬅️ Back", callback_data: "back_to_banks" },
-              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              { text: "⬅️ Back", callback_data: generateCallbackData("back_to_banks", session.id) },
+              { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
             ]
           ]
         }
@@ -3795,8 +3764,8 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "⬅️ Back", callback_data: "back_to_banks" },
-              { text: "❌ Cancel", callback_data: "offramp_cancel" }
+              { text: "⬅️ Back", callback_data: generateCallbackData("back_to_banks", session.id) },
+              { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
             ]
           ]
         }
@@ -3817,8 +3786,8 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "⬅️ Back", callback_data: "back_to_banks" },
-                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+                { text: "⬅️ Back", callback_data: generateCallbackData("back_to_banks", session.id) },
+                { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
               ]
             ]
           }
@@ -3828,17 +3797,19 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
       // Get exchange rate directly from Paycrest API
       let exchangeRate;
       let fiatAmount;
+      const sessionCurrency = session.data.currency || 'NGN'; // Default to NGN if not set
+      const currencySymbol = sessionCurrency === 'NGN' ? '₦' : sessionCurrency === 'GHS' ? '₵' : sessionCurrency;
       
       try {
         // Use the offrampService to get exchange rates - this returns the actual rate per USDC
-        const rates = await offrampService.getExchangeRates("USDC", 1); // Get rate for 1 USDC
-        if (rates.NGN) {
-          exchangeRate = rates.NGN; // This is the actual rate per USDC from Paycrest
+        const rates = await offrampService.getExchangeRates("USDC", 1, sessionCurrency); // Get rate for 1 USDC in the selected currency
+        if (rates[sessionCurrency]) {
+          exchangeRate = rates[sessionCurrency]; // This is the actual rate per USDC from Paycrest
           fiatAmount = exchangeRate * session.data.amount; // Calculate total fiat amount
-          console.log(`[handleAccountNumberStep] Exchange rate from Paycrest: ₦${exchangeRate.toFixed(2)} per USDC`);
-          console.log(`[handleAccountNumberStep] Calculated amount: ${session.data.amount} USDC = ₦${fiatAmount.toFixed(2)}`);
+          console.log(`[handleAccountNumberStep] Exchange rate from Paycrest: ${currencySymbol}${exchangeRate.toFixed(2)} per USDC`);
+          console.log(`[handleAccountNumberStep] Calculated amount: ${session.data.amount} USDC = ${currencySymbol}${fiatAmount.toFixed(2)}`);
         } else {
-          throw new Error('NGN rate not available');
+          throw new Error(`${sessionCurrency} rate not available`);
         }
       } catch (error) {
         console.error('[handleAccountNumberStep] Could not fetch exchange rate:', error);
@@ -3856,8 +3827,8 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
       }
 
       const feeInUsdc = session.data.amount * 0.01; // 1% fee in USDC
-      const feeInNaira = feeInUsdc * exchangeRate; // Convert fee to Naira for final amount calculation
-      const finalAmount = fiatAmount - feeInNaira;
+      const feeInFiat = feeInUsdc * exchangeRate; // Convert fee to local currency for final amount calculation
+      const finalAmount = fiatAmount - feeInFiat;
 
       // Update session with account details and move to confirmation
       await offrampSessionService.updateSession(session.id, 'confirmation', {
@@ -3874,10 +3845,10 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
         text: `✅ **USDC Withdrawal - Step 5 of 5**\n\n` +
               `📋 **Transaction Summary:**\n\n` +
               `💰 **Amount:** ${session.data.amount} USDC\n` +
-              `💱 **Rate:** ₦${exchangeRate.toFixed(2)} per USDC\n` +
-              `💵 **Gross Amount:** ₦${fiatAmount.toLocaleString()}\n` +
+              `💱 **Rate:** ${currencySymbol}${exchangeRate.toFixed(2)} per USDC\n` +
+              `💵 **Gross Amount:** ${currencySymbol}${fiatAmount.toLocaleString()}\n` +
               `💸 **Fee (1%):** ${feeInUsdc.toFixed(2)} USDC\n` +
-              `💳 **Net Amount:** ₦${finalAmount.toLocaleString()}\n\n` +
+              `💳 **Net Amount:** ${currencySymbol}${finalAmount.toLocaleString()}\n\n` +
               `🏛️ **Bank Details:**\n` +
               `• Bank: ${session.data.bankName}\n` +
               `• Account: ${accountNumber}\n` +
@@ -3965,8 +3936,8 @@ async function handleConfirmationStep(session: any, params: ActionParams, userId
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "✅ Yes, Transfer Tokens", callback_data: "offramp_final_confirm" },
-                { text: "❌ Cancel", callback_data: "offramp_cancel" }
+                { text: "✅ Yes, Transfer Tokens", callback_data: generateCallbackData("offramp_final_confirm", session.id) },
+                { text: "❌ Cancel", callback_data: generateCallbackData("offramp_cancel", session.id) }
               ]
             ]
           }
@@ -4320,7 +4291,7 @@ async function handleKYCVerification(params: ActionParams, userId: string): Prom
             "• Proof of address\n" +
             "• Bank account details\n\n" +
             "**Process takes:** 1-3 business days\n" +
-            "**Supported countries:** Nigeria, Kenya",
+            "**Supported countries:** Nigeria, Ghana",
       reply_markup: {
         inline_keyboard: [
           [{ text: "🔐 Start KYC Verification", callback_data: "start_kyc" }],

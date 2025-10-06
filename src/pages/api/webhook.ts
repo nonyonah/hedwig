@@ -220,16 +220,23 @@ function setupBotHandlers() {
       }
 
       // Answer callback query immediately to prevent timeout (skip for test callbacks)
+      let callbackAnswered = false;
       if (callbackQuery.id !== 'test_callback') {
         try {
           await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Processing...' });
+          callbackAnswered = true;
         } catch (error) {
           // Ignore errors for expired callback queries
-          if (error instanceof Error && error.message.includes('query is too old')) {
+          if (error instanceof Error && (
+            error.message.includes('query is too old') || 
+            error.message.includes('callback query expired') ||
+            error.message.includes('Bad Request: query is too old and response timeout expired')
+          )) {
             console.log(`[Webhook] Callback query ${callbackQuery.id} expired, skipping...`);
             return;
           }
-          throw error; // Re-throw other errors
+          console.warn('[Webhook] Failed to answer callback query:', error);
+          // Continue processing even if we can't answer the callback
         }
       } else {
         console.log('[Webhook] Skipping answerCallbackQuery for test callback');
@@ -240,13 +247,25 @@ function setupBotHandlers() {
         if (botIntegration && await Promise.race([
           botIntegration.handleCallback(callbackQuery),
           new Promise<boolean>((_, reject) => 
-            setTimeout(() => reject(new Error('Integration callback timeout')), 8000)
+            setTimeout(() => reject(new Error('Integration callback timeout')), 15000) // Increased timeout
           )
         ])) {
           return; // BotIntegration handled it
         }
       } catch (integrationError) {
         console.error('[Webhook] BotIntegration callback error:', integrationError);
+        
+        // Try to answer callback if not already answered and it's a timeout
+        if (!callbackAnswered && integrationError instanceof Error && 
+            integrationError.message.includes('timeout')) {
+          try {
+            await bot?.answerCallbackQuery(callbackQuery.id, { 
+              text: 'Request timed out. Please try again.' 
+            });
+          } catch (answerError) {
+            console.warn('[Webhook] Failed to answer callback after timeout:', answerError);
+          }
+        }
         // Continue to manual handling if integration fails
       }
 

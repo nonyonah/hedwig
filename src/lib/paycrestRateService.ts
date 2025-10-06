@@ -44,7 +44,7 @@ export interface RateError {
 
 // Supported tokens and currencies
 const SUPPORTED_TOKENS = ['USDC', 'USDT', 'ETH'] as const;
-const SUPPORTED_CURRENCIES = ['NGN', 'KES', 'USD'] as const;
+const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'USD'] as const;
 
 type SupportedToken = typeof SUPPORTED_TOKENS[number];
 type SupportedCurrency = typeof SUPPORTED_CURRENCIES[number];
@@ -245,7 +245,7 @@ export function formatRateDisplay(rateData: PaycrestRate): string {
   const formatCurrency = (code: string) => {
     switch (code.toUpperCase()) {
       case 'NGN': return '₦';
-      case 'KES': return 'KSh';
+      case 'GHS': return 'GH₵';
       case 'USD': return '$';
       default: return code;
     }
@@ -322,7 +322,7 @@ function parseRateQuery(query: string): RateQuery | null {
   const currencyMatches = SUPPORTED_CURRENCIES.filter(currency => 
     text.includes(currency.toLowerCase()) || 
     (currency === 'NGN' && (text.includes('naira') || text.includes('₦'))) ||
-    (currency === 'KES' && (text.includes('shilling') || text.includes('ksh'))) ||
+    (currency === 'GHS' && (text.includes('cedi') || text.includes('gh₵'))) ||
     (currency === 'USD' && (text.includes('dollar') || text.includes('$')))
   );
   
@@ -408,7 +408,7 @@ export class PaycrestRateService {
     
     for (const [pair, rate] of Object.entries(rates)) {
       const [from, to] = pair.split('_');
-      const symbol = to === 'NGN' ? '₦' : to === 'KES' ? 'KSh' : to;
+      const symbol = to === 'NGN' ? '₦' : to === 'GHS' ? 'GH₵' : to;
       message += `• 1 ${from} = ${symbol}${rate.toLocaleString()}\n`;
     }
     
@@ -425,7 +425,7 @@ export class PaycrestRateService {
     rate: number,
     amount: number = 1
   ): string {
-    const symbol = toCurrency === 'NGN' ? '₦' : toCurrency === 'KES' ? 'KSh' : toCurrency;
+    const symbol = toCurrency === 'NGN' ? '₦' : toCurrency === 'GHS' ? 'GH₵' : toCurrency;
     const total = rate * amount;
     
     if (amount === 1) {

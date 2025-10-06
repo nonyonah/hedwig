@@ -36,9 +36,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid amount. Must be a positive number.' });
     }
 
-    // Normalize fiat to Paycrest standard: ngn, kes (map legacy KSH->KES)
-    const fiatLower = fiat.toLowerCase();
-    const normFiat = fiatLower === 'ksh' ? 'kes' : fiatLower;
+    // Normalize fiat to Paycrest standard: ngn, ghs
+  const fiatLower = fiat.toString().toLowerCase();
+  const normFiat = fiatLower;
 
     const url = new URL(`${PAYCREST_API_BASE_URL}/rates/${normToken}/${parsedAmount}/${normFiat}`);
     if (network) url.searchParams.append('network', network);

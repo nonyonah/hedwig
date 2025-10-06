@@ -43,6 +43,9 @@ class SupabaseTransactionStorage {
    * Store a pending transaction in Supabase
    */
   async store(transactionId: string, transaction: Omit<PendingTransaction, 'transactionId' | 'createdAt' | 'expiresAt'>): Promise<void> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + this.TTL_MS); // 24 hours from now
+    
     const pendingTransaction = {
       transaction_id: transactionId,
       user_id: transaction.userId,
@@ -56,6 +59,7 @@ class SupabaseTransactionStorage {
       transaction_hash: transaction.transactionHash,
       error_message: transaction.errorMessage,
       metadata: transaction.metadata,
+      expires_at: expiresAt.toISOString(),
     };
 
     const { error } = await supabase

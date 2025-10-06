@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getOrCreateCdpWallet, transferToken, getBalances } from '../lib/cdp';
+import { formatBalance } from '../lib/utils';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
 import { getCurrentConfig } from '../lib/envConfig';
@@ -36,7 +37,7 @@ if (!PAYCREST_API_KEY || !PAYCREST_API_TOKEN || !PAYCREST_API_SECRET) {
 
 // Supported tokens for offramp (Base, Celo, and Lisk networks)
 const SUPPORTED_TOKENS = ['USDC', 'USDT', 'CUSD'];
-const SUPPORTED_CURRENCIES = ['NGN', 'KES'];
+const SUPPORTED_CURRENCIES = ['NGN', 'GHS'];
 const MINIMUM_USD_AMOUNT = 1; // Minimum $1 USD equivalent
 const UNSUPPORTED_TOKENS = ['SOL', 'ETH', 'WETH', 'BTC', 'WBTC'];
 const SOLANA_TOKENS = ['SOL', 'USDC-SOL', 'USDT-SOL'];
@@ -226,15 +227,17 @@ export class OfframpService {
   /**
    * Get exchange rates for supported currencies
    */
-  async getExchangeRates(token: string, amount: number): Promise<Record<string, number>> {
+  async getExchangeRates(token: string, amount: number, currency?: string): Promise<Record<string, number>> {
     try {
       const rates: Record<string, number> = {};
       
-      // Use only supported currencies (NGN, KES)
-      for (const currency of SUPPORTED_CURRENCIES) {
+      // If specific currency is provided, use only that currency, otherwise use all supported currencies
+      const currenciesToFetch = currency ? [currency.toUpperCase()] : SUPPORTED_CURRENCIES;
+      
+      for (const curr of currenciesToFetch) {
         try {
           const response = await axios.get(
-            `${PAYCREST_API_BASE_URL}/rates/${token.toUpperCase()}/${amount}/${currency.toUpperCase()}`,
+            `${PAYCREST_API_BASE_URL}/rates/${token.toUpperCase()}/${amount}/${curr.toUpperCase()}`,
             {
               headers: {
                 'Authorization': `Bearer ${PAYCREST_API_KEY}`
@@ -245,13 +248,13 @@ export class OfframpService {
           // According to Paycrest API docs, response.data.data contains the rate as a string
           const rateData = response.data;
           if (rateData && rateData.status === 'success' && rateData.data && !isNaN(parseFloat(rateData.data))) {
-            rates[currency] = parseFloat(rateData.data);
+            rates[curr] = parseFloat(rateData.data);
           } else {
             throw new Error(`Invalid rate received: ${JSON.stringify(rateData)}`);
           }
         } catch (error) {
-          console.warn(`[OfframpService] Failed to get rate for ${currency}:`, error);
-          throw new Error(`Failed to fetch exchange rate for ${currency}`);
+          console.warn(`[OfframpService] Failed to get rate for ${curr}:`, error);
+          throw new Error(`Failed to fetch exchange rate for ${curr}`);
         }
       }
       
@@ -422,69 +425,122 @@ export class OfframpService {
    */
   private async checkWalletBalance(userId: string, token: string, amount: number, network?: string) {
     try {
-      // Determine network based on token if not provided
-      let targetNetwork = network;
-      if (!targetNetwork) {
-        const tokenUpper = token.toUpperCase();
-        if (tokenUpper === 'CUSD') {
-          targetNetwork = 'celo';
-        } else if (tokenUpper === 'USDT') {
-          targetNetwork = 'lisk';
-        } else {
-          targetNetwork = 'base'; // Default to Base for USDC
+      console.log(`[OfframpService] Checking wallet balance for user ${userId}, token ${token}, amount ${amount}, network ${network}`);
+      
+      // Get or create CDP wallet for the user
+      const wallet = await getOrCreateCdpWallet(userId);
+      if (!wallet || !wallet.address) {
+        throw new Error('Failed to get wallet address');
+      }
+
+      const walletAddress = wallet.address;
+      console.log(`[OfframpService] Wallet address: ${walletAddress}`);
+
+      const tokenUpper = token.toUpperCase();
+
+      // If a specific network is provided, check only that network
+      if (network) {
+        console.log(`[OfframpService] Checking specific network: ${network}`);
+        return await this.checkBalanceOnNetwork(walletAddress, tokenUpper, amount, network);
+      }
+
+      // For USDC, check across all supported networks where USDC exists
+      if (tokenUpper === 'USDC') {
+        const usdcNetworks = ['base', 'celo', 'lisk'];
+        console.log(`[OfframpService] Checking USDC across multiple networks: ${usdcNetworks.join(', ')}`);
+        
+        for (const targetNetwork of usdcNetworks) {
+          try {
+            const result = await this.checkBalanceOnNetwork(walletAddress, tokenUpper, amount, targetNetwork);
+            if (result.balance >= amount) {
+              console.log(`[OfframpService] Found sufficient USDC balance on ${targetNetwork}: ${result.balance}`);
+              return result;
+            }
+          } catch (error) {
+            console.log(`[OfframpService] No sufficient balance on ${targetNetwork}:`, error.message);
+            continue;
+          }
         }
+        
+        // If no network has sufficient balance, throw error
+        throw new Error(`Insufficient USDC balance across all supported networks. Required: ${amount}`);
       }
 
-      const wallet = await getOrCreateCdpWallet(userId, targetNetwork);
-      const balancesResponse = await getBalances(wallet.address, targetNetwork);
-      console.log(`[OfframpService] Raw balance response for ${targetNetwork}:`, JSON.stringify(balancesResponse, null, 2));
+      // For other tokens, use the default network mapping
+      const targetNetwork = this.getNetworkForToken(token);
+      console.log(`[OfframpService] Target network for ${token}: ${targetNetwork}`);
+      return await this.checkBalanceOnNetwork(walletAddress, tokenUpper, amount, targetNetwork);
 
-      let balances;
-      if (balancesResponse && typeof balancesResponse === 'object') {
-        if (balancesResponse.data && Array.isArray(balancesResponse.data)) {
-          balances = balancesResponse.data;
-        } else if (Array.isArray(balancesResponse)) {
-          balances = balancesResponse;
-        } else {
-          console.error('[OfframpService] Invalid balances response structure:', balancesResponse);
-          this.handleOfframpError(new Error('Invalid balances response'), 'balance_check');
-        }
-      } else {
-        console.error('[OfframpService] Invalid balances response:', balancesResponse);
-        this.handleOfframpError(new Error('Invalid balances response'), 'balance_check');
-      }
-
-      const tokenBalance = balances.find(b =>
-        b.asset && b.asset.symbol && b.asset.symbol.toUpperCase() === token.toUpperCase()
-      );
-
-      if (!tokenBalance) {
-        console.error(`[OfframpService] Token ${token} not found in ${targetNetwork} wallet. Available tokens:`,
-          balances.map(b => b.asset?.symbol).filter(Boolean));
-        this.handleOfframpError(new Error(`Token ${token} not found in ${targetNetwork} wallet`), 'balance_check');
-      }
-
-      const decimals = tokenBalance.asset.decimals || 18;
-      const balanceInWei = BigInt(tokenBalance.amount || '0');
-      const divisor = BigInt(10 ** decimals);
-      const balanceInTokens = Number(balanceInWei) / Number(divisor);
-
-      console.log(`[OfframpService] Token balance check on ${targetNetwork}:`);
-      console.log(`[OfframpService] - Token: ${token}`);
-      console.log(`[OfframpService] - Balance (wei): ${tokenBalance.amount}`);
-      console.log(`[OfframpService] - Balance (tokens): ${balanceInTokens}`);
-      console.log(`[OfframpService] - Requested amount: ${amount}`);
-      console.log(`[OfframpService] - Decimals: ${decimals}`);
-
-      if (balanceInTokens < amount) {
-        this.handleOfframpError(
-          new Error(`Insufficient balance. Available: ${balanceInTokens.toFixed(6)} ${token}, Requested: ${amount} ${token}`),
-          'balance_check'
-        );
-      }
     } catch (error) {
-      console.error('[OfframpService] Balance check error:', error);
-      this.handleOfframpError(error, 'balance_check');
+      console.error('[OfframpService] Balance check failed:', error);
+      throw error;
+    }
+  }
+
+  private async checkBalanceOnNetwork(walletAddress: string, token: string, amount: number, network: string) {
+    try {
+      console.log(`[OfframpService] Checking ${token} balance on ${network}`);
+      
+      // Get balances for the specific network
+      const balances = await getBalances(walletAddress, network);
+      console.log(`[OfframpService] Balances for ${network}:`, JSON.stringify(balances, null, 2));
+
+      if (!balances) {
+        throw new Error(`Failed to fetch balances for network ${network}`);
+      }
+
+      // Find the specific token balance
+      let tokenBalance = 0;
+
+      // Handle different balance response formats - using the same robust logic as actions.ts
+      if (Array.isArray(balances)) {
+        // Direct array format
+        const tokenBalanceItem = balances.find((balance: any) => 
+          balance.asset?.symbol?.toUpperCase() === token
+        );
+        if (tokenBalanceItem) {
+          tokenBalance = parseFloat(tokenBalanceItem.amount || '0');
+        }
+      } else if (balances && typeof balances === 'object' && 'data' in balances) {
+        // EVM ListTokenBalancesResult format (from CDP or Alchemy) - same as actions.ts
+        const balanceArray = (balances as any).data || [];
+        const tokenBalanceItem = balanceArray.find((balance: any) => 
+          balance.asset?.symbol?.toUpperCase() === token
+        );
+        if (tokenBalanceItem) {
+          // Use the formatBalance function from utils.ts - same as actions.ts
+          const decimals = tokenBalanceItem.asset?.decimals || 18;
+          const rawAmount = tokenBalanceItem.amount || '0';
+          const formattedBalance = formatBalance(rawAmount, decimals);
+          tokenBalance = parseFloat(formattedBalance);
+        }
+      } else if (typeof balances === 'object') {
+        // Object format with token symbols as keys
+        for (const [key, value] of Object.entries(balances)) {
+          if (key.toUpperCase() === token && typeof value === 'object' && value !== null) {
+            const balanceObj = value as any;
+            tokenBalance = parseFloat(balanceObj.amount || balanceObj.balance || '0');
+            break;
+          }
+        }
+      }
+
+      console.log(`[OfframpService] Found ${token} balance: ${tokenBalance} on ${network}`);
+
+      // Check if balance is sufficient
+      if (tokenBalance < amount) {
+        throw new Error(`Insufficient ${token} balance on ${network}. Required: ${amount}, Available: ${tokenBalance}`);
+      }
+
+      return {
+        balance: tokenBalance,
+        network: network,
+        address: walletAddress
+      };
+
+    } catch (error) {
+      console.error(`[OfframpService] Balance check failed on ${network}:`, error);
+      throw error;
     }
   }
 
@@ -494,7 +550,7 @@ export class OfframpService {
   private async createPaycrestOrder(request: OfframpRequest, returnAddress: string) {
     try {
       // First, fetch the current rate as required by Paycrest Sender API
-      const rates = await this.getExchangeRates(request.token, request.amount);
+      const rates = await this.getExchangeRates(request.token, request.amount, request.currency);
       const currentRate = rates[request.currency.toUpperCase()];
       if (!currentRate || currentRate <= 0) {
         throw new Error(`Unable to get current rate for ${request.currency}`);
@@ -574,7 +630,7 @@ export class OfframpService {
       );
 
       // 6. Get exchange rate
-      const rates = await this.getExchangeRates(request.token, request.amount);
+      const rates = await this.getExchangeRates(request.token, request.amount, request.currency);
       const fiatAmount = rates[request.currency.toUpperCase()];
       if (!fiatAmount || fiatAmount <= 0) {
         throw new Error('Unable to get exchange rate');
@@ -1092,17 +1148,17 @@ export class OfframpService {
             { name: "Stanbic IBTC", code: "221", country: "Nigeria" },
             { name: "Polaris Bank", code: "076", country: "Nigeria" }
           ];
-        } else if (currency.toUpperCase() === 'KES') {
-          console.log('[OfframpService] Returning KES fallback banks');
+        } else if (currency.toUpperCase() === 'GHS') {
+      console.log('[OfframpService] Returning GHS fallback banks');
           return [
-            { name: "KCB Bank", code: "01", country: "Kenya" },
-            { name: "Equity Bank", code: "68", country: "Kenya" },
-            { name: "Cooperative Bank", code: "11", country: "Kenya" },
-            { name: "NCBA Bank", code: "07", country: "Kenya" },
-            { name: "Standard Chartered", code: "02", country: "Kenya" },
-            { name: "Absa Bank", code: "03", country: "Kenya" },
-            { name: "Diamond Trust Bank", code: "63", country: "Kenya" },
-            { name: "I&M Bank", code: "57", country: "Kenya" }
+            { name: "Ghana Commercial Bank", code: "030100", country: "Ghana" },
+            { name: "Ecobank Ghana", code: "130100", country: "Ghana" },
+            { name: "Standard Chartered Bank Ghana", code: "020100", country: "Ghana" },
+            { name: "Absa Bank Ghana", code: "030200", country: "Ghana" },
+            { name: "Zenith Bank Ghana", code: "120100", country: "Ghana" },
+            { name: "Stanbic Bank Ghana", code: "190100", country: "Ghana" },
+            { name: "Fidelity Bank Ghana", code: "240100", country: "Ghana" },
+            { name: "Access Bank Ghana", code: "280100", country: "Ghana" }
           ];
         }
         return [];
@@ -1122,7 +1178,7 @@ export class OfframpService {
         return response.data.data.map((institution: any) => ({
           name: institution.name,
           code: institution.code,
-          country: institution.country || (currency === 'NGN' ? 'Nigeria' : 'Kenya')
+          country: institution.country || (currency === 'NGN' ? 'Nigeria' : 'Ghana')
         }));
       }
 
@@ -1143,16 +1199,16 @@ export class OfframpService {
           { name: "Stanbic IBTC", code: "221", country: "Nigeria" },
           { name: "Polaris Bank", code: "076", country: "Nigeria" }
         ];
-      } else if (currency.toUpperCase() === 'KES') {
+      } else if (currency.toUpperCase() === 'GHS') {
         return [
-          { name: "KCB Bank", code: "01", country: "Kenya" },
-          { name: "Equity Bank", code: "68", country: "Kenya" },
-          { name: "Cooperative Bank", code: "11", country: "Kenya" },
-          { name: "NCBA Bank", code: "07", country: "Kenya" },
-          { name: "Standard Chartered", code: "02", country: "Kenya" },
-          { name: "Absa Bank", code: "03", country: "Kenya" },
-          { name: "Diamond Trust Bank", code: "63", country: "Kenya" },
-          { name: "I&M Bank", code: "57", country: "Kenya" }
+          { name: "Ghana Commercial Bank", code: "030100", country: "Ghana" },
+          { name: "Ecobank Ghana", code: "130100", country: "Ghana" },
+          { name: "Standard Chartered Bank Ghana", code: "020100", country: "Ghana" },
+          { name: "Absa Bank Ghana", code: "030200", country: "Ghana" },
+          { name: "Zenith Bank Ghana", code: "120100", country: "Ghana" },
+          { name: "Stanbic Bank Ghana", code: "190100", country: "Ghana" },
+          { name: "Fidelity Bank Ghana", code: "240100", country: "Ghana" },
+          { name: "Access Bank Ghana", code: "280100", country: "Ghana" }
         ];
       }
       return [];
@@ -1205,9 +1261,11 @@ export class OfframpService {
     if (tokenUpper === 'CUSD') {
       return 'celo';
     } else if (tokenUpper === 'USDT') {
-      return 'lisk';
+      return 'lisk'; // Primary network for USDT
+    } else if (tokenUpper === 'USDC') {
+      return 'base'; // Primary network for USDC, but checkWalletBalance will check all networks
     } else {
-      return 'base'; // Default to Base for USDC
+      return 'base'; // Default fallback
     }
   }
 
