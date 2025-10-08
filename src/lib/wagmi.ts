@@ -11,7 +11,7 @@ const createTransport = () => http(undefined, {
     // Suppress filter-related errors in console
     const bodyStr = typeof request.body === 'string' ? request.body : JSON.stringify(request.body || '');
     if (bodyStr.includes('eth_getFilterChanges') || bodyStr.includes('eth_getFilterLogs')) {
-      console.debug('Filter request:', request.method);
+      console.debug('Filter request detected, handling gracefully');
     }
   },
   onFetchResponse: async (response) => {
@@ -22,16 +22,17 @@ const createTransport = () => http(undefined, {
         if (errorData.error && 
             (errorData.error.message?.includes('filter not found') || 
              errorData.error.message?.includes('eth_getFilterChanges') ||
+             errorData.error.message?.includes('eth_getFilterLogs') ||
              errorData.error.code === -32600)) {
-          console.debug('Filter response error handled gracefully:', errorData.error.message);
-          // Log the error but don't modify the response to avoid type issues
-          console.debug('Suppressing filter error for better UX');
+          console.debug('Filter error suppressed:', errorData.error.message);
+          // Log the error but don't modify the response
+          // The error handling will be done at the contract level
         }
       } catch (e) {
         console.debug('Error parsing filter response:', e);
       }
     }
-    // Always return void to match the expected type
+    // onFetchResponse should not return anything (void)
   }
 });
 
