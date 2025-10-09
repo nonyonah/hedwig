@@ -417,16 +417,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('📤 Base notification payload:', notificationPayload);
         console.log('📋 Final notification payload:', JSON.stringify(notificationPayload, null, 2));
 
-        const notificationUrl = `${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/payment-notifications`;
+        // Construct notification URL with better fallback logic
+        // For internal webhook calls, prefer localhost to avoid external routing issues
+        let notificationUrl: string;
+        
+        if (process.env.NODE_ENV === 'development') {
+          // In development, always use localhost
+          notificationUrl = 'https://www.hedwigbot.xyz/api/webhooks/payment-notifications';
+        } else {
+          // In production, try to use internal URL first, then external
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
+          if (baseUrl && (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1'))) {
+            notificationUrl = `${baseUrl}/api/webhooks/payment-notifications`;
+          } else {
+            // For external URLs, try localhost first for internal calls
+            notificationUrl = 'https://www.hedwigbot.xyz/api/webhooks/payment-notifications';
+          }
+        }
+        
+        console.log('🌐 Notification URL:', notificationUrl);
+        console.log('🔧 Environment URLs:', {
+          NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+          NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL
+        });
 
         const notificationResponse = await fetch(notificationUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'User-Agent': 'Hedwig-Alchemy-Webhook/1.0'
           },
           body: JSON.stringify(notificationPayload),
           signal: AbortSignal.timeout(15000) // 15 second timeout
         });
+
+        console.log('📡 Notification response status:', notificationResponse.status, notificationResponse.statusText);
 
         if (notificationResponse.ok) {
           const responseData = await notificationResponse.json();
@@ -438,6 +463,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             statusText: notificationResponse.statusText,
             error: errorData,
             url: notificationUrl,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'Hedwig-Alchemy-Webhook/1.0'
+            },
+            payloadSize: JSON.stringify(notificationPayload).length,
             payload: notificationPayload
           });
         }

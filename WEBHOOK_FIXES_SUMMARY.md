@@ -26,6 +26,26 @@
 - ✅ Enhanced logging for notification debugging
 - ✅ Added timeout handling for notification requests
 - ✅ Improved error reporting
+- ✅ Fixed 405 Method Not Allowed error with better URL construction
+- ✅ Added environment-aware URL routing for internal webhook calls
+
+### 5. Transaction Storage (`src/lib/transactionStorage.ts`)
+- ✅ Fixed cleanup error handling to prevent interval crashes
+- ✅ Improved error logging with detailed error information
+- ✅ Added resilient cleanup interval with duplicate prevention
+- ✅ Enhanced cleanup to handle both failed/expired and old transactions
+
+### 6. Paycrest Webhook (`src/pages/api/webhooks/paycrest.ts`)
+- ✅ Fixed webhook payload structure to match actual Paycrest format
+- ✅ Fixed signature verification using correct HMAC-SHA256 format
+- ✅ Improved error handling and logging with detailed signature verification
+- ✅ Added proper response format for Paycrest
+
+### 7. Paycrest Service (`src/services/serverPaycrestService.ts`)
+- ✅ Fixed API endpoint from `/orders/` to `/sender/orders/` 
+- ✅ Fixed authentication header from `Authorization: Bearer` to `API-Key`
+- ✅ Added proper error logging for API calls
+- ✅ Enhanced order status monitoring
 
 ## New Files Created
 
@@ -33,6 +53,11 @@
 - `src/pages/api/test-telegram.ts` - Test Telegram bot functionality
 - `src/scripts/test-webhook-flow.ts` - Test webhook notification flow
 - `src/pages/api/debug-users.ts` - Debug user and Telegram data
+- `src/pages/api/debug-env.ts` - Debug environment variables
+- `src/pages/api/debug-cleanup.ts` - Manual transaction cleanup
+- `src/pages/api/debug-transactions.ts` - Check transaction storage status
+- `src/pages/api/debug-paycrest.ts` - Debug Paycrest API calls and environment
+- `src/pages/api/test-payment-notification.ts` - Test payment notification webhook
 
 ## Environment Variables Fixed
 
@@ -67,6 +92,32 @@ curl http://localhost:3000/api/debug-users
 ### 4. Test Webhook Flow
 ```bash
 npx tsx src/scripts/test-webhook-flow.ts
+```
+
+### 5. Debug Transaction Storage
+```bash
+# Check transaction storage status
+curl http://localhost:3000/api/debug-transactions
+
+# Manual cleanup
+curl -X POST http://localhost:3000/api/debug-cleanup
+```
+
+### 6. Debug Paycrest API
+```bash
+# Check Paycrest environment and API
+curl http://localhost:3000/api/debug-paycrest
+
+# Test specific order status (replace with actual order ID)
+curl "http://localhost:3000/api/debug-paycrest?orderId=your_order_id"
+```
+
+### 7. Test Payment Notifications
+```bash
+# Test payment notification webhook
+curl -X POST http://localhost:3000/api/test-payment-notification \
+  -H "Content-Type: application/json" \
+  -d '{"testType": "direct_transfer"}'
 ```
 
 ## Common Issues to Check

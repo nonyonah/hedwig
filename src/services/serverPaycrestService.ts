@@ -490,18 +490,23 @@ export class ServerPaycrestService {
    */
   async getOrderStatus(orderId: string): Promise<PaycrestOrderStatusResponse> {
     try {
-      const response = await fetch(`${PAYCREST_API_BASE_URL}/orders/${orderId}`, {
+      // Use the correct Paycrest Sender API endpoint
+      const response = await fetch(`${PAYCREST_API_BASE_URL}/sender/orders/${orderId}`, {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${PAYCREST_API_KEY}`
+          'API-Key': PAYCREST_API_KEY,
+          'Content-Type': 'application/json'
         }
       });
       
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`[ServerPaycrest] Order status API error: ${response.status} ${response.statusText}`, errorText);
         throw new Error(`Failed to get order status: ${response.statusText} - ${errorText}`);
       }
       
       const data: PaycrestOrderStatusResponse = await response.json();
+      console.log(`[ServerPaycrest] Order status response for ${orderId}:`, data);
       return data;
     } catch (error) {
       console.error('[ServerPaycrest] Error getting order status:', error);

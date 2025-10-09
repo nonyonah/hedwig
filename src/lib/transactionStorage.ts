@@ -225,25 +225,59 @@ class SupabaseTransactionStorage {
    */
   async cleanupExpired(): Promise<number> {
     try {
-      const { data, error } = await supabase
+      // First, clean up failed and expired transactions
+      const { data: failedData, error: failedError } = await supabase
         .from('pending_transactions')
         .delete()
         .in('status', ['failed', 'expired'])
         .select('transaction_id');
 
-      if (error) {
-        console.error('[TransactionStorage] Error cleaning up transactions:', error);
-        throw new Error(`Failed to cleanup transactions: ${error.message}`);
+      let cleanedCount = 0;
+
+      if (failedError) {
+        console.error('[TransactionStorage] Error cleaning up failed/expired transactions:', {
+          message: failedError.message,
+          details: failedError.details,
+          hint: failedError.hint,
+          code: failedError.code
+        });
+      } else {
+        cleanedCount += failedData?.length || 0;
       }
 
-      const cleanedCount = data?.length || 0;
+      // Also clean up transactions that are older than 24 hours regardless of status
+      // (except completed ones which should have been moved to permanent storage)
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      
+      const { data: expiredData, error: expiredError } = await supabase
+        .from('pending_transactions')
+        .delete()
+        .lt('created_at', twentyFourHoursAgo)
+        .neq('status', 'completed')
+        .select('transaction_id');
+
+      if (expiredError) {
+        console.error('[TransactionStorage] Error cleaning up old transactions:', {
+          message: expiredError.message,
+          details: expiredError.details,
+          hint: expiredError.hint,
+          code: expiredError.code
+        });
+      } else {
+        cleanedCount += expiredData?.length || 0;
+      }
+
       if (cleanedCount > 0) {
-        console.log(`[TransactionStorage] Cleaned up ${cleanedCount} failed/expired transactions`);
+        console.log(`[TransactionStorage] Cleaned up ${cleanedCount} transactions`);
       }
 
       return cleanedCount;
-    } catch (error) {
-      console.error('[TransactionStorage] Unexpected error during cleanup:', error);
+    } catch (error: any) {
+      console.error('[TransactionStorage] Unexpected error during cleanup:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       // Don't throw here to prevent the cleanup interval from stopping
       return 0;
     }
@@ -349,11 +383,32 @@ export const transactionStorage = new SupabaseTransactionStorage();
 // Start cleanup interval (run every hour)
 if (typeof window === 'undefined') {
   // Only run cleanup on server side
-  setInterval(async () => {
-    try {
-      await transactionStorage.cleanupExpired();
-    } catch (error) {
-      console.error('[TransactionStorage] Cleanup interval error:', error);
+  let cleanupRunning = false;
+  
+  const runCleanup = async () => {
+    if (cleanupRunning) {
+      console.log('[TransactionStorage] Cleanup already running, skipping...');
+      return;
     }
-  }, 60 * 60 * 1000); // 1 hour
+    
+    cleanupRunning = true;
+    try {
+      console.log('[TransactionStorage] Starting scheduled cleanup...');
+      const cleanedCount = await transactionStorage.cleanupExpired();
+      console.log(`[TransactionStorage] Scheduled cleanup completed, cleaned ${cleanedCount} transactions`);
+    } catch (error: any) {
+      console.error('[TransactionStorage] Cleanup interval error:', {
+        message: error.message,
+        stack: error.stack
+      });
+    } finally {
+      cleanupRunning = false;
+    }
+  };
+  
+  // Run initial cleanup after 30 seconds
+  setTimeout(runCleanup, 30 * 1000);
+  
+  // Then run every hour
+  setInterval(runCleanup, 60 * 60 * 1000); // 1 hour
 }

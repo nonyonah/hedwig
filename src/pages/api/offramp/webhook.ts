@@ -41,6 +41,7 @@ async function readRawBody(req: NextApiRequest): Promise<Buffer> {
 
 /**
  * Verify Paycrest webhook signature
+ * Based on Paycrest documentation: https://docs.paycrest.io/implementation-guides/sender-api-integration#webhook-implementation
  */
 function verifyPaycrestSignature(rawBody: Buffer, signature: string): boolean {
   try {
@@ -55,15 +56,22 @@ function verifyPaycrestSignature(rawBody: Buffer, signature: string): boolean {
       return true; // Allow for development/testing
     }
 
-    // Paycrest uses HMAC-SHA256 with the webhook secret
+    // Paycrest uses HMAC-SHA256 and sends signature as hex string
     const hmac = crypto.createHmac('sha256', webhookSecret);
     hmac.update(rawBody);
-    const expectedSignature = `sha256=${hmac.digest('hex')}`;
+    const expectedSignature = hmac.digest('hex');
 
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    // Compare signatures (case-insensitive)
+    const providedSig = signature.toLowerCase();
+    const expectedSig = expectedSignature.toLowerCase();
+    
+    console.log('[PaycrestWebhook] Signature verification:', {
+      provided: providedSig.substring(0, 10) + '...',
+      expected: expectedSig.substring(0, 10) + '...',
+      match: providedSig === expectedSig
+    });
+
+    return providedSig === expectedSig;
   } catch (error) {
     console.error('[PaycrestWebhook] Signature verification error:', error);
     return false;

@@ -9,22 +9,31 @@ const supabase = createClient(
 );
 
 // Paycrest webhook payload structure based on their documentation
+// https://docs.paycrest.io/implementation-guides/sender-api-integration#webhook-implementation
 interface PaycrestWebhookPayload {
-  event: 'order.created' | 'order.updated' | 'order.completed' | 'order.failed' | 'order.cancelled';
+  event: string; // e.g., 'order.status.updated', 'order.completed', etc.
   data: {
     id: string;
     status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'expired';
     amount: number;
-    currency: string;
-    recipientDetails?: {
-      accountNumber?: string;
-      bankCode?: string;
-      accountName?: string;
+    token: string;
+    network: string;
+    rate: number;
+    recipient: {
+      institution: string;
+      accountIdentifier: string;
+      accountName: string;
+      currency: string;
     };
-    transactionReference?: string;
+    reference: string;
+    receiveAddress: string;
+    returnAddress: string;
+    transactionHash?: string;
+    transactionReference?: string; // Alternative field name
+    currency?: string; // Fiat currency
     createdAt: string;
     updatedAt: string;
-    metadata?: any;
+    expiresAt?: string;
   };
   timestamp: number;
 }
@@ -58,7 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Read raw body for signature verification
     const rawBody = await readRawBody(req);
     const signature = req.headers['x-paycrest-signature'] as string;
-    
+
     // Verify webhook signature
     if (signature && !verifyWebhookSignature(rawBody, signature)) {
       console.error('[PaycrestWebhook] Invalid webhook signature');
@@ -68,7 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Parse the payload
     const payload: PaycrestWebhookPayload = JSON.parse(rawBody.toString('utf-8'));
     console.log('[PaycrestWebhook] Received webhook:', JSON.stringify(payload, null, 2));
-    
+
     // Validate webhook payload structure
     if (!payload.event || !payload.data || !payload.data.id || !payload.data.status) {
       console.error('[PaycrestWebhook] Invalid webhook payload structure:', payload);
@@ -80,6 +89,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const status = data.status;
 
     console.log(`[PaycrestWebhook] Processing ${event} for order ${orderId} with status ${status}`);
+    console.log(`[PaycrestWebhook] Full payload:`, JSON.stringify(payload, null, 2));
 
     // Find transaction in database
     const { data: transaction, error: fetchError } = await supabase
@@ -111,8 +121,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       updated_at: new Date(timestamp * 1000).toISOString()
     };
 
-    if (data.transactionReference) {
-      updateData.tx_hash = data.transactionReference;
+    if (data.transactionReference || data.transactionHash) {
+      updateData.tx_hash = data.transactionReference || data.transactionHash;
     }
 
     // Update transaction in database
@@ -132,9 +142,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Handle status-specific actions and send notifications
     await handleWebhookStatusUpdate(userId, orderId, status, {
-      transactionReference: data.transactionReference,
+      transactionReference: data.transactionReference || data.transactionHash,
       amount: data.amount,
-      currency: data.currency,
+      currency: data.currency || data.recipient.currency,
       updatedAt: data.updatedAt,
       event: event
     });
@@ -143,13 +153,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (newStatus === 'completed' || newStatus === 'failed') {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        
+
         const notificationPayload = {
           type: 'offramp' as const,
           id: transaction.id,
           amount: data.amount || transaction.amount,
-          currency: data.currency || transaction.currency,
-          transactionHash: data.transactionReference,
+          currency: data.currency || data.recipient.currency || transaction.currency,
+          transactionHash: data.transactionReference || data.transactionHash,
           status: newStatus,
           recipientUserId: userId,
           orderId: orderId
@@ -177,7 +187,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Respond to Paycrest (important for them to mark webhook as delivered)
-    res.status(200).json({ 
+    res.status(200).json({
       success: true,
       message: 'Webhook processed successfully',
       orderId: orderId,
@@ -193,6 +203,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 /**
  * Verify webhook signature using raw body
+ * Based on Paycrest documentation: https://docs.paycrest.io/implementation-guides/sender-api-integration#webhook-implementation
  */
 function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
   try {
@@ -207,11 +218,22 @@ function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
       return true; // Allow for development/testing
     }
 
-    const hmac = crypto.createHmac('sha256', Buffer.from(webhookSecret));
+    // Paycrest uses HMAC-SHA256 and sends signature as hex string
+    const hmac = crypto.createHmac('sha256', webhookSecret);
     hmac.update(rawBody);
     const expectedSignature = hmac.digest('hex');
 
-    return signature === expectedSignature;
+    // Compare signatures (case-insensitive)
+    const providedSig = signature.toLowerCase();
+    const expectedSig = expectedSignature.toLowerCase();
+
+    console.log('[PaycrestWebhook] Signature verification:', {
+      provided: providedSig.substring(0, 10) + '...',
+      expected: expectedSig.substring(0, 10) + '...',
+      match: providedSig === expectedSig
+    });
+
+    return providedSig === expectedSig;
   } catch (error) {
     console.error('[PaycrestWebhook] Signature verification error:', error);
     return false;
@@ -222,9 +244,9 @@ function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
  * Handle webhook status updates and send appropriate notifications
  */
 async function handleWebhookStatusUpdate(
-  userId: string, 
-  orderId: string, 
-  status: string, 
+  userId: string,
+  orderId: string,
+  status: string,
   orderData: any
 ): Promise<void> {
   try {
@@ -277,12 +299,12 @@ async function sendSuccessNotification(userId: string, orderId: string, orderDat
 
     const message = {
       text: `✅ **Withdrawal Completed!**\n\n` +
-            `🎉 Your funds have been successfully delivered!\n\n` +
-            `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-            `🏦 **Status:** Delivered to your bank account\n` +
-            `⏰ **Completed:** ${new Date().toLocaleString()}\n\n` +
-            `💡 **Your funds should appear in your account within the next 2 minutes.**\n\n` +
-            `Thank you for using Hedwig! 🚀`,
+        `🎉 Your funds have been successfully delivered!\n\n` +
+        `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
+        `🏦 **Status:** Delivered to your bank account\n` +
+        `⏰ **Completed:** ${new Date().toLocaleString()}\n\n` +
+        `💡 **Your funds should appear in your account within the next 2 minutes.**\n\n` +
+        `Thank you for using Hedwig! 🚀`,
       reply_markup: {
         inline_keyboard: [[
           { text: "📊 View History", callback_data: "offramp_history" },
@@ -304,14 +326,14 @@ async function sendFailureNotification(userId: string, orderId: string, orderDat
   try {
     const message = {
       text: `❌ **Withdrawal Failed**\n\n` +
-            `We're sorry, your withdrawal could not be completed.\n\n` +
-            `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-            `📋 **Order ID:** ${orderId}\n\n` +
-            `🔄 **Next Steps:**\n` +
-            `• Your funds will be automatically refunded\n` +
-            `• Refund typically takes 5-10 minutes\n` +
-            `• You'll receive a notification when complete\n\n` +
-            `💬 Need help? Contact our support team.`,
+        `We're sorry, your withdrawal could not be completed.\n\n` +
+        `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
+        `📋 **Order ID:** ${orderId}\n\n` +
+        `🔄 **Next Steps:**\n` +
+        `• Your funds will be automatically refunded\n` +
+        `• Refund typically takes 5-10 minutes\n` +
+        `• You'll receive a notification when complete\n\n` +
+        `💬 Need help? Contact our support team.`,
       reply_markup: {
         inline_keyboard: [[
           { text: "🔄 Try Again", callback_data: "start_offramp" },
@@ -333,11 +355,11 @@ async function sendRefundNotification(userId: string, orderId: string, orderData
   try {
     const message = {
       text: `🔄 **Refund Processed**\n\n` +
-            `Your withdrawal has been refunded successfully.\n\n` +
-            `💰 **Refunded:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-            `📋 **Order ID:** ${orderId}\n\n` +
-            `✅ **Your USDC has been returned to your wallet.**\n\n` +
-            `You can try the withdrawal again or contact support.`,
+        `Your withdrawal has been refunded successfully.\n\n` +
+        `💰 **Refunded:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
+        `📋 **Order ID:** ${orderId}\n\n` +
+        `✅ **Your USDC has been returned to your wallet.**\n\n` +
+        `You can try the withdrawal again or contact support.`,
       reply_markup: {
         inline_keyboard: [[
           { text: "🔄 Try Again", callback_data: "start_offramp" },
@@ -359,12 +381,12 @@ async function sendProcessingNotification(userId: string, orderId: string, order
   try {
     const message = {
       text: `🔄 **Withdrawal Update**\n\n` +
-            `Your withdrawal is being processed.\n\n` +
-            `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-            `📋 **Order ID:** ${orderId}\n` +
-            `⏰ **Status:** Processing\n\n` +
-            `⏳ **Estimated completion:** 5-15 minutes\n\n` +
-            `You'll receive another notification when complete.`,
+        `Your withdrawal is being processed.\n\n` +
+        `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
+        `📋 **Order ID:** ${orderId}\n` +
+        `⏰ **Status:** Processing\n\n` +
+        `⏳ **Estimated completion:** 5-15 minutes\n\n` +
+        `You'll receive another notification when complete.`,
       reply_markup: {
         inline_keyboard: [[
           { text: "🔍 Check Status", callback_data: `check_status_${orderId}` }
@@ -410,14 +432,14 @@ async function notifyTelegram(chatId: string | number, text: string): Promise<vo
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) return;
-    
+
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        chat_id: chatId, 
-        text, 
-        parse_mode: 'Markdown' 
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown'
       }),
     });
   } catch (error) {
