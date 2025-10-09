@@ -8,6 +8,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Paycrest webhook payload structure based on their documentation
+interface PaycrestWebhookPayload {
+  event: 'order.created' | 'order.updated' | 'order.completed' | 'order.failed' | 'order.cancelled';
+  data: {
+    id: string;
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'expired';
+    amount: number;
+    currency: string;
+    recipientDetails?: {
+      accountNumber?: string;
+      bankCode?: string;
+      accountName?: string;
+    };
+    transactionReference?: string;
+    createdAt: string;
+    updatedAt: string;
+    metadata?: any;
+  };
+  timestamp: number;
+}
+
 // Disable Next.js default body parsing to access raw body for signature verification
 export const config = {
   api: {
@@ -26,6 +47,7 @@ async function readRawBody(req: NextApiRequest): Promise<Buffer> {
 /**
  * Paycrest webhook handler for real-time order status updates
  * Based on Paycrest Sender API webhook implementation
+ * Documentation: https://docs.paycrest.io/implementation-guides/sender-api-integration#webhook-implementation
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -44,60 +66,123 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Parse the payload
-    const payload = JSON.parse(rawBody.toString('utf-8'));
+    const payload: PaycrestWebhookPayload = JSON.parse(rawBody.toString('utf-8'));
     console.log('[PaycrestWebhook] Received webhook:', JSON.stringify(payload, null, 2));
     
-    // Extract data from payload (handle both direct format and nested event format)
-    const { orderId, status, transactionHash, amount, expectedAmount, updatedAt, event, data } = payload;
-    const actualOrderId = orderId || data?.id;
-    const actualStatus = status || event || data?.status;
-    const orderData = data || payload;
-
-    if (!actualOrderId || !actualStatus) {
-      console.error('[PaycrestWebhook] Missing required fields:', { actualOrderId, actualStatus });
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Validate webhook payload structure
+    if (!payload.event || !payload.data || !payload.data.id || !payload.data.status) {
+      console.error('[PaycrestWebhook] Invalid webhook payload structure:', payload);
+      return res.status(400).json({ error: 'Invalid webhook payload structure' });
     }
 
-    console.log(`[PaycrestWebhook] Processing status update for order ${actualOrderId}: ${actualStatus}`);
+    const { event, data, timestamp } = payload;
+    const orderId = data.id;
+    const status = data.status;
 
-    // Update database record
-    const { data: transaction, error: dbError } = await supabase
+    console.log(`[PaycrestWebhook] Processing ${event} for order ${orderId} with status ${status}`);
+
+    // Find transaction in database
+    const { data: transaction, error: fetchError } = await supabase
       .from('offramp_transactions')
-      .update({
-        status: actualStatus.toLowerCase(),
-        transaction_hash: transactionHash || orderData.transactionHash,
-        updated_at: updatedAt || orderData.updatedAt || new Date().toISOString()
-      })
-      .eq('paycrest_order_id', actualOrderId)
-      .select('user_id')
+      .select('*')
+      .eq('paycrest_order_id', orderId)
       .single();
 
-    if (dbError) {
-      console.error('[PaycrestWebhook] Database error:', dbError);
-      return res.status(500).json({ error: 'Database update failed' });
-    }
-
-    if (!transaction) {
-      console.warn(`[PaycrestWebhook] Transaction not found for order ${actualOrderId}`);
+    if (fetchError || !transaction) {
+      console.error('[PaycrestWebhook] Transaction not found for order:', orderId, fetchError);
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    const userId = transaction.user_id;
-    console.log(`[PaycrestWebhook] Found transaction for user ${userId}`);
+    // Map Paycrest status to our internal status
+    const statusMapping: Record<string, string> = {
+      'pending': 'pending',
+      'processing': 'processing',
+      'completed': 'completed',
+      'failed': 'failed',
+      'cancelled': 'failed',
+      'expired': 'failed'
+    };
 
-    // Handle status-specific actions
-    await handleWebhookStatusUpdate(userId, actualOrderId, actualStatus, {
-      transactionHash: transactionHash || orderData.transactionHash,
-      amount: amount || orderData.amount,
-      expectedAmount: expectedAmount || orderData.expectedAmount,
-      updatedAt: updatedAt || orderData.updatedAt
+    const newStatus = statusMapping[status] || 'pending';
+
+    // Prepare update data
+    const updateData: any = {
+      status: newStatus,
+      updated_at: new Date(timestamp * 1000).toISOString()
+    };
+
+    if (data.transactionReference) {
+      updateData.tx_hash = data.transactionReference;
+    }
+
+    // Update transaction in database
+    const { error: updateError } = await supabase
+      .from('offramp_transactions')
+      .update(updateData)
+      .eq('id', transaction.id);
+
+    if (updateError) {
+      console.error('[PaycrestWebhook] Failed to update transaction:', updateError);
+      return res.status(500).json({ error: 'Failed to update transaction' });
+    }
+
+    console.log(`[PaycrestWebhook] Updated transaction ${transaction.id} status from ${transaction.status} to ${newStatus}`);
+
+    const userId = transaction.user_id;
+
+    // Handle status-specific actions and send notifications
+    await handleWebhookStatusUpdate(userId, orderId, status, {
+      transactionReference: data.transactionReference,
+      amount: data.amount,
+      currency: data.currency,
+      updatedAt: data.updatedAt,
+      event: event
     });
 
-    // Respond to Paycrest
+    // Send notification via payment-notifications webhook for completed/failed transactions
+    if (newStatus === 'completed' || newStatus === 'failed') {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        
+        const notificationPayload = {
+          type: 'offramp' as const,
+          id: transaction.id,
+          amount: data.amount || transaction.amount,
+          currency: data.currency || transaction.currency,
+          transactionHash: data.transactionReference,
+          status: newStatus,
+          recipientUserId: userId,
+          orderId: orderId
+        };
+
+        const response = await fetch(`${baseUrl}/api/webhooks/payment-notifications`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(notificationPayload),
+          signal: AbortSignal.timeout(10000)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[PaycrestWebhook] Failed to send notification:', errorText);
+        } else {
+          console.log(`[PaycrestWebhook] Notification sent for transaction ${transaction.id} status: ${newStatus}`);
+        }
+      } catch (notificationError) {
+        console.error('[PaycrestWebhook] Error sending notification:', notificationError);
+        // Don't fail the webhook if notification fails
+      }
+    }
+
+    // Respond to Paycrest (important for them to mark webhook as delivered)
     res.status(200).json({ 
+      success: true,
       message: 'Webhook processed successfully',
-      orderId: actualOrderId,
-      status: 'processed'
+      orderId: orderId,
+      status: newStatus,
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -114,6 +199,11 @@ function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
     const webhookSecret = process.env.PAYCREST_WEBHOOK_SECRET || process.env.PAYCREST_API_SECRET;
     if (!webhookSecret) {
       console.warn('[PaycrestWebhook] No webhook secret configured, skipping signature verification');
+      return true; // Allow for development/testing
+    }
+
+    if (webhookSecret === 'your_paycrest_mainnet_secret_here') {
+      console.warn('[PaycrestWebhook] Webhook secret is placeholder value, skipping signature verification');
       return true; // Allow for development/testing
     }
 

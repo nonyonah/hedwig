@@ -9,12 +9,18 @@ const supabase = createClient(
 
 // Validate Telegram bot configuration
 if (!process.env.TELEGRAM_BOT_TOKEN) {
-  console.error('TELEGRAM_BOT_TOKEN is not configured');
+  console.error('❌ TELEGRAM_BOT_TOKEN is not configured');
 }
 
-const bot = process.env.TELEGRAM_BOT_TOKEN 
-  ? new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false })
-  : null;
+let bot: any = null;
+try {
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
+    console.log('✅ Telegram bot initialized successfully');
+  }
+} catch (botError) {
+  console.error('❌ Failed to initialize Telegram bot:', botError);
+}
 
 interface PaymentNotificationData {
   type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp';
@@ -209,10 +215,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     } else if (type === 'direct_transfer') {
       // For direct transfers, we get the recipient user ID directly
-      console.log('Processing direct transfer notification for recipientUserId:', req.body.recipientUserId);
+      console.log('🔄 Processing direct transfer notification for recipientUserId:', req.body.recipientUserId);
       
       if (!req.body.recipientUserId) {
-        console.error('No recipient user ID provided for direct transfer');
+        console.error('❌ No recipient user ID provided for direct transfer');
         return res.status(400).json({ error: 'Recipient user ID required for direct transfer' });
       }
 
@@ -223,12 +229,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .single();
 
       if (userError || !user) {
-        console.error('Error fetching user for direct transfer:', userError);
-        console.error('User lookup failed for ID:', req.body.recipientUserId);
+        console.error('❌ Error fetching user for direct transfer:', userError);
+        console.error('❌ User lookup failed for ID:', req.body.recipientUserId);
         return res.status(404).json({ error: 'User not found' });
       }
 
-      console.log('Found user for direct transfer:', { id: user.id, name: user.name, hasTelegramChatId: !!user.telegram_chat_id });
+      console.log('✅ Found user for direct transfer:', { 
+        id: user.id, 
+        name: user.name, 
+        hasTelegramChatId: !!user.telegram_chat_id,
+        telegramChatId: user.telegram_chat_id 
+      });
       
       recipientUser = user;
       itemData = {
@@ -237,7 +248,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         chain: req.body.chain
       };
       
-      console.log('Direct transfer itemData:', itemData);
+      console.log('📋 Direct transfer itemData:', itemData);
     } else if (type === 'offramp') {
       // For offramp transactions, get the user from the transaction
       if (!req.body.recipientUserId) {
@@ -273,7 +284,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Send Telegram notification if user has Telegram chat ID
     if (recipientUser.telegram_chat_id) {
       try {
-        console.log('Attempting to send Telegram notification to chat ID:', recipientUser.telegram_chat_id);
+        console.log('📱 Attempting to send Telegram notification to chat ID:', recipientUser.telegram_chat_id);
+        console.log('📋 Notification details:', {
+          type,
+          amount,
+          currency,
+          transactionHash,
+          senderAddress: senderAddress || payerWallet,
+          chain
+        });
+        
         await sendTelegramNotification(
           recipientUser.telegram_chat_id,
           type,
@@ -284,7 +304,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           senderAddress || payerWallet,
           chain
         );
-        console.log('Telegram notification sent successfully');
+        console.log('✅ Telegram notification sent successfully');
         
         // Mark notification as sent in database to prevent duplicates
         if (transactionHash) {
@@ -294,18 +314,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             .eq('tx_hash', transactionHash);
         }
       } catch (telegramError) {
-        console.error('Failed to send Telegram notification:', telegramError);
-        console.error('Telegram error details:', {
+        console.error('❌ Failed to send Telegram notification:', telegramError);
+        console.error('❌ Telegram error details:', {
           chatId: recipientUser.telegram_chat_id,
           type,
           amount,
           currency,
-          error: telegramError.message
+          error: telegramError.message,
+          stack: telegramError.stack
         });
         // Don't fail the entire webhook if Telegram fails
       }
     } else {
-      console.log('No Telegram chat ID found for user, skipping Telegram notification');
+      console.log('⚠️ No Telegram chat ID found for user, skipping Telegram notification');
+      console.log('👤 User details:', {
+        id: recipientUser.id,
+        name: recipientUser.name,
+        email: recipientUser.email
+      });
     }
 
     // Send email notification
@@ -341,18 +367,19 @@ async function sendTelegramNotification(
   try {
     // Validate bot configuration
     if (!bot) {
-      console.error('Telegram bot is not configured - TELEGRAM_BOT_TOKEN missing');
+      console.error('❌ Telegram bot is not configured - TELEGRAM_BOT_TOKEN missing');
       throw new Error('Telegram bot not configured');
     }
     
-    console.log('Sending Telegram notification:', {
+    console.log('📤 Sending Telegram notification:', {
       chatId,
       type,
       amount,
       currency,
       transactionHash,
       senderWallet,
-      chain
+      chain,
+      itemData: JSON.stringify(itemData, null, 2)
     });
     let emoji, itemType, itemIdentifier, customTitle;
     
@@ -553,12 +580,22 @@ async function sendTelegramNotification(
       };
     }
 
-    await bot.sendMessage(chatId, message, {
+    console.log('📨 Sending message to Telegram:', {
+      chatId,
+      messageLength: message.length,
+      hasKeyboard: !!keyboard,
+      messagePreview: message.substring(0, 100) + '...'
+    });
+
+    const telegramResponse = await bot.sendMessage(chatId, message, {
       parse_mode: 'HTML',
       reply_markup: keyboard
     });
     
-    console.log(`✅ Telegram notification sent successfully to chat ID: ${chatId}`);
+    console.log(`✅ Telegram notification sent successfully to chat ID: ${chatId}`, {
+      messageId: telegramResponse.message_id,
+      date: telegramResponse.date
+    });
     
     // Mark notification as sent in database to prevent duplicates
     if (transactionHash) {

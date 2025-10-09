@@ -84,13 +84,13 @@ function verifyAuthToken(token: string): boolean {
 // Convert wei to readable format
 function formatTokenAmount(value: string | number, decimals: number, isUSDC: boolean = false): number {
   let numericValue: number;
-  
+
   if (typeof value === 'string') {
     // Raw value from blockchain (e.g., "2000000" for 2 USDC)
     numericValue = parseFloat(value);
     const divisor = Math.pow(10, decimals);
     const result = numericValue / divisor;
-    
+
     if (isUSDC) {
       return parseFloat(result.toFixed(2));
     } else {
@@ -114,13 +114,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const rawBody = JSON.stringify(req.body);
     const signature = req.headers['x-alchemy-signature'] as string;
-    
+
     // TODO: Re-enable signature verification later
     // Temporarily disabled for testing
     console.log('⚠️ Webhook signature verification is temporarily disabled');
 
     const event: AlchemyWebhookEvent = req.body;
-    
+
     // Log the complete webhook payload for debugging
     console.log('=== ALCHEMY WEBHOOK RECEIVED ===');
     console.log('Headers:', {
@@ -135,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('Activity Count:', event.event?.activity?.length || 0);
     console.log('Complete Payload:', JSON.stringify(event, null, 2));
     console.log('================================');
-    
+
     // Only process address activity events
     if (event.type !== 'ADDRESS_ACTIVITY') {
       console.log(`Skipping event type: ${event.type}`);
@@ -143,16 +143,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const { activity } = event.event;
-    
+
     // Check if activity exists and is an array
     if (!activity || !Array.isArray(activity) || activity.length === 0) {
       console.log('No activity found in webhook event or activity is not an array');
       return res.status(200).json({ message: 'No activity to process' });
     }
-    
+
     // Track processed transactions to avoid duplicates
     const processedTransactions = new Set<string>();
-    
+
     // Process each activity in the event
     for (const transfer of activity) {
       // Skip if we've already processed this transaction
@@ -160,10 +160,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`⏭️ Skipping duplicate transaction: ${transfer.hash}`);
         continue;
       }
-      
+
       // Mark this transaction as processed
       processedTransactions.add(transfer.hash);
-      
+
       // Check if this transaction has already been processed in the database
       // Check both payments table (for invoices) and a general transaction log
       const [{ data: existingPayment }, { data: existingInvoice }, { data: existingPaymentLink }] = await Promise.all([
@@ -171,24 +171,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         supabase.from('invoices').select('id').eq('payment_transaction', transfer.hash).single(),
         supabase.from('payment_links').select('id').eq('transaction_hash', transfer.hash).single()
       ]);
-      
+
       if (existingPayment || existingInvoice || existingPaymentLink) {
         console.log(`⏭️ Transaction already processed in database: ${transfer.hash}`);
         continue;
       }
-      
+
       let currency: string;
       let amount: number;
-      
+
       // Check if this is a supported token transfer
       const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
       const BASE_MAINNET_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
-      
+
       const isUSDC = (transfer.category === 'erc20' || transfer.category === 'token') && (
         transfer.rawContract.address.toLowerCase() === BASE_USDC_ADDRESS.toLowerCase() ||
         transfer.rawContract.address.toLowerCase() === BASE_MAINNET_USDC_ADDRESS.toLowerCase()
       );
-      
+
       if (isUSDC) {
         // USDC transfer
         currency = 'USDC';
@@ -207,7 +207,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .replace(/mainnet$/i, '')
         .toLowerCase();
       const tokenAddress = isUSDC ? transfer.rawContract.address : null;
-      
+
       // Find the recipient user by wallet address (case-insensitive)
       console.log(`🔍 Looking up wallet address: ${transfer.toAddress}`);
       const { data: walletData, error: walletError } = await supabase
@@ -221,7 +221,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('Wallet lookup error:', walletError);
         continue; // Skip this transfer
       }
-      
+
       console.log(`✅ Found wallet for address ${transfer.toAddress}, user_id: ${walletData.user_id}`);
 
       // Get user data separately
@@ -230,7 +230,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .select('id, telegram_chat_id, email, name')
         .eq('id', walletData.user_id)
         .single();
-      
+
       if (userError || !userData) {
         console.log(`User data not found for user_id: ${walletData.user_id}`);
         continue; // Skip this transfer
@@ -259,7 +259,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         paymentType = 'invoice';
         relatedId = invoiceData.id;
         relatedItem = invoiceData;
-        
+
         // Update invoice status to paid and store sender info
         await supabase
           .from('invoices')
@@ -313,7 +313,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           paymentType = 'payment_link';
           relatedId = paymentLinkData.id;
           relatedItem = paymentLinkData;
-          
+
           // Update payment link status to paid and store sender info
           await supabase
             .from('payment_links')
@@ -413,26 +413,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         // Send HTTP request to payment-notifications webhook
-        console.log('Preparing notification for Alchemy webhook:', { paymentType, relatedId, amount, currency });
-        console.log('Base notification payload:', notificationPayload);
-        console.log('Final notification payload:', JSON.stringify(notificationPayload, null, 2));
-        
-        const notificationUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/webhooks/payment-notifications`;
-        
+        console.log('🔔 Preparing notification for Alchemy webhook:', { paymentType, relatedId, amount, currency });
+        console.log('📤 Base notification payload:', notificationPayload);
+        console.log('📋 Final notification payload:', JSON.stringify(notificationPayload, null, 2));
+
+        const notificationUrl = `${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/payment-notifications`;
+
         const notificationResponse = await fetch(notificationUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(notificationPayload)
+          body: JSON.stringify(notificationPayload),
+          signal: AbortSignal.timeout(15000) // 15 second timeout
         });
-        
+
         if (notificationResponse.ok) {
           const responseData = await notificationResponse.json();
-          console.log('Alchemy notification sent successfully:', responseData);
+          console.log('✅ Alchemy notification sent successfully:', responseData);
         } else {
           const errorData = await notificationResponse.text();
-          console.error('Alchemy notification failed:', notificationResponse.status, errorData);
+          console.error('❌ Alchemy notification failed:', {
+            status: notificationResponse.status,
+            statusText: notificationResponse.statusText,
+            error: errorData,
+            url: notificationUrl,
+            payload: notificationPayload
+          });
         }
       } catch (notificationError) {
         console.error('Failed to send notification:', notificationError);
@@ -454,8 +461,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    return res.status(200).json({ 
-      success: true, 
+    return res.status(200).json({
+      success: true,
       message: 'Webhook processed successfully',
       processed: processedTransactions.size
     });
