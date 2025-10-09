@@ -53,7 +53,11 @@ export class SmartNudgeService {
 
     const targets: NudgeTarget[] = [];
 
-    // Get payment links that need nudging
+    console.log('🔍 Searching for payment links that need nudging...');
+    console.log('📅 Nudge threshold (24h ago):', nudgeThreshold.toISOString());
+    console.log('📅 Interval threshold (48h ago):', intervalThreshold.toISOString());
+
+    // Get payment links that need nudging - simplified query
     const { data: paymentLinks, error: paymentError } = await supabase
       .from('payment_links')
       .select(`
@@ -76,18 +80,67 @@ export class SmartNudgeService {
       .eq('nudge_disabled', false)
       .not('recipient_email', 'is', null)
       .neq('recipient_email', '')
-      .lt('nudge_count', this.MAX_NUDGES)
-      .not('viewed_at', 'is', null)
-      .or(`viewed_at.lt.${nudgeThreshold.toISOString()},and(viewed_at.not.is.null,last_nudge_at.lt.${intervalThreshold.toISOString()})`);
+      .lt('nudge_count', this.MAX_NUDGES);
 
-    if (!paymentError && paymentLinks) {
+    if (paymentError) {
+      console.error('❌ Error fetching payment links:', paymentError);
+    } else if (paymentLinks) {
+      console.log(`📋 Found ${paymentLinks.length} payment links to evaluate`);
+
       for (const link of paymentLinks) {
-        if (link.viewed_at && link.recipient_email) {
-          // Check if enough time has passed since last nudge or if it's the first nudge
-          const shouldNudge = !link.last_nudge_at || 
-            new Date(link.last_nudge_at) < intervalThreshold;
+        if (link.recipient_email) {
+          // Check if this payment link should be nudged
+          let shouldNudge = false;
+          let reason = '';
+
+          if (link.viewed_at) {
+            // Payment link has been viewed
+            const viewedAt = new Date(link.viewed_at);
+            const timeSinceViewed = now.getTime() - viewedAt.getTime();
+            const hoursSinceViewed = timeSinceViewed / (1000 * 60 * 60);
+
+            if (hoursSinceViewed >= this.NUDGE_DELAY_HOURS) {
+              if (!link.last_nudge_at) {
+                // First nudge - enough time has passed since viewing
+                shouldNudge = true;
+                reason = `First nudge - viewed ${Math.floor(hoursSinceViewed)} hours ago`;
+              } else {
+                // Check if enough time has passed since last nudge
+                const lastNudgeAt = new Date(link.last_nudge_at);
+                const timeSinceLastNudge = now.getTime() - lastNudgeAt.getTime();
+                const hoursSinceLastNudge = timeSinceLastNudge / (1000 * 60 * 60);
+
+                if (hoursSinceLastNudge >= this.NUDGE_INTERVAL_HOURS) {
+                  shouldNudge = true;
+                  reason = `Follow-up nudge - last nudge ${Math.floor(hoursSinceLastNudge)} hours ago`;
+                }
+              }
+            }
+          } else {
+            // Payment link hasn't been viewed yet
+            const createdAt = new Date(link.created_at);
+            const timeSinceCreated = now.getTime() - createdAt.getTime();
+            const hoursSinceCreated = timeSinceCreated / (1000 * 60 * 60);
+
+            if (hoursSinceCreated >= this.NUDGE_DELAY_HOURS) {
+              if (!link.last_nudge_at) {
+                shouldNudge = true;
+                reason = `First nudge - created ${Math.floor(hoursSinceCreated)} hours ago, not viewed`;
+              } else {
+                const lastNudgeAt = new Date(link.last_nudge_at);
+                const timeSinceLastNudge = now.getTime() - lastNudgeAt.getTime();
+                const hoursSinceLastNudge = timeSinceLastNudge / (1000 * 60 * 60);
+
+                if (hoursSinceLastNudge >= this.NUDGE_INTERVAL_HOURS) {
+                  shouldNudge = true;
+                  reason = `Follow-up nudge - not viewed, last nudge ${Math.floor(hoursSinceLastNudge)} hours ago`;
+                }
+              }
+            }
+          }
 
           if (shouldNudge) {
+            console.log(`✅ Payment link ${link.id} eligible for nudging: ${reason}`);
             targets.push({
               id: link.id,
               type: 'payment_link',
@@ -103,12 +156,16 @@ export class SmartNudgeService {
               createdAt: link.created_at,
               senderName: (link.users as any)?.name || link.user_name || 'Your Service Provider'
             });
+          } else {
+            console.log(`⏭️ Payment link ${link.id} not eligible: nudge_count=${link.nudge_count}, viewed_at=${link.viewed_at}, last_nudge_at=${link.last_nudge_at}`);
           }
         }
       }
     }
 
-    // Get invoices that need nudging
+    console.log('🔍 Searching for invoices that need nudging...');
+
+    // Get invoices that need nudging - simplified query
     const { data: invoices, error: invoiceError } = await supabase
       .from('invoices')
       .select(`
@@ -130,18 +187,65 @@ export class SmartNudgeService {
       .eq('nudge_disabled', false)
       .not('client_email', 'is', null)
       .neq('client_email', '')
-      .lt('nudge_count', this.MAX_NUDGES)
-      .or(`viewed_at.lt.${nudgeThreshold.toISOString()},and(viewed_at.not.is.null,last_nudge_at.lt.${intervalThreshold.toISOString()}),and(viewed_at.is.null,date_created.lt.${nudgeThreshold.toISOString()})`);
+      .lt('nudge_count', this.MAX_NUDGES);
 
-    if (!invoiceError && invoices) {
+    if (invoiceError) {
+      console.error('❌ Error fetching invoices:', invoiceError);
+    } else if (invoices) {
+      console.log(`📋 Found ${invoices.length} invoices to evaluate`);
+
       for (const invoice of invoices) {
         if (invoice.client_email) {
-          // For invoices that haven't been viewed, check if enough time has passed since creation
-          // For viewed invoices, check if enough time has passed since viewing or last nudge
-          const shouldNudge = !invoice.last_nudge_at || 
-            new Date(invoice.last_nudge_at) < intervalThreshold;
+          // Check if this invoice should be nudged
+          let shouldNudge = false;
+          let reason = '';
+
+          if (invoice.viewed_at) {
+            // Invoice has been viewed
+            const viewedAt = new Date(invoice.viewed_at);
+            const timeSinceViewed = now.getTime() - viewedAt.getTime();
+            const hoursSinceViewed = timeSinceViewed / (1000 * 60 * 60);
+
+            if (hoursSinceViewed >= this.NUDGE_DELAY_HOURS) {
+              if (!invoice.last_nudge_at) {
+                shouldNudge = true;
+                reason = `First nudge - viewed ${Math.floor(hoursSinceViewed)} hours ago`;
+              } else {
+                const lastNudgeAt = new Date(invoice.last_nudge_at);
+                const timeSinceLastNudge = now.getTime() - lastNudgeAt.getTime();
+                const hoursSinceLastNudge = timeSinceLastNudge / (1000 * 60 * 60);
+
+                if (hoursSinceLastNudge >= this.NUDGE_INTERVAL_HOURS) {
+                  shouldNudge = true;
+                  reason = `Follow-up nudge - last nudge ${Math.floor(hoursSinceLastNudge)} hours ago`;
+                }
+              }
+            }
+          } else {
+            // Invoice hasn't been viewed yet
+            const createdAt = new Date(invoice.date_created);
+            const timeSinceCreated = now.getTime() - createdAt.getTime();
+            const hoursSinceCreated = timeSinceCreated / (1000 * 60 * 60);
+
+            if (hoursSinceCreated >= this.NUDGE_DELAY_HOURS) {
+              if (!invoice.last_nudge_at) {
+                shouldNudge = true;
+                reason = `First nudge - created ${Math.floor(hoursSinceCreated)} hours ago, not viewed`;
+              } else {
+                const lastNudgeAt = new Date(invoice.last_nudge_at);
+                const timeSinceLastNudge = now.getTime() - lastNudgeAt.getTime();
+                const hoursSinceLastNudge = timeSinceLastNudge / (1000 * 60 * 60);
+
+                if (hoursSinceLastNudge >= this.NUDGE_INTERVAL_HOURS) {
+                  shouldNudge = true;
+                  reason = `Follow-up nudge - not viewed, last nudge ${Math.floor(hoursSinceLastNudge)} hours ago`;
+                }
+              }
+            }
+          }
 
           if (shouldNudge) {
+            console.log(`✅ Invoice ${invoice.id} eligible for nudging: ${reason}`);
             targets.push({
               id: invoice.id,
               type: 'invoice',
@@ -157,10 +261,14 @@ export class SmartNudgeService {
               createdAt: invoice.date_created,
               senderName: (invoice.users as any)?.name || invoice.freelancer_name || 'Your Freelancer'
             });
+          } else {
+            console.log(`⏭️ Invoice ${invoice.id} not eligible: nudge_count=${invoice.nudge_count}, viewed_at=${invoice.viewed_at}, last_nudge_at=${invoice.last_nudge_at}`);
           }
         }
       }
     }
+
+    console.log(`🎯 Total targets eligible for nudging: ${targets.length}`);
 
     return targets;
   }
@@ -190,7 +298,7 @@ export class SmartNudgeService {
               freelancer_name: target.senderName || 'Your Freelancer',
               custom_message: message
             };
-            
+
             await sendEmail({
               to: target.clientEmail!,
               subject: `Payment Reminder: ${target.title}`,
@@ -318,7 +426,7 @@ export class SmartNudgeService {
             .select('name, email')
             .eq('id', currentInvoice.user_id)
             .single();
-          
+
           if (!currentInvoice.freelancer_name) {
             updateData.freelancer_name = userData?.name || 'Freelancer';
           }
@@ -338,7 +446,7 @@ export class SmartNudgeService {
             .from('wallets')
             .select('address, chain')
             .eq('user_id', currentInvoice.created_by);
-          
+
           if (wallets && wallets.length > 0) {
             const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
             updateData.wallet_address = evmWallet?.address || wallets[0]?.address || null;
@@ -380,7 +488,7 @@ export class SmartNudgeService {
    */
   private static generateNudgeMessage(target: NudgeTarget): string {
     const nudgeNumber = target.nudgeCount + 1;
-    const daysSinceViewed = target.viewedAt ? 
+    const daysSinceViewed = target.viewedAt ?
       Math.floor((Date.now() - new Date(target.viewedAt).getTime()) / (1000 * 60 * 60 * 24)) : 0;
 
     const baseMessages = {
@@ -389,8 +497,8 @@ export class SmartNudgeService {
       3: `Dear Client,\n\nThis is our final automated reminder regarding the outstanding payment for "${target.title}" ($${target.amount}).\n\nPlease complete your payment as soon as possible. If you have any questions or concerns, please contact us directly.\n\nThank you for your attention to this matter.`
     };
 
-    return baseMessages[nudgeNumber as 1 | 2 | 3] || 
-           `Reminder: Please complete your payment for "${target.title}" ($${target.amount}).`;
+    return baseMessages[nudgeNumber as 1 | 2 | 3] ||
+      `Reminder: Please complete your payment for "${target.title}" ($${target.amount}).`;
   }
 
   /**
@@ -427,8 +535,8 @@ export class SmartNudgeService {
    * Send manual reminder for a specific payment link or invoice
    */
   static async sendManualReminder(
-    targetType: 'payment_link' | 'invoice', 
-    targetId: string, 
+    targetType: 'payment_link' | 'invoice',
+    targetId: string,
     customMessage?: string
   ): Promise<{ success: boolean; message: string }> {
     try {
@@ -445,7 +553,7 @@ export class SmartNudgeService {
       }
 
       // Check if already paid
-      const isPaid = targetType === 'payment_link' 
+      const isPaid = targetType === 'payment_link'
         ? targetData.status === 'paid' || targetData.paid_at
         : targetData.status === 'paid';
 
@@ -472,7 +580,7 @@ export class SmartNudgeService {
 
       // Use custom message if provided, otherwise generate default
       const message = customMessage || this.generateNudgeMessage(target);
-      
+
       // Send the reminder
       let success = false;
       let errorMessage = '';
@@ -489,7 +597,7 @@ export class SmartNudgeService {
               custom_message: customMessage,
               invoice_link: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.hedwigbot.xyz'}/invoice/${target.id}`
             });
-            
+
             await sendEmail({
               to: target.clientEmail!,
               subject: `Payment Reminder: Invoice ${target.title.replace('Invoice ', '')} - ${target.amount} USDC`,
@@ -684,7 +792,7 @@ export class SmartNudgeService {
 
     // Get active targets (not paid, not disabled, under max nudges)
     const activeTargets = await this.getTargetsForNudging();
-    
+
     return {
       totalNudgesSent,
       successRate: Math.round(successRate * 100) / 100,

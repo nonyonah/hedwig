@@ -47,6 +47,13 @@
 - ✅ Added proper error logging for API calls
 - ✅ Enhanced order status monitoring
 
+### 8. Smart Nudge/Reminder System (`src/lib/smartNudgeService.ts`)
+- ✅ Fixed complex Supabase query logic that was preventing nudges from being found
+- ✅ Simplified target selection with clear time-based logic
+- ✅ Added detailed logging for debugging nudge eligibility
+- ✅ Created automated scheduler (`src/lib/nudgeScheduler.ts`) to run nudges every 6 hours
+- ✅ Fixed timing calculations for nudge intervals
+
 ## New Files Created
 
 ### 1. Test Files
@@ -58,6 +65,9 @@
 - `src/pages/api/debug-transactions.ts` - Check transaction storage status
 - `src/pages/api/debug-paycrest.ts` - Debug Paycrest API calls and environment
 - `src/pages/api/test-payment-notification.ts` - Test payment notification webhook
+- `src/pages/api/test-nudges.ts` - Test nudge system and see eligible targets
+- `src/pages/api/trigger-nudges.ts` - Manually trigger nudge processing
+- `src/pages/api/nudge-scheduler.ts` - Manage the automated nudge scheduler
 
 ## Environment Variables Fixed
 
@@ -118,6 +128,30 @@ curl "http://localhost:3000/api/debug-paycrest?orderId=your_order_id"
 curl -X POST http://localhost:3000/api/test-payment-notification \
   -H "Content-Type: application/json" \
   -d '{"testType": "direct_transfer"}'
+```
+
+### 8. Test and Manage Nudge System
+```bash
+# Check what targets are eligible for nudging
+curl http://localhost:3000/api/test-nudges
+
+# Test nudge processing (dry run)
+curl -X POST http://localhost:3000/api/trigger-nudges \
+  -H "Content-Type: application/json" \
+  -d '{"dryRun": true}'
+
+# Actually send nudges
+curl -X POST http://localhost:3000/api/trigger-nudges \
+  -H "Content-Type: application/json" \
+  -d '{"dryRun": false}'
+
+# Check scheduler status
+curl http://localhost:3000/api/nudge-scheduler
+
+# Start/stop scheduler
+curl -X POST http://localhost:3000/api/nudge-scheduler \
+  -H "Content-Type: application/json" \
+  -d '{"action": "start", "intervalHours": 6}'
 ```
 
 ## Common Issues to Check
