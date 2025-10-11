@@ -32,21 +32,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Step 2: Test Intent Parser
     console.log('[DebugOnramp] Step 2: Testing Intent Parser...');
-    const intentResult = parseIntentAndParams(llmResponse || message);
+    const intentResult: any = parseIntentAndParams(llmResponse || message);
     console.log('[DebugOnramp] Intent Parser Result:', intentResult);
 
     // Step 3: Test Direct Intent Parser (bypass LLM)
     console.log('[DebugOnramp] Step 3: Testing Direct Intent Parser...');
-    const directIntentResult = parseIntentAndParams(message);
+    const directIntentResult: any = parseIntentAndParams(message);
     console.log('[DebugOnramp] Direct Intent Parser Result:', directIntentResult);
 
     // Step 4: Test Actions Handler
     console.log('[DebugOnramp] Step 4: Testing Actions Handler...');
-    let actionResult = null;
-    let actionError = null;
+    let actionResult: any = null;
+    let actionError: string | null = null;
     
     try {
-      const { handleAction } = await import('../api/actions');
+      const { handleAction } = await import('../../api/actions');
       actionResult = await handleAction('onramp', {}, userId);
       console.log('[DebugOnramp] Action Result:', actionResult);
     } catch (error) {
@@ -55,8 +55,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Step 5: Parse LLM JSON Response
-    let parsedLLMResponse = null;
-    let parseError = null;
+    let parsedLLMResponse: any = null;
+    let parseError: string | null = null;
     
     if (llmResponse) {
       try {

@@ -105,7 +105,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         networksConfigured: Object.keys(status.networks).length,
         networksActive: Object.values(status.networks).filter((n: any) => n.isInitialized).length,
         allEnvironmentVariablesSet: Object.values(envChecks).every(Boolean),
-        criticalIssues: []
+        criticalIssues: [] as string[]
       }
     };
 

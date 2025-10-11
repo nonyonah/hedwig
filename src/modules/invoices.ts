@@ -17,6 +17,8 @@ export interface InvoiceData {
   currency: string;
   due_date: string;
   status: string;
+  blockchain?: string; // Optional blockchain field
+  chain_id?: number; // Optional chain ID field
   payment_methods: {
     usdc_base?: boolean;
   };
@@ -448,7 +450,7 @@ export class InvoiceModule {
     const freelancerReceives = invoice.amount - platformFee;
     
     // Get blockchain display info
-    const blockchainInfo = this.getBlockchainDisplayInfo(invoice.blockchain);
+    const blockchainInfo = this.getBlockchainDisplayInfo(invoice.blockchain || 'base');
     
     return (
       `📋 **Invoice Preview**\n\n` +
