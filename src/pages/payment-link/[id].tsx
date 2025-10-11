@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2, RefreshCw, ChevronDown, Check, Building, Lock } from 'lucide-react';
+import { Copy, ExternalLink, Wallet, Clock, Shield, CheckCircle, AlertTriangle, Loader2, RefreshCw, Building, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
@@ -133,15 +133,8 @@ export default function PaymentLinkPage() {
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'stablecoin' | null>(null);
 
-  // Network selection state
+  // Network selection state - will be set from payment link data
   const [selectedChain, setSelectedChain] = useState(8453); // Default to Base
-  const [showChainModal, setShowChainModal] = useState(false);
-
-  // Chain options
-  const chainOptions = [
-    { id: 8453, name: 'Base', color: 'bg-blue-500' },
-    { id: 42220, name: 'Celo', color: 'bg-green-500' }
-  ];
 
   // Get USDC token for selected chain
   const getUSDCForChain = (chainId: number) => {
@@ -226,6 +219,14 @@ export default function PaymentLinkPage() {
           created_at: data.created_at,
           updated_at: data.updated_at
         });
+        
+        // Set the chain based on payment link data
+        if (data.blockchain === 'celo' || data.chain_id === 42220 || data.network === 'celo') {
+          setSelectedChain(42220);
+        } else {
+          // Default to Base
+          setSelectedChain(8453);
+        }
       } catch (error) {
         console.error('Error fetching payment data:', error);
         toast.error('Failed to load payment data');
@@ -255,66 +256,7 @@ export default function PaymentLinkPage() {
     toast.success('Payment link copied to clipboard!')
   }
 
-  const DropdownModal = ({
-    visible,
-    onClose,
-    options,
-    selectedValue,
-    onSelect,
-    title,
-    type = 'default'
-  }: {
-    visible: boolean;
-    onClose: () => void;
-    options: any[];
-    selectedValue: any;
-    onSelect: (value: any) => void;
-    title: string;
-    type?: 'chain' | 'token' | 'default';
-  }) => {
-    if (!visible) return null;
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4">
-          <h3 className="text-lg font-semibold text-slate-900 text-center mb-4">
-            {title}
-          </h3>
-          <div className="space-y-2">
-            {options.map((item) => (
-              <button
-                key={type === 'chain' ? item.id : item.symbol}
-                onClick={() => {
-                  onSelect(type === 'chain' ? item.id : item);
-                  onClose();
-                }}
-                className="w-full flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center">
-                  {type === 'chain' && (
-                    <div className={`w-3 h-3 rounded-full ${item.color} mr-3`}></div>
-                  )}
-                  <span className="text-slate-900 font-medium">
-                    {type === 'chain' ? item.name : item.symbol}
-                  </span>
-                </div>
-                {((type === 'chain' && selectedValue === item.id) || 
-                  (type === 'token' && selectedValue?.symbol === item.symbol)) && (
-                  <Check className="w-5 h-5 text-blue-500" />
-                )}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={onClose}
-            className="w-full mt-4 py-2 text-gray-500 hover:text-gray-700"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  };
 
   
 
@@ -423,19 +365,15 @@ export default function PaymentLinkPage() {
               </span>
             </div>
 
-            {/* Network Dropdown */}
+            {/* Network Display */}
             <div className="flex justify-between items-center">
               <span className="text-gray-600 text-sm">Network</span>
-              <button
-                onClick={() => setShowChainModal(true)}
-                className="flex items-center px-3 py-1 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className={`w-2 h-2 rounded-full ${chainOptions.find(c => c.id === selectedChain)?.color} mr-2`}></div>
-                <span className="text-sm font-semibold text-slate-900 mr-1">
-                  {chainOptions.find(c => c.id === selectedChain)?.name}
+              <div className="flex items-center px-3 py-1 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className={`w-2 h-2 rounded-full ${selectedChain === 42220 ? 'bg-green-500' : 'bg-blue-500'} mr-2`}></div>
+                <span className="text-sm font-semibold text-slate-900">
+                  {selectedChain === 42220 ? 'Celo' : 'Base'}
                 </span>
-                <ChevronDown className="w-3 h-3 text-gray-500" />
-              </button>
+              </div>
             </div>
           </div>
 
@@ -467,16 +405,7 @@ export default function PaymentLinkPage() {
         </div>
       </div>
 
-      {/* Chain Selection Modal */}
-      <DropdownModal
-        visible={showChainModal}
-        onClose={() => setShowChainModal(false)}
-        options={chainOptions}
-        selectedValue={selectedChain}
-        onSelect={setSelectedChain}
-        title="Select Network"
-        type="chain"
-      />
+
     </div>
   );
 }

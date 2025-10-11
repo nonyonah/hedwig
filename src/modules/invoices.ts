@@ -265,7 +265,7 @@ export class InvoiceModule {
           updateData.amount = totalAmount;
           
           nextStep = 'due_date';
-          responseMessage = `✅ Rate: ${rateData.amount} ${rateData.currency} per unit\n✅ Total: ${totalAmount} ${rateData.currency}\n\n**Step 8/9:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")`;
+          responseMessage = `✅ Rate: ${rateData.amount} ${rateData.currency} per unit\n✅ Total: ${totalAmount} ${rateData.currency}\n\n**Step 8/10:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")`;
           break;
 
         case 'due_date':
@@ -276,9 +276,22 @@ export class InvoiceModule {
             return '❌ Please enter a valid date (YYYY-MM-DD format, "X days", or "in X days")';
           }
           updateData.due_date = dueDate;
+          nextStep = 'chain_selection';
+          responseMessage = `✅ Due date: ${dueDate}\n\n**Step 9/10:** Which blockchain network would you like to use for payments?\n\n**Currently Supported Networks:** Base and Celo`;
+          console.log(`[InvoiceModule] Setting nextStep to chain_selection`);
+          break;
+
+        case 'chain_selection':
+          console.log(`[InvoiceModule] Processing chain selection input: "${userInput}"`);
+          const selectedChain = this.parseChainSelection(userInput);
+          if (!selectedChain) {
+            return '❌ Please select a valid blockchain network:\n• Type "base" for Base Network\n• Type "celo" for Celo Network';
+          }
+          updateData.blockchain = selectedChain.network;
+          // Note: chain_id will be added when database migration is run
           nextStep = 'complete';
-          responseMessage = `✅ Due date: ${dueDate}\n\n**Step 9/9:** Creating your invoice...`;
-          console.log(`[InvoiceModule] Setting nextStep to complete`);
+          responseMessage = `✅ Blockchain: ${selectedChain.displayName}\n\n**Step 10/10:** Creating your invoice...**`;
+          console.log(`[InvoiceModule] Setting nextStep to complete with blockchain: ${selectedChain.network}`);
           break;
 
         default:
@@ -434,6 +447,9 @@ export class InvoiceModule {
     const platformFee = invoice.amount * 0.01;
     const freelancerReceives = invoice.amount - platformFee;
     
+    // Get blockchain display info
+    const blockchainInfo = this.getBlockchainDisplayInfo(invoice.blockchain);
+    
     return (
       `📋 **Invoice Preview**\n\n` +
       `**Invoice #:** ${invoice.invoice_number}\n` +
@@ -446,13 +462,35 @@ export class InvoiceModule {
       `**Platform Fee (1%):** -${platformFee.toFixed(2)} ${invoice.currency}\n` +
       `**You'll Receive:** ${freelancerReceives.toFixed(2)} ${invoice.currency}\n` +
       `**Due Date:** ${invoice.due_date}\n` +
+      `**Blockchain:** ${blockchainInfo.displayName}\n` +
       `**Status:** ${invoice.status.toUpperCase()}\n\n` +
       `ℹ️ **Note:** A 1% platform fee is deducted from payments to support our services.\n\n` +
       `**Payment Methods Available:**\n` +
-      `💰 USDC (Base Network)\n\n` +
+      `${blockchainInfo.paymentMethods}\n\n` +
       `🔗 **Invoice Link:** ${invoiceLink}\n\n` +
       `What would you like to do next?`
     );
+  }
+
+  // Get blockchain display information
+  private getBlockchainDisplayInfo(blockchain: string): { displayName: string; paymentMethods: string } {
+    switch (blockchain?.toLowerCase()) {
+      case 'base':
+        return {
+          displayName: '🔵 Base Network',
+          paymentMethods: '💰 USDC, USDT (Base Network)'
+        };
+      case 'celo':
+        return {
+          displayName: '🟢 Celo Network',
+          paymentMethods: '💰 cUSD, USDC, USDT (Celo Network)'
+        };
+      default:
+        return {
+          displayName: '🔵 Base Network (Default)',
+          paymentMethods: '💰 USDC (Base Network)'
+        };
+    }
   }
 
   // Handle callback queries for invoice actions
@@ -694,7 +732,20 @@ export class InvoiceModule {
         message = '**Step 7/9:** What\'s the rate per unit? (e.g., 100, 50.5)';
         break;
       case 'due_date':
-        message = '**Step 8/9:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")';
+        message = '**Step 8/10:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")';
+        break;
+      case 'chain_selection':
+        message = '**Step 9/10:** Which blockchain network would you like to use for payments?\n\n' +
+          '**Currently Supported Networks:**\n\n' +
+          '🔵 **Base Network** - Type "base"\n' +
+          '• Lower fees, faster transactions\n' +
+          '• Supports USDC, USDT\n' +
+          '• Recommended for most users\n\n' +
+          '🟢 **Celo Network** - Type "celo"\n' +
+          '• Mobile-friendly payments\n' +
+          '• Supports cUSD, USDC, USDT\n' +
+          '• Great for mobile users\n\n' +
+          '💡 **Please type "base" or "celo" to continue:**';
         break;
     }
 
@@ -944,6 +995,33 @@ export class InvoiceModule {
       if (!isNaN(date.getTime())) {
         return input;
       }
+    }
+    
+    return null;
+  }
+
+  // Parse chain selection from user input
+  private parseChainSelection(input: string): { network: string; chainId: number; displayName: string } | null {
+    const trimmed = input.trim().toLowerCase();
+    
+    // Base network variations
+    if (trimmed.includes('base') || trimmed === '1' || trimmed === 'base network' || 
+        trimmed === 'b' || trimmed === '🔵') {
+      return {
+        network: 'base',
+        chainId: 8453,
+        displayName: 'Base Network'
+      };
+    }
+    
+    // Celo network variations
+    if (trimmed.includes('celo') || trimmed === '2' || trimmed === 'celo network' || 
+        trimmed === 'c' || trimmed === '🟢') {
+      return {
+        network: 'celo',
+        chainId: 42220,
+        displayName: 'Celo Network'
+      };
     }
     
     return null;

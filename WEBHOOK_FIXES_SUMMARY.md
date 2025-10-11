@@ -34,6 +34,9 @@
 - ✅ Improved error logging with detailed error information
 - ✅ Added resilient cleanup interval with duplicate prevention
 - ✅ Enhanced cleanup to handle both failed/expired and old transactions
+- ✅ Fixed `getSize()` method to return 0 instead of throwing on network errors
+- ✅ Added timeout protection to cleanup operations (30 second timeout)
+- ✅ Made all database methods resilient to network failures
 
 ### 6. Paycrest Webhook (`src/pages/api/webhooks/paycrest.ts`)
 - ✅ Fixed webhook payload structure to match actual Paycrest format
@@ -68,6 +71,7 @@
 - `src/pages/api/test-nudges.ts` - Test nudge system and see eligible targets
 - `src/pages/api/trigger-nudges.ts` - Manually trigger nudge processing
 - `src/pages/api/nudge-scheduler.ts` - Manage the automated nudge scheduler
+- `src/pages/api/test-transaction-storage.ts` - Test transaction storage operations
 
 ## Environment Variables Fixed
 

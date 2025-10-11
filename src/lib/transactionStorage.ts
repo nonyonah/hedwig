@@ -287,37 +287,57 @@ class SupabaseTransactionStorage {
    * Get the current number of pending transactions
    */
   async getSize(): Promise<number> {
-    const { count, error } = await supabase
-      .from('pending_transactions')
-      .select('*', { count: 'exact', head: true });
+    try {
+      const { count, error } = await supabase
+        .from('pending_transactions')
+        .select('*', { count: 'exact', head: true });
 
-    if (error) {
-      console.error('[TransactionStorage] Error getting transaction count:', error);
-      throw new Error(`Failed to get transaction count: ${error.message}`);
+      if (error) {
+        console.error('[TransactionStorage] Error getting transaction count:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        return 0; // Return 0 instead of throwing
+      }
+
+      return count || 0;
+    } catch (error: any) {
+      console.error('[TransactionStorage] Unexpected error getting transaction count:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      return 0; // Return 0 instead of throwing
     }
-
-    return count || 0;
   }
 
   /**
    * Get all pending transactions for a user (excludes completed transactions)
    */
   async getByUserId(userId: string): Promise<PendingTransaction[]> {
-    const { data, error } = await supabase
-      .from('pending_transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .neq('status', 'completed') // Exclude completed transactions as they're moved to permanent storage
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('pending_transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .neq('status', 'completed') // Exclude completed transactions as they're moved to permanent storage
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('[TransactionStorage] Error retrieving user transactions:', error);
-      throw new Error(`Failed to retrieve user transactions: ${error.message}`);
-    }
+      if (error) {
+        console.error('[TransactionStorage] Error retrieving user transactions:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        return []; // Return empty array instead of throwing
+      }
 
-    if (!data) {
-      return [];
-    }
+      if (!data) {
+        return [];
+      }
 
     const transactions: PendingTransaction[] = data.map((row: any) => ({
       transactionId: row.transaction_id,
@@ -337,26 +357,40 @@ class SupabaseTransactionStorage {
     }));
 
     return transactions;
+    } catch (error: any) {
+      console.error('[TransactionStorage] Unexpected error retrieving user transactions:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      return []; // Return empty array instead of throwing
+    }
   }
 
   /**
    * Get completed transactions for a user from permanent storage
    */
   async getCompletedTransactionsByUserId(userId: string): Promise<PendingTransaction[]> {
-    const { data, error } = await supabase
-      .from('completed_transactions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('completed_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('completed_transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('completed_at', { ascending: false });
 
-    if (error) {
-      console.error('[TransactionStorage] Error retrieving completed transactions:', error);
-      throw new Error(`Failed to retrieve completed transactions: ${error.message}`);
-    }
+      if (error) {
+        console.error('[TransactionStorage] Error retrieving completed transactions:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        return []; // Return empty array instead of throwing
+      }
 
-    if (!data) {
-      return [];
-    }
+      if (!data) {
+        return [];
+      }
 
     return data.map(row => ({
       transactionId: row.transaction_id,
@@ -374,6 +408,14 @@ class SupabaseTransactionStorage {
       createdAt: new Date(row.created_at),
       expiresAt: new Date(row.completed_at), // Use completed_at as expiresAt for consistency
     }));
+    } catch (error: any) {
+      console.error('[TransactionStorage] Unexpected error retrieving completed transactions:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      return []; // Return empty array instead of throwing
+    }
   }
 }
 
@@ -394,13 +436,22 @@ if (typeof window === 'undefined') {
     cleanupRunning = true;
     try {
       console.log('[TransactionStorage] Starting scheduled cleanup...');
-      const cleanedCount = await transactionStorage.cleanupExpired();
+      
+      // Add timeout to prevent cleanup from hanging
+      const cleanupPromise = transactionStorage.cleanupExpired();
+      const timeoutPromise = new Promise<number>((_, reject) => 
+        setTimeout(() => reject(new Error('Cleanup timeout after 30 seconds')), 30000)
+      );
+      
+      const cleanedCount = await Promise.race([cleanupPromise, timeoutPromise]);
       console.log(`[TransactionStorage] Scheduled cleanup completed, cleaned ${cleanedCount} transactions`);
     } catch (error: any) {
       console.error('[TransactionStorage] Cleanup interval error:', {
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
+        name: error.name
       });
+      // Don't let cleanup errors crash the process
     } finally {
       cleanupRunning = false;
     }

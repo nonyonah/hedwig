@@ -140,12 +140,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const userId = transaction.user_id;
 
-    // Handle status-specific actions and send notifications
+    // Handle status-specific actions and send notifications using templates
     await handleWebhookStatusUpdate(userId, orderId, status, {
-      transactionReference: data.transactionReference || data.transactionHash,
+      orderId: orderId,
       amount: data.amount,
       currency: data.currency || data.recipient.currency,
+      token: data.token,
+      network: data.network,
+      transactionHash: data.transactionReference || data.transactionHash,
+      transactionReference: data.transactionReference || data.transactionHash,
+      recipient: data.recipient,
+      rate: data.rate,
+      expectedAmount: data.amount * data.rate,
+      createdAt: data.createdAt,
       updatedAt: data.updatedAt,
+      expiresAt: data.expiresAt,
       event: event
     });
 
@@ -241,7 +250,7 @@ function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
 }
 
 /**
- * Handle webhook status updates and send appropriate notifications
+ * Handle webhook status updates using the comprehensive template system
  */
 async function handleWebhookStatusUpdate(
   userId: string,
@@ -252,158 +261,35 @@ async function handleWebhookStatusUpdate(
   try {
     console.log(`[PaycrestWebhook] Handling status update: ${status} for order ${orderId}`);
 
-    switch (status.toLowerCase()) {
-      case 'completed':
-      case 'fulfilled':
-      case 'success':
-        await sendSuccessNotification(userId, orderId, orderData);
-        break;
-
-      case 'failed':
-      case 'error':
-      case 'cancelled':
-        await sendFailureNotification(userId, orderId, orderData);
-        break;
-
-      case 'refunded':
-      case 'refund_pending':
-        await sendRefundNotification(userId, orderId, orderData);
-        break;
-
-      case 'processing':
-      case 'pending':
-        await sendProcessingNotification(userId, orderId, orderData);
-        break;
-
-      default:
-        console.log(`[PaycrestWebhook] No specific handler for status: ${status}`);
+    // Import the status template system
+    const { OfframpStatusTemplates } = await import('../../../lib/offrampStatusTemplates');
+    
+    // Generate the status template
+    const template = OfframpStatusTemplates.getStatusTemplate(status, orderData);
+    
+    // Send notification via Telegram
+    await sendTemplatedNotification(userId, template);
+    
+    // Award referral points for first offramp completion
+    if (['completed', 'fulfilled', 'success', 'settled', 'delivered'].includes(status.toLowerCase())) {
+      try {
+        const { awardActionPoints } = await import('../../../lib/referralService');
+        await awardActionPoints(userId, 'first_offramp');
+      } catch (referralError) {
+        console.error('[PaycrestWebhook] Error awarding referral points for offramp:', referralError);
+        // Don't fail the notification if referral points fail
+      }
     }
+    
   } catch (error) {
     console.error('[PaycrestWebhook] Error handling status update:', error);
   }
 }
 
 /**
- * Send success notification via Telegram
+ * Send templated notification via Telegram using the status template system
  */
-async function sendSuccessNotification(userId: string, orderId: string, orderData: any): Promise<void> {
-  try {
-    // Award referral points for first offramp completion
-    try {
-      const { awardActionPoints } = await import('../../../lib/referralService');
-      await awardActionPoints(userId, 'first_offramp');
-    } catch (referralError) {
-      console.error('[PaycrestWebhook] Error awarding referral points for offramp:', referralError);
-      // Don't fail the notification if referral points fail
-    }
-
-    const message = {
-      text: `✅ **Withdrawal Completed!**\n\n` +
-        `🎉 Your funds have been successfully delivered!\n\n` +
-        `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-        `🏦 **Status:** Delivered to your bank account\n` +
-        `⏰ **Completed:** ${new Date().toLocaleString()}\n\n` +
-        `💡 **Your funds should appear in your account within the next 2 minutes.**\n\n` +
-        `Thank you for using Hedwig! 🚀`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "📊 View History", callback_data: "offramp_history" },
-          { text: "💸 New Withdrawal", callback_data: "start_offramp" }
-        ]]
-      }
-    };
-
-    await sendTelegramMessage(userId, message);
-  } catch (error) {
-    console.error('[PaycrestWebhook] Error sending success notification:', error);
-  }
-}
-
-/**
- * Send failure notification via Telegram
- */
-async function sendFailureNotification(userId: string, orderId: string, orderData: any): Promise<void> {
-  try {
-    const message = {
-      text: `❌ **Withdrawal Failed**\n\n` +
-        `We're sorry, your withdrawal could not be completed.\n\n` +
-        `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-        `📋 **Order ID:** ${orderId}\n\n` +
-        `🔄 **Next Steps:**\n` +
-        `• Your funds will be automatically refunded\n` +
-        `• Refund typically takes 5-10 minutes\n` +
-        `• You'll receive a notification when complete\n\n` +
-        `💬 Need help? Contact our support team.`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "🔄 Try Again", callback_data: "start_offramp" },
-          { text: "💬 Contact Support", callback_data: "contact_support" }
-        ]]
-      }
-    };
-
-    await sendTelegramMessage(userId, message);
-  } catch (error) {
-    console.error('[PaycrestWebhook] Error sending failure notification:', error);
-  }
-}
-
-/**
- * Send refund notification via Telegram
- */
-async function sendRefundNotification(userId: string, orderId: string, orderData: any): Promise<void> {
-  try {
-    const message = {
-      text: `🔄 **Refund Processed**\n\n` +
-        `Your withdrawal has been refunded successfully.\n\n` +
-        `💰 **Refunded:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-        `📋 **Order ID:** ${orderId}\n\n` +
-        `✅ **Your USDC has been returned to your wallet.**\n\n` +
-        `You can try the withdrawal again or contact support.`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "🔄 Try Again", callback_data: "start_offramp" },
-          { text: "💬 Contact Support", callback_data: "contact_support" }
-        ]]
-      }
-    };
-
-    await sendTelegramMessage(userId, message);
-  } catch (error) {
-    console.error('[PaycrestWebhook] Error sending refund notification:', error);
-  }
-}
-
-/**
- * Send processing notification via Telegram
- */
-async function sendProcessingNotification(userId: string, orderId: string, orderData: any): Promise<void> {
-  try {
-    const message = {
-      text: `🔄 **Withdrawal Update**\n\n` +
-        `Your withdrawal is being processed.\n\n` +
-        `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-        `📋 **Order ID:** ${orderId}\n` +
-        `⏰ **Status:** Processing\n\n` +
-        `⏳ **Estimated completion:** 5-15 minutes\n\n` +
-        `You'll receive another notification when complete.`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "🔍 Check Status", callback_data: `check_status_${orderId}` }
-        ]]
-      }
-    };
-
-    await sendTelegramMessage(userId, message);
-  } catch (error) {
-    console.error('[PaycrestWebhook] Error sending processing notification:', error);
-  }
-}
-
-/**
- * Send Telegram message helper
- */
-async function sendTelegramMessage(userId: string, message: any): Promise<void> {
+async function sendTemplatedNotification(userId: string, template: any): Promise<void> {
   try {
     // Get user's chat ID from database
     const { data: user, error } = await supabase
@@ -418,31 +304,34 @@ async function sendTelegramMessage(userId: string, message: any): Promise<void> 
     }
 
     if (user && user.telegram_chat_id) {
-      await notifyTelegram(user.telegram_chat_id, message.text);
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        console.error('[PaycrestWebhook] No Telegram bot token configured');
+        return;
+      }
+
+      const payload = {
+        chat_id: user.telegram_chat_id,
+        text: template.text,
+        parse_mode: template.parse_mode || 'Markdown',
+        reply_markup: template.reply_markup
+      };
+
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[PaycrestWebhook] Telegram API error:', errorText);
+      } else {
+        console.log(`[PaycrestWebhook] Templated notification sent to user ${userId}`);
+      }
     }
   } catch (error) {
-    console.error('[PaycrestWebhook] Error sending Telegram message:', error);
+    console.error('[PaycrestWebhook] Error sending templated notification:', error);
   }
 }
 
-/**
- * Simple Telegram notification function
- */
-async function notifyTelegram(chatId: string | number, text: string): Promise<void> {
-  try {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) return;
-
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'Markdown'
-      }),
-    });
-  } catch (error) {
-    console.error('[PaycrestWebhook] Telegram notification error:', error);
-  }
-}

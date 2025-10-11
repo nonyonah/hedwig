@@ -14,6 +14,7 @@ import { PaymentLinkReminderService } from '../lib/paymentLinkReminderService';
 import { offrampService } from '../services/offrampService';
 import { offrampSessionService } from '../services/offrampSessionService';
 import { ServerPaycrestService } from '../services/serverPaycrestService';
+import { multiNetworkPaymentService } from '../services/MultiNetworkPaymentService';
 
 // Initialize the service
 const serverPaycrestService = new ServerPaycrestService();
@@ -91,7 +92,7 @@ async function updateSession(userId: string, context: any) {
       context: [{ role: 'system', content: JSON.stringify(context) }],
       updated_at: new Date().toISOString()
     });
-  
+
   if (error) {
     console.error('Error updating session:', error);
   }
@@ -102,7 +103,7 @@ async function resolveUserId(userId: string): Promise<string | null> {
   try {
     // Check if userId is already a UUID
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
+
     if (isUUID) {
       return userId;
     }
@@ -114,7 +115,7 @@ async function resolveUserId(userId: string): Promise<string | null> {
         .select('id')
         .eq('email', 'web_user_default@hedwig.local')
         .single();
-      
+
       if (userError && userError.code === 'PGRST116') {
         // User doesn't exist, create one
         const { data: newUser, error: createError } = await supabase
@@ -126,30 +127,30 @@ async function resolveUserId(userId: string): Promise<string | null> {
           })
           .select('id')
           .single();
-        
+
         if (createError) {
           console.error(`[resolveUserId] Failed to create default user:`, createError);
           return null;
         }
-        
+
         // Automatically create wallets for the new web user
         try {
           console.log(`[resolveUserId] Creating wallets for new web user...`);
-          
+
           // Create EVM wallet
           const evmWallet = await createWallet(newUser.id, 'evm');
           console.log(`[resolveUserId] EVM wallet created for web user: ${evmWallet.address}`);
-          
+
           // Create Solana wallet
           const solanaWallet = await createWallet(newUser.id, 'solana');
           console.log(`[resolveUserId] Solana wallet created for web user: ${solanaWallet.address}`);
-          
+
           console.log(`[resolveUserId] Successfully created web user with wallets`);
         } catch (walletError) {
           console.error(`[resolveUserId] Failed to create wallets for web user:`, walletError);
           // Don't fail user creation if wallet creation fails - wallets can be created later
         }
-        
+
         return newUser.id;
       } else if (userError) {
         console.error(`[resolveUserId] Failed to find user:`, userError);
@@ -165,7 +166,7 @@ async function resolveUserId(userId: string): Promise<string | null> {
       .select('id')
       .eq('email', userId)
       .single();
-    
+
     if (user) {
       return user.id;
     }
@@ -176,7 +177,7 @@ async function resolveUserId(userId: string): Promise<string | null> {
       .select('id')
       .eq('phone_number', userId)
       .single());
-    
+
     if (user) {
       return user.id;
     }
@@ -187,7 +188,7 @@ async function resolveUserId(userId: string): Promise<string | null> {
       .select('id')
       .eq('telegram_chat_id', userId)
       .single());
-    
+
     if (user) {
       console.log(`[resolveUserId] Found existing user by telegram_chat_id ${userId}:`, user.id);
       return user.id;
@@ -226,7 +227,7 @@ async function getUserWalletAddresses(userId: string): Promise<string[]> {
 async function handleCreateWallets(userId: string) {
   try {
     console.log(`[handleCreateWallets] Creating wallets for user: ${userId}`);
-    
+
     const actualUserId = await resolveUserId(userId);
     if (!actualUserId) {
       return {
@@ -282,13 +283,13 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     // Check if user requested specific network or token
     const requestedNetwork = params?.parameters?.network?.toLowerCase();
     const requestedToken = params?.parameters?.token?.toUpperCase();
-    
+
     // Map specific chains to their categories
     const evmChains = ['evm', 'base', 'ethereum', 'optimism', 'celo', 'lisk'];
     const isEvmRequest = requestedNetwork && evmChains.includes(requestedNetwork);
     const isSolanaRequest = requestedNetwork === 'solana';
     const isSpecificChainRequest = requestedNetwork && (evmChains.includes(requestedNetwork) || requestedNetwork === 'solana');
-    const isTokenSpecificRequest = requestedToken && ['USDC', 'USDT', 'CNGN', 'CUSD', 'SOL', 'ETH', 'CELO'].includes(requestedToken);
+    const isTokenSpecificRequest = requestedToken && ['USDC', 'USDT', 'CNGN', 'CUSD', 'ETH', 'CELO', 'SOL'].includes(requestedToken);
 
     let evmBalances = "";
     let solanaBalances = "";
@@ -296,7 +297,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
 
     // Get EVM wallet
     const evmWallet = wallets.find(w => w.chain === 'evm');
-    if (evmWallet && (!isSpecificChainRequest || isEvmRequest)) {
+    if (evmWallet) {
       try {
         // Get balances for supported networks - disabled Arbitrum and BSC networks
         const supportedEvmNetworks = ['base', 'celo', 'lisk'];
@@ -333,7 +334,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
         for (const network of networksToCheck) {
           try {
             const balances = await getBalances(evmWallet.address, network);
-            
+
             // Handle different return types from getBalances
             let nativeBalance = '0';
             let usdcBalance = '0';
@@ -341,17 +342,17 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             let usdtBalance = '0';
             let cngnBalance = '0';
             let additionalTokens: any[] = [];
-            
+
             if (Array.isArray(balances)) {
               // Solana format or processed EVM format
-              const nativeToken = balances.find((b: any) => 
+              const nativeToken = balances.find((b: any) =>
                 b.asset?.symbol === 'ETH' || b.symbol === 'ETH' ||
                 b.asset?.symbol === 'CELO' || b.symbol === 'CELO'
               );
-              
+
               // Network-specific token handling
               let usdcToken, cusdToken, usdtToken, cngnToken;
-              
+
               if (network === 'celo') {
                 // For Celo: USDC, cUSD, and cNGN (no USDT)
                 usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC' || b.symbol === 'USDC');
@@ -370,7 +371,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
                 usdtToken = balances.find((b: any) => b.asset?.symbol === 'USDT' || b.symbol === 'USDT');
                 cngnToken = balances.find((b: any) => b.asset?.symbol === 'cNGN' || b.symbol === 'cNGN');
               }
-              
+
               nativeBalance = (nativeToken as any)?.balance || (nativeToken as any)?.amount || '0';
               usdcBalance = (usdcToken as any)?.balance || (usdcToken as any)?.amount || '0';
               cusdBalance = (cusdToken as any)?.balance || (cusdToken as any)?.amount || '0';
@@ -379,13 +380,13 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             } else if (balances && typeof balances === 'object' && 'data' in balances) {
               // EVM ListTokenBalancesResult format (from CDP or Alchemy)
               const balanceArray = (balances as any).data || [];
-              const nativeToken = balanceArray.find((b: any) => 
+              const nativeToken = balanceArray.find((b: any) =>
                 b.asset?.symbol === 'ETH' || b.asset?.symbol === 'CELO'
               );
-              
+
               // Network-specific token handling
               let usdcToken, cusdToken, usdtToken, cngnToken;
-              
+
               if (network === 'celo') {
                 // For Celo: USDC, cUSD, and cNGN (no USDT)
                 usdcToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDC');
@@ -405,74 +406,74 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
                 usdtToken = balanceArray.find((b: any) => b.asset?.symbol === 'USDT');
                 cngnToken = balanceArray.find((b: any) => b.asset?.symbol === 'cNGN');
               }
-              
+
               nativeBalance = nativeToken ? formatBalance(nativeToken.amount, nativeToken.asset.decimals) : '0';
               usdcBalance = usdcToken ? formatBalance(usdcToken.amount, usdcToken.asset.decimals) : '0';
               cusdBalance = cusdToken ? formatBalance(cusdToken.amount, cusdToken.asset.decimals) : '0';
               usdtBalance = usdtToken ? formatBalance(usdtToken.amount, usdtToken.asset.decimals) : '0';
               cngnBalance = cngnToken ? formatBalance(cngnToken.amount, cngnToken.asset.decimals) : '0';
             }
-            
+
             const networkName = network.replace('-sepolia', '').replace('-alfajores', '').replace('-testnet', '');
-            const displayName = networkName === 'lisk' ? 'Lisk' : 
-                              networkName === 'celo' ? 'Celo' :
-                              networkName.charAt(0).toUpperCase() + networkName.slice(1);
-            
+            const displayName = networkName === 'lisk' ? 'Lisk' :
+              networkName === 'celo' ? 'Celo' :
+                networkName.charAt(0).toUpperCase() + networkName.slice(1);
+
             // Get chain-specific icon
             const chainIcon = network === 'base' ? '🔵' :
-                            network === 'ethereum' ? '💎' :
-                            network === 'celo' ? '🟡' :
-                            network === 'lisk' ? '🟢' :
-                            network === 'optimism' ? '🔴' :
-                            network === 'polygon' ? '🟣' : '🔹';
-            
+              network === 'ethereum' ? '💎' :
+                network === 'celo' ? '🟡' :
+                  network === 'lisk' ? '🟢' :
+                    network === 'optimism' ? '🔴' :
+                      network === 'polygon' ? '🟣' : '🔹';
+
             // Format balances with USD equivalents
             const nativeBalanceNum = parseFloat(nativeBalance);
             const usdcBalanceNum = parseFloat(usdcBalance);
             const cusdBalanceNum = parseFloat(cusdBalance || '0');
             const usdtBalanceNum = parseFloat(usdtBalance);
             const cngnBalanceNum = parseFloat(cngnBalance);
-            
+
             // Determine native token symbol
-            const nativeSymbol = network === 'lisk' ? 'ETH' : 
-                               network === 'celo' ? 'CELO' : 'ETH';
-            
+            const nativeSymbol = network === 'lisk' ? 'ETH' :
+              network === 'celo' ? 'CELO' : 'ETH';
+
             let nativeDisplay = `${nativeBalanceNum.toFixed(4)} ${nativeSymbol}`;
             let usdcDisplay = `${usdcBalanceNum.toFixed(2)} USDC`;
             let cusdDisplay = `${cusdBalanceNum.toFixed(2)} cUSD`;
             let usdtDisplay = `${usdtBalanceNum.toFixed(2)} USDT`;
             let cngnDisplay = `${cngnBalanceNum.toFixed(2)} cNGN`;
-            
+
             // Add USD equivalents if prices available
             const nativePriceKey = nativeSymbol === 'CELO' ? 'CELO' : 'ETH';
             if (tokenPrices[nativePriceKey] && nativeBalanceNum > 0) {
               const nativeUsd = (nativeBalanceNum * tokenPrices[nativePriceKey]).toFixed(2);
               nativeDisplay += ` ($${nativeUsd})`;
             }
-            
+
             if (tokenPrices.USDC && usdcBalanceNum > 0) {
               const usdcUsd = (usdcBalanceNum * tokenPrices.USDC).toFixed(2);
               usdcDisplay += ` ($${usdcUsd})`;
             }
-            
+
             if (tokenPrices.cUSD && cusdBalanceNum > 0) {
               const cusdUsd = (cusdBalanceNum * tokenPrices.cUSD).toFixed(2);
               cusdDisplay += ` ($${cusdUsd})`;
             }
-            
+
             if (tokenPrices.USDT && usdtBalanceNum > 0) {
               const usdtUsd = (usdtBalanceNum * tokenPrices.USDT).toFixed(2);
               usdtDisplay += ` ($${usdtUsd})`;
             }
-            
+
             if (tokenPrices.cNGN && cngnBalanceNum > 0) {
               const cngnUsd = (cngnBalanceNum * tokenPrices.cNGN).toFixed(2);
               cngnDisplay += ` ($${cngnUsd})`;
             }
-            
+
             allEvmBalances += `${chainIcon} **${displayName}**\n`;
             allEvmBalances += `• ${nativeDisplay}\n`;
-            
+
             // Network-specific token display
             if (network === 'celo') {
               // For Celo: show USDC, cUSD, and cNGN
@@ -490,27 +491,27 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               allEvmBalances += `• ${usdtDisplay}\n`;
               allEvmBalances += `• ${cngnDisplay}\n`;
             }
-            
+
             // Add additional tokens for Celo and Lisk
             for (const token of additionalTokens) {
               const tokenBalanceNum = parseFloat(token.balance);
               allEvmBalances += `• ${tokenBalanceNum.toFixed(4)} ${token.symbol}\n`;
             }
-            
+
             allEvmBalances += '\n';
           } catch (networkError) {
             console.error(`[handleGetWalletBalance] Error fetching ${network} balances:`, networkError);
             const networkName = network.replace('-sepolia', '').replace('-alfajores', '');
             const displayName = networkName.charAt(0).toUpperCase() + networkName.slice(1);
-            
+
             // Get chain-specific icon for error case
             const chainIcon = network === 'base' ? '🔵' :
-                            network === 'ethereum' ? '💎' :
-                            network === 'celo' ? '🟡' :
-                            network === 'lisk' ? '🟢' :
-                            network === 'optimism' ? '🔴' :
-                            network === 'polygon' ? '🟣' : '🔹';
-            
+              network === 'ethereum' ? '💎' :
+                network === 'celo' ? '🟡' :
+                  network === 'lisk' ? '🟢' :
+                    network === 'optimism' ? '🔴' :
+                      network === 'polygon' ? '🟣' : '🔹';
+
             allEvmBalances += `${chainIcon} **${displayName}**\n• Error fetching balances\n\n`;
           }
         }
@@ -527,34 +528,36 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     if (solanaWallet && (!isSpecificChainRequest || isSolanaRequest)) {
       try {
         const balances = await getBalances(solanaWallet.address, 'solana');
-        
+
         let solAmount = '0';
         let usdcAmount = '0';
-        
         let usdtAmount = '0';
-        
+
         if (Array.isArray(balances)) {
           // New format from getSolanaBalances function
           const solToken = balances.find((b: any) => b.asset?.symbol === 'SOL');
           const usdcToken = balances.find((b: any) => b.asset?.symbol === 'USDC');
           const usdtToken = balances.find((b: any) => b.asset?.symbol === 'USDT');
-          
+
           if (solToken) {
             // SOL balance is already in lamports, convert to SOL
             solAmount = formatBalance(solToken.amount, solToken.asset.decimals);
           }
-          
+
           if (usdcToken) {
             // USDC balance from SPL token
             usdcAmount = formatBalance(usdcToken.amount, usdcToken.asset.decimals);
           }
-          
+
           if (usdtToken) {
             // USDT balance from SPL token
             usdtAmount = formatBalance(usdtToken.amount, usdtToken.asset.decimals);
           }
         }
-        
+
+
+
+
         // Get token prices for USD conversion
         let tokenPrices: any = {};
         try {
@@ -566,31 +569,31 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
         } catch (priceError) {
           console.warn('[handleGetWalletBalance] Failed to fetch Solana token prices:', priceError);
         }
-        
+
         // Format balances with USD equivalents
         const solBalanceNum = parseFloat(solAmount);
         const usdcBalanceNum = parseFloat(usdcAmount);
         const usdtBalanceNum = parseFloat(usdtAmount);
-        
+
         let solDisplay = `${solBalanceNum.toFixed(4)} SOL`;
         let usdcDisplay = `${usdcBalanceNum.toFixed(2)} USDC`;
         let usdtDisplay = `${usdtBalanceNum.toFixed(2)} USDT`;
-        
+
         if (tokenPrices.SOL && solBalanceNum > 0) {
           const solUsd = (solBalanceNum * tokenPrices.SOL).toFixed(2);
           solDisplay += ` ($${solUsd})`;
         }
-        
+
         if (tokenPrices.USDC && usdcBalanceNum > 0) {
           const usdcUsd = (usdcBalanceNum * tokenPrices.USDC).toFixed(2);
           usdcDisplay += ` ($${usdcUsd})`;
         }
-        
+
         if (tokenPrices.USDT && usdtBalanceNum > 0) {
           const usdtUsd = (usdtBalanceNum * tokenPrices.USDT).toFixed(2);
           usdtDisplay += ` ($${usdtUsd})`;
         }
-        
+
         solanaBalances = `🌸 **Solana**\n• ${usdcDisplay}\n• ${usdtDisplay}\n• ${solDisplay}\n\n`;
       } catch (balanceError) {
         console.error(`[handleGetWalletBalance] Error fetching Solana balances:`, balanceError);
@@ -602,7 +605,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     if (isTokenSpecificRequest && requestedNetwork) {
       // Handle token-specific requests on specific networks
       const networkName = requestedNetwork.charAt(0).toUpperCase() + requestedNetwork.slice(1);
-      
+
       if (isSolanaRequest) {
         // Extract specific token from Solana balances
         if (requestedToken === 'SOL' || requestedToken === 'USDC' || requestedToken === 'USDT') {
@@ -615,7 +618,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               const amount = balanceMatch[1];
               const symbol = balanceMatch[2];
               const usdValue = balanceMatch[3];
-              
+
               if (usdValue) {
                 response = `Your ${symbol} balance on Solana is ${amount} ${symbol} (approximately $${usdValue}).`;
               } else {
@@ -633,20 +636,20 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
       } else if (isEvmRequest) {
         // Extract specific token from EVM balances for the requested network
         const networkSection = evmBalances.match(new RegExp(`([🔵🟡🟢💎🔴🟣🔹] \\*\\*${networkName}\\*\\*[\\s\\S]*?)(?=\\n[🔵🟡🟢💎🔴🟣🔹]|$)`, 'i'));
-        
+
         if (networkSection) {
           let tokenLine = '';
-          
+
           // Map token names to their display patterns
           const tokenPatterns: { [key: string]: string } = {
             'USDC': 'USDC',
-            'USDT': 'USDT', 
+            'USDT': 'USDT',
             'CNGN': 'cNGN',
             'CUSD': 'cUSD',
             'ETH': 'ETH',
             'CELO': 'CELO'
           };
-          
+
           const pattern = tokenPatterns[requestedToken];
           if (pattern) {
             const tokenMatch = networkSection[1].match(new RegExp(`• ([^\\n]*${pattern}[^\\n]*)`, 'i'));
@@ -654,7 +657,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               tokenLine = tokenMatch[1];
             }
           }
-          
+
           if (tokenLine) {
             // Extract balance amount and USD value for natural language response
             const balanceMatch = tokenLine.match(/(\d+\.?\d*)\s+(\w+)(?:\s+\(~\$(\d+\.?\d*)\))?/);
@@ -662,7 +665,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               const amount = balanceMatch[1];
               const symbol = balanceMatch[2];
               const usdValue = balanceMatch[3];
-              
+
               if (usdValue) {
                 response = `Your ${symbol} balance on ${networkName} is ${amount} ${symbol} (approximately $${usdValue}).`;
               } else {
@@ -684,7 +687,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
       // Handle token-specific requests without network specification
       let tokenFound = false;
       let tokenBalances: string[] = [];
-      
+
       // Search for token across all networks
       if (requestedToken === 'SOL' || requestedToken === 'USDC' || requestedToken === 'USDT') {
         // Check Solana first
@@ -696,7 +699,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
             const amount = balanceMatch[1];
             const symbol = balanceMatch[2];
             const usdValue = balanceMatch[3];
-            
+
             if (parseFloat(amount) > 0) {
               tokenFound = true;
               if (usdValue) {
@@ -708,27 +711,27 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
           }
         }
       }
-      
+
       // Check EVM networks for the token
       const tokenPatterns: { [key: string]: string } = {
         'USDC': 'USDC',
-        'USDT': 'USDT', 
+        'USDT': 'USDT',
         'CNGN': 'cNGN',
         'CUSD': 'cUSD',
         'ETH': 'ETH',
         'CELO': 'CELO'
       };
-      
+
       const pattern = tokenPatterns[requestedToken];
       if (pattern) {
         // Extract from each network section
         const networkRegex = /([🔵🟡🟢💎🔴🟣🔹] \*\*([^*]+)\*\*[\s\S]*?)(?=\n[🔵🟡🟢💎🔴🟣🔹]|$)/g;
         let networkMatch;
-        
+
         while ((networkMatch = networkRegex.exec(evmBalances)) !== null) {
           const networkSection = networkMatch[1];
           const networkName = networkMatch[2];
-          
+
           const tokenMatch = networkSection.match(new RegExp(`• ([^\\n]*${pattern}[^\\n]*)`, 'i'));
           if (tokenMatch) {
             const tokenLine = tokenMatch[1];
@@ -737,7 +740,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
               const amount = balanceMatch[1];
               const symbol = balanceMatch[2];
               const usdValue = balanceMatch[3];
-              
+
               if (parseFloat(amount) > 0) {
                 tokenFound = true;
                 if (usdValue) {
@@ -750,7 +753,7 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
           }
         }
       }
-      
+
       if (tokenFound) {
         if (tokenBalances.length === 1) {
           response = `Your ${requestedToken} balance is ${tokenBalances[0]}.`;
@@ -781,12 +784,12 @@ async function handleGetWalletBalance(params: ActionParams, userId: string): Pro
     // Return different response format based on request type
     if (isTokenSpecificRequest || (requestedNetwork && !isTokenSpecificRequest)) {
       // For token-specific requests or network-specific requests, return natural language response without buttons
-      return { 
+      return {
         text: response
       };
     } else {
       // For general balance requests, include the refresh and send buttons
-      return { 
+      return {
         text: response,
         reply_markup: {
           inline_keyboard: [
@@ -814,7 +817,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         text: "User not found. Please make sure you're registered with the bot.",
       };
     }
-    
+
     const { data: wallets } = await supabase
       .from("wallets")
       .select("*")
@@ -843,7 +846,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
     // Context-aware response
     if (requestedNetwork === 'solana') {
       if (!solanaAddress) {
-        return { 
+        return {
           text: "No Solana wallet found.\n\nCreate Solana Wallet:\nType: 'Create Solana wallet'",
           reply_markup: {
             inline_keyboard: [
@@ -852,7 +855,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
           }
         };
       }
-      return { 
+      return {
         text: `Your Solana Wallet\n\nAddress:\n\`${solanaAddress}\`\n\nUse this address to receive SOL, USDC, and other SPL tokens on Solana network.\n\nKeep this address safe and share it only when receiving payments.`,
         reply_markup: {
           inline_keyboard: [
@@ -862,7 +865,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
       };
     } else if (requestedNetwork === 'evm' || requestedNetwork === 'base') {
       if (!evmAddress) {
-        return { 
+        return {
           text: "No EVM wallet found.\n\nCreate EVM Wallet:\nType: 'Create EVM wallet'",
           reply_markup: {
             inline_keyboard: [
@@ -871,7 +874,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
           }
         };
       }
-      return { 
+      return {
         text: `Your EVM Wallet\n\nAddress:\n\`${evmAddress}\`\n\nUse this address to receive ETH, USDC, and other tokens on EVM networks.\n\nKeep this address safe and share it only when receiving payments.`,
         reply_markup: {
           inline_keyboard: [
@@ -898,7 +901,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
 
       // If no wallets exist, wallets will be created automatically
       if (!evmAddress && !solanaAddress) {
-        return { 
+        return {
           text: "Your wallets are being set up automatically. Please try again in a moment."
         };
       }
@@ -911,7 +914,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
         buttons.push({ text: "➕ Create Solana Wallet", callback_data: "create_solana_wallet" });
       }
 
-      return { 
+      return {
         text: responseText,
         reply_markup: {
           inline_keyboard: buttons.length > 0 ? [buttons] : []
@@ -921,7 +924,7 @@ async function handleGetWalletAddress(userId: string, params?: ActionParams): Pr
   } catch (error) {
     console.error('[handleGetWalletAddress] Error:', error);
     return {
-      text: "Failed to fetch wallet addresses. Please try again later."
+      text: "Failed to fetch wallet address. Please try again later."
     };
   }
 }
@@ -934,9 +937,11 @@ export async function handleAction(
 ): Promise<ActionResult> {
   console.log("[handleAction] Intent:", intent, "Params:", params, "UserId:", userId);
 
-  // Text-based balance intent matching (but not during active offramp sessions)
+  // Text-based intent matching
   if (params.text && typeof params.text === 'string') {
     const text = params.text.toLowerCase();
+
+    // Balance intent matching (but not during active offramp sessions)
     if (text.includes('balance') || text.includes('wallet balance')) {
       // Check if user has an active offramp session
       const actualUserId = await resolveUserId(userId);
@@ -951,6 +956,56 @@ export async function handleAction(
         return await handleGetWalletBalance(params, userId);
       }
     }
+
+    // Onramp intent matching - comprehensive natural language recognition
+    const onrampKeywords = [
+      'buy crypto', 'buy cryptocurrency', 'buy tokens', 'buy token',
+      'purchase crypto', 'purchase cryptocurrency', 'purchase tokens', 'purchase token',
+      'buy usdc', 'buy usdt', 'buy cusd', 'buy celo dollar',
+      'buy with fiat', 'buy with cash', 'buy with money',
+      'convert fiat', 'convert cash', 'convert money',
+      'fiat to crypto', 'cash to crypto', 'money to crypto',
+      'onramp', 'on-ramp', 'on ramp',
+      'buy some crypto', 'buy some tokens', 'buy some token',
+      'want to buy', 'would like to buy', 'i want to buy', "i'd like to buy",
+      'need to buy', 'looking to buy', 'trying to buy',
+      'get some crypto', 'get some tokens', 'get crypto', 'get tokens',
+      'acquire crypto', 'acquire tokens'
+    ];
+
+    // Check for specific token mentions
+    const tokenKeywords = [
+      'usdc', 'usd coin', 'usdt', 'tether', 'cusd', 'celo dollar'
+    ];
+
+    // Check for chain mentions
+    const chainKeywords = [
+      'solana', 'sol', 'base', 'celo', 'lisk', 'ethereum', 'eth'
+    ];
+
+    // Check for currency mentions
+    const currencyKeywords = [
+      'ngn', 'naira', 'nigerian naira',
+      'kes', 'kenyan shilling', 'shilling',
+      'ghs', 'ghanaian cedi', 'cedi',
+      'ugx', 'ugandan shilling',
+      'tzs', 'tanzanian shilling'
+    ];
+
+    const hasOnrampKeyword = onrampKeywords.some(keyword => text.includes(keyword));
+    const hasTokenKeyword = tokenKeywords.some(keyword => text.includes(keyword));
+    const hasChainKeyword = chainKeywords.some(keyword => text.includes(keyword));
+    const hasCurrencyKeyword = currencyKeywords.some(keyword => text.includes(keyword));
+
+    // If user mentions onramp keywords OR wants to buy specific tokens/chains
+    if (hasOnrampKeyword ||
+      (hasTokenKeyword && (text.includes('buy') || text.includes('purchase') || text.includes('get'))) ||
+      (hasChainKeyword && hasTokenKeyword) ||
+      (text.includes('buy') && (hasTokenKeyword || hasChainKeyword || hasCurrencyKeyword))) {
+
+      console.log('[handleAction] Detected onramp intent from natural language:', text);
+      return await handleOnramp(params, userId);
+    }
   }
 
   // Special case for clarification intent
@@ -963,7 +1018,7 @@ export async function handleAction(
   // For blockchain-related intents, verify wallet first
   const blockchainIntents = [
     "get_wallet_balance",
-    "get_wallet_address", 
+    "get_wallet_address",
     "send",
     "swap",
     "bridge",
@@ -978,15 +1033,15 @@ export async function handleAction(
           text: "User not found. Please make sure you're registered with the bot.",
         };
       }
-      
+
       const { data: wallets } = await supabase
         .from("wallets")
         .select("*")
         .eq("user_id", actualUserId);
-      
+
       const hasEvm = wallets?.some((w) => w.chain === "evm");
       const hasSolana = wallets?.some((w) => w.chain === "solana");
-      
+
       if (!hasEvm && !hasSolana) {
         return {
           text: "Your wallet is being set up automatically. Please try again in a moment.",
@@ -1015,16 +1070,16 @@ export async function handleAction(
 
   // Special handling for create_wallets intent
   if (intent === "create_wallets" || intent === "CREATE_WALLET" ||
-      intent === "create_wallet" || intent === "CREATE_WALLETS" ||
-      params.payload === "create_wallets" || params.payload === "CREATE_WALLET") {
+    intent === "create_wallet" || intent === "CREATE_WALLETS" ||
+    params.payload === "create_wallets" || params.payload === "CREATE_WALLET") {
     return await handleCreateWallets(userId);
   }
 
   // Check if user has wallets for balance-related commands
   const actualUserId = await resolveUserId(userId);
-  if (actualUserId && (intent === "balance" || intent === "show_balance" || intent === "wallet" || 
-                       intent === "wallet_balance" || intent === "get_wallet_balance" ||
-                       intent === "instruction_deposit" || intent === "get_wallet_address")) {
+  if (actualUserId && (intent === "balance" || intent === "show_balance" || intent === "wallet" ||
+    intent === "wallet_balance" || intent === "get_wallet_balance" ||
+    intent === "instruction_deposit" || intent === "get_wallet_address")) {
     const { data: wallets } = await supabase
       .from("wallets")
       .select("*")
@@ -1036,12 +1091,12 @@ export async function handleAction(
     if (!hasEvm && !hasSolana) {
       // Automatically create wallets for the user
       console.log(`[handleAction] No wallets found for user ${userId}, creating automatically...`);
-      
+
       try {
         // Create wallets in the background
         const evmWallet = await createWallet(actualUserId, 'evm');
         const solanaWallet = await createWallet(actualUserId, 'solana');
-        
+
         return {
           text: `Welcome! I've automatically created your wallets for you.
 
@@ -1073,27 +1128,27 @@ Your wallets are now ready! Please try your command again.`
     case "wallet_balance":
     case "get_wallet_balance":
       return await handleGetWalletBalance(params, userId);
-    
+
     case "instruction_deposit":
     case "get_wallet_address":
       return await handleGetWalletAddress(userId, params);
-    
+
     case "instruction_send":
     case "send":
       return await handleSend(params, userId);
-    
+
     case "swap":
       return await handleSwap(params, userId);
-    
+
     case "create_payment_link":
       return await handleCreatePaymentLink(params, userId);
-    
+
     case "create_invoice":
       return await handleCreateInvoice(params, userId);
-    
+
     case "create_proposal":
       return await handleCreateProposal(params, userId);
-    
+
     case "offramp":
     case "withdraw":
     case "withdrawal":
@@ -1111,8 +1166,17 @@ Your wallets are now ready! Please try your command again.`
     case "offramp_submit":
       return handleOfframpSubmit(params, userId);
 
-    
-    
+    case "onramp":
+    case "buy_crypto":
+    case "buy":
+    case "purchase":
+      console.log('[handleAction] Onramp feature is currently disabled');
+      return {
+        text: "🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. We'll notify you when it's available!\n\nIn the meantime, you can:\n• Check your wallet balance\n• Send crypto\n• Create invoices and payment links",
+      };
+
+
+
     case "earnings":
     case "get_earnings":
     case "earnings_summary":
@@ -1126,16 +1190,16 @@ Your wallets are now ready! Please try your command again.`
 
         // Use the first wallet address for earnings summary
         const walletAddress = walletAddresses[0];
-        
+
         // Import earnings service functions dynamically
         const { parseEarningsQuery } = await import('../lib/earningsService');
-        
+
         // Parse natural language query if text is provided
         let parsedFilter: any = null;
         if (params.text) {
           parsedFilter = parseEarningsQuery(params.text);
         }
-        
+
         // Extract parameters for filtering, prioritizing parsed natural language
         const filter = {
           walletAddress,
@@ -1148,11 +1212,11 @@ Your wallets are now ready! Please try your command again.`
 
         // Import earnings service functions dynamically
         const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
-        
+
         const summary = await getEarningsSummary(filter, true); // Include insights
         if (summary && summary.totalPayments > 0) {
           const formatted = formatEarningsForAgent(summary, 'earnings');
-          return { 
+          return {
             text: formatted,
             reply_markup: {
               inline_keyboard: [[
@@ -1179,7 +1243,7 @@ Your wallets are now ready! Please try your command again.`
 
         // Use the first wallet address for earnings summary
         const walletAddress = walletAddresses[0];
-        
+
         // Extract parameters for filtering
         const filter = {
           walletAddress,
@@ -1193,7 +1257,7 @@ Your wallets are now ready! Please try your command again.`
         // Import earnings service functions dynamically
         const { getEarningsSummary } = await import('../lib/earningsService');
         const { generateEarningsPDF } = await import('../modules/pdf-generator-earnings');
-        
+
         // Get user data for dynamic PDF content
         const actualUserId = await resolveUserId(userId);
         let userData: { name: any; telegram_first_name: any; telegram_last_name: any; telegram_username: any; } | null = null;
@@ -1205,7 +1269,7 @@ Your wallets are now ready! Please try your command again.`
             .single();
           userData = data;
         }
-        
+
         const summary = await getEarningsSummary(filter, true); // Include insights
         if (summary && summary.totalPayments > 0) {
           // Transform summary data for PDF generation
@@ -1232,20 +1296,20 @@ Your wallets are now ready! Please try your command again.`
 
           // Generate PDF
           const pdfBuffer = await generateEarningsPDF(earningsData);
-          
+
           // For now, return success message with file info
           // In a real implementation, you'd upload to storage and provide download link
-          return { 
+          return {
             text: "📄 **PDF Report Generated Successfully!**\n\n" +
-                  "🎨 Your creative earnings summary has been generated with:\n" +
-                  "• Visual charts and insights\n" +
-                  "• Motivational content\n" +
-                  "• Professional formatting\n" +
-                  "• Transaction breakdown\n\n" +
-                  `📊 Report covers: ${earningsData.timeframe}\n` +
-                  `💰 Total earnings: ${earningsData.totalEarnings} tokens\n` +
-                  `📈 Payments: ${earningsData.totalPayments}\n\n` +
-                  "💡 The PDF contains creative elements like emojis, color coding, and motivational messages to make your financial data engaging!"
+              "🎨 Your creative earnings summary has been generated with:\n" +
+              "• Visual charts and insights\n" +
+              "• Motivational content\n" +
+              "• Professional formatting\n" +
+              "• Transaction breakdown\n\n" +
+              `📊 Report covers: ${earningsData.timeframe}\n` +
+              `💰 Total earnings: ${earningsData.totalEarnings} tokens\n` +
+              `📈 Payments: ${earningsData.totalPayments}\n\n` +
+              "💡 The PDF contains creative elements like emojis, color coding, and motivational messages to make your financial data engaging!"
           };
         } else {
           return { text: "📄 **No Data for PDF Generation**\n\nYou need some earnings data to generate a PDF report. Start receiving payments first!\n\n💡 Create payment links or invoices to begin tracking your earnings." };
@@ -1293,17 +1357,17 @@ Your wallets are now ready! Please try your command again.`
 
         return {
           text: `📊 **Business Dashboard**\n\n` +
-                `**Overview:**\n` +
-                `📋 Proposals: ${proposalCount} total (${pendingProposals} pending)\n` +
-                `📄 Invoices: ${invoiceCount} total (${pendingInvoices} pending)\n` +
-                `🔗 Payment Links: ${paymentLinkCount} total (${activePaymentLinks} active)\n\n` +
-                `**Quick Actions:**\n` +
-                `• Type "create proposal" to generate a new proposal\n` +
-                `• Type "create invoice" to create a new invoice\n` +
-                `• Type "create payment link" to generate a payment link\n` +
-                `• Type "show earnings" to view your earnings summary\n\n` +
-                `**Recent Activity:**\n` +
-                `Use the Telegram bot interface for detailed management and interactive dashboard.`,
+            `**Overview:**\n` +
+            `📋 Proposals: ${proposalCount} total (${pendingProposals} pending)\n` +
+            `📄 Invoices: ${invoiceCount} total (${pendingInvoices} pending)\n` +
+            `🔗 Payment Links: ${paymentLinkCount} total (${activePaymentLinks} active)\n\n` +
+            `**Quick Actions:**\n` +
+            `• Type "create proposal" to generate a new proposal\n` +
+            `• Type "create invoice" to create a new invoice\n` +
+            `• Type "create payment link" to generate a payment link\n` +
+            `• Type "show earnings" to view your earnings summary\n\n` +
+            `**Recent Activity:**\n` +
+            `Use the Telegram bot interface for detailed management and interactive dashboard.`,
           reply_markup: {
             inline_keyboard: [
               [
@@ -1332,7 +1396,7 @@ Your wallets are now ready! Please try your command again.`
 
         // Use the first wallet address for spending summary
         const walletAddress = walletAddresses[0];
-        
+
         // Extract parameters for filtering
         const filter = {
           walletAddress,
@@ -1348,7 +1412,7 @@ Your wallets are now ready! Please try your command again.`
         //   const formatted = formatEarningsForAgent(summary, 'spending');
         //   return { text: formatted };
         // } else {
-          return { text: "The spending feature is temporarily unavailable, but your crypto is safe in your wallet! You can use the 'send' command to transfer crypto to others." };
+        return { text: "The spending feature is temporarily unavailable, but your crypto is safe in your wallet! You can use the 'send' command to transfer crypto to others." };
         // }
       } catch (error) {
         console.error('[handleAction] Spending error:', error);
@@ -1373,10 +1437,10 @@ Your wallets are now ready! Please try your command again.`
 
     case "transaction_status":
       return await handleTransactionStatus(params, userId);
-    
+
     case "send_reminder":
       return await sendManualReminder(userId, params);
-    
+
     case "list_paid_items":
       try {
         const actualUserId = await resolveUserId(userId);
@@ -1388,7 +1452,7 @@ Your wallets are now ready! Please try your command again.`
 
         const paidItems = await SmartNudgeService.getUserPaidItems(actualUserId);
         const totalPaid = paidItems.paymentLinks.length + paidItems.invoices.length;
-        
+
         if (totalPaid === 0) {
           return {
             text: "You don't have any paid payment links or invoices yet. Once clients pay your invoices or payment links, they'll appear here for tracking."
@@ -1396,7 +1460,7 @@ Your wallets are now ready! Please try your command again.`
         }
 
         let paidList = `✅ **Paid Items Summary** (${totalPaid} total)\n\n`;
-        
+
         if (paidItems.paymentLinks.length > 0) {
           paidList += `💳 **Payment Links (${paidItems.paymentLinks.length}):**\n`;
           paidItems.paymentLinks.forEach((item, index) => {
@@ -1404,7 +1468,7 @@ Your wallets are now ready! Please try your command again.`
             paidList += `${index + 1}. ${item.title} - $${item.amount}\n   📧 ${item.clientEmail}\n   💰 Paid: ${paidDate}\n\n`;
           });
         }
-        
+
         if (paidItems.invoices.length > 0) {
           paidList += `📄 **Invoices (${paidItems.invoices.length}):**\n`;
           paidItems.invoices.forEach((item, index) => {
@@ -1420,23 +1484,23 @@ Your wallets are now ready! Please try your command again.`
         console.error('[handleAction] List paid items error:', error);
         return { text: "I couldn't fetch your paid items right now. Please try again later." };
       }
-    
+
     case "help":
       return {
         text: "Hi! I'm Hedwig, your freelance assistant. Here's what I can help you with:\n\n" +
-              "I can help you create wallets, check your balance, get wallet addresses, send crypto to others, view your earnings, create payment links, invoices, and proposals.\n\n" +
-              "Just ask me naturally - for example, you can say 'what's my balance?', 'show my wallet address', 'send 0.1 ETH to [address]', 'create payment link for 50 USDC', 'show my earnings', 'create invoice', or 'create proposal'.\n\n" +
-              "What would you like to do today?"
+          "I can help you create wallets, check your balance, get wallet addresses, send crypto to others, view your earnings, create payment links, invoices, and proposals.\n\n" +
+          "Just ask me naturally - for example, you can say 'what's my balance?', 'show my wallet address', 'send 0.1 ETH to [address]', 'create payment link for 50 USDC', 'show my earnings', 'create invoice', or 'create proposal'.\n\n" +
+          "What would you like to do today?"
       };
-    
+
     case "welcome":
       return {
         text: "Hi! I'm Hedwig, your freelance assistant.\n\n" +
-              "I can help you check wallet balances, get wallet addresses, send crypto, create payment links, view earnings, create invoices, and make proposals.\n\n" +
-              "Just ask me naturally - for example, 'what's my balance?', 'show my wallet address', 'send 0.1 ETH to [address]', 'create payment link for 50 USDC', 'show my earnings', 'create invoice', or 'create proposal'.\n\n" +
-              "What would you like to do today?"
+          "I can help you check wallet balances, get wallet addresses, send crypto, create payment links, view earnings, create invoices, and make proposals.\n\n" +
+          "Just ask me naturally - for example, 'what's my balance?', 'show my wallet address', 'send 0.1 ETH to [address]', 'create payment link for 50 USDC', 'show my earnings', 'create invoice', or 'create proposal'.\n\n" +
+          "What would you like to do today?"
       };
-    
+
     default:
       return {
         text: "I didn't understand that command. Type 'help' to see available commands.",
@@ -1448,19 +1512,19 @@ Your wallets are now ready! Please try your command again.`
 export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResponse) {
   try {
     console.log('[Alchemy Webhook] Received webhook:', req.method, req.body);
-    
+
     // TODO: Implement Alchemy webhook processing
     // This is a placeholder for future Alchemy integration
-    
-    res.status(200).json({ 
-      success: true, 
-      message: 'Alchemy webhook received (not implemented)' 
+
+    res.status(200).json({
+      success: true,
+      message: 'Alchemy webhook received (not implemented)'
     });
   } catch (error) {
     console.error('[Alchemy Webhook] Error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Internal server error' 
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
     });
   }
 }
@@ -1469,11 +1533,11 @@ async function handleSend(params: ActionParams, userId: string) {
   try {
     console.log(`[handleSend] Starting with params:`, JSON.stringify(params, null, 2));
     console.log(`[handleSend] UserId: ${userId}`);
-    
+
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
+
     if (isUUID) {
       actualUserId = userId;
     } else {
@@ -1483,14 +1547,14 @@ async function handleSend(params: ActionParams, userId: string) {
         .select('id')
         .eq('username', userId)
         .single();
-      
+
       if (userError || !user) {
         console.error(`[handleSend] Failed to find user with username ${userId}:`, userError);
         return {
           text: "❌ User not found. Please make sure you're registered with the bot.",
         };
       }
-      
+
       actualUserId = user.id;
     }
 
@@ -1513,13 +1577,13 @@ async function handleSend(params: ActionParams, userId: string) {
     // Check if this is a confirmation request
     if (confirm === 'yes' || confirm === 'true' || params.action === 'confirm_send') {
       // User is confirming the transaction - execute it
-      
+
       // If we have callback_data, try to retrieve stored transaction details
       let storedTransaction: any = null;
       if (params.callback_data && params.callback_data.startsWith('confirm_')) {
         const transactionId = params.callback_data.replace('confirm_', '');
         storedTransaction = await transactionStorage.get(transactionId);
-        
+
         if (storedTransaction) {
           console.log(`[Actions] Retrieved stored transaction ${transactionId}:`, storedTransaction);
           // Use stored transaction details
@@ -1531,13 +1595,13 @@ async function handleSend(params: ActionParams, userId: string) {
           console.log(`[Actions] No stored transaction found for ID: ${transactionId}`);
         }
       }
-      
+
       // Extract parameters (now potentially updated from storage)
       const finalAmount = params.amount || amount;
       const finalRecipientAddress = params.recipient || recipientAddress;
       const finalToken = params.token || token;
       const finalNetwork = params.network || network;
-      
+
       if (!finalAmount || !finalRecipientAddress) {
         return {
           text: "❌ Missing transaction details. Please start the send process again."
@@ -1555,26 +1619,26 @@ async function handleSend(params: ActionParams, userId: string) {
       // Determine which wallet to use based on token/network/recipient address
       let selectedWallet;
       let selectedNetwork;
-      
-      if (finalToken?.toLowerCase() === 'sol' || 
-          finalNetwork?.toLowerCase() === 'solana' || 
-          isSolanaAddress(finalRecipientAddress)) {
+
+      if (finalToken?.toLowerCase() === 'sol' ||
+        finalNetwork?.toLowerCase() === 'solana' ||
+        isSolanaAddress(finalRecipientAddress)) {
         selectedWallet = wallets.find(w => w.chain === 'solana');
         selectedNetwork = 'solana';
-      } else if (finalNetwork?.toLowerCase() === 'celo' || 
-                 finalNetwork?.toLowerCase() === 'celo-sepolia' ||
-                 finalToken?.toLowerCase() === 'celo' ||
-                 finalToken?.toLowerCase() === 'cusd' ||
-                 (finalToken?.toLowerCase() === 'usdc' && finalNetwork?.toLowerCase() === 'celo')) {
+      } else if (finalNetwork?.toLowerCase() === 'celo' ||
+        finalNetwork?.toLowerCase() === 'celo-sepolia' ||
+        finalToken?.toLowerCase() === 'celo' ||
+        finalToken?.toLowerCase() === 'cusd' ||
+        (finalToken?.toLowerCase() === 'usdc' && finalNetwork?.toLowerCase() === 'celo')) {
         console.log(`[handleSend] Network selection logic - finalToken: ${finalToken}, finalNetwork: ${finalNetwork}`);
         console.log(`[handleSend] Celo network selection triggered`);
         selectedWallet = wallets.find(w => w.chain === 'evm');
         selectedNetwork = 'celo';
         console.log('[handleSend] Explicitly selected Celo network');
-      } else if (finalNetwork?.toLowerCase() === 'lisk' || 
-                 finalNetwork?.toLowerCase() === 'lisk-sepolia' ||
-                 finalToken?.toLowerCase() === 'lsk' ||
-                 finalToken?.toLowerCase() === 'lisk') {
+      } else if (finalNetwork?.toLowerCase() === 'lisk' ||
+        finalNetwork?.toLowerCase() === 'lisk-sepolia' ||
+        finalToken?.toLowerCase() === 'lsk' ||
+        finalToken?.toLowerCase() === 'lisk') {
         selectedWallet = wallets.find(w => w.chain === 'evm');
         selectedNetwork = 'lisk';
         console.log('[handleSend] Explicitly selected Lisk network');
@@ -1587,17 +1651,17 @@ async function handleSend(params: ActionParams, userId: string) {
             console.log(`[handleSend] Checking USDC balance on Celo for wallet: ${evmWallet.address}`);
             const celoBalancesResult = await getBalances(evmWallet.address, 'celo');
             console.log('[handleSend] Celo balances result:', celoBalancesResult);
-            
+
             // Handle both direct array and {data: array} formats
             const celoBalances = celoBalancesResult?.data || celoBalancesResult;
             console.log('[handleSend] Celo balances array:', celoBalances);
-            
-            const usdcToken = celoBalances?.find((b: any) => 
-              (b.asset?.symbol === 'USDC' || b.symbol === 'USDC') && 
+
+            const usdcToken = celoBalances?.find((b: any) =>
+              (b.asset?.symbol === 'USDC' || b.symbol === 'USDC') &&
               parseFloat(b.amount || b.balance || '0') > 0
             );
             console.log('[handleSend] USDC token found on Celo:', usdcToken);
-            
+
             if (usdcToken) {
               selectedWallet = evmWallet;
               selectedNetwork = 'celo';
@@ -1627,9 +1691,9 @@ async function handleSend(params: ActionParams, userId: string) {
       }
 
       if (!selectedWallet) {
-        const networkDisplayName = selectedNetwork === 'solana' ? 'Solana' : 
-                                   selectedNetwork === 'celo' ? 'Celo' :
-                                   selectedNetwork === 'lisk' ? 'Lisk' : 'Base';
+        const networkDisplayName = selectedNetwork === 'solana' ? 'Solana' :
+          selectedNetwork === 'celo' ? 'Celo' :
+            selectedNetwork === 'lisk' ? 'Lisk' : 'Base';
         return {
           text: `❌ You don't have a ${networkDisplayName} wallet. Please create one first.`
         };
@@ -1638,7 +1702,7 @@ async function handleSend(params: ActionParams, userId: string) {
       try {
         let result;
         const fromAddress = selectedWallet.address;
-        
+
         // Determine if this is a native token transfer or token transfer
         const isNativeToken = (
           (selectedNetwork === 'base' && (!finalToken || finalToken.toLowerCase() === 'eth')) ||
@@ -1659,25 +1723,28 @@ async function handleSend(params: ActionParams, userId: string) {
           // Token transfer using CDP API
           let tokenAddress;
           let tokenDecimals = 6; // Default for USDC/USDT
-          
+
           if (finalToken?.toLowerCase() === 'usdc') {
             console.log(`[handleSend] Setting USDC token address for network: ${selectedNetwork}`);
-            // Use appropriate USDC contract address based on network
-            if (selectedNetwork === 'base') {
-              tokenAddress = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
-              console.log(`[handleSend] Using Base USDC address: ${tokenAddress}`);
-            } else if (selectedNetwork === 'celo') {
-              tokenAddress = '0xcebA9300f2b948710d2653dD7B07f33A8B32118C'; // Celo Mainnet USDC
-              console.log(`[handleSend] Using Celo USDC address: ${tokenAddress}`);
-            } else if (selectedNetwork === 'solana') {
-              tokenAddress = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Solana Mainnet USDC
-              console.log(`[handleSend] Using Solana USDC address: ${tokenAddress}`);
-            } else {
-              console.error(`[handleSend] USDC not supported on network: ${selectedNetwork}`);
-              return {
-                text: `❌ USDC not supported on ${selectedNetwork}. Please use a supported network.`
-              };
+            // Use multi-network service to get correct token address
+            tokenAddress = multiNetworkPaymentService.getTokenAddress(selectedNetwork, 'USDC');
+
+            if (!tokenAddress) {
+              // Fallback to hardcoded addresses for backward compatibility
+              if (selectedNetwork === 'base') {
+                tokenAddress = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base Mainnet USDC
+              } else if (selectedNetwork === 'celo') {
+                tokenAddress = '0xcebA9300f2b948710d2653dD7B07f33A8B32118C'; // Celo Mainnet USDC
+              } else if (selectedNetwork === 'solana') {
+                tokenAddress = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Solana Mainnet USDC
+              } else {
+                console.error(`[handleSend] USDC not supported on network: ${selectedNetwork}`);
+                return {
+                  text: `❌ USDC not supported on ${selectedNetwork}. Please use a supported network.`
+                };
+              }
             }
+            console.log(`[handleSend] Using USDC address for ${selectedNetwork}: ${tokenAddress}`);
           } else if (finalToken?.toLowerCase() === 'usdt') {
             // USDT on Lisk mainnet
             if (selectedNetwork === 'lisk') {
@@ -1721,7 +1788,7 @@ async function handleSend(params: ActionParams, userId: string) {
           console.log(`[handleSend] - finalAmount: ${finalAmount}`);
           console.log(`[handleSend] - tokenDecimals: ${tokenDecimals}`);
           console.log(`[handleSend] - selectedNetwork: ${selectedNetwork}`);
-          
+
           result = await transferToken(
             fromAddress,
             finalRecipientAddress,
@@ -1734,15 +1801,15 @@ async function handleSend(params: ActionParams, userId: string) {
 
         // Generate block explorer link
         const explorerUrl = getBlockExplorerUrl(result.hash, selectedNetwork);
-        
+
         // Format success message
-        const networkName = selectedNetwork === 'solana' ? 'Solana' : 
-                           selectedNetwork === 'celo' ? 'Celo' :
-                           selectedNetwork === 'lisk' ? 'Lisk' : 'Base';
-        const tokenSymbol = isNativeToken ? 
-          (selectedNetwork === 'base' ? 'ETH' : 
-           selectedNetwork === 'celo' ? 'CELO' :
-           selectedNetwork === 'lisk' ? 'ETH' : 'SOL') : 
+        const networkName = selectedNetwork === 'solana' ? 'Solana' :
+          selectedNetwork === 'celo' ? 'Celo' :
+            selectedNetwork === 'lisk' ? 'Lisk' : 'Base';
+        const tokenSymbol = isNativeToken ?
+          (selectedNetwork === 'base' ? 'ETH' :
+            selectedNetwork === 'celo' ? 'CELO' :
+              selectedNetwork === 'lisk' ? 'ETH' : 'SOL') :
           (finalToken?.toUpperCase() || 'TOKEN');
 
         // Clean up stored transaction after successful execution
@@ -1768,11 +1835,11 @@ async function handleSend(params: ActionParams, userId: string) {
 
         return {
           text: `✅ **Transfer Successful!**\n\n` +
-                `💰 **Amount**: ${finalAmount} ${tokenSymbol}\n` +
-                `🌐 **Network**: ${networkName}\n` +
-                `📍 **To**: \`${finalRecipientAddress}\`\n` +
-                `🔗 **Transaction**: ${result.hash}\n\n` +
-                `Your crypto has been sent successfully!`,
+            `💰 **Amount**: ${finalAmount} ${tokenSymbol}\n` +
+            `🌐 **Network**: ${networkName}\n` +
+            `📍 **To**: \`${finalRecipientAddress}\`\n` +
+            `🔗 **Transaction**: ${result.hash}\n\n` +
+            `Your crypto has been sent successfully!`,
           reply_markup: {
             inline_keyboard: [
               [
@@ -1787,11 +1854,11 @@ async function handleSend(params: ActionParams, userId: string) {
         console.error('[handleSend] Transfer error:', error);
         return {
           text: `❌ **Transfer Failed**\n\n` +
-                `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
-                `Please check:\n` +
-                `• You have sufficient balance\n` +
-                `• The recipient address is valid\n` +
-                `• The network is correct`
+            `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
+            `Please check:\n` +
+            `• You have sufficient balance\n` +
+            `• The recipient address is valid\n` +
+            `• The network is correct`
         };
       }
     }
@@ -1799,7 +1866,7 @@ async function handleSend(params: ActionParams, userId: string) {
     // Check if we have all required information for confirmation
     if (amount && recipientAddress && (token || network)) {
       // We have all the info - show confirmation with gas estimation
-      
+
       // Function to detect if an address is a Solana address
       const isSolanaAddress = (address: string): boolean => {
         // Solana addresses are 32-44 characters long and use base58 encoding
@@ -1812,24 +1879,24 @@ async function handleSend(params: ActionParams, userId: string) {
       let selectedWallet;
       let selectedNetwork;
       let networkName;
-      
-      if (token?.toLowerCase() === 'sol' || 
-          network?.toLowerCase() === 'solana' || 
-          isSolanaAddress(recipientAddress)) {
+
+      if (token?.toLowerCase() === 'sol' ||
+        network?.toLowerCase() === 'solana' ||
+        isSolanaAddress(recipientAddress)) {
         selectedWallet = wallets.find(w => w.chain === 'solana');
         selectedNetwork = 'solana';
         networkName = 'Solana';
-      } else if (network?.toLowerCase() === 'celo' || 
-                 network?.toLowerCase() === 'celo-sepolia' ||
-                 token?.toLowerCase() === 'celo' ||
-                 token?.toLowerCase() === 'cusd') {
+      } else if (network?.toLowerCase() === 'celo' ||
+        network?.toLowerCase() === 'celo-sepolia' ||
+        token?.toLowerCase() === 'celo' ||
+        token?.toLowerCase() === 'cusd') {
         selectedWallet = wallets.find(w => w.chain === 'evm');
         selectedNetwork = 'celo';
         networkName = 'Celo';
-      } else if (network?.toLowerCase() === 'lisk' || 
-                 network?.toLowerCase() === 'lisk-sepolia' ||
-                 token?.toLowerCase() === 'lsk' ||
-                 token?.toLowerCase() === 'lisk') {
+      } else if (network?.toLowerCase() === 'lisk' ||
+        network?.toLowerCase() === 'lisk-sepolia' ||
+        token?.toLowerCase() === 'lsk' ||
+        token?.toLowerCase() === 'lisk') {
         selectedWallet = wallets.find(w => w.chain === 'evm');
         selectedNetwork = 'lisk';
         networkName = 'Lisk';
@@ -1853,25 +1920,25 @@ async function handleSend(params: ActionParams, userId: string) {
         (selectedNetwork === 'lisk' && (!token || token.toLowerCase() === 'eth')) ||
         (selectedNetwork === 'solana' && (!token || token.toLowerCase() === 'sol'))
       );
-      
+
       const transactionType = isNativeToken ? 'native' : 'token';
-      
+
       // Estimate gas fee
       let estimatedFee;
       try {
         estimatedFee = await estimateTransactionFee(selectedNetwork, transactionType);
       } catch (error) {
         console.error('[handleSend] Fee estimation error:', error);
-        estimatedFee = selectedNetwork.includes('solana') ? '~0.000005 SOL' : 
-                      selectedNetwork === 'lisk' ? '~0.0001 ETH' :
-                      selectedNetwork === 'celo' ? '~0.0001 CELO' : '~0.0001 ETH';
+        estimatedFee = selectedNetwork.includes('solana') ? '~0.000005 SOL' :
+          selectedNetwork === 'lisk' ? '~0.0001 ETH' :
+            selectedNetwork === 'celo' ? '~0.0001 CELO' : '~0.0001 ETH';
       }
 
       // Determine token symbol for display
-      const tokenSymbol = isNativeToken ? 
-        (selectedNetwork === 'base' ? 'ETH' : 
-         selectedNetwork === 'celo' ? 'CELO' :
-         selectedNetwork === 'lisk' ? 'ETH' : 'SOL') : 
+      const tokenSymbol = isNativeToken ?
+        (selectedNetwork === 'base' ? 'ETH' :
+          selectedNetwork === 'celo' ? 'CELO' :
+            selectedNetwork === 'lisk' ? 'ETH' : 'SOL') :
         (token?.toUpperCase() || 'TOKEN');
 
       // Truncate addresses for display
@@ -1880,7 +1947,7 @@ async function handleSend(params: ActionParams, userId: string) {
 
       // Create a short transaction ID for callback data
       const transactionId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-      
+
       // Store transaction details temporarily for confirmation
       await transactionStorage.store(transactionId, {
         userId: userId.toString(),
@@ -1892,25 +1959,25 @@ async function handleSend(params: ActionParams, userId: string) {
         network: selectedNetwork,
         status: 'pending'
       });
-      
+
       const shortCallbackData = `confirm_${transactionId}`;
 
       return {
         text: `💸 **Confirm Transfer**\n\n` +
-              `**Transaction Summary:**\n` +
-              `💰 Amount: **${amount} ${tokenSymbol}**\n` +
-              `🌐 Network: **${networkName}**\n` +
-              `📤 From: \`${truncatedFrom}\`\n` +
-              `📥 To: \`${truncatedRecipient}\`\n` +
-              `⛽ Est. Fee: **${estimatedFee}**\n` +
-              `⏱️ Est. Time: **~30 seconds**\n\n` +
-              `⚠️ **Please verify all details before confirming.**\n` +
-              `This transaction cannot be reversed.\n\n` +
-              `**Transaction Details:**\n` +
-              `Amount: ${amount}\n` +
-              `Token: ${token || 'native'}\n` +
-              `To: ${recipientAddress}\n` +
-              `Network: ${selectedNetwork}`,
+          `**Transaction Summary:**\n` +
+          `💰 Amount: **${amount} ${tokenSymbol}**\n` +
+          `🌐 Network: **${networkName}**\n` +
+          `📤 From: \`${truncatedFrom}\`\n` +
+          `📥 To: \`${truncatedRecipient}\`\n` +
+          `⛽ Est. Fee: **${estimatedFee}**\n` +
+          `⏱️ Est. Time: **~30 seconds**\n\n` +
+          `⚠️ **Please verify all details before confirming.**\n` +
+          `This transaction cannot be reversed.\n\n` +
+          `**Transaction Details:**\n` +
+          `Amount: ${amount}\n` +
+          `Token: ${token || 'native'}\n` +
+          `To: ${recipientAddress}\n` +
+          `Network: ${selectedNetwork}`,
         reply_markup: {
           inline_keyboard: [
             [
@@ -1925,23 +1992,23 @@ async function handleSend(params: ActionParams, userId: string) {
     // If we don't have all the information, show the single template to collect everything
     return {
       text: "💸 **Send Crypto**\n\n" +
-            "Please provide the following information in your message:\n\n" +
-            "**Required Details:**\n" +
-            "• **Amount & Token**: e.g., `0.1 ETH`, `10 USDC`, `5 SOL`\n" +
-            "• **Recipient Address**: The destination wallet address\n" +
-            "• **Network/Chain**: `Base`, `Solana`, or specify token type\n\n" +
-            "**Example Messages:**\n" +
-            "• `Send 0.1 ETH to 0x1234...5678 on Base`\n" +
-            "• `Transfer 10 USDC to 9WzD...AWWM on Solana`\n" +
-            "• `Send 5 SOL to alice.sol`\n\n" +
-            "**Supported Tokens:**\n" +
-            "• ETH (Base network)\n" +
-            "• USDC (Base, Celo, or Solana)\n" +
-            "• CELO (Celo network)\n" +
-            "• cUSD (Celo network)\n" +
-            "• LSK (Lisk network)\n" +
-            "• SOL (Solana network)\n\n" +
-            "💡 **Tip**: Include all details in one message for faster processing!"
+        "Please provide the following information in your message:\n\n" +
+        "**Required Details:**\n" +
+        "• **Amount & Token**: e.g., `0.1 ETH`, `10 USDC`, `5 SOL`\n" +
+        "• **Recipient Address**: The destination wallet address\n" +
+        "• **Network/Chain**: `Base`, `Solana`, or specify token type\n\n" +
+        "**Example Messages:**\n" +
+        "• `Send 0.1 ETH to 0x1234...5678 on Base`\n" +
+        "• `Transfer 10 USDC to 9WzD...AWWM on Solana`\n" +
+        "• `Send 5 SOL to alice.sol`\n\n" +
+        "**Supported Tokens:**\n" +
+        "• ETH (Base network)\n" +
+        "• USDC (Base, Celo, or Solana)\n" +
+        "• CELO (Celo network)\n" +
+        "• cUSD (Celo network)\n" +
+        "• LSK (Lisk network)\n" +
+        "• SOL (Solana network)\n\n" +
+        "💡 **Tip**: Include all details in one message for faster processing!"
     };
 
   } catch (error) {
@@ -1952,12 +2019,27 @@ async function handleSend(params: ActionParams, userId: string) {
   }
 }
 
+// Extract network from natural language text
+function extractNetwork(text: string): string | null {
+  const normalizedText = text.toLowerCase().trim();
+  
+  if (normalizedText.includes('on base') || normalizedText.includes('base network') || normalizedText.includes('base chain')) {
+    return 'base';
+  }
+  
+  if (normalizedText.includes('on celo') || normalizedText.includes('celo network') || normalizedText.includes('celo chain')) {
+    return 'celo';
+  }
+  
+  return null;
+}
+
 async function handleCreatePaymentLink(params: ActionParams, userId: string) {
   try {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
+
     if (isUUID) {
       actualUserId = userId;
     } else {
@@ -1967,14 +2049,14 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
         .select('id, name, email')
         .eq('username', userId)
         .single();
-      
+
       if (userError || !user) {
         console.error(`[handleCreatePaymentLink] Failed to find user with username ${userId}:`, userError);
         return {
           text: "❌ User not found. Please make sure you're registered with the bot.",
         };
       }
-      
+
       actualUserId = user.id;
     }
 
@@ -2009,54 +2091,74 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     if (!amount || !token || !finalPaymentReason) {
       return {
         text: "Create Payment Link\n\n" +
-              "Please provide the following information:\n\n" +
-              "Required Details:\n" +
-              "• Amount: e.g., `100 USDC`\n" +
-              "• Purpose: What the payment is for\n" +
-              "• Network (optional): `base`, `ethereum`, `optimism`, `celo`, `lisk`\n" +
-              "• Recipient Email (optional): To send the link via email\n\n" +
-              "Example Messages:\n" +
-              "• `Create payment link for 100 USDC for web development`\n" +
-              "• `Payment link 50 USDC for consulting services`\n" +
-              "• `Link for 25 USDC for design work, send to client@example.com`\n\n" +
-              "Supported Token:\n" +
-              "• USDC only - All payment links use USDC stablecoin\n\n" +
-              "Tip: Include all details in one message for faster processing!"
+          "Please provide the following information:\n\n" +
+          "Required Details:\n" +
+          "• Amount: e.g., `100 USDC`\n" +
+          "• Purpose: What the payment is for\n" +
+          "• Network: `base` or `celo` (required)\n" +
+          "• Recipient Email (optional): To send the link via email\n\n" +
+          "Example Messages:\n" +
+          "• `Create payment link for 100 USDC on base for web development`\n" +
+          "• `Payment link 50 USDC on celo for consulting services`\n" +
+          "• `Link for 25 USDC on base for design work, send to client@example.com`\n\n" +
+          "Supported Networks:\n" +
+          "• 🔵 Base Network - Lower fees, faster transactions\n" +
+          "• 🟢 Celo Network - Mobile-friendly payments\n\n" +
+          "Tip: Include all details in one message for faster processing!"
+      };
+    }
+
+    // Check if network is specified, if not ask for it
+    if (!network) {
+      return {
+        text: `Payment Link Details Confirmed ✅\n\n` +
+          `💰 **Amount:** ${amount} ${token}\n` +
+          `📝 **Reason:** ${finalPaymentReason}\n` +
+          `${recipient_email ? `📧 **Email:** ${recipient_email}\n` : ''}` +
+          `\n🔗 **Choose Blockchain Network:**\n\n` +
+          `🔵 **Base Network** - Lower fees, faster transactions\n` +
+          `🟢 **Celo Network** - Mobile-friendly payments\n\n` +
+          `Please specify which network:\n` +
+          `• "Create payment link for ${amount} ${token} on **base** for ${finalPaymentReason}"\n` +
+          `• "Create payment link for ${amount} ${token} on **celo** for ${finalPaymentReason}"`
       };
     }
 
     // Set default values
-    const selectedNetwork = network?.toLowerCase() || 'base';
+    const selectedNetwork = network?.toLowerCase();
     const selectedToken = token?.toUpperCase() || 'USDC';
     const userName = user?.name || 'Hedwig User';
 
     // Validate network and token
-    const supportedNetworks = ['base', 'ethereum', 'optimism', 'celo', 'lisk', 'solana'];
-    const supportedTokens = ['USDC', 'CELO', 'cUSD', 'LSK', 'ETH', 'SOL']; // Multiple tokens now supported
+    const supportedNetworks = ['base', 'celo'];
+    const supportedTokens = ['USDC', 'USDT', 'CUSD', 'CELO']; // Network-specific tokens
 
     if (!supportedNetworks.includes(selectedNetwork)) {
       return {
-        text: `❌ Unsupported network: ${selectedNetwork}\n\nSupported networks: ${supportedNetworks.join(', ')}`
+        text: `❌ Unsupported network: ${selectedNetwork}\n\nSupported networks:\n🔵 Base Network (base)\n🟢 Celo Network (celo)`
       };
     }
 
-    if (!supportedTokens.includes(selectedToken)) {
+    // Validate token for selected network
+    const networkTokens = multiNetworkPaymentService.getNetworkConfig(selectedNetwork)?.tokens;
+    if (!networkTokens || !networkTokens[selectedToken]) {
+      const availableTokens = networkTokens ? Object.keys(networkTokens).join(', ') : 'USDC';
       return {
-        text: `Unsupported token: ${selectedToken}\n\nSupported tokens: ${supportedTokens.join(', ')}`
+        text: `❌ Token ${selectedToken} not supported on ${selectedNetwork} network.\n\nAvailable tokens on ${selectedNetwork}: ${availableTokens}`
       };
     }
 
     try {
       // Use direct payment link service
       const { createPaymentLink } = await import('../lib/paymentlinkservice');
-      
+
       // Debug environment variables
       console.log('Environment check in actions.ts:', {
         NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
         NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
         VERCEL_URL: process.env.VERCEL_URL
       });
-      
+
       const result = await createPaymentLink({
         amount: parseFloat(amount),
         token: selectedToken,
@@ -2074,21 +2176,21 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
 
       // Format success message
       const paymentUrl = result.paymentLink;
-      
+
       let successMessage = `Payment Link Created Successfully!\n\n` +
-                          `Amount: ${amount} ${selectedToken}\n` +
-                          `Network: ${selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)}\n` +
-                          `For: ${paymentReason}\n` +
-                          `Wallet: \`${evmWallet.address.slice(0, 8)}...${evmWallet.address.slice(-6)}\`\n\n` +
-                          `Payment Link: ${paymentUrl}\n\n`;
+        `Amount: ${amount} ${selectedToken}\n` +
+        `Network: ${selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)}\n` +
+        `For: ${paymentReason}\n` +
+        `Wallet: \`${evmWallet.address.slice(0, 8)}...${evmWallet.address.slice(-6)}\`\n\n` +
+        `Payment Link: ${paymentUrl}\n\n`;
 
       if (recipient_email) {
         successMessage += `Email sent to: ${recipient_email}\n\n`;
       }
 
       successMessage += `Share this link with anyone who needs to pay you!\n` +
-                       `Link expires in 7 days\n\n` +
-                       `You'll be notified when payments are received.`;
+        `Link expires in 7 days\n\n` +
+        `You'll be notified when payments are received.`;
 
       return {
         text: successMessage,
@@ -2106,12 +2208,12 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
       console.error('[handleCreatePaymentLink] API call error:', error);
       return {
         text: `Failed to create payment link\n\n` +
-              `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
-              `Please check:\n` +
-              `• Your wallet is properly set up\n` +
-              `• The amount and token are valid\n` +
-              `• The network is supported\n\n` +
-              `Try again or contact support if the issue persists.`
+          `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
+          `Please check:\n` +
+          `• Your wallet is properly set up\n` +
+          `• The amount and token are valid\n` +
+          `• The network is supported\n\n` +
+          `Try again or contact support if the issue persists.`
       };
     }
 
@@ -2128,7 +2230,7 @@ async function handleSwap(params: ActionParams, userId: string) {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
+
     if (isUUID) {
       actualUserId = userId;
     } else {
@@ -2138,14 +2240,14 @@ async function handleSwap(params: ActionParams, userId: string) {
         .select('id')
         .eq('username', userId)
         .single();
-      
+
       if (userError || !user) {
         console.error(`[handleSwap] Failed to find user with username ${userId}:`, userError);
         return {
           text: "❌ User not found. Please make sure you're registered with the bot.",
         };
       }
-      
+
       actualUserId = user.id;
     }
 
@@ -2173,10 +2275,10 @@ async function handleSwap(params: ActionParams, userId: string) {
     // Determine which wallet to use based on tokens
     let selectedWallet;
     let selectedNetwork;
-    
+
     // For now, we'll support EVM swaps (ETH <-> USDC)
     if ((from_token?.toLowerCase() === 'eth' || from_token?.toLowerCase() === 'usdc') &&
-        (to_token?.toLowerCase() === 'eth' || to_token?.toLowerCase() === 'usdc')) {
+      (to_token?.toLowerCase() === 'eth' || to_token?.toLowerCase() === 'usdc')) {
       selectedWallet = wallets.find(w => w.chain === 'evm');
       selectedNetwork = 'evm';
     } else if ((from_token?.toLowerCase() === 'sol') || (to_token?.toLowerCase() === 'sol')) {
@@ -2199,11 +2301,11 @@ async function handleSwap(params: ActionParams, userId: string) {
     // TODO: Integrate with actual swap functionality using TokenSwapManager contract
     return {
       text: `🔄 **Swap Preparation**\n\n` +
-            `💱 **Swap**: ${amount} ${from_token?.toUpperCase()} → ${to_token?.toUpperCase()}\n` +
-            `🌐 **Network**: EVM\n` +
-            `👛 **Wallet**: \`${selectedWallet.address}\`\n\n` +
-            `⚠️ **Note**: Token swapping functionality is currently being integrated with our smart contracts. This feature will be fully available soon!\n\n` +
-            `For now, you can use the send feature to transfer tokens directly.`
+        `💱 **Swap**: ${amount} ${from_token?.toUpperCase()} → ${to_token?.toUpperCase()}\n` +
+        `🌐 **Network**: EVM\n` +
+        `👛 **Wallet**: \`${selectedWallet.address}\`\n\n` +
+        `⚠️ **Note**: Token swapping functionality is currently being integrated with our smart contracts. This feature will be fully available soon!\n\n` +
+        `For now, you can use the send feature to transfer tokens directly.`
     };
 
   } catch (error) {
@@ -2233,20 +2335,20 @@ async function handleDepositNotification(
   try {
     // Generate block explorer link
     const explorerUrl = getBlockExplorerUrl(txHash, network);
-    
+
     // Format the sender address (truncate for display)
     const truncatedFrom = `${fromAddress.slice(0, 8)}...${fromAddress.slice(-4)}`;
-    
+
     // Format network name for display
     const networkName = network === 'solana' ? 'Solana' :
-      network === 'base' ? 'Base' : 
-                       network.charAt(0).toUpperCase() + network.slice(1);
+      network === 'base' ? 'Base' :
+        network.charAt(0).toUpperCase() + network.slice(1);
 
     const message = `+${amount} ${token.toUpperCase()} just came in\n` +
-                   `🌐 Network: ${networkName}\n` +
-                   `👤 From: ${truncatedFrom}\n` +
-                   `🔗 Tx: View on Explorer\n\n` +
-                   `What would you like to do next?`;
+      `🌐 Network: ${networkName}\n` +
+      `👤 From: ${truncatedFrom}\n` +
+      `🔗 Tx: View on Explorer\n\n` +
+      `What would you like to do next?`;
 
     return {
       text: message,
@@ -2279,18 +2381,18 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
     const searchByEmail = params.searchByEmail;
     const requiresSelection = params.requiresSelection;
     const showList = params.showList; // New parameter to show list of items
-    
+
     // Handle showList parameter - display specific type of items
     if (showList && targetType) {
       const items = await SmartNudgeService.getUserRemindableItems(userId);
-      
+
       if (targetType === 'payment_link') {
         if (items.paymentLinks.length === 0) {
           return {
             text: "📭 You don't have any unpaid payment links to send reminders for."
           };
         }
-        
+
         let selectionText = '💳 **Select a Payment Link to send reminder:**\n\n';
         const inlineKeyboard: Array<Array<{
           text: string;
@@ -2298,7 +2400,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
           url?: string;
           copy_text?: { text: string };
         }>> = [];
-        
+
         items.paymentLinks.forEach((link, index) => {
           selectionText += `${index + 1}. **${link.title}** - $${link.amount}\n   📧 ${link.clientEmail}\n\n`;
           inlineKeyboard.push([{
@@ -2306,9 +2408,9 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
             callback_data: `remind_payment_link_${link.id}`
           }]);
         });
-        
+
         selectionText += '👆 **Select a payment link above to send reminder.**';
-        
+
         return {
           text: selectionText,
           reply_markup: {
@@ -2321,7 +2423,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
             text: "📭 You don't have any unpaid invoices to send reminders for."
           };
         }
-        
+
         let selectionText = '📄 **Select an Invoice to send reminder:**\n\n';
         const inlineKeyboard: Array<Array<{
           text: string;
@@ -2329,7 +2431,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
           url?: string;
           copy_text?: { text: string };
         }>> = [];
-        
+
         items.invoices.forEach((invoice, index) => {
           selectionText += `${index + 1}. **${invoice.title}** - $${invoice.amount}\n   📧 ${invoice.clientEmail}\n\n`;
           inlineKeyboard.push([{
@@ -2337,9 +2439,9 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
             callback_data: `remind_invoice_${invoice.id}`
           }]);
         });
-        
+
         selectionText += '👆 **Select an invoice above to send reminder.**';
-        
+
         return {
           text: selectionText,
           reply_markup: {
@@ -2348,7 +2450,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         };
       }
     }
-    
+
     // If we have a targetId but no targetType, try to determine the type
     if (targetId && !targetType) {
       // Try to find the target in both payment_links and invoices
@@ -2358,7 +2460,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         .eq('id', targetId)
         .eq('user_id', userId)
         .single();
-      
+
       if (paymentLink) {
         targetType = 'payment_link';
       } else {
@@ -2368,31 +2470,31 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
           .eq('id', targetId)
           .eq('user_id', userId)
           .single();
-        
+
         if (invoice) {
           targetType = 'invoice';
         }
       }
     }
-    
+
     // Handle email-based search with selection interface
     if (searchByEmail && clientEmail) {
       const items = await SmartNudgeService.getUserRemindableItems(userId);
-      
+
       // Filter items by client email
-      const matchingPaymentLinks = items.paymentLinks.filter(link => 
+      const matchingPaymentLinks = items.paymentLinks.filter(link =>
         link.clientEmail.toLowerCase() === clientEmail.toLowerCase()
       );
-      const matchingInvoices = items.invoices.filter(invoice => 
+      const matchingInvoices = items.invoices.filter(invoice =>
         invoice.clientEmail.toLowerCase() === clientEmail.toLowerCase()
       );
-      
+
       if (matchingPaymentLinks.length === 0 && matchingInvoices.length === 0) {
         return {
           text: `📭 No unpaid invoices or payment links found for **${clientEmail}**.\n\nMake sure the email address is correct and that there are pending payments for this client.`
         };
       }
-      
+
       // Create interactive selection interface
       let selectionText = `🔍 **Found items for ${clientEmail}:**\n\n`;
       const inlineKeyboard: Array<Array<{
@@ -2401,7 +2503,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         url?: string;
         copy_text?: { text: string };
       }>> = [];
-      
+
       if (matchingPaymentLinks.length > 0) {
         selectionText += '💳 **Payment Links:**\n';
         matchingPaymentLinks.forEach((link, index) => {
@@ -2413,7 +2515,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         });
         selectionText += '\n';
       }
-      
+
       if (matchingInvoices.length > 0) {
         selectionText += '📄 **Invoices:**\n';
         matchingInvoices.forEach((invoice, index) => {
@@ -2424,9 +2526,9 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
           }]);
         });
       }
-      
+
       selectionText += '\n👆 **Select an item above to send a reminder.**';
-      
+
       return {
         text: selectionText,
         reply_markup: {
@@ -2434,19 +2536,19 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         }
       };
     }
-    
+
     // If we have a client email but no specific target, find the most recent unpaid item for that client
     if (clientEmail && !targetId && !searchByEmail) {
       const items = await SmartNudgeService.getUserRemindableItems(userId);
-      
+
       // Look for items with matching client email
-      const matchingPaymentLink = items.paymentLinks.find(link => 
+      const matchingPaymentLink = items.paymentLinks.find(link =>
         link.clientEmail.toLowerCase() === clientEmail.toLowerCase()
       );
-      const matchingInvoice = items.invoices.find(invoice => 
+      const matchingInvoice = items.invoices.find(invoice =>
         invoice.clientEmail.toLowerCase() === clientEmail.toLowerCase()
       );
-      
+
       if (matchingPaymentLink) {
         targetType = 'payment_link';
         targetId = matchingPaymentLink.id;
@@ -2455,17 +2557,17 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         targetId = matchingInvoice.id;
       }
     }
-    
+
     // If still no specific target, show selection interface with callback buttons
     if (!targetType || !targetId) {
       const items = await SmartNudgeService.getUserRemindableItems(userId);
-      
+
       if (items.paymentLinks.length === 0 && items.invoices.length === 0) {
         return {
           text: "📭 You don't have any unpaid payment links or invoices to send reminders for.\n\n💡 **Tip:** Create payment links or invoices first, then you can send reminders to your clients."
         };
       }
-      
+
       // Create selection interface with callback buttons - always show both options
       let selectionText = '📋 **Choose what type of reminder to send:**\n\n';
       const inlineKeyboard: Array<Array<{
@@ -2474,24 +2576,24 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         url?: string;
         copy_text?: { text: string };
       }>> = [];
-      
+
       // Always show payment links option
       selectionText += `💳 **Payment Links:** ${items.paymentLinks.length} unpaid\n`;
       inlineKeyboard.push([{
         text: `💳 Payment Links (${items.paymentLinks.length})`,
         callback_data: 'select_payment_links_for_reminder'
       }]);
-      
+
       // Always show invoices option
       selectionText += `📄 **Invoices:** ${items.invoices.length} unpaid\n`;
       inlineKeyboard.push([{
         text: `📄 Invoices (${items.invoices.length})`,
         callback_data: 'select_invoices_for_reminder'
       }]);
-      
+
       selectionText += '\n👆 **Select the type above to see available items.**';
-      
-      
+
+
       return {
         text: selectionText,
         reply_markup: {
@@ -2499,14 +2601,14 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         }
       };
     }
-    
+
     // Validate target type
     if (!['payment_link', 'invoice'].includes(targetType)) {
       return {
         text: "❌ Invalid target type. Must be 'payment_link' or 'invoice'."
       };
     }
-    
+
     // Send the reminder - use appropriate service based on type and target
     let result;
     if (reminderType === 'due_date' && targetType === 'invoice') {
@@ -2517,15 +2619,15 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         .eq('id', targetId)
         .eq('created_by', userId)
         .single();
-      
+
       if (!invoice) {
         return {
           text: "❌ Invoice not found or you don't have permission to send reminders for it."
         };
       }
-      
+
       result = await InvoiceReminderService.sendDueDateReminder(invoice, 'manual');
-      
+
       if (result.success) {
         result.message = `Due date reminder sent to ${invoice.client_email} for invoice ${invoice.invoice_number}`;
       } else {
@@ -2539,15 +2641,15 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
         .eq('id', targetId)
         .eq('created_by', userId)
         .single();
-      
+
       if (!paymentLink) {
         return {
           text: "❌ Payment link not found or you don't have permission to send reminders for it."
         };
       }
-      
+
       result = await PaymentLinkReminderService.sendDueDateReminder(paymentLink, 'manual');
-      
+
       if (result.success) {
         result.message = `Due date reminder sent to ${paymentLink.recipient_email} for payment link ${paymentLink.payment_reason || paymentLink.id}`;
       } else {
@@ -2557,7 +2659,7 @@ async function sendManualReminder(userId: string, params: ActionParams): Promise
       // Use SmartNudgeService for standard reminders
       result = await SmartNudgeService.sendManualReminder(targetType as 'payment_link' | 'invoice', targetId, customMessage);
     }
-    
+
     if (result.success) {
       return {
         text: `Reminder sent successfully!\n\n${result.message}`
@@ -2580,7 +2682,7 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
+
     if (isUUID) {
       actualUserId = userId;
     } else {
@@ -2590,40 +2692,40 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
         .select('id')
         .eq('username', userId)
         .single();
-      
+
       if (userError || !user) {
         console.error(`[handleCreateInvoice] Failed to find user with username ${userId}:`, userError);
         return {
           text: "❌ User not found. Please make sure you're registered with the bot.",
         };
       }
-      
+
       actualUserId = user.id;
     }
 
     // Import and use the invoice creation service
     const { InvoiceModule } = await import('../modules/invoices');
-    
+
     // Get the user's chat ID for Telegram interaction
     const { data: user } = await supabase
       .from('users')
       .select('telegram_chat_id')
       .eq('id', actualUserId)
       .single();
-    
+
     if (!user?.telegram_chat_id) {
       return {
         text: "Telegram chat ID not found. Please make sure you're using the Telegram bot."
       };
     }
-    
+
     // Initialize the bot and start invoice creation
     const TelegramBot = require('node-telegram-bot-api');
     const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
     const invoiceModule = new InvoiceModule(bot);
-    
+
     await invoiceModule.handleInvoiceCreation(user.telegram_chat_id, actualUserId);
-    
+
     // Return empty text to avoid interrupting the flow
     return {
       text: ""
@@ -2642,7 +2744,7 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    
+
     if (isUUID) {
       actualUserId = userId;
     } else {
@@ -2652,40 +2754,40 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
         .select('id')
         .eq('username', userId)
         .single();
-      
+
       if (userError || !user) {
         console.error(`[handleCreateProposal] Failed to find user with username ${userId}:`, userError);
         return {
           text: "❌ User not found. Please make sure you're registered with the bot.",
         };
       }
-      
+
       actualUserId = user.id;
     }
 
     // Import and use the proposal creation service with bot integration
     const { ProposalModule } = await import('../modules/proposals');
-    
+
     // Get the user's chat ID for Telegram interaction
     const { data: user } = await supabase
       .from('users')
       .select('telegram_chat_id')
       .eq('id', actualUserId)
       .single();
-    
+
     if (!user?.telegram_chat_id) {
       return {
         text: "Telegram chat ID not found. Please make sure you're using the Telegram bot."
       };
     }
-    
+
     // Initialize the bot and start proposal creation
     const TelegramBot = require('node-telegram-bot-api');
     const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
     const proposalModule = new ProposalModule(bot);
-    
+
     await proposalModule.handleProposalCreation(user.telegram_chat_id, actualUserId);
-    
+
     // Return empty text to avoid interrupting the flow
     return {
       text: ""
@@ -2695,6 +2797,71 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
     console.error('[handleCreateProposal] Error:', error);
     return {
       text: "Failed to start proposal creation. Please try again later."
+    };
+  }
+}
+
+// Handle onramp intent - buy crypto with fiat (route through bot-integration)
+async function handleOnramp(params: ActionParams, userId: string): Promise<ActionResult> {
+  console.log('[handleOnramp] Called with params:', params, 'userId:', userId);
+  try {
+    const actualUserId = await resolveUserId(userId);
+    if (!actualUserId) {
+      return {
+        text: "User not found. Please make sure you're registered with the bot.",
+      };
+    }
+
+    // Get the user's chat ID for Telegram interaction
+    const { data: user } = await supabase
+      .from('users')
+      .select('telegram_chat_id')
+      .eq('id', actualUserId)
+      .single();
+
+    if (!user?.telegram_chat_id) {
+      // If no chat ID, provide a generic response
+      return {
+        text: "🪙 **Buy Crypto with Fiat**\n\nUse `/buy_crypto` to start purchasing cryptocurrency with your local currency.\n\n**Supported:**\n• USDC, USDT, cUSD\n• Solana, Base, Celo, Lisk networks\n• NGN, KES, GHS, UGX, TZS currencies\n\n**Limits:** $5 - $10,000 USD equivalent",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🪙 Start Purchase', callback_data: 'start_onramp' }],
+            [{ text: '📋 View History', callback_data: 'onramp_history' }]
+          ]
+        }
+      };
+    }
+
+    // Route to bot-integration for consistent handling
+    const TelegramBot = require('node-telegram-bot-api');
+
+    if (!process.env.TELEGRAM_BOT_TOKEN) {
+      console.error('[handleOnramp] TELEGRAM_BOT_TOKEN not found');
+      return {
+        text: "❌ Bot configuration error. Please contact support.",
+      };
+    }
+
+    const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+
+    const { BotIntegration } = await import('../modules/bot-integration');
+    const botIntegration = new BotIntegration(bot);
+
+    console.log('[handleOnramp] About to call botIntegration.handleOnramp');
+
+    // Call the bot-integration handler
+    await botIntegration.handleOnramp(user.telegram_chat_id, actualUserId, params);
+    console.log('[handleOnramp] botIntegration.handleOnramp completed');
+
+    // Return empty text to avoid double messaging
+    return {
+      text: ""
+    };
+
+  } catch (error) {
+    console.error('[handleOnramp] Error:', error);
+    return {
+      text: "❌ Error processing onramp request. Please try again or contact support.",
     };
   }
 }
@@ -2714,19 +2881,19 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
     const callbackData = params.callback_data || params.callbackData;
     if (callbackData) {
       console.log(`[handleOfframp] Processing callback: ${callbackData}`);
-      
+
       // Extract session ID from callback data if present (format: action_sessionId)
       let session: any = null;
       let sessionId: string | null = null;
       let cleanCallbackData = callbackData;
-      
+
       // Check if callback data contains a session ID (ends with underscore + UUID)
       const sessionIdMatch = callbackData.match(/^(.+)_([a-f0-9-]{36})$/);
       if (sessionIdMatch) {
         cleanCallbackData = sessionIdMatch[1];
         sessionId = sessionIdMatch[2];
         console.log(`[handleOfframp] Extracted session ID: ${sessionId} from callback: ${callbackData}`);
-        
+
         // Get session by ID instead of searching for active session
         session = await offrampSessionService.getSessionById(sessionId!);
         if (!session) {
@@ -2744,7 +2911,7 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
         // Fallback to active session lookup for legacy callbacks
         session = await offrampSessionService.getActiveSession(actualUserId);
       }
-      
+
       console.log(`[handleOfframp] Callback ${cleanCallbackData} - Session found:`, session ? `${session.id} (step: ${session.step})` : 'null');
       const result = await handleOfframpCallback(cleanCallbackData, actualUserId, session);
       console.log(`[handleOfframp] Callback processed, returning result`);
@@ -2762,14 +2929,14 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
     // Check for existing session first
     let session = await offrampSessionService.getActiveSession(actualUserId);
     console.log(`[handleOfframp] Session check for text input - Session found:`, session ? `${session.id} (step: ${session.step})` : 'null');
-    
+
     // If there's an existing session, continue with it (for text input like account numbers)
     // BUT only if the text is not a command to start fresh offramp
     if (session && params.text && !params.text.toLowerCase().includes('offramp')) {
       console.log('[handleOfframp] Continuing existing session with text input');
       return await handleOfframpStep(session, params, actualUserId);
     }
-    
+
     // Clear session only when starting completely fresh (no existing session or explicit new start)
     if (session && params.text && params.text.toLowerCase().includes('offramp')) {
       console.log('[handleOfframp] Clearing existing session to start fresh');
@@ -2787,25 +2954,25 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
           amount: extractedAmount,
           token: 'USDC' // Default token, can be changed in token selection step
         });
-        
+
         // Validate the amount and proceed to payout method
         const amountValidation = await validateOfframpAmount(extractedAmount, actualUserId);
         if (!amountValidation.valid) {
           await offrampSessionService.clearSession(session.id);
           return amountValidation.response!;
         }
-        
+
         // Update session to payout method step
         await offrampSessionService.updateSession(session.id, 'payout_method', {
           amount: extractedAmount,
           token: 'USDC' // Default token, can be changed in token selection step
         });
-        
+
         return {
           text: `🏦 **USDC Withdrawal - Step 2 of 5**\n\n` +
-                `💰 **Amount:** ${extractedAmount} USDC\n\n` +
-                `💳 **Choose your payout method:**\n\n` +
-                `We support bank account withdrawals to:`,
+            `💰 **Amount:** ${extractedAmount} USDC\n\n` +
+            `💳 **Choose your payout method:**\n\n` +
+            `We support bank account withdrawals to:`,
           reply_markup: {
             inline_keyboard: [
               [
@@ -2828,7 +2995,7 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
     return {
       text: "❌ An unexpected error occurred. Please try starting a new withdrawal."
     };
-    
+
   } catch (error) {
     console.error('[handleOfframp] Unexpected error:', error);
     return {
@@ -2840,30 +3007,30 @@ async function handleOfframp(params: ActionParams, userId: string): Promise<Acti
 // Extract amount from natural language text
 function extractAmountFromText(text: string): number | null {
   const normalizedText = text.toLowerCase().trim();
-  
+
   // Pattern 1: "1 usdc", "5.5 USDC", "10 usdc"
   let match = normalizedText.match(/(\d+(?:\.\d+)?)\s*usdc/i);
   if (match) {
     return parseFloat(match[1]);
   }
-  
+
   // Pattern 2: "withdraw 1 usdc", "withdraw 5.5 USDC to my bank"
   match = normalizedText.match(/withdraw\s+(\d+(?:\.\d+)?)\s*usdc/i);
   if (match) {
     return parseFloat(match[1]);
   }
-  
+
   // Pattern 3: "i want to withdraw 1 usdc", "I want to withdraw 5.5 USDC to my bank account"
   match = normalizedText.match(/(?:i\s+want\s+to\s+withdraw|want\s+to\s+withdraw)\s+(\d+(?:\.\d+)?)\s*usdc/i);
   if (match) {
     return parseFloat(match[1]);
   }
-  
+
   return null;
 }
 
 // Validate offramp amount against user balance
-async function validateOfframpAmount(amount: number, userId: string): Promise<{valid: boolean, response?: ActionResult}> {
+async function validateOfframpAmount(amount: number, userId: string): Promise<{ valid: boolean, response?: ActionResult }> {
   if (isNaN(amount) || amount <= 0) {
     return {
       valid: false,
@@ -2910,7 +3077,7 @@ async function validateOfframpAmount(amount: number, userId: string): Promise<{v
       try {
         const balances = await getBalances(wallet.wallet_address, wallet.network);
         let balanceArray = balances?.data || balances || [];
-        
+
         for (const balance of balanceArray) {
           if (balance.asset?.symbol === 'USDC') {
             const decimals = balance.asset.decimals || 6;
@@ -2970,14 +3137,14 @@ async function startOfframpFlow(userId: string): Promise<ActionResult> {
 
     // Create new session with network_selection step
     const session = await offrampSessionService.createSession(userId, 'network_selection');
-    
+
     return {
       text: `🏦 **USDC/USDT Withdrawal - Step 1 of 5**\n\n` +
-            `💡 **Select the network you want to withdraw from:**\n\n` +
-            `🔵 **Base Network** - USDC, cNGN\n` +
-            `🟢 **Celo Network** - USDC, cUSD\n` +
-            `🟣 **Lisk Network** - USDT\n\n` +
-            `We'll check your balance on the selected network and proceed with the withdrawal.`,
+        `💡 **Select the network you want to withdraw from:**\n\n` +
+        `🔵 **Base Network** - USDC, cNGN\n` +
+        `🟢 **Celo Network** - USDC, cUSD\n` +
+        `🟣 **Lisk Network** - USDT\n\n` +
+        `We'll check your balance on the selected network and proceed with the withdrawal.`,
       reply_markup: {
         inline_keyboard: [
           [
@@ -2993,7 +3160,7 @@ async function startOfframpFlow(userId: string): Promise<ActionResult> {
         ]
       }
     };
-    
+
   } catch (error) {
     console.error('[startOfframpFlow] Error:', error);
     return {
@@ -3006,7 +3173,7 @@ async function startOfframpFlow(userId: string): Promise<ActionResult> {
 async function handleOfframpStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     console.log('[handleOfframpStep] Session step:', session.step, 'Callback:', params.callback_data);
-    
+
     switch (session.step) {
       case 'network_selection':
         return await handleNetworkSelectionStep(session, params, userId);
@@ -3051,7 +3218,7 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
   try {
     console.log(`[handleOfframpCallback] Called with callbackData: ${callbackData}, session step: ${session?.step}`);
     console.log(`[handleOfframpCallback] Session data:`, JSON.stringify(session?.data, null, 2));
-    
+
     if (callbackData === 'offramp_cancel') {
       console.log(`[handleOfframpCallback] Processing cancel request for user ${userId}`);
       if (session) {
@@ -3065,9 +3232,9 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
         text: "❌ Withdrawal cancelled. You can start a new withdrawal anytime by typing 'offramp'."
       };
     }
-    
+
     // Note: offramp_confirm is handled by handleConfirmationStep through step routing
-    
+
     if (callbackData === 'offramp_edit' && session) {
       // Go back to amount step
       await offrampSessionService.updateSession(session.id, 'amount', {});
@@ -3081,12 +3248,12 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
       const stepParams = { callback_data: callbackData };
       return await handleOfframpStep(session, stepParams, userId);
     }
-    
+
     // Handle action_offramp callback to start new flow
     if (callbackData === 'action_offramp') {
       return await startOfframpFlow(userId);
     }
-    
+
     // Handle network selection callbacks only if there's an active session
     if (callbackData === 'offramp_network_base' || callbackData === 'offramp_network_celo' || callbackData === 'offramp_network_lisk') {
       if (!session) {
@@ -3102,17 +3269,17 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
       const stepParams = { callback_data: callbackData };
       return await handleOfframpStep(session, stepParams, userId);
     }
-    
+
     // Handle step-specific callbacks by routing to appropriate step handler
     if (session) {
       const stepParams = { callback_data: callbackData };
       return await handleOfframpStep(session, stepParams, userId);
     }
-    
+
     return {
       text: "❌ Session expired. Please start a new withdrawal by typing 'offramp' or using the /offramp command."
     };
-    
+
   } catch (error) {
     console.error('[handleOfframpCallback] Error:', error);
     return {
@@ -3125,16 +3292,16 @@ async function handleOfframpCallback(callbackData: string, userId: string, sessi
 async function handleNetworkSelectionStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     const callbackData = params.callback_data;
-    
+
     // If no specific network callback, show the network selection menu
     if (!callbackData || callbackData === 'offramp_restart') {
       return {
         text: `🏦 **USDC/USDT Withdrawal - Step 1 of 5**\n\n` +
-              `💡 **Select the network you want to withdraw from:**\n\n` +
-              `🔵 **Base Network** - USDC, cNGN\n` +
-              `🟢 **Celo Network** - USDC, cUSD\n` +
-              `🟣 **Lisk Network** - USDT\n\n` +
-              `We'll check your balance on the selected network and proceed with the withdrawal.`,
+          `💡 **Select the network you want to withdraw from:**\n\n` +
+          `🔵 **Base Network** - USDC, cNGN\n` +
+          `🟢 **Celo Network** - USDC, cUSD\n` +
+          `🟣 **Lisk Network** - USDT\n\n` +
+          `We'll check your balance on the selected network and proceed with the withdrawal.`,
         reply_markup: {
           inline_keyboard: [
             [
@@ -3151,12 +3318,12 @@ async function handleNetworkSelectionStep(session: any, params: ActionParams, us
         }
       };
     }
-    
+
     // Parse network selection from callback
     let selectedNetwork: string;
     let networkDisplayName: string;
     let supportedTokens: string[];
-    
+
     if (callbackData === 'offramp_network_base') {
       selectedNetwork = 'base';
       networkDisplayName = 'Base Network';
@@ -3183,7 +3350,7 @@ async function handleNetworkSelectionStep(session: any, params: ActionParams, us
     // Map networks to their corresponding blockchain chains
     const networkToChainMap: { [key: string]: string } = {
       'base': 'evm',
-      'celo': 'evm', 
+      'celo': 'evm',
       'lisk': 'evm'
     };
 
@@ -3231,15 +3398,15 @@ async function handleNetworkSelectionStep(session: any, params: ActionParams, us
         try {
           const balancesResponse = await getBalances(wallet.address, selectedNetwork);
           console.log(`[handleNetworkSelectionStep] Raw balances response:`, JSON.stringify(balancesResponse, null, 2));
-          
+
           // Extract the data array from the response
           const balances = balancesResponse?.data || [];
           console.log(`[handleNetworkSelectionStep] Extracted balances array:`, JSON.stringify(balances, null, 2));
-          
+
           for (const balance of balances) {
             const symbol = balance.asset.symbol?.toUpperCase();
             console.log(`[handleNetworkSelectionStep] Processing balance for symbol: ${symbol}, raw amount: ${balance.amount}`);
-            
+
             if (supportedTokens.includes(symbol)) {
               console.log(`[handleNetworkSelectionStep] Symbol ${symbol} is supported`);
               const decimals = balance.asset.decimals || 6;
@@ -3252,7 +3419,7 @@ async function handleNetworkSelectionStep(session: any, params: ActionParams, us
               const balanceAmount = Number(rawAmount) / Math.pow(10, decimals);
               console.log(`[handleNetworkSelectionStep] Calculated balance: ${balanceAmount} ${symbol} (decimals: ${decimals})`);
               totalBalance += balanceAmount;
-              
+
               if (balanceAmount > 0) {
                 balanceDetails.push(`${formatBalance(balanceAmount.toString())} ${symbol}`);
               }
@@ -3274,8 +3441,8 @@ async function handleNetworkSelectionStep(session: any, params: ActionParams, us
     if (totalBalance === 0) {
       return {
         text: `❌ **No Balance Found**\n\n` +
-              `You don't have any ${supportedTokens.join(' or ')} balance on ${networkDisplayName}.\n\n` +
-              `Please deposit tokens to your wallet first or select a different network.`,
+          `You don't have any ${supportedTokens.join(' or ')} balance on ${networkDisplayName}.\n\n` +
+          `Please deposit tokens to your wallet first or select a different network.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "🔄 Select Different Network", callback_data: "offramp_restart" }],
@@ -3294,9 +3461,9 @@ async function handleNetworkSelectionStep(session: any, params: ActionParams, us
 
     return {
       text: `✅ **${networkDisplayName} Selected**\n\n` +
-            `💰 **Available Balance:**\n${balanceDetails.join('\n')}\n\n` +
-            `💡 **Step 2 of 5: Enter Withdrawal Amount**\n\n` +
-            `Please enter the amount you want to withdraw (minimum: $1 USD):`,
+        `💰 **Available Balance:**\n${balanceDetails.join('\n')}\n\n` +
+        `💡 **Step 2 of 5: Enter Withdrawal Amount**\n\n` +
+        `Please enter the amount you want to withdraw (minimum: $1 USD):`,
       reply_markup: {
         inline_keyboard: [
           [{ text: "❌ Cancel", callback_data: "offramp_cancel" }]
@@ -3345,7 +3512,7 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
 
     // Parse amount from text (simple number parsing since network is already selected)
     const amountMatch = amountText.match(/(\d+(?:\.\d+)?)/);
-    
+
     if (!amountMatch) {
       return {
         text: `❌ Please enter a valid number.\n\nExample: 50 or 100.5\n\nAvailable balance: ${formatBalance(availableBalance.toString())} ${supportedTokens.join('/')}`,
@@ -3386,10 +3553,10 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
       const networkDisplayName = selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1);
       return {
         text: `❌ **Insufficient Balance**\n\n` +
-              `Requested: ${amount} ${supportedTokens.join('/')}\n` +
-              `Available: ${formatBalance(availableBalance.toString())} ${supportedTokens.join('/')}\n` +
-              `Network: ${networkDisplayName}\n\n` +
-              `Please enter a lower amount.`,
+          `Requested: ${amount} ${supportedTokens.join('/')}\n` +
+          `Available: ${formatBalance(availableBalance.toString())} ${supportedTokens.join('/')}\n` +
+          `Network: ${networkDisplayName}\n\n` +
+          `Please enter a lower amount.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "🔄 Select Different Network", callback_data: "offramp_restart" }],
@@ -3409,9 +3576,9 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
     const networkDisplayName = selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1);
     return {
       text: `🏦 **Withdrawal - Step 3 of 5**\n\n` +
-            `💰 **Amount:** ${amount} ${supportedTokens[0]}\n` +
-            `🔗 **Network:** ${networkDisplayName}\n\n` +
-            `💳 **Choose your payout method:**`,
+        `💰 **Amount:** ${amount} ${supportedTokens[0]}\n` +
+        `🔗 **Network:** ${networkDisplayName}\n\n` +
+        `💳 **Choose your payout method:**`,
       reply_markup: {
         inline_keyboard: [
           [
@@ -3440,14 +3607,14 @@ async function handleAmountStep(session: any, params: ActionParams, userId: stri
 async function handleChainSelectionStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     console.log('[handleChainSelectionStep] Called with callback_data:', params.callback_data);
-    
+
     // Parse chain selection callback data (format: chain_select_<chain>_<amount>)
     if (params.callback_data && params.callback_data.startsWith('chain_select_')) {
       const parts = params.callback_data.split('_');
       if (parts.length >= 4) {
         const selectedChain = parts[2]; // chain name
         const amount = parseFloat(parts[3]); // amount
-        
+
         // Update session with selected chain and move to payout method
         await offrampSessionService.updateSession(session.id, 'payout_method', {
           amount: amount,
@@ -3458,10 +3625,10 @@ async function handleChainSelectionStep(session: any, params: ActionParams, user
         const chainName = selectedChain.charAt(0).toUpperCase() + selectedChain.slice(1);
         return {
           text: `🏦 **Multi-Chain USDC Withdrawal - Step 3 of 5**\n\n` +
-                `💰 **Amount:** ${amount} USDC\n` +
-                `🔗 **Chain:** ${chainName}\n\n` +
-                `💳 **Choose your payout method:**\n\n` +
-                `We support bank account withdrawals to:`,
+            `💰 **Amount:** ${amount} USDC\n` +
+            `🔗 **Chain:** ${chainName}\n\n` +
+            `💳 **Choose your payout method:**\n\n` +
+            `We support bank account withdrawals to:`,
           reply_markup: {
             inline_keyboard: [
               [
@@ -3502,14 +3669,14 @@ async function handleChainSelectionStep(session: any, params: ActionParams, user
 async function handlePayoutMethodStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     console.log('[handlePayoutMethodStep] Called with callback_data:', params.callback_data);
-    
+
     // If no callback_data or action_offramp, show payout method selection UI
     if (!params.callback_data || params.callback_data === 'action_offramp') {
       return {
         text: `🏦 **USDC Withdrawal - Step 2 of 5**\n\n` +
-              `💰 **Amount:** ${session.data.amount} USDC\n\n` +
-              `💳 **Choose your payout method:**\n\n` +
-              `We support bank account withdrawals to:`,
+          `💰 **Amount:** ${session.data.amount} USDC\n\n` +
+          `💳 **Choose your payout method:**\n\n` +
+          `We support bank account withdrawals to:`,
         reply_markup: {
           inline_keyboard: [
             [
@@ -3526,7 +3693,7 @@ async function handlePayoutMethodStep(session: any, params: ActionParams, userId
         }
       };
     }
-    
+
     let currency: string;
     let currencyFlag: string;
     let currencyName: string;
@@ -3559,7 +3726,7 @@ async function handlePayoutMethodStep(session: any, params: ActionParams, userId
 
     // Get supported banks from Paycrest API
     const supportedBanks = await offrampService.getSupportedInstitutions(currency);
-    
+
     console.log('[handlePayoutMethodStep] Fetched banks:', supportedBanks.length, 'banks');
 
     if (supportedBanks.length === 0) {
@@ -3580,7 +3747,7 @@ async function handlePayoutMethodStep(session: any, params: ActionParams, userId
     const bankButtons = supportedBanks.map(bank => [
       { text: bank.name, callback_data: `select_bank_${bank.code}_${bank.name}_${currency}` }
     ]);
-    
+
     // Add back and cancel buttons
     bankButtons.push([
       { text: "⬅️ Back", callback_data: "back_to_payout" },
@@ -3592,7 +3759,7 @@ async function handlePayoutMethodStep(session: any, params: ActionParams, userId
     supportedBanks.forEach(bank => {
       bankMapping[bank.name] = { code: bank.code, name: bank.name };
     });
-    
+
     await offrampSessionService.updateSession(session.id, 'bank_selection', {
       ...session.data,
       payoutMethod: 'bank_account',
@@ -3602,9 +3769,9 @@ async function handlePayoutMethodStep(session: any, params: ActionParams, userId
 
     return {
       text: `🏦 **USDC Withdrawal - Step 3 of 5**\n\n` +
-            `💰 **Amount:** ${session.data.amount} USDC\n` +
-            `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n\n` +
-            `🏛️ **Select your bank:**`,
+        `💰 **Amount:** ${session.data.amount} USDC\n` +
+        `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n\n` +
+        `🏛️ **Select your bank:**`,
       reply_markup: {
         inline_keyboard: bankButtons
       }
@@ -3623,7 +3790,7 @@ async function handleBankSelectionStep(session: any, params: ActionParams, userI
   try {
     const userInput = params.text?.trim();
     const callbackData = params.callback_data;
-    
+
     // Handle callback data for back/cancel buttons
     if (callbackData === 'back_to_payout') {
       // Go back to payout method selection
@@ -3633,14 +3800,14 @@ async function handleBankSelectionStep(session: any, params: ActionParams, userI
       });
       return handlePayoutMethodStep(session, { callback_data: undefined }, userId);
     }
-    
+
     if (callbackData === 'offramp_cancel') {
       await offrampSessionService.clearSession(session.id);
       return {
         text: "❌ Withdrawal cancelled."
       };
     }
-    
+
     // Handle bank selection from callback data
     if (callbackData && callbackData.startsWith('select_bank_')) {
       const parts = callbackData.split('_');
@@ -3649,7 +3816,7 @@ async function handleBankSelectionStep(session: any, params: ActionParams, userI
         const bankName = parts.slice(3, -1).join('_'); // Handle bank names with underscores
         const currency = parts[parts.length - 1];
         const currencyFlag = currency === 'NGN' ? '🇳🇬' : '🇰🇪';
-        
+
         // Update session with bank details and move to account number step
         await offrampSessionService.updateSession(session.id, 'account_number', {
           ...session.data,
@@ -3660,11 +3827,11 @@ async function handleBankSelectionStep(session: any, params: ActionParams, userI
 
         return {
           text: `🏦 **USDC Withdrawal - Step 4 of 5**\n\n` +
-                `💰 **Amount:** ${session.data.amount} USDC\n` +
-                `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n` +
-                `🏛️ **Bank:** ${bankName}\n\n` +
-                `🔢 **Please enter your account number:**\n\n` +
-                `We'll automatically verify your account details.`,
+            `💰 **Amount:** ${session.data.amount} USDC\n` +
+            `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n` +
+            `🏛️ **Bank:** ${bankName}\n\n` +
+            `🔢 **Please enter your account number:**\n\n` +
+            `We'll automatically verify your account details.`,
           reply_markup: {
             inline_keyboard: [
               [
@@ -3676,7 +3843,7 @@ async function handleBankSelectionStep(session: any, params: ActionParams, userI
         };
       }
     }
-    
+
     // If no valid callback data, return error
     return {
       text: "❌ Please select a bank from the options provided."
@@ -3694,18 +3861,18 @@ async function handleBankSelectionStep(session: any, params: ActionParams, userI
 async function handleAccountNumberStep(session: any, params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     const accountNumber = params.text?.trim();
-    
+
     if (params.callback_data === 'back_to_banks') {
       // Go back to bank selection
       const currency = session.data.currency || 'NGN';
       const currencyFlag = currency === 'NGN' ? '🇳🇬' : '🇰🇪';
-      
+
       await offrampSessionService.updateSession(session.id, 'bank_selection', {
         ...session.data,
         payoutMethod: 'bank_account',
         currency: currency
       });
-      
+
       // Get supported banks from Paycrest API
       const supportedBanks = await offrampService.getSupportedInstitutions(currency);
 
@@ -3734,15 +3901,15 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
 
       return {
         text: `🏦 **USDC Withdrawal - Step 3 of 5**\n\n` +
-              `💰 **Amount:** ${session.data.amount} USDC\n` +
-              `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n\n` +
-              `🏛️ **Select your bank:**`,
+          `💰 **Amount:** ${session.data.amount} USDC\n` +
+          `💳 **Payout:** ${currencyFlag} Bank Account (${currency})\n\n` +
+          `🏛️ **Select your bank:**`,
         reply_markup: {
           inline_keyboard: bankButtons
         }
       };
     }
-    
+
     if (!accountNumber) {
       return {
         text: "❌ Please enter your account number.\n\nExample: 1234567890",
@@ -3773,14 +3940,14 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
     }
 
     // Verify account with Paycrest API
-     try {
-       const accountDetails = await offrampService.verifyBankAccount(
-         accountNumber,
-         session.data.bankCode,
-         'NGN'
-       );
+    try {
+      const accountDetails = await offrampService.verifyBankAccount(
+        accountNumber,
+        session.data.bankCode,
+        'NGN'
+      );
 
-       if (!accountDetails || !accountDetails.isValid || !accountDetails.accountName) {
+      if (!accountDetails || !accountDetails.isValid || !accountDetails.accountName) {
         return {
           text: "❌ Unable to verify account details.\n\nPlease check your account number and try again.",
           reply_markup: {
@@ -3799,7 +3966,7 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
       let fiatAmount;
       const sessionCurrency = session.data.currency || 'NGN'; // Default to NGN if not set
       const currencySymbol = sessionCurrency === 'NGN' ? '₦' : sessionCurrency === 'GHS' ? '₵' : sessionCurrency;
-      
+
       try {
         // Use the offrampService to get exchange rates - this returns the actual rate per USDC
         const rates = await offrampService.getExchangeRates("USDC", 1, sessionCurrency); // Get rate for 1 USDC in the selected currency
@@ -3843,17 +4010,17 @@ async function handleAccountNumberStep(session: any, params: ActionParams, userI
 
       return {
         text: `✅ **USDC Withdrawal - Step 5 of 5**\n\n` +
-              `📋 **Transaction Summary:**\n\n` +
-              `💰 **Amount:** ${session.data.amount} USDC\n` +
-              `💱 **Rate:** ${currencySymbol}${exchangeRate.toFixed(2)} per USDC\n` +
-              `💵 **Gross Amount:** ${currencySymbol}${fiatAmount.toLocaleString()}\n` +
-              `💸 **Fee (1%):** ${feeInUsdc.toFixed(2)} USDC\n` +
-              `💳 **Net Amount:** ${currencySymbol}${finalAmount.toLocaleString()}\n\n` +
-              `🏛️ **Bank Details:**\n` +
-              `• Bank: ${session.data.bankName}\n` +
-              `• Account: ${accountNumber}\n` +
-              `• Name: ${accountDetails.accountName}\n\n` +
-              `⚠️ **Please confirm this transaction. This action cannot be undone.**`,
+          `📋 **Transaction Summary:**\n\n` +
+          `💰 **Amount:** ${session.data.amount} USDC\n` +
+          `💱 **Rate:** ${currencySymbol}${exchangeRate.toFixed(2)} per USDC\n` +
+          `💵 **Gross Amount:** ${currencySymbol}${fiatAmount.toLocaleString()}\n` +
+          `💸 **Fee (1%):** ${feeInUsdc.toFixed(2)} USDC\n` +
+          `💳 **Net Amount:** ${currencySymbol}${finalAmount.toLocaleString()}\n\n` +
+          `🏛️ **Bank Details:**\n` +
+          `• Bank: ${session.data.bankName}\n` +
+          `• Account: ${accountNumber}\n` +
+          `• Name: ${accountDetails.accountName}\n\n` +
+          `⚠️ **Please confirm this transaction. This action cannot be undone.**`,
         reply_markup: {
           inline_keyboard: [
             [
@@ -3895,10 +4062,10 @@ async function handleConfirmationStep(session: any, params: ActionParams, userId
   try {
     console.log(`[handleConfirmationStep] Called with callback_data: ${params.callback_data}`);
     console.log(`[handleConfirmationStep] Session data:`, JSON.stringify(session.data, null, 2));
-    
+
     if (params.callback_data === 'offramp_confirm') {
       console.log(`[handleConfirmationStep] Processing offramp_confirm for user ${userId}`);
-      
+
       // First, create the Paycrest order to get the receive address
       try {
         const result = await offrampService.prepareOfframp({
@@ -3927,12 +4094,12 @@ async function handleConfirmationStep(session: any, params: ActionParams, userId
         // Show final confirmation with receive address
         return {
           text: `🔐 **Final Confirmation Required**\n\n` +
-                `You are about to transfer **${session.data.amount} USDC** to:\n` +
-                `📍 **Receive Address:** \`${result.receiveAddress}\`\n\n` +
-                `💰 **You will receive:** ${result.fiatAmount} ${session.data.currency}\n` +
-                `🏦 **Bank Account:** ${session.data.accountName} (${session.data.accountNumber})\n\n` +
-                `⚠️ **This action cannot be undone. Please verify the receive address carefully.**\n\n` +
-                `Do you want to proceed with the token transfer?`,
+            `You are about to transfer **${session.data.amount} USDC** to:\n` +
+            `📍 **Receive Address:** \`${result.receiveAddress}\`\n\n` +
+            `💰 **You will receive:** ${result.fiatAmount} ${session.data.currency}\n` +
+            `🏦 **Bank Account:** ${session.data.accountName} (${session.data.accountNumber})\n\n` +
+            `⚠️ **This action cannot be undone. Please verify the receive address carefully.**\n\n` +
+            `Do you want to proceed with the token transfer?`,
           reply_markup: {
             inline_keyboard: [
               [
@@ -3980,16 +4147,16 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
   try {
     console.log(`[handleFinalConfirmationStep] Called with callback_data: ${params.callback_data}`);
     console.log(`[handleFinalConfirmationStep] Session data:`, JSON.stringify(session.data, null, 2));
-    
+
     if (params.callback_data === 'offramp_final_confirm') {
       console.log(`[handleFinalConfirmationStep] Processing final confirmation for user ${userId}`);
-      
+
       // Validate session before updating
       if (!session || !session.id) {
         console.error('[handleFinalConfirmationStep] Invalid session object:', session);
         throw new Error('Invalid session - cannot proceed with order creation');
       }
-      
+
       // Update session to show order creation in progress
       await offrampSessionService.updateSession(session.id, 'creating_order', {
         ...session.data,
@@ -4021,12 +4188,12 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
           console.error('[handleFinalConfirmationStep] Invalid session object for order update:', session);
           throw new Error('Invalid session - cannot update with order details');
         }
-        
+
         // Validate and format expectedAmount to prevent NaN display
         const expectedAmount = orderResult.expectedAmount || session.data.amount || 0;
         const expectedAmountStr = typeof expectedAmount === 'number' ? expectedAmount.toString() : expectedAmount;
         const expectedAmountNum = parseFloat(expectedAmountStr);
-        
+
         // Ensure we have valid numbers for calculations
         const validExpectedAmount = !isNaN(expectedAmountNum) && expectedAmountNum > 0 ? expectedAmountNum : session.data.amount;
 
@@ -4050,30 +4217,30 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
         // Show user the enhanced processing message with status monitoring info
         return {
           text: `🔄 **Processing Your Withdrawal**\n\n` +
-                `✅ **Order Created Successfully!**\n\n` +
-                `💰 **Sending:** ${validExpectedAmount} USDC\n` +
-                `💵 **You'll Receive:** ₦${nairaAmount}\n` +
-                `📋 **Order ID:** ${orderResult.orderId}\n\n` +
-                `🔍 **What's happening:**\n` +
-                `• Your USDC is being transferred to Paycrest\n` +
-                `• Order is being processed by our partner\n` +
-                `• Funds will be delivered to your bank account\n\n` +
-                `⏰ **Expected completion:** 5-15 minutes\n` +
-                `📱 **You'll receive real-time updates on progress**\n\n` +
-                `💡 Once completed, funds arrive in your account within 2 minutes!`,
-          metadata: { 
-            orderId: orderResult.orderId, 
+            `✅ **Order Created Successfully!**\n\n` +
+            `💰 **Sending:** ${validExpectedAmount} USDC\n` +
+            `💵 **You'll Receive:** ₦${nairaAmount}\n` +
+            `📋 **Order ID:** ${orderResult.orderId}\n\n` +
+            `🔍 **What's happening:**\n` +
+            `• Your USDC is being transferred to Paycrest\n` +
+            `• Order is being processed by our partner\n` +
+            `• Funds will be delivered to your bank account\n\n` +
+            `⏰ **Expected completion:** 5-15 minutes\n` +
+            `📱 **You'll receive real-time updates on progress**\n\n` +
+            `💡 Once completed, funds arrive in your account within 2 minutes!`,
+          metadata: {
+            orderId: orderResult.orderId,
             receiveAddress: orderResult.receiveAddress,
             expectedAmount: validExpectedAmount.toString(),
-            step: 'awaiting_transfer' 
+            step: 'awaiting_transfer'
           }
         };
       } catch (error) {
         console.error('[handleFinalConfirmationStep] Error creating order:', error);
-        
+
         // Check for specific error types
         const errorMessage = error instanceof Error ? error.message : String(error);
-        
+
         // Update the session to reflect the error
         if (session && session.id) {
           await offrampSessionService.updateSession(session.id, 'completed', {
@@ -4084,17 +4251,17 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
         } else {
           console.error('[handleFinalConfirmationStep] Cannot update session with error - invalid session:', session);
         }
-        
+
         return {
           text: `❌ An error occurred while creating your order: ${errorMessage}\n\n` +
-                `Please try again or contact support if the issue persists.`
+            `Please try again or contact support if the issue persists.`
         };
       }
     }
 
     if (params.callback_data === 'offramp_send_tokens') {
       console.log(`[handleFinalConfirmationStep] Processing token transfer for user ${userId}`);
-      
+
       // Update session to show transfer in progress
       await offrampSessionService.updateSession(session.id, 'processing', {
         ...session.data,
@@ -4133,44 +4300,44 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
 
         return {
           text: `✅ **Tokens Sent Successfully!**\n\n` +
-                `📋 **Order ID:** ${session.data.orderId}\n` +
-                `🔗 **Transaction Hash:** ${transferResult.transactionHash}\n\n` +
-                `🔄 Your withdrawal is now being processed by Paycrest. ` +
-                `You will receive updates as the status changes.\n\n` +
-                `💡 **Tip:** You can check the status anytime by typing 'status'.`,
-          metadata: { 
-            orderId: session.data.orderId, 
-            txHash: transferResult.transactionHash, 
-            step: 'transfer_completed' 
+            `📋 **Order ID:** ${session.data.orderId}\n` +
+            `🔗 **Transaction Hash:** ${transferResult.transactionHash}\n\n` +
+            `🔄 Your withdrawal is now being processed by Paycrest. ` +
+            `You will receive updates as the status changes.\n\n` +
+            `💡 **Tip:** You can check the status anytime by typing 'status'.`,
+          metadata: {
+            orderId: session.data.orderId,
+            txHash: transferResult.transactionHash,
+            step: 'transfer_completed'
           }
         };
       } catch (error) {
         console.error('[handleFinalConfirmationStep] Error executing token transfer:', error);
-        
+
         const errorMessage = error instanceof Error ? error.message : String(error);
-        
+
         // Update the session to reflect the error
         await offrampSessionService.updateSession(session.id, 'completed', {
           ...session.data,
           status: 'transfer_error',
           error: errorMessage,
         });
-        
+
         // Handle insufficient ETH balance error
-        if (errorMessage.toLowerCase().includes('insufficient') && 
-            (errorMessage.toLowerCase().includes('eth') || errorMessage.toLowerCase().includes('gas'))) {
+        if (errorMessage.toLowerCase().includes('insufficient') &&
+          (errorMessage.toLowerCase().includes('eth') || errorMessage.toLowerCase().includes('gas'))) {
           return {
             text: `❌ Insufficient ETH balance for gas fees.\n\n` +
-                  `You need ETH in your wallet to pay for transaction fees when sending USDC. ` +
-                  `Please add some ETH to your wallet and try again.\n\n` +
-                  `💡 **Tip:** Even small amounts of ETH (like $1-2 worth) are usually sufficient for gas fees.`
+              `You need ETH in your wallet to pay for transaction fees when sending USDC. ` +
+              `Please add some ETH to your wallet and try again.\n\n` +
+              `💡 **Tip:** Even small amounts of ETH (like $1-2 worth) are usually sufficient for gas fees.`
           };
         }
-        
+
         return {
           text: `❌ An error occurred while sending tokens: ${errorMessage}\n\n` +
-                `Your order (${session.data.orderId}) is still active. ` +
-                `Please try the transfer again or contact support.`
+            `Your order (${session.data.orderId}) is still active. ` +
+            `Please try the transfer again or contact support.`
         };
       }
     }
@@ -4197,7 +4364,7 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
 async function handleOfframpSubmit(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     console.log('[handleOfframpSubmit] Called with params:', params);
-    
+
     // Get the active offramp session
     const actualUserId = await resolveUserId(userId);
     if (!actualUserId) {
@@ -4245,33 +4412,33 @@ async function handleKYCVerification(params: ActionParams, userId: string): Prom
         case 'approved':
           return {
             text: "✅ **KYC Verification Complete**\n\n" +
-                  "Your identity has been verified successfully.\n" +
-                  "You can now withdraw crypto to your bank account.",
+              "Your identity has been verified successfully.\n" +
+              "You can now withdraw crypto to your bank account.",
             reply_markup: {
               inline_keyboard: [
                 [{ text: "💱 Start Withdrawal", callback_data: "start_offramp" }]
               ]
             }
           };
-        
+
         case 'pending':
           return {
             text: "⏳ **KYC Verification Pending**\n\n" +
-                  "Your KYC verification is being reviewed.\n" +
-                  "This usually takes 1-3 business days.\n\n" +
-                  `Submitted: ${new Date(kycData.created_at).toLocaleDateString()}`,
+              "Your KYC verification is being reviewed.\n" +
+              "This usually takes 1-3 business days.\n\n" +
+              `Submitted: ${new Date(kycData.created_at).toLocaleDateString()}`,
             reply_markup: {
               inline_keyboard: [
                 [{ text: "🔄 Check Status", callback_data: "check_kyc_status" }]
               ]
             }
           };
-        
+
         case 'rejected':
           return {
             text: "❌ **KYC Verification Rejected**\n\n" +
-                  "Your previous KYC submission was rejected.\n" +
-                  "Please contact support or try again with updated documents.",
+              "Your previous KYC submission was rejected.\n" +
+              "Please contact support or try again with updated documents.",
             reply_markup: {
               inline_keyboard: [
                 [{ text: "🔄 Retry KYC", callback_data: "start_kyc" }],
@@ -4285,13 +4452,13 @@ async function handleKYCVerification(params: ActionParams, userId: string): Prom
     // No KYC record found, show start KYC option
     return {
       text: "🔐 **KYC Verification Required**\n\n" +
-            "To withdraw crypto to your bank account, you need to complete identity verification.\n\n" +
-            "**What you'll need:**\n" +
-            "• Government-issued ID\n" +
-            "• Proof of address\n" +
-            "• Bank account details\n\n" +
-            "**Process takes:** 1-3 business days\n" +
-            "**Supported countries:** Nigeria, Ghana",
+        "To withdraw crypto to your bank account, you need to complete identity verification.\n\n" +
+        "**What you'll need:**\n" +
+        "• Government-issued ID\n" +
+        "• Proof of address\n" +
+        "• Bank account details\n\n" +
+        "**Process takes:** 1-3 business days\n" +
+        "**Supported countries:** Nigeria, Ghana",
       reply_markup: {
         inline_keyboard: [
           [{ text: "🔐 Start KYC Verification", callback_data: "start_kyc" }],
@@ -4323,8 +4490,8 @@ async function handleOfframpHistory(params: ActionParams, userId: string): Promi
     if (transactions.length === 0) {
       return {
         text: "📊 **Transaction History**\n\n" +
-              "No withdrawal transactions found.\n\n" +
-              "Start your first withdrawal by typing 'withdraw' or 'offramp'.",
+          "No withdrawal transactions found.\n\n" +
+          "Start your first withdrawal by typing 'withdraw' or 'offramp'.",
         reply_markup: {
           inline_keyboard: [
             [{ text: "💰 Start Withdrawal", callback_data: "offramp" }]
@@ -4342,7 +4509,7 @@ async function handleOfframpHistory(params: ActionParams, userId: string): Promi
     historyText += `• Total Amount: ${stats.totalAmount.toFixed(2)}\n\n`;
 
     historyText += `**Recent Transactions:**\n`;
-    
+
     const recentTransactions = transactions.slice(0, 5);
     for (const tx of recentTransactions) {
       const statusEmoji = {
@@ -4354,10 +4521,10 @@ async function handleOfframpHistory(params: ActionParams, userId: string): Promi
 
       const date = tx.createdAt.toLocaleDateString();
       const txId = tx.id.substring(0, 8);
-      
+
       historyText += `${statusEmoji} ${tx.fiatAmount} ${tx.fiatCurrency} - ${date}\n`;
       historyText += `   ID: ${txId} | ${tx.status.toUpperCase()}\n`;
-      
+
       if (tx.status === 'failed' && tx.errorMessage) {
         historyText += `   Error: ${tx.errorMessage}\n`;
       }
@@ -4365,13 +4532,13 @@ async function handleOfframpHistory(params: ActionParams, userId: string): Promi
     }
 
     const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
-    
+
     // Add retry button for failed transactions
     const failedTx = transactions.find(tx => tx.status === 'failed');
     if (failedTx) {
       keyboard.push([{ text: "🔄 Retry Failed Transaction", callback_data: `retry_tx_${failedTx.id}` }]);
     }
-    
+
     keyboard.push([{ text: "💰 New Withdrawal", callback_data: "offramp" }]);
 
     return {
@@ -4434,7 +4601,7 @@ async function handleRetryTransaction(params: ActionParams, userId: string): Pro
         'processing': 'currently processing',
         'pending': 'still pending'
       }[existingTx.status] || 'in an unknown state';
-      
+
       return {
         text: `⚠️ **Cannot Retry Transaction**\n\nThis transaction is ${statusText} and cannot be retried.\n\nOnly failed transactions can be retried.`,
         reply_markup: {
@@ -4447,16 +4614,16 @@ async function handleRetryTransaction(params: ActionParams, userId: string): Pro
     }
 
     const result = await offrampService.retryTransaction(transactionId);
-    
+
     if (result) {
       return {
         text: `🔄 **Transaction Retry Successful**\n\n` +
-              `✅ Your failed transaction has been resubmitted\n\n` +
-              `**Details:**\n` +
-              `• Transaction ID: ${result.id.substring(0, 8)}\n` +
-              `• Amount: ${result.fiatAmount} ${result.fiatCurrency}\n` +
-              `• Status: Processing\n\n` +
-              `📱 You'll receive notifications as your transaction progresses.`,
+          `✅ Your failed transaction has been resubmitted\n\n` +
+          `**Details:**\n` +
+          `• Transaction ID: ${result.id.substring(0, 8)}\n` +
+          `• Amount: ${result.fiatAmount} ${result.fiatCurrency}\n` +
+          `• Status: Processing\n\n` +
+          `📱 You'll receive notifications as your transaction progresses.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "🔍 Track Progress", callback_data: `tx_status_${result.id}` }],
@@ -4467,11 +4634,11 @@ async function handleRetryTransaction(params: ActionParams, userId: string): Pro
     } else {
       return {
         text: "❌ **Retry Failed**\n\n" +
-              "Unable to retry the transaction at this time. This could be due to:\n\n" +
-              "• Temporary service issues\n" +
-              "• Invalid transaction state\n" +
-              "• Network connectivity problems\n\n" +
-              "Please try again in a few minutes or contact support if the issue persists.",
+          "Unable to retry the transaction at this time. This could be due to:\n\n" +
+          "• Temporary service issues\n" +
+          "• Invalid transaction state\n" +
+          "• Network connectivity problems\n\n" +
+          "Please try again in a few minutes or contact support if the issue persists.",
         reply_markup: {
           inline_keyboard: [
             [{ text: "🔄 Try Again", callback_data: `retry_tx_${transactionId}` }],
@@ -4483,10 +4650,10 @@ async function handleRetryTransaction(params: ActionParams, userId: string): Pro
     }
   } catch (error) {
     console.error('[handleRetryTransaction] Error:', error);
-    
+
     // Provide specific error messages based on error type
     let errorMessage = "❌ **Retry Failed**\n\n";
-    
+
     if (error.message?.includes('Service temporarily')) {
       errorMessage += "Our services are temporarily unavailable. Please try again in a few minutes.";
     } else if (error.message?.includes('Network')) {
@@ -4496,7 +4663,7 @@ async function handleRetryTransaction(params: ActionParams, userId: string): Pro
     } else {
       errorMessage += "An unexpected error occurred. Please try again or contact support if the issue persists.";
     }
-    
+
     return {
       text: errorMessage,
       reply_markup: {
@@ -4556,7 +4723,7 @@ async function handleCancelTransaction(params: ActionParams, userId: string): Pr
         'processing': 'currently processing',
         'failed': 'already failed'
       }[existingTx.status] || 'in an unknown state';
-      
+
       return {
         text: `⚠️ **Cannot Cancel Transaction**\n\nThis transaction is ${statusText} and cannot be cancelled.\n\nOnly pending transactions can be cancelled before processing begins.`,
         reply_markup: {
@@ -4569,16 +4736,16 @@ async function handleCancelTransaction(params: ActionParams, userId: string): Pr
     }
 
     const success = await offrampService.cancelTransaction(transactionId);
-    
+
     if (success) {
       return {
         text: `✅ **Transaction Cancelled Successfully**\n\n` +
-              `🚫 Your pending withdrawal has been cancelled\n\n` +
-              `**Details:**\n` +
-              `• Transaction ID: ${transactionId.substring(0, 8)}\n` +
-              `• Amount: ${existingTx.fiatAmount} ${existingTx.fiatCurrency}\n` +
-              `• Status: Cancelled\n\n` +
-              `💡 You can start a new withdrawal anytime.`,
+          `🚫 Your pending withdrawal has been cancelled\n\n` +
+          `**Details:**\n` +
+          `• Transaction ID: ${transactionId.substring(0, 8)}\n` +
+          `• Amount: ${existingTx.fiatAmount} ${existingTx.fiatCurrency}\n` +
+          `• Status: Cancelled\n\n` +
+          `💡 You can start a new withdrawal anytime.`,
         reply_markup: {
           inline_keyboard: [
             [{ text: "💰 New Withdrawal", callback_data: "offramp" }],
@@ -4589,11 +4756,11 @@ async function handleCancelTransaction(params: ActionParams, userId: string): Pr
     } else {
       return {
         text: "❌ **Cancellation Failed**\n\n" +
-              "Unable to cancel the transaction at this time. This could be due to:\n\n" +
-              "• Transaction has already started processing\n" +
-              "• Temporary service issues\n" +
-              "• Network connectivity problems\n\n" +
-              "Please check the transaction status or contact support.",
+          "Unable to cancel the transaction at this time. This could be due to:\n\n" +
+          "• Transaction has already started processing\n" +
+          "• Temporary service issues\n" +
+          "• Network connectivity problems\n\n" +
+          "Please check the transaction status or contact support.",
         reply_markup: {
           inline_keyboard: [
             [{ text: "🔍 Check Status", callback_data: `tx_status_${transactionId}` }],
@@ -4605,10 +4772,10 @@ async function handleCancelTransaction(params: ActionParams, userId: string): Pr
     }
   } catch (error) {
     console.error('[handleCancelTransaction] Error:', error);
-    
+
     // Provide specific error messages based on error type
     let errorMessage = "❌ **Cancellation Failed**\n\n";
-    
+
     if (error.message?.includes('Service temporarily')) {
       errorMessage += "Our services are temporarily unavailable. Please try again in a few minutes.";
     } else if (error.message?.includes('Network')) {
@@ -4618,7 +4785,7 @@ async function handleCancelTransaction(params: ActionParams, userId: string): Pr
     } else {
       errorMessage += "An unexpected error occurred. Please try again or contact support if the issue persists.";
     }
-    
+
     return {
       text: errorMessage,
       reply_markup: {
@@ -4650,7 +4817,7 @@ async function handleTransactionStatus(params: ActionParams, userId: string): Pr
     }
 
     const transaction = await offrampService.checkTransactionStatus(transactionId);
-    
+
     if (!transaction) {
       return {
         text: "❌ Transaction not found or you don't have permission to view it.",
@@ -4671,25 +4838,25 @@ async function handleTransactionStatus(params: ActionParams, userId: string): Pr
     statusText += `**Status:** ${transaction.status.toUpperCase()}\n`;
     statusText += `**Created:** ${transaction.createdAt.toLocaleDateString()}\n`;
     statusText += `**Updated:** ${transaction.updatedAt.toLocaleDateString()}\n`;
-    
+
     if (transaction.txHash) {
       statusText += `**Blockchain TX:** ${transaction.txHash.substring(0, 10)}...\n`;
     }
-    
+
     if (transaction.errorMessage) {
       statusText += `**Error:** ${transaction.errorMessage}\n`;
     }
 
     const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
-    
+
     if (transaction.status === 'failed') {
       keyboard.push([{ text: "🔄 Retry Transaction", callback_data: `retry_tx_${transaction.id}` }]);
     }
-    
+
     if (transaction.status === 'pending') {
       keyboard.push([{ text: "❌ Cancel Transaction", callback_data: `cancel_tx_${transaction.id}` }]);
     }
-    
+
     keyboard.push([{ text: "📊 View History", callback_data: "offramp_history" }]);
 
     return {
@@ -4707,25 +4874,194 @@ async function handleTransactionStatus(params: ActionParams, userId: string): Pr
 }
 
 /**
+ * Send templated notification via Telegram
+ */
+async function sendTelegramNotification(userId: string, template: any): Promise<void> {
+  try {
+    // Get user's chat ID from database
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('telegram_chat_id')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('[sendTelegramNotification] Error fetching user:', error);
+      return;
+    }
+
+    if (user && user.telegram_chat_id) {
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        console.error('[sendTelegramNotification] No Telegram bot token configured');
+        return;
+      }
+
+      const payload = {
+        chat_id: user.telegram_chat_id,
+        text: template.text,
+        parse_mode: template.parse_mode || 'Markdown',
+        reply_markup: template.reply_markup
+      };
+
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[sendTelegramNotification] Telegram API error:', errorText);
+      } else {
+        console.log(`[sendTelegramNotification] Notification sent to user ${userId}`);
+      }
+    }
+  } catch (error) {
+    console.error('[sendTelegramNotification] Error sending notification:', error);
+  }
+}
+
+/**
+ * Handle processing status updates with user notifications
+ */
+async function handleProcessingUpdate(userId: string, orderId: string, orderData: any): Promise<void> {
+  try {
+    const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
+
+    const statusData = {
+      orderId,
+      amount: orderData.expectedAmount || orderData.amount || 0,
+      currency: orderData.currency || 'USD',
+      token: orderData.token || 'USDC',
+      network: orderData.network || 'Base',
+      transactionHash: orderData.transactionHash,
+      transactionReference: orderData.transactionReference,
+      recipient: orderData.recipient,
+      rate: orderData.rate,
+      expectedAmount: orderData.expectedAmount,
+      updatedAt: orderData.updatedAt
+    };
+
+    const template = OfframpStatusTemplates.getStatusTemplate('processing', statusData);
+    await sendTelegramNotification(userId, template);
+
+    console.log(`[handleProcessingUpdate] Sent processing update for order ${orderId}`);
+  } catch (error) {
+    console.error(`[handleProcessingUpdate] Error sending processing update:`, error);
+  }
+}
+
+/**
+ * Handle on-hold status updates with user notifications
+ */
+async function handleOnHoldUpdate(userId: string, orderId: string, orderData: any): Promise<void> {
+  try {
+    const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
+
+    const statusData = {
+      orderId,
+      amount: orderData.expectedAmount || orderData.amount || 0,
+      currency: orderData.currency || 'USD',
+      token: orderData.token || 'USDC',
+      network: orderData.network || 'Base',
+      transactionHash: orderData.transactionHash,
+      transactionReference: orderData.transactionReference,
+      recipient: orderData.recipient,
+      rate: orderData.rate,
+      expectedAmount: orderData.expectedAmount,
+      updatedAt: orderData.updatedAt
+    };
+
+    const template = OfframpStatusTemplates.getStatusTemplate('on_hold', statusData);
+    await sendTelegramNotification(userId, template);
+
+    console.log(`[handleOnHoldUpdate] Sent on-hold update for order ${orderId}`);
+  } catch (error) {
+    console.error(`[handleOnHoldUpdate] Error sending on-hold update:`, error);
+  }
+}
+
+/**
+ * Handle expired withdrawal notifications
+ */
+async function handleExpiredWithdrawal(userId: string, orderId: string, orderData: any): Promise<void> {
+  try {
+    const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
+
+    const statusData = {
+      orderId,
+      amount: orderData.amount || 0,
+      currency: orderData.currency || 'USD',
+      token: orderData.token || 'USDC',
+      network: orderData.network || 'Base',
+      transactionHash: orderData.transactionHash,
+      transactionReference: orderData.transactionReference,
+      recipient: orderData.recipient,
+      rate: orderData.rate,
+      expectedAmount: orderData.expectedAmount,
+      updatedAt: orderData.updatedAt
+    };
+
+    const template = OfframpStatusTemplates.getStatusTemplate('expired', statusData);
+    await sendTelegramNotification(userId, template);
+
+    console.log(`[handleExpiredWithdrawal] Sent expiration notification for order ${orderId}`);
+  } catch (error) {
+    console.error(`[handleExpiredWithdrawal] Error sending expiration notification:`, error);
+  }
+}
+
+/**
+ * Handle unknown status updates with user notifications
+ */
+async function handleUnknownStatusUpdate(userId: string, orderId: string, status: string, orderData: any): Promise<void> {
+  try {
+    const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
+
+    const statusData = {
+      orderId,
+      amount: orderData.expectedAmount || orderData.amount || 0,
+      currency: orderData.currency || 'USD',
+      token: orderData.token || 'USDC',
+      network: orderData.network || 'Base',
+      transactionHash: orderData.transactionHash,
+      transactionReference: orderData.transactionReference,
+      recipient: orderData.recipient,
+      rate: orderData.rate,
+      expectedAmount: orderData.expectedAmount,
+      updatedAt: orderData.updatedAt
+    };
+
+    const template = OfframpStatusTemplates.getStatusTemplate(status, statusData);
+    await sendTelegramNotification(userId, template);
+
+    console.log(`[handleUnknownStatusUpdate] Sent status update for unknown status ${status} on order ${orderId}`);
+  } catch (error) {
+    console.error(`[handleUnknownStatusUpdate] Error sending unknown status update:`, error);
+  }
+}
+
+/**
  * Monitor Paycrest order status and handle state transitions
  */
 async function monitorOrderStatus(orderId: string, userId: string, sessionId: string, attempt: number = 1): Promise<void> {
   const MAX_ATTEMPTS = 20; // Monitor for ~10 minutes (30s intervals)
   const RETRY_INTERVAL = 30000; // 30 seconds
-  
+
   try {
     console.log(`[monitorOrderStatus] Checking status for order ${orderId}, attempt ${attempt}`);
-    
+
     // Get order status from Paycrest
     const statusResponse = await serverPaycrestService.getOrderStatus(orderId);
-    
+
     if (!statusResponse || !statusResponse.data) {
       throw new Error('Invalid status response from Paycrest');
     }
-    
+
     const { status, transactionHash } = statusResponse.data;
     console.log(`[monitorOrderStatus] Order ${orderId} status: ${status}`);
-    
+
     // Update session with latest status
     const session = await offrampSessionService.getSessionById(sessionId);
     if (session) {
@@ -4736,52 +5072,91 @@ async function monitorOrderStatus(orderId: string, userId: string, sessionId: st
         lastStatusCheck: new Date().toISOString()
       });
     }
-    
-    // Handle different status states
-    switch (status.toLowerCase()) {
+
+    // Handle different status states using comprehensive status templates
+    const normalizedStatus = status.toLowerCase().trim();
+
+    switch (normalizedStatus) {
+      // Success states - stop monitoring
       case 'completed':
       case 'fulfilled':
       case 'success':
+      case 'settled':
+      case 'delivered':
         await handleSuccessfulWithdrawal(userId, orderId, statusResponse.data);
         return; // Stop monitoring
-        
+
+      // Failure states - stop monitoring
       case 'failed':
       case 'error':
       case 'cancelled':
+      case 'rejected':
+      case 'declined':
         await handleFailedWithdrawal(userId, orderId, statusResponse.data);
         return; // Stop monitoring
-        
+
+      // Refund states - stop monitoring
       case 'refunded':
       case 'refund_pending':
+      case 'refund_processing':
+      case 'refund_completed':
         await handleRefundNotification(userId, orderId, statusResponse.data);
         return; // Stop monitoring
-        
+
+      // Expired states - stop monitoring
+      case 'expired':
+      case 'timeout':
+        await handleExpiredWithdrawal(userId, orderId, statusResponse.data);
+        return; // Stop monitoring
+
+      // Processing states - continue monitoring
       case 'pending':
       case 'processing':
       case 'awaiting_transfer':
-        // Continue monitoring
+      case 'in_progress':
+      case 'submitted':
+      case 'confirming':
+        await handleProcessingUpdate(userId, orderId, statusResponse.data);
         if (attempt < MAX_ATTEMPTS) {
           setTimeout(() => {
             monitorOrderStatus(orderId, userId, sessionId, attempt + 1);
           }, RETRY_INTERVAL);
         } else {
-          // Max attempts reached, notify user of timeout
           await handleMonitoringTimeout(userId, orderId);
         }
         break;
-        
+
+      // On-hold states - continue monitoring with longer intervals
+      case 'on_hold':
+      case 'under_review':
+      case 'requires_verification':
+        await handleOnHoldUpdate(userId, orderId, statusResponse.data);
+        if (attempt < MAX_ATTEMPTS) {
+          // Use longer interval for review processes
+          setTimeout(() => {
+            monitorOrderStatus(orderId, userId, sessionId, attempt + 1);
+          }, RETRY_INTERVAL * 2); // 60 seconds for review processes
+        } else {
+          await handleMonitoringTimeout(userId, orderId);
+        }
+        break;
+
+      // Unknown status - log and continue monitoring
       default:
-        console.warn(`[monitorOrderStatus] Unknown status: ${status}`);
+        console.warn(`[monitorOrderStatus] Unknown status: ${status} for order ${orderId}`);
+        await handleUnknownStatusUpdate(userId, orderId, status, statusResponse.data);
         if (attempt < MAX_ATTEMPTS) {
           setTimeout(() => {
             monitorOrderStatus(orderId, userId, sessionId, attempt + 1);
           }, RETRY_INTERVAL);
+        } else {
+          await handleMonitoringTimeout(userId, orderId);
         }
     }
-    
+
   } catch (error) {
     console.error(`[monitorOrderStatus] Error monitoring order ${orderId}:`, error);
-    
+
     // Retry on error (network issues, etc.)
     if (attempt < MAX_ATTEMPTS) {
       setTimeout(() => {
@@ -4794,112 +5169,122 @@ async function monitorOrderStatus(orderId: string, userId: string, sessionId: st
 }
 
 /**
- * Handle successful withdrawal completion
+ * Handle successful withdrawal completion with enhanced templates
  */
 async function handleSuccessfulWithdrawal(userId: string, orderId: string, orderData: any): Promise<void> {
   try {
-    const message = {
-      text: `Great news! Your withdrawal has been completed successfully.
+    const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
 
-I've processed your withdrawal of ${orderData.expectedAmount || orderData.amount} USDC and the funds have been delivered to your bank account. The transaction was completed at ${new Date().toLocaleString()}.
-
-Your funds should appear in your account within the next 2 minutes. Thank you for using Hedwig!`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "📊 View History", callback_data: "offramp_history" },
-          { text: "💸 New Withdrawal", callback_data: "start_offramp" }
-        ]]
-      }
+    const statusData = {
+      orderId,
+      amount: orderData.expectedAmount || orderData.amount || 0,
+      currency: orderData.currency || 'USD',
+      token: orderData.token || 'USDC',
+      network: orderData.network || 'Base',
+      transactionHash: orderData.transactionHash,
+      transactionReference: orderData.transactionReference,
+      recipient: orderData.recipient,
+      rate: orderData.rate,
+      expectedAmount: orderData.expectedAmount,
+      updatedAt: orderData.updatedAt
     };
-    
-    await sendTelegramMessage(userId, message);
-    
+
+    const template = OfframpStatusTemplates.getStatusTemplate('completed', statusData);
+    await sendTelegramNotification(userId, template);
+
     // Update database record
     await supabase
       .from('offramp_transactions')
-      .update({ 
+      .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
-        transaction_hash: orderData.transactionHash
+        transaction_hash: orderData.transactionHash || orderData.transactionReference
       })
       .eq('paycrest_order_id', orderId);
-      
+
+    console.log(`[handleSuccessfulWithdrawal] Processed successful withdrawal for order ${orderId}`);
   } catch (error) {
     console.error('[handleSuccessfulWithdrawal] Error:', error);
   }
 }
 
 /**
- * Handle failed withdrawal
+ * Handle failed withdrawal with enhanced templates
  */
 async function handleFailedWithdrawal(userId: string, orderId: string, orderData: any): Promise<void> {
   try {
-    const message = {
-      text: `❌ **Withdrawal Failed**\n\n` +
-            `We're sorry, but your withdrawal could not be completed.\n\n` +
-            `💰 **Amount:** ${orderData.expectedAmount || orderData.amount} USDC\n` +
-            `📋 **Order ID:** ${orderId}\n` +
-            `⏰ **Failed At:** ${new Date().toLocaleString()}\n\n` +
-            `🔄 **What happens next:**\n` +
-            `• Your funds will be automatically refunded\n` +
-            `• Refund typically takes 5-10 minutes\n` +
-            `• You'll receive a notification when refund is complete\n\n` +
-            `💬 Need help? Contact our support team.`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "🔄 Try Again", callback_data: "start_offramp" },
-          { text: "💬 Contact Support", callback_data: "contact_support" }
-        ]]
-      }
+    const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
+
+    const statusData = {
+      orderId,
+      amount: orderData.expectedAmount || orderData.amount || 0,
+      currency: orderData.currency || 'USD',
+      token: orderData.token || 'USDC',
+      network: orderData.network || 'Base',
+      transactionHash: orderData.transactionHash,
+      transactionReference: orderData.transactionReference,
+      recipient: orderData.recipient,
+      rate: orderData.rate,
+      expectedAmount: orderData.expectedAmount,
+      failureReason: orderData.failureReason || orderData.error || 'Transaction failed',
+      updatedAt: orderData.updatedAt
     };
-    
-    await sendTelegramMessage(userId, message);
-    
+
+    const template = OfframpStatusTemplates.getStatusTemplate('failed', statusData);
+    await sendTelegramNotification(userId, template);
+
     // Update database record
     await supabase
       .from('offramp_transactions')
-      .update({ 
+      .update({
         status: 'failed',
         failed_at: new Date().toISOString(),
-        failure_reason: orderData.failureReason || 'Transaction failed'
+        failure_reason: statusData.failureReason
       })
       .eq('paycrest_order_id', orderId);
-      
+
+    console.log(`[handleFailedWithdrawal] Processed failed withdrawal for order ${orderId}`);
   } catch (error) {
     console.error('[handleFailedWithdrawal] Error:', error);
   }
 }
 
 /**
- * Handle refund notification
+ * Handle refund notification with enhanced templates
  */
 async function handleRefundNotification(userId: string, orderId: string, orderData: any): Promise<void> {
   try {
-    const message = {
-      text: `Your withdrawal has been refunded successfully.
+    const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
 
-I've processed a refund of ${orderData.expectedAmount || orderData.amount} USDC for order ${orderId}, completed at ${new Date().toLocaleString()}. Your USDC has been returned to your wallet.
-
-You can try the withdrawal again or contact support if you need assistance.`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "🔄 Try Again", callback_data: "start_offramp" },
-          { text: "💬 Contact Support", callback_data: "contact_support" }
-        ]]
-      }
+    const statusData = {
+      orderId,
+      amount: orderData.expectedAmount || orderData.amount || 0,
+      currency: orderData.currency || 'USD',
+      token: orderData.token || 'USDC',
+      network: orderData.network || 'Base',
+      transactionHash: orderData.transactionHash,
+      transactionReference: orderData.transactionReference,
+      recipient: orderData.recipient,
+      rate: orderData.rate,
+      expectedAmount: orderData.expectedAmount,
+      refundReason: orderData.refundReason || orderData.failureReason || 'withdrawal could not be completed',
+      updatedAt: orderData.updatedAt
     };
-    
-    await sendTelegramMessage(userId, message);
-    
+
+    const template = OfframpStatusTemplates.getStatusTemplate('refunded', statusData);
+    await sendTelegramNotification(userId, template);
+
     // Update database record
     await supabase
       .from('offramp_transactions')
-      .update({ 
+      .update({
         status: 'refunded',
-        refunded_at: new Date().toISOString()
+        refunded_at: new Date().toISOString(),
+        failure_reason: statusData.refundReason
       })
       .eq('paycrest_order_id', orderId);
-      
+
+    console.log(`[handleRefundNotification] Processed refund notification for order ${orderId}`);
   } catch (error) {
     console.error('[handleRefundNotification] Error:', error);
   }
@@ -4912,14 +5297,14 @@ async function handleMonitoringTimeout(userId: string, orderId: string): Promise
   try {
     const message = {
       text: `⏰ **Withdrawal Status Update**\n\n` +
-            `Your withdrawal is taking longer than expected to process.\n\n` +
-            `📋 **Order ID:** ${orderId}\n` +
-            `⏰ **Status:** Still processing\n\n` +
-            `🔍 **What's happening:**\n` +
-            `• Your transaction is still being processed\n` +
-            `• This can take up to 24 hours in some cases\n` +
-            `• You'll be notified once it's complete\n\n` +
-            `💬 Contact support if you have concerns.`,
+        `Your withdrawal is taking longer than expected to process.\n\n` +
+        `📋 **Order ID:** ${orderId}\n` +
+        `⏰ **Status:** Still processing\n\n` +
+        `🔍 **What's happening:**\n` +
+        `• Your transaction is still being processed\n` +
+        `• This can take up to 24 hours in some cases\n` +
+        `• You'll be notified once it's complete\n\n` +
+        `💬 Contact support if you have concerns.`,
       reply_markup: {
         inline_keyboard: [[
           { text: "🔍 Check Status", callback_data: `check_status_${orderId}` },
@@ -4927,7 +5312,7 @@ async function handleMonitoringTimeout(userId: string, orderId: string): Promise
         ]]
       }
     };
-    
+
     await sendTelegramMessage(userId, message);
   } catch (error) {
     console.error('[handleMonitoringTimeout] Error:', error);
@@ -4941,11 +5326,11 @@ async function handleMonitoringError(userId: string, orderId: string, error: any
   try {
     const message = {
       text: `⚠️ **Status Check Error**\n\n` +
-            `We encountered an issue checking your withdrawal status.\n\n` +
-            `📋 **Order ID:** ${orderId}\n` +
-            `⏰ **Time:** ${new Date().toLocaleString()}\n\n` +
-            `🔄 **Your withdrawal is likely still processing.**\n` +
-            `Please check back later or contact support.`,
+        `We encountered an issue checking your withdrawal status.\n\n` +
+        `📋 **Order ID:** ${orderId}\n` +
+        `⏰ **Time:** ${new Date().toLocaleString()}\n\n` +
+        `🔄 **Your withdrawal is likely still processing.**\n` +
+        `Please check back later or contact support.`,
       reply_markup: {
         inline_keyboard: [[
           { text: "🔍 Check Status", callback_data: `check_status_${orderId}` },
@@ -4953,7 +5338,7 @@ async function handleMonitoringError(userId: string, orderId: string, error: any
         ]]
       }
     };
-    
+
     await sendTelegramMessage(userId, message);
   } catch (error) {
     console.error('[handleMonitoringError] Error:', error);
@@ -4971,7 +5356,7 @@ async function sendTelegramMessage(userId: string, message: any): Promise<void> 
       .select('telegram_chat_id')
       .eq('id', userId)
       .single();
-      
+
     if (user?.telegram_chat_id) {
       const telegramBot = require('../lib/telegramBot');
       await telegramBot.sendMessage(user.telegram_chat_id, message.text, {

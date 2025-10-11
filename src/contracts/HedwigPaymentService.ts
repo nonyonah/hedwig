@@ -133,14 +133,8 @@ export class HedwigPaymentService {
         }
       });
 
-      this.provider.on('close', () => {
-        console.debug('WebSocket connection closed, attempting to reconnect...');
-        if (this.isListening && this.reconnectAttempts < this.maxReconnectAttempts) {
-          setTimeout(() => {
-            this.attemptReconnection();
-          }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts));
-        }
-      });
+      // Note: ethers.js WebSocketProvider doesn't support 'close' event
+      // Instead, we'll handle disconnections through error events and periodic health checks
     }
   }
 

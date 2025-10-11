@@ -71,6 +71,19 @@ export const NetworkConfig = {
     apiSecret: (network?: NetworkEnvironment) => getNetworkEnvVar('PAYCREST_API_SECRET', network),
   },
   
+  // Fonbnk Configuration
+  fonbnk: {
+    apiKey: (network?: NetworkEnvironment) => getNetworkEnvVar('FONBNK_API_KEY', network),
+    apiSecret: (network?: NetworkEnvironment) => getNetworkEnvVar('FONBNK_API_SECRET', network),
+    webhookSecret: (network?: NetworkEnvironment) => getNetworkEnvVar('FONBNK_WEBHOOK_SECRET', network),
+    baseUrl: (network?: NetworkEnvironment) => {
+      const env = network || getCurrentNetworkEnvironment();
+      return env === 'mainnet' 
+        ? 'https://api.fonbnk.com/v1'
+        : 'https://sandbox-api.fonbnk.com/v1';
+    },
+  },
+  
   // Helius Configuration
   helius: {
     apiKey: (network?: NetworkEnvironment) => getNetworkEnvVar('HELIUS_API_KEY', network),
@@ -130,6 +143,12 @@ export function getCurrentConfig() {
       apiToken: NetworkConfig.paycrest.apiToken(network),
       apiSecret: NetworkConfig.paycrest.apiSecret(network),
     },
+    fonbnk: {
+      apiKey: NetworkConfig.fonbnk.apiKey(network),
+      apiSecret: NetworkConfig.fonbnk.apiSecret(network),
+      webhookSecret: NetworkConfig.fonbnk.webhookSecret(network),
+      baseUrl: NetworkConfig.fonbnk.baseUrl(network),
+    },
     helius: {
       apiKey: NetworkConfig.helius.apiKey(network),
     },
@@ -184,6 +203,7 @@ export function logCurrentConfig() {
     hasAlchemyKey: !!config.alchemy.apiKey,
     hasCdpKey: !!config.cdp.apiKeyId,
     hasPaycrestKey: !!config.paycrest.apiKey,
+    hasFonbnkKey: !!config.fonbnk.apiKey,
     hasHeliusKey: !!config.helius.apiKey,
     contractAddress: config.contracts.hedwigPayment,
     platformWallet: config.contracts.platformWallet,

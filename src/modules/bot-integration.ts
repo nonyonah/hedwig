@@ -9,6 +9,7 @@ import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
 import { OfframpModule } from './offramp';
 import { generateEarningsPDF } from './pdf-generator-earnings';
+import { FonbnkService } from '../services/fonbnkService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,6 +22,7 @@ export class BotIntegration {
   private proposalModule: ProposalModule;
   private usdcPaymentModule: USDCPaymentModule;
   private offrampModule: OfframpModule;
+  private fonbnkService: FonbnkService;
 
   constructor(bot: TelegramBot) {
     this.bot = bot;
@@ -28,6 +30,7 @@ export class BotIntegration {
     this.proposalModule = new ProposalModule(bot);
     this.usdcPaymentModule = new USDCPaymentModule(bot);
     this.offrampModule = new OfframpModule(bot);
+    this.fonbnkService = new FonbnkService();
   }
 
   // Handle earnings summary (deterministic path via earningsService)
@@ -51,11 +54,11 @@ export class BotIntegration {
         .from('wallets')
         .select('address, chain')
         .eq('user_id', actualUserId);
-      
+
       if (!wallets || wallets.length === 0) {
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           `I don't see any wallets associated with your account yet. To view your earnings, you'll need to create a wallet first. Would you like me to set one up for you?`,
-          { 
+          {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
@@ -66,19 +69,19 @@ export class BotIntegration {
         );
         return;
       }
-      
+
       // Import earnings service
       const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
-      
+
       // Create filter object with all wallet addresses (supports both EVM and Solana)
       const filter = {
         walletAddresses: wallets.map(w => w.address),
         timeframe: timeframe as 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime'
       };
-      
+
       const summary = await getEarningsSummary(filter, true);
       const formattedSummary = formatEarningsForAgent(summary);
-      
+
       await this.bot.sendMessage(chatId, formattedSummary, {
         parse_mode: 'Markdown',
         reply_markup: {
@@ -87,10 +90,10 @@ export class BotIntegration {
           ]]
         }
       });
-      
+
     } catch (error) {
       console.error('[BotIntegration] Error fetching earnings summary:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `I'm having trouble retrieving your earnings information right now. This might be a temporary issue with our system. Please try again in a few moments, and if the problem persists, let me know!`,
         { parse_mode: 'Markdown' }
       );
@@ -111,7 +114,7 @@ export class BotIntegration {
       // Use the same logic as actions.ts for consistency
       const isTokenSpecificRequest = requestedToken && ['USDC', 'USDT', 'CNGN', 'CUSD', 'SOL', 'ETH', 'CELO'].includes(requestedToken);
       const isNetworkSpecific = requestedNetwork && ['solana', 'base', 'ethereum', 'optimism', 'celo', 'lisk', 'evm'].includes(requestedNetwork.toLowerCase());
-      
+
       if (isTokenSpecificRequest || isNetworkSpecific) {
         // Send natural language response without inline keyboard
         await this.bot.sendMessage(chatId, result.text, {
@@ -124,10 +127,10 @@ export class BotIntegration {
           reply_markup: result.reply_markup
         });
       }
-      
+
     } catch (error) {
       console.error('[BotIntegration] Error checking balance:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `I encountered an error while checking your balance. Please try again later.`,
         { parse_mode: 'Markdown' }
       );
@@ -138,7 +141,7 @@ export class BotIntegration {
   async handleViewWallet(chatId: number, userId: string) {
     try {
       // Send "fetching wallet info" message
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `Let me check your wallet information for you. This will just take a moment...`,
         { parse_mode: 'Markdown' }
       );
@@ -152,38 +155,38 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         } else {
           // User doesn't exist yet, show wallet creation prompt
-          await this.bot.sendMessage(chatId, 
-          `I don't see any wallets set up for your account yet. Don't worry - I'm working on creating them automatically for you. Please try checking again in just a moment!`,
-          {
-            parse_mode: 'Markdown'
-          }
-        );
+          await this.bot.sendMessage(chatId,
+            `I don't see any wallets set up for your account yet. Don't worry - I'm working on creating them automatically for you. Please try checking again in just a moment!`,
+            {
+              parse_mode: 'Markdown'
+            }
+          );
           return;
         }
       }
-      
+
       // Get user's wallets from database
       const { data: wallets, error } = await supabase
         .from('wallets')
         .select('address, chain')
         .eq('user_id', actualUserId);
-      
+
       if (error) {
         console.error('[BotIntegration] Error fetching wallets:', error);
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           `I'm having trouble accessing your wallet information right now. This might be a temporary issue with our database. Please try again in a few moments.`,
           { parse_mode: 'Markdown' }
         );
         return;
       }
-      
+
       if (!wallets || wallets.length === 0) {
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           `I don't see any wallets set up for your account yet. Don't worry - I'm working on creating them automatically for you. Please try checking again in just a moment!`,
           {
             parse_mode: 'Markdown'
@@ -194,14 +197,14 @@ export class BotIntegration {
 
       // Display wallet addresses
       let walletMessage = `Here are your wallet addresses:\n\n`;
-      
+
       for (const wallet of wallets) {
         walletMessage += `${wallet.chain === 'evm' ? '🔷' : '🟣'} **${wallet.chain.toUpperCase()} Wallet:**\n`;
         walletMessage += `\`${wallet.address}\`\n\n`;
       }
-      
+
       walletMessage += `You can use these addresses to receive crypto payments from clients or other users. Each address is specific to its blockchain network, so make sure to use the right one for the type of crypto you're expecting to receive.`;
-      
+
       await this.bot.sendMessage(chatId, walletMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
@@ -211,10 +214,10 @@ export class BotIntegration {
           ]
         }
       });
-      
+
     } catch (error) {
       console.error('[BotIntegration] Error viewing wallet:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `I'm having trouble accessing your wallet information right now. This might be a temporary issue with our system. Please try again in a few moments.`,
         { parse_mode: 'Markdown' }
       );
@@ -232,7 +235,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         } else {
@@ -297,21 +300,21 @@ export class BotIntegration {
           ]
         }
       });
-      
+
     } catch (error) {
       console.error('[BotIntegration] Error fetching earnings with wallet:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `❌ **Error fetching earnings**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
     }
-   }
+  }
 
   // Handle create wallet flow
   async handleCreateWallet(chatId: number, userId: string) {
     try {
       // Send "wallet being created" message
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `🏦 **Creating your wallet...**\n\n` +
         `Please wait while I set up your new crypto wallet.`,
         { parse_mode: 'Markdown' }
@@ -326,7 +329,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (existingUser) {
           actualUserId = existingUser.id;
         } else {
@@ -335,10 +338,10 @@ export class BotIntegration {
             telegram_user_id: parseInt(userId),
             telegram_chat_id: parseInt(userId)
           });
-          
+
           if (newUser) {
             actualUserId = newUser.id;
-            
+
             // Track user creation in PostHog
             await trackEvent('user_created', {
               user_id: actualUserId,
@@ -353,7 +356,7 @@ export class BotIntegration {
 
       // Create wallets using the actual user UUID
       const result = await handleAction('create_wallet', {}, actualUserId);
-      
+
       if (result && result.text) {
         await this.bot.sendMessage(chatId, result.text, {
           parse_mode: 'Markdown',
@@ -365,15 +368,15 @@ export class BotIntegration {
           }
         });
       } else {
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           `❌ **Wallet creation failed**\n\n${result?.text || 'Unknown error'}`,
           { parse_mode: 'Markdown' }
         );
       }
-      
+
     } catch (error) {
       console.error('[BotIntegration] Error creating wallet:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `❌ **Error creating wallet**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
@@ -397,10 +400,10 @@ export class BotIntegration {
           parse_mode: 'Markdown',
         });
       }
-       
+
     } catch (error) {
       console.error('[BotIntegration] Error processing with AI:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `❌ **Error processing your request**\n\nPlease try again later.`,
         { parse_mode: 'Markdown' }
       );
@@ -412,12 +415,12 @@ export class BotIntegration {
     try {
       // Import the balance checking functions
       const { getBalances } = await import('../lib/cdp');
-      
+
       if (chain === 'evm') {
         // Try multiple networks to get comprehensive balance info - disabled Arbitrum and BSC networks
         const networks = ['base', 'ethereum-sepolia'];
         let allBalances: any[] = [];
-        
+
         for (const network of networks) {
           try {
             const balances = await getBalances(address, network);
@@ -427,7 +430,7 @@ export class BotIntegration {
                 const amount = parseFloat(b.amount || b.balance || '0');
                 return amount > 0;
               });
-              
+
               if (nonZeroBalances.length > 0) {
                 allBalances.push({
                   network: network,
@@ -440,7 +443,7 @@ export class BotIntegration {
             // Continue to next network
           }
         }
-        
+
         if (allBalances.length > 0) {
           let balanceText = '';
           for (const networkData of allBalances) {
@@ -449,7 +452,7 @@ export class BotIntegration {
             const networkEmoji = this.getNetworkEmoji(network);
             const testnetIndicator = isTestnet ? ' 🧪' : '';
             const networkName = this.formatNetworkName(network);
-            
+
             balanceText += `\n${networkEmoji} ${networkName}${testnetIndicator}:\n`;
             for (const balance of networkData.balances) {
               const amount = parseFloat(balance.amount || balance.balance || '0');
@@ -461,13 +464,13 @@ export class BotIntegration {
           }
           return balanceText || '0 ETH';
         }
-        
+
         return '0 ETH (No balances found across networks)';
       } else if (chain === 'solana') {
         // For now, return a placeholder for Solana
         return 'Solana balance check coming soon';
       }
-      
+
       return 'Unknown chain';
     } catch (error) {
       console.error(`[BotIntegration] Error fetching balance for ${chain}:`, error);
@@ -553,7 +556,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         }
@@ -569,7 +572,7 @@ export class BotIntegration {
       if (error) throw error;
 
       if (!invoices || invoices.length === 0) {
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           '📄 **No invoices found**\n\nYou haven\'t created any invoices yet. Use the "Invoice" button to create your first invoice!',
           { parse_mode: 'Markdown' }
         );
@@ -582,7 +585,7 @@ export class BotIntegration {
       for (const invoice of invoices) {
         const status = this.getStatusEmoji(invoice.status);
         const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(invoice.amount);
-        
+
         let invoiceMessage = `${status} **${invoice.invoice_number}** - ${amount}\n`;
         invoiceMessage += `   📧 Client: ${invoice.client_name}`;
         if (invoice.client_email) {
@@ -636,7 +639,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         }
@@ -652,7 +655,7 @@ export class BotIntegration {
       if (error) throw error;
 
       if (!proposals || proposals.length === 0) {
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           '📋 **No proposals found**\n\nYou haven\'t created any proposals yet. Use the "Proposal" button to create your first proposal!',
           { parse_mode: 'Markdown' }
         );
@@ -665,7 +668,7 @@ export class BotIntegration {
       for (const proposal of proposals) {
         const status = this.getStatusEmoji(proposal.status);
         const createdDate = new Date(proposal.created_at).toLocaleDateString();
-        
+
         message += `${status} **${proposal.proposal_number}**\n`;
         message += `   📧 Client: ${proposal.client_name}`;
         if (proposal.client_email) {
@@ -709,7 +712,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         }
@@ -725,7 +728,7 @@ export class BotIntegration {
       if (error) throw error;
 
       if (!paymentLinks || paymentLinks.length === 0) {
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           '🔗 **No payment links found**\n\nYou haven\'t created any payment links yet. Use the "Payment Link" button to create your first payment link!',
           { parse_mode: 'Markdown' }
         );
@@ -738,7 +741,7 @@ export class BotIntegration {
       for (const link of paymentLinks) {
         const status = this.getStatusEmoji(link.status || 'pending');
         const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: link.currency || 'USD' }).format(link.amount);
-        
+
         let linkMessage = `${status} **${link.title || 'Payment Link'}** - ${amount}\n`;
         linkMessage += `   Description: ${link.description || 'No description'}\n`;
         linkMessage += `   Created: ${new Date(link.created_at).toLocaleDateString()}`;
@@ -788,7 +791,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         }
@@ -820,7 +823,7 @@ export class BotIntegration {
         return;
       }
 
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         `✅ **Payment link deleted successfully**\n\nThe payment link "${paymentLink.description || 'Untitled'}" has been removed.`,
         { parse_mode: 'Markdown' }
       );
@@ -845,7 +848,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         }
@@ -908,7 +911,7 @@ export class BotIntegration {
           .select('id')
           .eq('telegram_chat_id', parseInt(userId))
           .single();
-        
+
         if (user) {
           actualUserId = user.id;
         }
@@ -1045,7 +1048,7 @@ export class BotIntegration {
         chatId: msg.chat.id,
         chain: 'base' // Default to base chain
       }, msg.from.id.toString());
-      
+
       // Send the result back to Telegram
       await this.bot.sendMessage(msg.chat.id, result.text, {
         parse_mode: 'Markdown',
@@ -1054,6 +1057,101 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error starting offramp flow:', error);
       await this.bot.sendMessage(msg.chat.id, '❌ Failed to start offramp flow. Please try again.');
+    }
+  }
+
+  // Handle offramp status check using the template system
+  async handleOfframpStatusCheck(chatId: number, userId: string, orderId: string) {
+    try {
+      console.log(`[BotIntegration] Checking offramp status for order: ${orderId}`);
+      
+      // Get order status from database first
+      const { data: transaction, error } = await supabase
+        .from('offramp_transactions')
+        .select('*')
+        .eq('paycrest_order_id', orderId)
+        .single();
+
+      if (error || !transaction) {
+        await this.bot.sendMessage(chatId, 
+          `❌ **Order Not Found**\n\n` +
+          `Could not find order \`${orderId}\` in our records.\n\n` +
+          `Please check the order ID and try again.`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      // Try to get fresh status from Paycrest API
+      let currentStatus = transaction.status;
+      let orderData = {
+        orderId: orderId,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        token: transaction.token || 'USDC',
+        network: transaction.network || 'base',
+        recipient: {
+          institution: transaction.bank_name || 'Bank',
+          accountName: transaction.account_name || 'Account',
+          accountIdentifier: transaction.account_number || 'N/A',
+          currency: transaction.currency
+        },
+        expectedAmount: transaction.amount,
+        createdAt: transaction.created_at,
+        updatedAt: transaction.updated_at
+      };
+
+      try {
+        // Try to get fresh status from Paycrest API
+        const response = await fetch(`${process.env.PAYCREST_API_BASE_URL}/orders/${orderId}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.PAYCREST_API_SECRET}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const freshData = await response.json();
+          if (freshData && freshData.status) {
+            currentStatus = freshData.status;
+            orderData = {
+              ...orderData,
+              ...freshData,
+              orderId: orderId
+            };
+            
+            // Update database with fresh status if different
+            if (freshData.status !== transaction.status) {
+              await supabase
+                .from('offramp_transactions')
+                .update({ 
+                  status: freshData.status,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', transaction.id);
+            }
+          }
+        }
+      } catch (apiError) {
+        console.warn(`[BotIntegration] Could not fetch fresh status from Paycrest API:`, apiError);
+        // Continue with database status
+      }
+
+      // Use the status template system
+      const { OfframpStatusTemplates } = await import('../lib/offrampStatusTemplates');
+      const template = OfframpStatusTemplates.getStatusTemplate(currentStatus, orderData);
+      
+      await this.bot.sendMessage(chatId, template.text, {
+        parse_mode: template.parse_mode || 'Markdown',
+        reply_markup: template.reply_markup
+      });
+      
+    } catch (error) {
+      console.error('[BotIntegration] Error checking offramp status:', error);
+      await this.bot.sendMessage(chatId, 
+        '❌ **Error**\n\nThere was an error checking your withdrawal status. Please try again later.',
+        { parse_mode: 'Markdown' }
+      );
     }
   }
 
@@ -1142,432 +1240,432 @@ export class BotIntegration {
     } catch (error) {
       console.error('[BotIntegration] Error requesting user email:', error);
     }
-   }
+  }
 
-   /**
-    * Handle email collection from user input
-    */
-   async handleEmailCollection(chatId: number, messageText: string): Promise<boolean> {
-     try {
-       // Check if user is in email collection state
-       const { data: session, error: sessionError } = await supabase
-         .from('sessions')
-         .select('context')
-         .eq('user_id', chatId.toString())
-         .single();
+  /**
+   * Handle email collection from user input
+   */
+  async handleEmailCollection(chatId: number, messageText: string): Promise<boolean> {
+    try {
+      // Check if user is in email collection state
+      const { data: session, error: sessionError } = await supabase
+        .from('sessions')
+        .select('context')
+        .eq('user_id', chatId.toString())
+        .single();
 
-       if (sessionError || !session?.context?.awaiting_email) {
-         return false; // Not in email collection state
-       }
+      if (sessionError || !session?.context?.awaiting_email) {
+        return false; // Not in email collection state
+      }
 
-       // Validate email format
-       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-       if (!emailRegex.test(messageText.trim())) {
-         await this.bot.sendMessage(chatId, '❌ Please enter a valid email address (e.g., john@example.com):');
-         return true; // Handled, but invalid
-       }
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(messageText.trim())) {
+        await this.bot.sendMessage(chatId, '❌ Please enter a valid email address (e.g., john@example.com):');
+        return true; // Handled, but invalid
+      }
 
-       const email = messageText.trim().toLowerCase();
+      const email = messageText.trim().toLowerCase();
 
-       // Update user with email
-       const { error: updateError } = await supabase
-         .from('users')
-         .update({ email })
-         .eq('telegram_chat_id', chatId);
+      // Update user with email
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ email })
+        .eq('telegram_chat_id', chatId);
 
-       if (updateError) {
-         console.error('[BotIntegration] Error updating user email:', updateError);
-         await this.bot.sendMessage(chatId, '❌ Failed to save your email. Please try again.');
-         return true;
-       }
+      if (updateError) {
+        console.error('[BotIntegration] Error updating user email:', updateError);
+        await this.bot.sendMessage(chatId, '❌ Failed to save your email. Please try again.');
+        return true;
+      }
 
-       // Clear session state
-       await supabase
-         .from('sessions')
-         .update({ context: {} })
-         .eq('user_id', chatId.toString());
+      // Clear session state
+      await supabase
+        .from('sessions')
+        .update({ context: {} })
+        .eq('user_id', chatId.toString());
 
-       // Send confirmation message
-       await this.bot.sendMessage(chatId,
-         `✅ **Email Saved Successfully!**\n\n` +
-         `Your email address \`${email}\` has been saved.\n\n` +
-         `You'll now receive:\n` +
-         `• Invoice notifications\n` +
-         `• Payment confirmations\n` +
-         `• Important updates\n\n` +
-         `You can now use all of Hedwig's features! 🎉`,
-         { parse_mode: 'Markdown' }
-       );
+      // Send confirmation message
+      await this.bot.sendMessage(chatId,
+        `✅ **Email Saved Successfully!**\n\n` +
+        `Your email address \`${email}\` has been saved.\n\n` +
+        `You'll now receive:\n` +
+        `• Invoice notifications\n` +
+        `• Payment confirmations\n` +
+        `• Important updates\n\n` +
+        `You can now use all of Hedwig's features! 🎉`,
+        { parse_mode: 'Markdown' }
+      );
 
-       return true;
-     } catch (error) {
-       console.error('[BotIntegration] Error handling email collection:', error);
-       return false;
-     }
-   }
+      return true;
+    } catch (error) {
+      console.error('[BotIntegration] Error handling email collection:', error);
+      return false;
+    }
+  }
 
-   /**
-    * Handle reminder email collection
-    */
-   async handleReminderEmailCollection(chatId: number, userId: string, messageText: string): Promise<boolean> {
-     try {
-       // Check if user is in reminder email collection state
-       const { data: userState } = await supabase
-         .from('user_states')
-         .select('state_data')
-         .eq('user_id', userId)
-         .eq('state_type', 'awaiting_reminder_email')
-         .single();
+  /**
+   * Handle reminder email collection
+   */
+  async handleReminderEmailCollection(chatId: number, userId: string, messageText: string): Promise<boolean> {
+    try {
+      // Check if user is in reminder email collection state
+      const { data: userState } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_reminder_email')
+        .single();
 
-       if (!userState) {
-         return false; // Not in reminder email collection state
-       }
+      if (!userState) {
+        return false; // Not in reminder email collection state
+      }
 
-       // Validate email format
-       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-       if (!emailRegex.test(messageText.trim())) {
-         await this.bot.sendMessage(chatId, '❌ Please enter a valid email address (e.g., john@example.com):');
-         return true; // Handled, but invalid
-       }
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(messageText.trim())) {
+        await this.bot.sendMessage(chatId, '❌ Please enter a valid email address (e.g., john@example.com):');
+        return true; // Handled, but invalid
+      }
 
-       const email = messageText.trim().toLowerCase();
+      const email = messageText.trim().toLowerCase();
 
-       // Send reminder using SmartNudgeService
-       try {
-         const { SmartNudgeService } = await import('../lib/smartNudgeService');
-         
-         // Send a manual reminder using the email
-         const result = await SmartNudgeService.sendManualReminder(
-           'invoice',
-           'manual-reminder',
-           `This is a payment reminder sent via Telegram bot to ${email}.`
-         );
-
-         if (result.success) {
-           await this.bot.sendMessage(chatId, 
-             `✅ **Reminder Sent Successfully!**\n\n` +
-             `A payment reminder has been sent to \`${email}\`.\n\n` +
-             `The recipient will receive an email notification.`,
-             { parse_mode: 'Markdown' }
-           );
-         } else {
-           await this.bot.sendMessage(chatId, `❌ Failed to send reminder: ${result.message}`);
-         }
-       } catch (reminderError) {
-         console.error('[BotIntegration] Error sending reminder:', reminderError);
-         await this.bot.sendMessage(chatId, '❌ Failed to send reminder. Please try again.');
-       }
-
-       // Clear user state
-       await supabase
-         .from('user_states')
-         .delete()
-         .eq('user_id', userId)
-         .eq('state_type', 'awaiting_reminder_email');
-
-       return true;
-     } catch (error) {
-       console.error('[BotIntegration] Error handling reminder email collection:', error);
-       return false;
-     }
-   }
-
-   /**
-    * Handle user info editing input
-    */
-   async handleUserInfoEditInput(chatId: number, userId: string, text: string): Promise<boolean> {
-     try {
-       // Check if user is in user info editing state for invoices
-       const { data: invoiceState } = await supabase
-         .from('user_states')
-         .select('state_data')
-         .eq('user_id', userId)
-         .eq('state_type', 'creating_invoice')
-         .single();
-
-       if (invoiceState?.state_data?.editing_user_info && invoiceState.state_data.step?.startsWith('edit_user_')) {
-         const field = invoiceState.state_data.step.replace('edit_user_', '');
-         const result = await this.invoiceModule.handleUserInfoEditInput(chatId, userId, field, text);
-         
-         // If result is a string, it means there was an error or validation issue
-         if (typeof result === 'string') {
-           await this.bot.sendMessage(chatId, result);
-         }
-         
-         return true;
-       }
-
-       // Check if user is in user info editing state for proposals
-       const { data: proposalState } = await supabase
-         .from('user_states')
-         .select('state_data')
-         .eq('user_id', userId)
-         .eq('state_type', 'editing_user_info')
-         .single();
-
-       if (proposalState?.state_data?.context === 'proposal' && proposalState.state_data.field) {
-         const field = proposalState.state_data.field;
-         const result = await this.proposalModule.handleUserInfoEditInput(chatId, userId, field, text);
-         
-         // If result is a string, it means there was an error or validation issue
-         if (typeof result === 'string') {
-           await this.bot.sendMessage(chatId, result);
-         }
-         
-         return true;
-       }
-
-       return false;
-     } catch (error) {
-       console.error('[BotIntegration] Error handling user info edit input:', error);
-       return false;
-     }
-   }
-
-    /**
-     * Handle name collection from user input
-     */
-    async handleNameCollection(chatId: number, messageText: string): Promise<boolean> {
+      // Send reminder using SmartNudgeService
       try {
-        // Check if user is in name collection state
-        const { data: session, error: sessionError } = await supabase
-          .from('sessions')
-          .select('context')
-          .eq('user_id', chatId.toString())
-          .single();
+        const { SmartNudgeService } = await import('../lib/smartNudgeService');
 
-        if (sessionError || !session?.context?.awaiting_name) {
-          return false; // Not in name collection state
+        // Send a manual reminder using the email
+        const result = await SmartNudgeService.sendManualReminder(
+          'invoice',
+          'manual-reminder',
+          `This is a payment reminder sent via Telegram bot to ${email}.`
+        );
+
+        if (result.success) {
+          await this.bot.sendMessage(chatId,
+            `✅ **Reminder Sent Successfully!**\n\n` +
+            `A payment reminder has been sent to \`${email}\`.\n\n` +
+            `The recipient will receive an email notification.`,
+            { parse_mode: 'Markdown' }
+          );
+        } else {
+          await this.bot.sendMessage(chatId, `❌ Failed to send reminder: ${result.message}`);
+        }
+      } catch (reminderError) {
+        console.error('[BotIntegration] Error sending reminder:', reminderError);
+        await this.bot.sendMessage(chatId, '❌ Failed to send reminder. Please try again.');
+      }
+
+      // Clear user state
+      await supabase
+        .from('user_states')
+        .delete()
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_reminder_email');
+
+      return true;
+    } catch (error) {
+      console.error('[BotIntegration] Error handling reminder email collection:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Handle user info editing input
+   */
+  async handleUserInfoEditInput(chatId: number, userId: string, text: string): Promise<boolean> {
+    try {
+      // Check if user is in user info editing state for invoices
+      const { data: invoiceState } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'creating_invoice')
+        .single();
+
+      if (invoiceState?.state_data?.editing_user_info && invoiceState.state_data.step?.startsWith('edit_user_')) {
+        const field = invoiceState.state_data.step.replace('edit_user_', '');
+        const result = await this.invoiceModule.handleUserInfoEditInput(chatId, userId, field, text);
+
+        // If result is a string, it means there was an error or validation issue
+        if (typeof result === 'string') {
+          await this.bot.sendMessage(chatId, result);
         }
 
-        // Validate name (basic validation - not empty and reasonable length)
-        const name = messageText.trim();
-        if (name.length < 2 || name.length > 50) {
-          await this.bot.sendMessage(chatId, '❌ Please enter a valid name (2-50 characters):');
-          return true; // Handled, but invalid
+        return true;
+      }
+
+      // Check if user is in user info editing state for proposals
+      const { data: proposalState } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'editing_user_info')
+        .single();
+
+      if (proposalState?.state_data?.context === 'proposal' && proposalState.state_data.field) {
+        const field = proposalState.state_data.field;
+        const result = await this.proposalModule.handleUserInfoEditInput(chatId, userId, field, text);
+
+        // If result is a string, it means there was an error or validation issue
+        if (typeof result === 'string') {
+          await this.bot.sendMessage(chatId, result);
         }
 
-        // Update user with name
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({ name })
-          .eq('telegram_chat_id', chatId);
+        return true;
+      }
 
-        if (updateError) {
-          console.error('[BotIntegration] Error updating user name:', updateError);
-          await this.bot.sendMessage(chatId, '❌ Failed to save your name. Please try again.');
-          return true;
-        }
+      return false;
+    } catch (error) {
+      console.error('[BotIntegration] Error handling user info edit input:', error);
+      return false;
+    }
+  }
 
-        // Clear session state
-        await supabase
-          .from('sessions')
-          .update({ context: {} })
-          .eq('user_id', chatId.toString());
+  /**
+   * Handle name collection from user input
+   */
+  async handleNameCollection(chatId: number, messageText: string): Promise<boolean> {
+    try {
+      // Check if user is in name collection state
+      const { data: session, error: sessionError } = await supabase
+        .from('sessions')
+        .select('context')
+        .eq('user_id', chatId.toString())
+        .single();
 
-        // Send confirmation message
+      if (sessionError || !session?.context?.awaiting_name) {
+        return false; // Not in name collection state
+      }
+
+      // Validate name (basic validation - not empty and reasonable length)
+      const name = messageText.trim();
+      if (name.length < 2 || name.length > 50) {
+        await this.bot.sendMessage(chatId, '❌ Please enter a valid name (2-50 characters):');
+        return true; // Handled, but invalid
+      }
+
+      // Update user with name
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ name })
+        .eq('telegram_chat_id', chatId);
+
+      if (updateError) {
+        console.error('[BotIntegration] Error updating user name:', updateError);
+        await this.bot.sendMessage(chatId, '❌ Failed to save your name. Please try again.');
+        return true;
+      }
+
+      // Clear session state
+      await supabase
+        .from('sessions')
+        .update({ context: {} })
+        .eq('user_id', chatId.toString());
+
+      // Send confirmation message
+      await this.bot.sendMessage(chatId,
+        `✅ **Name Saved Successfully!**\n\n` +
+        `Hello ${name}! Your name has been saved.\n\n` +
+        `This will be used for:\n` +
+        `• Invoice creation\n` +
+        `• Professional communications\n` +
+        `• Personalized experience\n\n` +
+        `You can now continue using Hedwig! 🎉`,
+        { parse_mode: 'Markdown' }
+      );
+
+      return true;
+    } catch (error) {
+      console.error('[BotIntegration] Error handling name collection:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if user needs to provide name before using features
+   */
+  async checkNameRequiredForUser(chatId: number, userId: string, messageText: string): Promise<boolean> {
+    try {
+      // Skip name check for basic commands that don't require name
+      const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance', '/referral', '/leaderboard'];
+      if (basicCommands.includes(messageText)) {
+        return false;
+      }
+
+      // Get user data to check if name exists
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('id, name, email, telegram_first_name, created_at')
+        .eq('telegram_chat_id', chatId)
+        .single();
+
+      if (error || !user) {
+        console.error('[BotIntegration] Error fetching user for name check:', error);
+        return false;
+      }
+
+      // If user has name, no need to request it
+      if (user.name && user.name.trim() !== '') {
+        return false;
+      }
+
+      // Check if user has been using the bot for a while (has wallets or invoices)
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1);
+
+      // If user has wallets but no name, request name for advanced features
+      if (wallets && wallets.length > 0) {
+        await this.requestUserName(chatId, user.telegram_first_name);
+        return true;
+      }
+
+      // For advanced features like invoices and proposals, require name
+      const advancedFeatures = ['📄 Invoice', '📋 Proposal', '📊 Business Dashboard', '🔗 Payment Link'];
+      if (advancedFeatures.includes(messageText)) {
+        await this.requestUserName(chatId, user.telegram_first_name);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('[BotIntegration] Error checking name requirement:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Request user name
+   */
+  async requestUserName(chatId: number, telegramFirstName?: string): Promise<void> {
+    try {
+      // Set session state to awaiting name
+      await supabase
+        .from('sessions')
+        .upsert({
+          user_id: chatId.toString(),
+          context: { awaiting_name: true }
+        });
+
+      const greeting = telegramFirstName ? `Hi ${telegramFirstName}!` : 'Hello!';
+
+      await this.bot.sendMessage(chatId,
+        `${greeting} 👋\n\n` +
+        `To use advanced features like invoices and proposals, I need to know your full name.\n\n` +
+        `This will be used for professional communications and invoice creation.\n\n` +
+        `**Please enter your full name:**`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      console.error('[BotIntegration] Error requesting user name:', error);
+    }
+  }
+
+  /**
+   * Check and request name for new users
+   */
+  async checkAndRequestNameForNewUser(chatId: number, userId: string): Promise<void> {
+    try {
+      // Get user data to check if name exists
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('name, telegram_first_name')
+        .eq('id', userId)
+        .single();
+
+      if (error || !user) {
+        console.error('[BotIntegration] Error fetching user for name check:', error);
+        return;
+      }
+
+      // If user already has a name, no need to request it
+      if (user.name && user.name.trim() !== '') {
+        return;
+      }
+
+      // Request name for new user
+      await this.requestUserName(chatId, user.telegram_first_name);
+    } catch (error) {
+      console.error('[BotIntegration] Error checking name for new user:', error);
+    }
+  }
+
+  /**
+   * Check if existing user needs to provide email before using features
+   */
+  async checkEmailRequiredForExistingUser(chatId: number, messageText: string): Promise<boolean> {
+    try {
+      // Skip email check for basic commands that don't require email
+      const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance', '/referral', '/leaderboard'];
+      if (basicCommands.includes(messageText)) {
+        return false;
+      }
+
+      // Get user data to check if email exists
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('id, email, name, telegram_first_name, created_at')
+        .eq('telegram_chat_id', chatId)
+        .single();
+
+      if (error || !user) {
+        console.error('[BotIntegration] Error fetching user for email check:', error);
+        return false;
+      }
+
+      // If user has email, no need to request it
+      if (user.email) {
+        return false;
+      }
+
+      // Check if user has been using the bot for a while (has wallets or invoices)
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1);
+
+      // If user has wallets but no email, request email for advanced features
+      if (wallets && wallets.length > 0) {
+        const userName = user.name || user.telegram_first_name || 'there';
         await this.bot.sendMessage(chatId,
-          `✅ **Name Saved Successfully!**\n\n` +
-          `Hello ${name}! Your name has been saved.\n\n` +
-          `This will be used for:\n` +
-          `• Invoice creation\n` +
-          `• Professional communications\n` +
-          `• Personalized experience\n\n` +
-          `You can now continue using Hedwig! 🎉`,
+          `📧 **Email Required**\n\n` +
+          `Hi ${userName}! To use this feature, please provide your email address first.\n\n` +
+          `This helps us:\n` +
+          `• Send you important notifications\n` +
+          `• Keep your account secure\n` +
+          `• Provide better support\n\n` +
+          `Please enter your email address:`,
           { parse_mode: 'Markdown' }
         );
 
-        return true;
-      } catch (error) {
-        console.error('[BotIntegration] Error handling name collection:', error);
-        return false;
-      }
-    }
-
-    /**
-     * Check if user needs to provide name before using features
-     */
-    async checkNameRequiredForUser(chatId: number, userId: string, messageText: string): Promise<boolean> {
-      try {
-        // Skip name check for basic commands that don't require name
-        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance', '/referral', '/leaderboard'];
-        if (basicCommands.includes(messageText)) {
-          return false;
-        }
-
-        // Get user data to check if name exists
-        const { data: user, error } = await supabase
-          .from('users')
-          .select('id, name, email, telegram_first_name, created_at')
-          .eq('telegram_chat_id', chatId)
-          .single();
-
-        if (error || !user) {
-          console.error('[BotIntegration] Error fetching user for name check:', error);
-          return false;
-        }
-
-        // If user has name, no need to request it
-        if (user.name && user.name.trim() !== '') {
-          return false;
-        }
-
-        // Check if user has been using the bot for a while (has wallets or invoices)
-        const { data: wallets } = await supabase
-          .from('wallets')
-          .select('id')
-          .eq('user_id', user.id)
-          .limit(1);
-
-        // If user has wallets but no name, request name for advanced features
-        if (wallets && wallets.length > 0) {
-          await this.requestUserName(chatId, user.telegram_first_name);
-          return true;
-        }
-
-        // For advanced features like invoices and proposals, require name
-        const advancedFeatures = ['📄 Invoice', '📋 Proposal', '📊 Business Dashboard', '🔗 Payment Link'];
-        if (advancedFeatures.includes(messageText)) {
-          await this.requestUserName(chatId, user.telegram_first_name);
-          return true;
-        }
-
-        return false;
-      } catch (error) {
-        console.error('[BotIntegration] Error checking name requirement:', error);
-        return false;
-      }
-    }
-
-    /**
-     * Request user name
-     */
-    async requestUserName(chatId: number, telegramFirstName?: string): Promise<void> {
-      try {
-        // Set session state to awaiting name
+        // Set user state to awaiting email
         await supabase
           .from('sessions')
           .upsert({
             user_id: chatId.toString(),
-            context: { awaiting_name: true }
+            context: { awaiting_email: true },
+            updated_at: new Date().toISOString()
           });
 
-        const greeting = telegramFirstName ? `Hi ${telegramFirstName}!` : 'Hello!';
-        
-        await this.bot.sendMessage(chatId,
-          `${greeting} 👋\n\n` +
-          `To use advanced features like invoices and proposals, I need to know your full name.\n\n` +
-          `This will be used for professional communications and invoice creation.\n\n` +
-          `**Please enter your full name:**`,
-          { parse_mode: 'Markdown' }
-        );
-      } catch (error) {
-        console.error('[BotIntegration] Error requesting user name:', error);
+        return true;
       }
+
+      return false;
+    } catch (error) {
+      console.error('[BotIntegration] Error checking email requirement:', error);
+      return false;
     }
-
-    /**
-     * Check and request name for new users
-     */
-    async checkAndRequestNameForNewUser(chatId: number, userId: string): Promise<void> {
-      try {
-        // Get user data to check if name exists
-        const { data: user, error } = await supabase
-          .from('users')
-          .select('name, telegram_first_name')
-          .eq('id', userId)
-          .single();
-
-        if (error || !user) {
-          console.error('[BotIntegration] Error fetching user for name check:', error);
-          return;
-        }
-
-        // If user already has a name, no need to request it
-        if (user.name && user.name.trim() !== '') {
-          return;
-        }
-
-        // Request name for new user
-        await this.requestUserName(chatId, user.telegram_first_name);
-      } catch (error) {
-        console.error('[BotIntegration] Error checking name for new user:', error);
-      }
-    }
-
-    /**
-     * Check if existing user needs to provide email before using features
-     */
-    async checkEmailRequiredForExistingUser(chatId: number, messageText: string): Promise<boolean> {
-      try {
-        // Skip email check for basic commands that don't require email
-        const basicCommands = ['/start', '/help', '❓ Help', '👛 Wallet', '💰 Balance', '/referral', '/leaderboard'];
-        if (basicCommands.includes(messageText)) {
-          return false;
-        }
-
-        // Get user data to check if email exists
-        const { data: user, error } = await supabase
-          .from('users')
-          .select('id, email, name, telegram_first_name, created_at')
-          .eq('telegram_chat_id', chatId)
-          .single();
-
-        if (error || !user) {
-          console.error('[BotIntegration] Error fetching user for email check:', error);
-          return false;
-        }
-
-        // If user has email, no need to request it
-        if (user.email) {
-          return false;
-        }
-
-        // Check if user has been using the bot for a while (has wallets or invoices)
-        const { data: wallets } = await supabase
-          .from('wallets')
-          .select('id')
-          .eq('user_id', user.id)
-          .limit(1);
-
-        // If user has wallets but no email, request email for advanced features
-        if (wallets && wallets.length > 0) {
-          const userName = user.name || user.telegram_first_name || 'there';
-          await this.bot.sendMessage(chatId,
-            `📧 **Email Required**\n\n` +
-            `Hi ${userName}! To use this feature, please provide your email address first.\n\n` +
-            `This helps us:\n` +
-            `• Send you important notifications\n` +
-            `• Keep your account secure\n` +
-            `• Provide better support\n\n` +
-            `Please enter your email address:`,
-            { parse_mode: 'Markdown' }
-          );
-
-          // Set user state to awaiting email
-          await supabase
-            .from('sessions')
-            .upsert({
-              user_id: chatId.toString(),
-              context: { awaiting_email: true },
-              updated_at: new Date().toISOString()
-            });
-
-          return true;
-        }
-
-        return false;
-      } catch (error) {
-        console.error('[BotIntegration] Error checking email requirement:', error);
-        return false;
-      }
-    }
+  }
 
 
 
   // Handle send crypto
   async handleSendCrypto(chatId: number, userId: string) {
-    await this.bot.sendMessage(chatId, 
+    await this.bot.sendMessage(chatId,
       `💸 **Send Crypto**\n\n` +
       `To send cryptocurrency, you can:\n\n` +
       `• Type naturally: "Send 10 USDC to alice@example.com"\n` +
@@ -1618,7 +1716,7 @@ export class BotIntegration {
 
   // --- Payment Link Creation Handler ---
   async handlePaymentLink(chatId: number, userId: string) {
-    await this.bot.sendMessage(chatId, 
+    await this.bot.sendMessage(chatId,
       `🔗 **Create Payment Link**\n\n` +
       `To create a payment link, you can:\n\n` +
       `• Type: "Create payment link for $50"\n` +
@@ -1660,7 +1758,7 @@ export class BotIntegration {
 
   // Handle help
   async handleHelp(chatId: number) {
-    await this.bot.sendMessage(chatId, 
+    await this.bot.sendMessage(chatId,
       `❓ **Help & Support**\n\n` +
       `Here's what I can help you with:\n\n` +
       `💰 **Wallet Management**\n` +
@@ -1687,11 +1785,11 @@ export class BotIntegration {
       }
     );
   }
-  
+
   async handleCurrencyRate(chatId: number, query?: string) {
     try {
       const paycrestService = new PaycrestRateService();
-      
+
       if (!query) {
         // Show available rates
         const rates = await paycrestService.getAllRates();
@@ -1703,7 +1801,7 @@ export class BotIntegration {
       // Parse and handle specific rate query
       const parsedQuery = paycrestService.parseRateQuery(query);
       if (!parsedQuery) {
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           '❓ **Invalid Query**\n\n' +
           'Please use format like:\n' +
           '• "USDC to NGN"\n' +
@@ -1721,12 +1819,12 @@ export class BotIntegration {
         rate,
         parsedQuery.amount
       );
-      
+
       await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-      
+
     } catch (error) {
       console.error('Error handling currency rate:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.bot.sendMessage(chatId,
         '❌ **Rate Fetch Error**\n\n' +
         'Unable to fetch exchange rates at the moment. Please try again later.',
         { parse_mode: 'Markdown' }
@@ -1737,22 +1835,22 @@ export class BotIntegration {
   async handleReferralCommand(chatId: number, userId: string) {
     try {
       const { getUserReferralStats, getUserBadges, awardMilestoneBadges } = await import('../lib/referralService');
-      
+
       // Award milestone badges first
       await awardMilestoneBadges(userId);
-      
+
       const stats = await getUserReferralStats(userId);
       const badges = await getUserBadges(userId);
-      
+
       const referralLink = `https://t.me/HedwigAssistBot?start=ref_${userId}`;
-      
-      let message = 
+
+      let message =
         `🔗 **Your Referral Link:**\n` +
         `\`${referralLink}\`\n\n` +
         `📊 **Your Stats:**\n` +
         `👥 Referrals: ${stats?.referral_count || 0}\n` +
         `🎯 Points: ${stats?.points || 0}\n\n`;
-      
+
       // Add badges section if user has any
       if (badges && badges.length > 0) {
         message += `🏅 **Your Badges:**\n`;
@@ -1762,8 +1860,8 @@ export class BotIntegration {
         });
         message += `\n`;
       }
-      
-      message += 
+
+      message +=
         `💡 **How to earn points:**\n` +
         `• Refer friends: +10 points\n` +
         `• First invoice: +10 points\n` +
@@ -1772,8 +1870,8 @@ export class BotIntegration {
         `• First offramp: +15 points\n\n` +
         `🎯 **Monthly Contest:**\n` +
         `Compete for badges and recognition!`;
-      
-      await this.bot.sendMessage(chatId, message, { 
+
+      await this.bot.sendMessage(chatId, message, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -1790,16 +1888,16 @@ export class BotIntegration {
   async handleLeaderboardCommand(chatId: number) {
     try {
       const { getMonthlyLeaderboard, getCurrentPeriod } = await import('../lib/referralService');
-      
+
       // Get current period info
       const currentPeriod = await getCurrentPeriod();
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const periodText = currentPeriod ? `${monthNames[currentPeriod.month - 1]} ${currentPeriod.year}` : 'Current';
-      
+
       const leaderboard = await getMonthlyLeaderboard();
-      
+
       let message = `🏆 **Hedwig Referral Leaderboard** 🏆\n📅 **${periodText} Contest**\n\n`;
-      
+
       if (leaderboard.length === 0) {
         message += `No referral data yet. Be the first to start referring! 🚀\n\n`;
         message += `💡 **How to earn points:**\n`;
@@ -1813,17 +1911,17 @@ export class BotIntegration {
           const position = index + 1;
           const emoji = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : '🏅';
           const username = entry.username ? `@${entry.username}` : 'Anonymous';
-          
+
           // Add badges to display
           let badgeText = '';
           if (entry.badges && entry.badges.length > 0) {
             const badgeEmojis = entry.badges.map(badge => badge.badge.emoji).join('');
             badgeText = ` ${badgeEmojis}`;
           }
-          
+
           message += `${emoji} ${username}${badgeText} – ${entry.points} pts (${entry.referral_count} refs)\n`;
         });
-        
+
         message += `\n🎯 **Monthly Prizes:**\n`;
         message += `🥇 Top Referrer of the Month\n`;
         message += `🥈 Silver Referrer\n`;
@@ -1835,8 +1933,8 @@ export class BotIntegration {
         message += `💎 Point Collector (100 pts)\n`;
         message += `🏆 Referral Legend (50 refs)`;
       }
-      
-      await this.bot.sendMessage(chatId, message, { 
+
+      await this.bot.sendMessage(chatId, message, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -1855,7 +1953,7 @@ export class BotIntegration {
     try {
       // Import referral service functions
       const { extractReferrerIdFromPayload, processReferral } = await import('../lib/referralService');
-      
+
       // Check if user exists in database with more comprehensive data
       const { data: user } = await supabase
         .from('users')
@@ -1875,7 +1973,7 @@ export class BotIntegration {
       }
 
       const isNewUser = !user || (!hasWallets && !user.evm_wallet_address && !user.solana_wallet_address);
-      
+
       // Handle referral if this is a new user with referral payload
       if (isNewUser && startPayload) {
         const referrerId = extractReferrerIdFromPayload(startPayload);
@@ -1889,10 +1987,10 @@ export class BotIntegration {
           }
         }
       }
-      
+
       if (isNewUser) {
         // Show welcome message with Create Wallet button for new users
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           `🦉 Hi, I'm Hedwig!\n\n` +
           `I'm your freelance assistant that can help you create proposals, invoices, payment links, and send/receive payments in stablecoins.\n\n` +
           `Let's start by creating your crypto wallets:`,
@@ -1907,9 +2005,9 @@ export class BotIntegration {
       } else {
         // Get user's name for personalized greeting
         const userName = user.telegram_first_name || user.telegram_username || 'there';
-        
+
         // Show personalized welcome message for returning users
-        await this.bot.sendMessage(chatId, 
+        await this.bot.sendMessage(chatId,
           `🦉 **Welcome back, ${userName}!**\n\n` +
           `Great to see you again! I'm here to help with all your crypto and freelance needs.\n\n` +
           `Choose an option below or chat with me naturally!`,
@@ -1928,7 +2026,7 @@ export class BotIntegration {
 
   // Show main menu
   async showMainMenu(chatId: number) {
-    await this.bot.sendMessage(chatId, 
+    await this.bot.sendMessage(chatId,
       `🦉 **Welcome to Hedwig!**\n\n` +
       `I'm your freelance assistant for crypto payments.\n\n` +
       `Choose an option below or chat with me naturally!`,
@@ -1941,17 +2039,17 @@ export class BotIntegration {
 
   // Handle main callback queries
   async handleCallback(callbackQuery: TelegramBot.CallbackQuery, userId?: string) {
-  // PostHog: Track callback actions
-  if (callbackQuery.data && callbackQuery.message) {
-    trackEvent('bot_callback', {
-      callback_data: callbackQuery.data,
-      chatId: callbackQuery.message.chat.id
-    }, (userId || callbackQuery.message.chat.id).toString());
-  }
+    // PostHog: Track callback actions
+    if (callbackQuery.data && callbackQuery.message) {
+      trackEvent('bot_callback', {
+        callback_data: callbackQuery.data,
+        chatId: callbackQuery.message.chat.id
+      }, (userId || callbackQuery.message.chat.id).toString());
+    }
     const data = callbackQuery.data;
     const chatId = callbackQuery.message?.chat.id;
     if (!data || !chatId) return false;
-    
+
     // Get userId if not provided
     if (!userId) {
       userId = await this.getUserIdByChatId(chatId);
@@ -2069,20 +2167,26 @@ export class BotIntegration {
         await this.handleEarningsWithWallet(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data.startsWith('check_offramp_status_')) {
+        // Handle status check callbacks using the template system
+        const orderId = data.replace('check_offramp_status_', '');
+        await this.handleOfframpStatusCheck(chatId, userId, orderId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       } else if (data.startsWith('offramp_') || data.startsWith('payout_') || data.startsWith('select_bank_') || data.startsWith('retry_tx_') || data.startsWith('tx_status_') || data.startsWith('check_status_') || data === 'back_to_payout' || data === 'back_to_banks' || data === 'check_kyc_status' || data === 'start_kyc' || data === 'kyc_info' || data === 'contact_support' || data === 'action_offramp' || data === 'start_offramp' || data === 'offramp_history') {
         // Use the new actions-based offramp callback handling
         try {
           const result = await handleAction('offramp_callback', {
-           chatId: chatId,
-           callbackData: data,
-           messageId: callbackQuery.message?.message_id
-         }, userId || callbackQuery.from.id.toString());
-         
-         // Send the result back to Telegram
-         await this.bot.sendMessage(chatId, result.text, {
-           parse_mode: 'Markdown',
-           reply_markup: result.reply_markup
-         });
+            chatId: chatId,
+            callbackData: data,
+            messageId: callbackQuery.message?.message_id
+          }, userId || callbackQuery.from.id.toString());
+
+          // Send the result back to Telegram
+          await this.bot.sendMessage(chatId, result.text, {
+            parse_mode: 'Markdown',
+            reply_markup: result.reply_markup
+          });
         } catch (error) {
           console.error('[BotIntegration] Error handling offramp callback:', error);
           await this.bot.sendMessage(chatId, '❌ Failed to process offramp action. Please try again.');
@@ -2123,15 +2227,15 @@ export class BotIntegration {
               timeframe = extractedTimeframe;
             }
           }
-          
+
           // Send processing message
           await this.bot.sendMessage(chatId, `📄 Generating your ${timeframe} earnings PDF report... Please wait.`);
-          
+
           // Import required functions
           const { getEarningsSummary } = await import('../lib/earningsService');
           const { generateEarningsPDF } = await import('../modules/pdf-generator-earnings');
           const { createClient } = await import('@supabase/supabase-js');
-          
+
           // Get user's wallet addresses (both EVM and Solana)
           const supabase = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2142,33 +2246,33 @@ export class BotIntegration {
             .select('address, chain')
             .eq('user_id', userId)
             .limit(1);
-          
+
           // Get user data for dynamic PDF content
           const { data: userData } = await supabase
             .from('users')
             .select('name, telegram_first_name, telegram_last_name, telegram_username')
             .eq('id', userId)
             .single();
-          
+
           if (!wallets || wallets.length === 0) {
             await this.bot.sendMessage(chatId, '💡 **Setting up your wallets**\n\nYour wallets are being created automatically. Please try again in a moment!', {
-        parse_mode: 'Markdown'
-      });
+              parse_mode: 'Markdown'
+            });
             await this.bot.answerCallbackQuery(callbackQuery.id);
             return true;
           }
-          
+
           // Use the first wallet for earnings summary
           const walletAddress = wallets[0].address;
-          
+
           // Create filter object
           const filter = {
             walletAddress,
             timeframe: timeframe as 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime'
           };
-          
+
           const summary = await getEarningsSummary(filter, true);
-          
+
           if (summary && summary.totalPayments > 0) {
             // Transform summary data for PDF generation
             const earningsData = {
@@ -2191,10 +2295,10 @@ export class BotIntegration {
                 telegramUsername: userData.telegram_username
               } : undefined
             };
-            
+
             // Generate PDF
             const pdfBuffer = await generateEarningsPDF(earningsData);
-            
+
             // Send PDF as document
             await this.bot.sendDocument(chatId, pdfBuffer, {
               caption: '📄 **Your Earnings Report is Ready!**\n\n🎨 This creative PDF includes:\n• Visual insights and charts\n• Motivational content\n• Professional formatting\n• Complete transaction breakdown\n• Multi-wallet earnings (EVM + Solana)\n\n💡 Keep building your financial future!',
@@ -2223,14 +2327,14 @@ export class BotIntegration {
         return true;
       }
       // Invoice module callbacks
-      else if (data.startsWith('invoice_') || data.startsWith('view_invoice_') || data.startsWith('cancel_invoice_') || 
-               data.startsWith('send_invoice_') || data.startsWith('pdf_invoice_') || 
-               data.startsWith('edit_invoice_') || data.startsWith('delete_invoice_') ||
-               data.startsWith('edit_client_') || data.startsWith('edit_project_') ||
-               data.startsWith('edit_amount_') || data.startsWith('edit_due_date_') ||
-               data.startsWith('confirm_delete_') || data.startsWith('edit_user_info_') ||
-               data.startsWith('edit_user_name_') || data.startsWith('edit_user_email_') ||
-               data.startsWith('continue_invoice_creation_') || data === 'cancel_invoice_creation') {
+      else if (data.startsWith('invoice_') || data.startsWith('view_invoice_') || data.startsWith('cancel_invoice_') ||
+        data.startsWith('send_invoice_') || data.startsWith('pdf_invoice_') ||
+        data.startsWith('edit_invoice_') || data.startsWith('delete_invoice_') ||
+        data.startsWith('edit_client_') || data.startsWith('edit_project_') ||
+        data.startsWith('edit_amount_') || data.startsWith('edit_due_date_') ||
+        data.startsWith('confirm_delete_') || data.startsWith('edit_user_info_') ||
+        data.startsWith('edit_user_name_') || data.startsWith('edit_user_email_') ||
+        data.startsWith('continue_invoice_creation_') || data === 'cancel_invoice_creation') {
         // Get proper userId for cancel operations
         if (data.startsWith('cancel_invoice_')) {
           const properUserId = await this.getUserIdByChatId(chatId);
@@ -2241,14 +2345,14 @@ export class BotIntegration {
         return true;
       }
       // Proposal module callbacks
-      else if (data.startsWith('proposal_') || data.startsWith('view_proposal_') || 
-               data.startsWith('send_proposal_') || data.startsWith('pdf_proposal_') ||
-               data.startsWith('edit_proposal_') || data.startsWith('delete_proposal_') ||
-               data.startsWith('generate_invoice_') || data.startsWith('cancel_proposal_') || 
-               data === 'continue_proposal' || data === 'edit_user_info' || 
-               data === 'edit_user_field_name' || data === 'edit_user_field_email' || 
-               data === 'back_to_proposal' || data === 'cancel_user_edit' || 
-               data === 'cancel_proposal_creation') {
+      else if (data.startsWith('proposal_') || data.startsWith('view_proposal_') ||
+        data.startsWith('send_proposal_') || data.startsWith('pdf_proposal_') ||
+        data.startsWith('edit_proposal_') || data.startsWith('delete_proposal_') ||
+        data.startsWith('generate_invoice_') || data.startsWith('cancel_proposal_') ||
+        data === 'continue_proposal' || data === 'edit_user_info' ||
+        data === 'edit_user_field_name' || data === 'edit_user_field_email' ||
+        data === 'back_to_proposal' || data === 'cancel_user_edit' ||
+        data === 'cancel_proposal_creation') {
         await this.proposalModule.handleProposalCallback(callbackQuery, userId);
         return true;
       }
@@ -2301,11 +2405,11 @@ export class BotIntegration {
       .select('id')
       .eq('telegram_chat_id', chatId)
       .single();
-    
+
     if (data?.id) {
       return data.id;
     }
-    
+
     // User doesn't exist, create one using the RPC function
     try {
       const { data: newUserData, error } = await supabase
@@ -2316,12 +2420,12 @@ export class BotIntegration {
           p_telegram_last_name: null,
           p_telegram_language_code: null
         });
-      
+
       if (error) {
         console.error('[BotIntegration] Error creating user:', error);
         throw error;
       }
-      
+
       return newUserData;
     } catch (error) {
       console.error('[BotIntegration] Failed to create user for chatId:', chatId, error);
@@ -2330,10 +2434,10 @@ export class BotIntegration {
   }
 
   async handleBusinessMessage(message: TelegramBot.Message, userId: string) {
-  // PostHog: Track every message command
-  if (message.text) {
-    trackEvent('bot_command', { command: message.text, chatId: message.chat.id }, userId);
-  }
+    // PostHog: Track every message command
+    if (message.text) {
+      trackEvent('bot_command', { command: message.text, chatId: message.chat.id }, userId);
+    }
     const chatId = message.chat.id;
     const text = message.text;
 
@@ -2404,7 +2508,7 @@ export class BotIntegration {
         case '🔗 Payment Link':
           await this.handlePaymentLink(chatId, userId);
           return true;
-          
+
         case '💱 Offramp':
         case '💱 Withdraw':
         case '/offramp':
@@ -2412,15 +2516,15 @@ export class BotIntegration {
           // Use the new actions-based offramp flow
           try {
             const result = await handleAction('offramp', {
-             chatId: chatId,
-             chain: 'base' // Default to base chain
-           }, userId);
-           
-           // Send the result back to Telegram
-           await this.bot.sendMessage(chatId, result.text, {
-             parse_mode: 'Markdown',
-             reply_markup: result.reply_markup
-           });
+              chatId: chatId,
+              chain: 'base' // Default to base chain
+            }, userId);
+
+            // Send the result back to Telegram
+            await this.bot.sendMessage(chatId, result.text, {
+              parse_mode: 'Markdown',
+              reply_markup: result.reply_markup
+            });
           } catch (error) {
             console.error('[BotIntegration] Error starting offramp flow:', error);
             await this.bot.sendMessage(chatId, '❌ Failed to start offramp flow. Please try again.');
@@ -2430,12 +2534,12 @@ export class BotIntegration {
 
         case '💰 Earnings Summary':
           // Simulate a message object to pass to the AI processor
-        const fakeMessage = {
-          chat: { id: chatId },
-          from: { id: userId },
-          text: '/earnings_summary',
-        } as any;
-        await this.processWithAI(fakeMessage, 'earnings_summary');
+          const fakeMessage = {
+            chat: { id: chatId },
+            from: { id: userId },
+            text: '/earnings_summary',
+          } as any;
+          await this.processWithAI(fakeMessage, 'earnings_summary');
           return true;
 
         case '❓ Help':
@@ -2455,16 +2559,16 @@ export class BotIntegration {
           return true;
 
         case 'cancel proposal':
-        // Handle cancellation of ongoing proposal creation
-        const ongoingProposal = await this.getOngoingProposal(userId);
-        if (ongoingProposal) {
-          const { proposal_id } = ongoingProposal;
-          await this.proposalModule.cancelProposalCreation(chatId, proposal_id, userId);
-          return true;
-        } else {
-          await this.bot.sendMessage(chatId, 'No ongoing proposal creation found to cancel.');
-          return true;
-        }
+          // Handle cancellation of ongoing proposal creation
+          const ongoingProposal = await this.getOngoingProposal(userId);
+          if (ongoingProposal) {
+            const { proposal_id } = ongoingProposal;
+            await this.proposalModule.cancelProposalCreation(chatId, proposal_id, userId);
+            return true;
+          } else {
+            await this.bot.sendMessage(chatId, 'No ongoing proposal creation found to cancel.');
+            return true;
+          }
 
         case 'cancel invoice': {
           // Handle cancellation of ongoing invoice creation
@@ -2508,7 +2612,7 @@ export class BotIntegration {
             }
             return true;
           }
-          
+
           // Also check for legacy offramp state and clean it up
           const ongoingOfframp = await this.getOngoingOfframp(userId);
           if (ongoingOfframp) {
@@ -2528,7 +2632,7 @@ export class BotIntegration {
           if (message.text && this.isNaturalLanguageQuery(message.text)) {
             try {
               const lowerText = message.text.toLowerCase();
-              
+
               // Check for business queries first
               const businessPatterns = [
                 /(how many|how much|what['']?s my|show me my|tell me about my).*(invoice|proposal|payment link|earning|revenue)/i,
@@ -2536,12 +2640,12 @@ export class BotIntegration {
                 /my (business|earning|revenue|income|invoice|proposal|payment)/i,
                 /(total|sum|amount).*(earned|made|received|invoice|proposal|payment)/i
               ];
-              
+
               if (businessPatterns.some(pattern => pattern.test(lowerText))) {
                 await this.handleBusinessQuery(message.chat.id, userId, message.text);
                 return true;
               }
-              
+
               const { runLLM } = await import('../lib/llmAgent');
               const { parseIntentAndParams } = await import('../lib/intentParser');
               const llmResponse = await runLLM({ userId, message: message.text });
@@ -2549,7 +2653,7 @@ export class BotIntegration {
               if (intent === 'offramp' || intent === 'withdraw') {
                 // Delegate to the centralized offramp handler
                 await this.handleOfframp(message);
-              } else if (intent === 'create_payment_link') {             }
+              } else if (intent === 'create_payment_link') { }
               else if (intent === 'referral') {
                 await this.handleReferralCommand(message.chat.id, userId);
                 return true;
@@ -2564,7 +2668,7 @@ export class BotIntegration {
               }
               if (intent === 'get_price') {
                 // Only allow USD/NGN/GHS (and synonyms)
-    const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'GHS'];
+                const validCurrencies = ['USD', 'USDC', 'NGN', 'CNGN', 'GHS'];
                 const input = params.original_message || message.text;
                 const lowerInput = input.toLowerCase();
                 const containsValidPair = (lowerInput.includes('usd') || lowerInput.includes('dollar')) && (lowerInput.includes('ngn') || lowerInput.includes('naira') || lowerInput.includes('ghs') || lowerInput.includes('cedi'));
@@ -2605,7 +2709,7 @@ export class BotIntegration {
   getUSDCPaymentModule() {
     return this.usdcPaymentModule;
   }
-  
+
   getOfframpModule() {
     return this.offrampModule;
   }
@@ -2618,15 +2722,15 @@ export class BotIntegration {
       .eq('user_id', userId)
       .eq('state_type', 'creating_invoice')
       .maybeSingle();
-    
+
     console.log(`[BotIntegration] Query result - data:`, data);
     console.log(`[BotIntegration] Query result - error:`, error);
-    
+
     if (error) {
       console.error(`[BotIntegration] Error querying user_states:`, error);
       return null;
     }
-    
+
     return data?.state_data || null;
   }
 
@@ -2637,15 +2741,15 @@ export class BotIntegration {
       .eq('user_id', userId)
       .eq('state_type', 'creating_proposal')
       .maybeSingle();
-    
+
     if (error) {
       console.error(`[BotIntegration] Error querying user_states for proposal:`, error);
       return null;
     }
-    
+
     return data?.state_data || null;
   }
-  
+
   private async getOngoingOfframp(userId: string) {
     const { data, error } = await supabase
       .from('user_states')
@@ -2653,31 +2757,31 @@ export class BotIntegration {
       .eq('user_id', userId)
       .eq('state_type', 'offramp')
       .maybeSingle();
-    
+
     if (error) {
       console.error(`[BotIntegration] Error querying user_states for offramp:`, error);
       return null;
     }
-    
+
     return data?.state_data || null;
   }
 
   // Helper method to detect natural language queries
   private isNaturalLanguageQuery(text: string): boolean {
     const lowerText = text.toLowerCase().trim();
-    
+
     // Check for currency conversion patterns first
     const currencyPatterns = [
       /(convert|what['']?s|what is|exchange rate|rate of|how much is).*(usd|dollar|ngn|naira|ghs|cedi)/i,
-        /(usd|dollar|ngn|naira|ghs|cedi).*(to|in|\?).*/i,
-        /\d+\s*(usd|dollar|ngn|naira|ghs|cedi).*(to|in|\?|is)/i,
+      /(usd|dollar|ngn|naira|ghs|cedi).*(to|in|\?).*/i,
+      /\d+\s*(usd|dollar|ngn|naira|ghs|cedi).*(to|in|\?|is)/i,
       /^\/rate\b/i
     ];
-    
+
     if (currencyPatterns.some(pattern => pattern.test(lowerText))) {
       return true;
     }
-    
+
     // Check for business query patterns
     const businessPatterns = [
       /(how many|how much|what['']?s my|show me my|tell me about my).*(invoice|proposal|payment link|earning|revenue)/i,
@@ -2685,11 +2789,11 @@ export class BotIntegration {
       /my (business|earning|revenue|income|invoice|proposal|payment)/i,
       /(total|sum|amount).*(earned|made|received|invoice|proposal|payment)/i
     ];
-    
+
     if (businessPatterns.some(pattern => pattern.test(lowerText))) {
       return true;
     }
-    
+
     // Simple patterns that indicate natural language
     const naturalLanguagePatterns = [
       // Questions
@@ -2776,6 +2880,328 @@ export class BotIntegration {
         return 'Solana';
       default:
         return network.toUpperCase().replace('-', ' ');
+    }
+  }
+
+  // Onramp (Buy Crypto) Methods
+
+  /**
+   * Handle main onramp/buy crypto command
+   */
+  async handleOnramp(chatId: number, userId: string, params: any = {}) {
+    try {
+      console.log('[BotIntegration] handleOnramp called with chatId:', chatId, 'userId:', userId, 'params:', params);
+
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+
+        if (user) {
+          actualUserId = user.id;
+        } else {
+          await this.bot.sendMessage(chatId,
+            'I don\'t see you in our system yet. Please run /start first to get set up!',
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+      }
+
+      // Track onramp started event
+      try {
+        await trackEvent('onramp_started', {
+          user_id: actualUserId,
+          source: 'bot_integration',
+          has_params: Object.keys(params).length > 0,
+          timestamp: new Date().toISOString()
+        }, actualUserId);
+      } catch (trackingError) {
+        console.error('[BotIntegration] Error tracking onramp_started:', trackingError);
+      }
+
+      // If user provided specific parameters, show them in the response
+      let responseText = '🪙 **Buy Crypto with Fiat Currency**\n\n';
+
+      // Check if user mentioned specific tokens, amounts, or currencies
+      const mentionedToken = params.token ||
+        (params.text && (params.text.includes('USDC') ? 'USDC' :
+          params.text.includes('USDT') ? 'USDT' :
+            params.text.includes('CUSD') ? 'CUSD' : null));
+
+      const mentionedAmount = params.amount ||
+        (params.text && params.text.match(/\$?(\d+(?:\.\d+)?)/)?.[1]);
+
+      const mentionedCurrency = params.currency ||
+        (params.text && (params.text.includes('NGN') || params.text.includes('naira') ? 'NGN' :
+          params.text.includes('KES') ? 'KES' :
+            params.text.includes('GHS') ? 'GHS' :
+              params.text.includes('UGX') ? 'UGX' :
+                params.text.includes('TZS') ? 'TZS' : null));
+
+      if (mentionedToken || mentionedAmount || mentionedCurrency) {
+        responseText += '✨ **I noticed you mentioned:**\n';
+        if (mentionedToken) responseText += `• Token: ${mentionedToken}\n`;
+        if (mentionedAmount) responseText += `• Amount: $${mentionedAmount}\n`;
+        if (mentionedCurrency) responseText += `• Currency: ${mentionedCurrency}\n`;
+        responseText += '\n';
+      }
+
+      responseText += '💡 **How to buy:**\n';
+      responseText += '1. Use `/buy_crypto` command\n';
+      responseText += '2. Select your token and network\n';
+      responseText += '3. Choose your currency\n';
+      responseText += '4. Enter amount and confirm\n\n';
+
+      responseText += '**Supported:**\n';
+      responseText += '• **Tokens:** USDC, USDT, cUSD\n';
+      responseText += '• **Networks:** Solana, Base, Celo, Lisk\n';
+      responseText += '• **Currencies:** NGN, KES, GHS, UGX, TZS\n';
+      responseText += '• **Limits:** $5 - $10,000 USD equivalent';
+
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: '🪙 Start Purchase', callback_data: 'start_onramp' }],
+          [
+            { text: '📋 View History', callback_data: 'onramp_history' },
+            { text: '❓ Help', callback_data: 'help' }
+          ]
+        ]
+      };
+
+      console.log('[BotIntegration] Sending onramp message to chatId:', chatId);
+      console.log('[BotIntegration] Message content:', responseText);
+      console.log('[BotIntegration] Keyboard:', JSON.stringify(keyboard));
+
+      try {
+        const result = await this.bot.sendMessage(chatId, responseText, {
+          parse_mode: 'Markdown',
+          reply_markup: keyboard
+        });
+        console.log('[BotIntegration] Onramp message sent successfully, result:', result);
+      } catch (sendError) {
+        console.error('[BotIntegration] Error sending onramp message:', sendError);
+        throw sendError;
+      }
+
+    } catch (error) {
+      console.error('[BotIntegration] Error in handleOnramp:', error);
+      await this.bot.sendMessage(chatId,
+        '❌ Error processing onramp request. Please try again or contact support.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  /**
+   * Handle buy crypto command (alias for handleOnramp)
+   */
+  async handleBuyCrypto(chatId: number, userId: string, params: any = {}) {
+    return this.handleOnramp(chatId, userId, params);
+  }
+
+  /**
+   * Handle onramp message (for message-based routing)
+   */
+  async handleOnrampMessage(message: TelegramBot.Message, userId: string) {
+    const chatId = message.chat.id;
+    const params = {
+      text: message.text,
+      messageId: message.message_id
+    };
+
+    return this.handleOnramp(chatId, userId, params);
+  }
+
+  /**
+   * Handle onramp transaction history
+   */
+  async handleOnrampHistory(chatId: number, userId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      const transactions = await this.fonbnkService.getUserTransactionHistory(actualUserId, 10);
+
+      if (transactions.length === 0) {
+        await this.bot.sendMessage(chatId,
+          '📝 **No onramp transactions found**\n\nYou haven\'t made any crypto purchases yet. Use /buy_crypto to start your first purchase!',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      let message = '📋 **Your Recent Crypto Purchases**\n\n';
+
+      transactions.forEach((tx, index) => {
+        const statusEmoji = tx.status === 'completed' ? '✅' :
+          tx.status === 'failed' ? '❌' :
+            tx.status === 'processing' ? '⏳' : '🕐';
+
+        message += `${index + 1}. ${statusEmoji} **${tx.token}** on ${this.formatNetworkName(tx.chain)}\n`;
+        message += `   💰 ${tx.amount} ${tx.token} (${tx.fiatAmount} ${tx.fiatCurrency})\n`;
+        message += `   📅 ${tx.createdAt.toLocaleDateString()}\n`;
+        if (tx.fonbnkTransactionId) {
+          message += `   🆔 \`${tx.fonbnkTransactionId}\`\n`;
+        }
+        message += '\n';
+      });
+
+      message += '💡 Use `/onramp_status <transaction_id>` to check specific transaction status';
+
+      await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+      console.error('Error getting onramp history:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading transaction history. Please try again.');
+    }
+  }
+
+  /**
+   * Handle onramp transaction status check
+   */
+  async handleOnrampStatus(chatId: number, userId: string, transactionId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      const transaction = await this.fonbnkService.checkTransactionStatus(transactionId);
+
+      if (!transaction) {
+        await this.bot.sendMessage(chatId, '❌ Transaction not found. Please check the transaction ID.');
+        return;
+      }
+
+      if (transaction.userId !== actualUserId) {
+        await this.bot.sendMessage(chatId, '❌ You can only check your own transactions.');
+        return;
+      }
+
+      const statusEmoji = transaction.status === 'completed' ? '✅' :
+        transaction.status === 'failed' ? '❌' :
+          transaction.status === 'processing' ? '⏳' : '🕐';
+
+      let message = `${statusEmoji} **Transaction Status**\n\n`;
+      message += `🆔 **ID:** \`${transaction.fonbnkTransactionId}\`\n`;
+      message += `🪙 **Token:** ${transaction.token} on ${this.formatNetworkName(transaction.chain)}\n`;
+      message += `💰 **Amount:** ${transaction.amount} ${transaction.token}\n`;
+      message += `💵 **Paid:** ${transaction.fiatAmount} ${transaction.fiatCurrency}\n`;
+      message += `📍 **Wallet:** \`${transaction.walletAddress}\`\n`;
+      message += `📊 **Status:** ${transaction.status.toUpperCase()}\n`;
+      message += `📅 **Created:** ${transaction.createdAt.toLocaleString()}\n`;
+
+      if (transaction.txHash) {
+        message += `🔗 **Tx Hash:** \`${transaction.txHash}\`\n`;
+      }
+
+      if (transaction.completedAt) {
+        message += `✅ **Completed:** ${transaction.completedAt.toLocaleString()}\n`;
+      }
+
+      if (transaction.errorMessage) {
+        message += `❌ **Error:** ${transaction.errorMessage}\n`;
+      }
+
+      // Add action buttons based on status
+      const keyboard: any = { inline_keyboard: [] };
+
+      if (transaction.status === 'pending' && transaction.fonbnkPaymentUrl) {
+        keyboard.inline_keyboard.push([
+          { text: '💳 Complete Payment', url: transaction.fonbnkPaymentUrl }
+        ]);
+      }
+
+      keyboard.inline_keyboard.push([
+        { text: '📋 View History', callback_data: 'onramp_history' },
+        { text: '🪙 Buy More', callback_data: 'start_onramp' }
+      ]);
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+
+    } catch (error) {
+      console.error('Error checking onramp status:', error);
+      await this.bot.sendMessage(chatId, '❌ Error checking transaction status. Please try again.');
+    }
+  }
+
+  /**
+   * Handle onramp welcome/info message
+   */
+  async handleOnrampInfo(chatId: number) {
+    try {
+      const supportedTokens = await this.fonbnkService.getSupportedTokens();
+      const supportedCurrencies = await this.fonbnkService.getSupportedCurrencies();
+
+      let message = '🪙 **Buy Crypto with Fiat Currency**\n\n';
+      message += '**Supported Tokens:**\n';
+      supportedTokens.forEach(token => {
+        message += `• **${token.symbol}** - ${token.name}\n`;
+        message += `  Networks: ${token.chains.map(chain => this.formatNetworkName(chain)).join(', ')}\n`;
+      });
+
+      message += '\n**Supported Currencies:**\n';
+      supportedCurrencies.forEach(currency => {
+        message += `• **${currency.symbol} ${currency.name}** (${currency.code})\n`;
+        message += `  Regions: ${currency.regions.join(', ')}\n`;
+      });
+
+      message += '\n💡 **How it works:**\n';
+      message += '1. Choose your token and network\n';
+      message += '2. Select your local currency\n';
+      message += '3. Enter the amount to spend\n';
+      message += '4. Complete payment via secure link\n';
+      message += '5. Receive tokens in your wallet\n\n';
+      message += '⏱️ **Processing time:** 1-5 minutes after payment\n';
+      message += '💰 **Limits:** $5 - $10,000 USD equivalent\n';
+      message += '🔒 **Secure:** Powered by Fonbnk';
+
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: '🪙 Start Purchase', callback_data: 'start_onramp' }],
+          [
+            { text: '📋 View History', callback_data: 'onramp_history' },
+            { text: '❓ Help', callback_data: 'help' }
+          ]
+        ]
+      };
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+
+    } catch (error) {
+      console.error('Error showing onramp info:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading onramp information. Please try again.');
     }
   }
 }

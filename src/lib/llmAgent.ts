@@ -93,6 +93,7 @@ Valid intents:
 - view_proposals: For viewing existing proposals
 - edit_proposal: For editing existing proposals
 - send_reminder: For sending manual payment reminders to clients
+
 - offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
 - kyc_verification: For KYC status, identity verification, or compliance requirements
 - welcome: For greetings and help
@@ -526,6 +527,8 @@ Response: {"intent": "send_reminder", "params": {"reminderType": "due_date"}}
 User: "nudge client about overdue payment"
 Response: {"intent": "send_reminder", "params": {"reminderType": "due_date"}}
 
+
+
 AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.
 If the user mentions blockchain, crypto, wallet, tokens, etc., assume they want to perform a blockchain action.
@@ -553,6 +556,9 @@ For unknown requests that are clearly not blockchain-related, use intent "unknow
     message.toLowerCase().includes('analyze') || 
     message.toLowerCase().includes('proposal') || 
     message.toLowerCase().includes('invoice') || 
+    message.toLowerCase().includes('buy') || 
+    message.toLowerCase().includes('purchase') || 
+    message.toLowerCase().includes('onramp') || 
     context.length > 5;
   
   const modelName = isComplexTask ? "gemini-2.5-flash-lite" : "gemini-2.0-flash-lite";

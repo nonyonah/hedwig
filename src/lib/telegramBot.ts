@@ -4,6 +4,8 @@ import { runLLM } from './llmAgent';
 import { BotIntegration } from '../modules/bot-integration';
 import { supabase } from './supabase';
 import type { ActionResult } from '../api/actions';
+import { FonbnkService } from '../services/fonbnkService';
+import { getOrCreateCdpWallet } from './cdp';
 
 export interface TelegramBotConfig {
   token: string;
@@ -14,25 +16,39 @@ export interface TelegramBotConfig {
   };
 }
 
+// Onramp conversation state interface
+interface OnrampConversationState {
+  step: 'token_selection' | 'chain_selection' | 'region_selection' | 'amount_input' | 'confirmation';
+  selectedToken?: string;
+  selectedChain?: string;
+  selectedCurrency?: string;
+  amount?: number;
+  rates?: Record<string, number>;
+  userId?: string;
+}
+
 export class TelegramBotService {
   private bot: TelegramBot;
   private botIntegration: BotIntegration;
   private isPolling: boolean = false;
+  private fonbnkService: FonbnkService;
+  private onrampConversations: Map<number, OnrampConversationState> = new Map();
 
   constructor(config: TelegramBotConfig) {
     // Initialize the bot with polling or webhook
-    this.bot = new TelegramBot(config.token, { 
-      polling: config.polling || false 
+    this.bot = new TelegramBot(config.token, {
+      polling: config.polling || false
     });
     this.botIntegration = new BotIntegration(this.bot);
+    this.fonbnkService = new FonbnkService();
 
     this.setupEventHandlers();
-    
+
     // Setup bot commands menu
     this.setupBotCommands().catch(error => {
       console.error('[TelegramBot] Failed to setup bot commands:', error);
     });
-    
+
     if (config.webhook) {
       this.setupWebhook(config.webhook.url, config.webhook.port);
     }
@@ -133,7 +149,7 @@ export class TelegramBotService {
     try {
       await this.bot.setWebHook(url);
       console.log(`[TelegramBot] Webhook set to: ${url}`);
-      
+
       if (port) {
         // Start webhook server if port is provided
         this.bot.startPolling = () => {
@@ -188,8 +204,8 @@ export class TelegramBotService {
    * Send a message to a chat
    */
   async sendMessage(
-    chatId: number | string, 
-    text: string, 
+    chatId: number | string,
+    text: string,
     options?: TelegramBot.SendMessageOptions
   ): Promise<TelegramBot.Message> {
     try {
@@ -197,10 +213,10 @@ export class TelegramBotService {
         parse_mode: 'Markdown',
         ...options
       });
-      
+
       // Log outgoing message
       await this.logMessage(Number(chatId), 'outgoing', text);
-      
+
       return message;
     } catch (error) {
       console.error('[TelegramBot] Error sending message:', error);
@@ -244,7 +260,7 @@ export class TelegramBotService {
    * Send chat action (typing, uploading_document, etc.)
    */
   async sendChatAction(
-    chatId: number | string, 
+    chatId: number | string,
     action: TelegramBot.ChatAction
   ): Promise<boolean> {
     try {
@@ -263,7 +279,7 @@ export class TelegramBotService {
     const messageText = msg.text || '';
     const userId = msg.from?.id;
     const username = msg.from?.username;
-    
+
     console.log('[TelegramBot] Handling message:', {
       chatId,
       userId,
@@ -308,20 +324,39 @@ export class TelegramBotService {
         return;
       }
 
+      // Check if user is in onramp flow and handle text input
+      const onrampHandled = await this.handleOnrampTextInput(chatId, messageText);
+      if (onrampHandled) {
+        return;
+      }
+
+      // Quick check for common onramp phrases - feature currently disabled
+      const lowerText = messageText.toLowerCase();
+      if (lowerText.includes('buy crypto') || lowerText.includes('buy cryptocurrency') || 
+          lowerText.includes('purchase crypto') || lowerText.includes('buy tokens') ||
+          lowerText.includes('buy usdc') || lowerText.includes('buy usdt') ||
+          lowerText.includes('onramp') || lowerText.includes('buy with') ||
+          (lowerText.includes('buy') && (lowerText.includes('ngn') || lowerText.includes('naira') || 
+           lowerText.includes('kes') || lowerText.includes('ghs') || lowerText.includes('ugx')))) {
+        console.log('[TelegramBot] Onramp phrase detected but feature is disabled');
+        await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nI understand you want to buy cryptocurrency! This feature is currently under development and will be available soon.\n\nIn the meantime, you can:\n• Check your wallet balance\n• Send crypto to others\n• Create invoices and payment links', { parse_mode: 'Markdown' });
+        return;
+      }
+
       // Handle commands
       if (messageText.startsWith('/')) {
         const commandName = messageText.split(' ')[0].toLowerCase();
         const baseCmd = commandName.includes('@') ? commandName.split('@')[0] : commandName;
-        
+
         // Allow certain commands to be processed by AI instead of handleCommand
-        if (baseCmd === '/send' || baseCmd === '/balance' || baseCmd === '/swap' || baseCmd === '/bridge' || baseCmd === '/price') {
+        if (baseCmd === '/send' || baseCmd === '/balance' || baseCmd === '/swap' || baseCmd === '/bridge' || baseCmd === '/price' || baseCmd === '/buy' || baseCmd === '/purchase') {
           console.log('[TelegramBot] Processing AI-handled command:', baseCmd);
           const response = await this.processWithAI(messageText, chatId);
           console.log('[TelegramBot] AI response received, sending to user');
           await this.sendMessage(chatId, response);
           return;
         }
-        
+
         console.log('[TelegramBot] Processing command:', messageText ? messageText.split(' ')[0] : 'unknown');
         await this.handleCommand(msg);
         return;
@@ -331,13 +366,13 @@ export class TelegramBotService {
       if (messageText.trim()) {
         console.log('[TelegramBot] Processing message with AI');
         const response = await this.processWithAI(messageText, chatId);
-        
+
         console.log('[TelegramBot] AI response received, sending to user');
         await this.sendMessage(chatId, response);
       } else {
         console.log('[TelegramBot] Empty message, sending default response');
         await this.sendMessage(
-          chatId, 
+          chatId,
           'Please send me a message and I\'ll help you with your freelancing tasks!'
         );
       }
@@ -423,7 +458,22 @@ export class TelegramBotService {
         case 'about':
           await this.sendAboutMessage(chatId);
           break;
+        case 'start_onramp':
+          // Onramp feature is currently disabled
+          await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. We\'ll notify you when it\'s available!', { parse_mode: 'Markdown' });
+          break;
+        case 'onramp_history':
+          // Onramp feature is currently disabled
+          await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction history will be available when the feature launches!', { parse_mode: 'Markdown' });
+          break;
         default:
+          // Handle onramp callbacks
+          if (data.startsWith('onramp_')) {
+            console.log(`[TelegramBot] Routing onramp callback: ${data}`);
+            await this.handleOnrampCallback(callbackQuery);
+            break;
+          }
+
           // Handle offramp callbacks
           if (data.startsWith('payout_bank_') || data.startsWith('select_bank_') || data.startsWith('back_to_') || data.startsWith('offramp_') || data === 'action_offramp') {
             console.log(`[TelegramBot] Routing offramp callback: ${data}`);
@@ -438,7 +488,7 @@ export class TelegramBotService {
             }
             break;
           }
-          
+
           // Handle dynamic callbacks like 'view_invoice_ID' or 'delete_invoice_ID'
           if (data.startsWith('view_invoice_') || data.startsWith('delete_invoice_')) {
             // Delegate to a specific handler in BotIntegration if it exists
@@ -460,7 +510,7 @@ export class TelegramBotService {
    */
   private async handleInlineQuery(inlineQuery: TelegramBot.InlineQuery): Promise<void> {
     const query = inlineQuery.query;
-    
+
     console.log('[TelegramBot] Handling inline query:', query);
 
     try {
@@ -574,6 +624,23 @@ export class TelegramBotService {
         await this.botIntegration.handleLeaderboardCommand(chatId);
         break;
       }
+      case '/buy_crypto':
+      case '/buy':
+      case '/onramp': {
+        // Onramp feature is currently disabled
+        await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. We\'ll notify you when it\'s available!\n\nIn the meantime, you can:\n• Check your wallet balance with /balance\n• Send crypto with /send\n• Create invoices with /invoice\n• Create payment links with /paymentlink', { parse_mode: 'Markdown' });
+        break;
+      }
+      case '/onramp_history': {
+        // Onramp feature is currently disabled
+        await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction history will be available when the feature launches!', { parse_mode: 'Markdown' });
+        break;
+      }
+      case '/onramp_status': {
+        // Onramp feature is currently disabled
+        await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction status checking will be available when the feature launches!', { parse_mode: 'Markdown' });
+        break;
+      }
       default:
         await this.sendMessage(
           chatId,
@@ -641,11 +708,14 @@ Just send me a message and I'll help you out! ✨`;
 /about - ℹ️ About Hedwig
 /menu - 📱 Show quick action menu
 
+
 ✨ **What I can do:**
 • 📄 Create professional invoices
 • 💰 Track your payments and earnings
 • 📊 Provide payment summaries
 • 🔄 Help with token swaps
+• 🪙 Buy crypto with local currency (onramp)
+• 💱 Sell crypto for local currency (offramp)
 • 💬 Answer questions about your business
 
 🎯 **How to use:**
@@ -654,6 +724,7 @@ Just type your request in natural language, like:
 - "Show me my earnings this month" 📈
 - "Send a payment reminder" 📧
 - "I want to swap tokens" 🔄
+- "Buy crypto with NGN" 🪙
 
 Feel free to ask me anything! 😊`;
 
@@ -747,42 +818,72 @@ Choose an action below:`;
 
       // Use Telegram username as identifier for LLM, fallback to user UUID if no username
       const llmUserId = user.telegram_username || user.id;
-      
+
       // Import required modules
       const { parseIntentAndParams } = await import('@/lib/intentParser');
       const { handleAction } = await import('../api/actions');
-      
+
       // Get LLM response
       const llmResponse = await runLLM({
         userId: llmUserId,
         message
       });
-      
+
       console.log('[TelegramBot] LLM Response:', llmResponse);
-      
+
       // Parse the intent and parameters
       const { intent, params } = parseIntentAndParams(llmResponse);
-      
+
       console.log('[TelegramBot] Parsed intent:', intent, 'Params:', params);
 
+      // Debug: Also try direct intent parsing for comparison
+      const directIntent = parseIntentAndParams(message);
+      console.log('[TelegramBot] Direct intent parsing (bypass LLM):', directIntent);
+
+      // Fallback: If LLM didn't recognize onramp but direct parser did, use direct parser
+      let finalIntent = intent;
+      let finalParams = params;
+      
+      if (intent === 'unknown' && directIntent.intent === 'onramp') {
+        console.log('[TelegramBot] Using direct parser result as fallback for onramp');
+        finalIntent = directIntent.intent;
+        finalParams = directIntent.params;
+      }
+
+      console.log('[TelegramBot] Final intent to execute:', finalIntent, 'Final params:', finalParams);
+
+      // Additional fallback: If still unknown but message clearly indicates onramp, force onramp intent
+      if (finalIntent === 'unknown' || finalIntent === 'conversation' || finalIntent === 'clarification') {
+        const lowerMessage = message.toLowerCase();
+        if (lowerMessage.includes('buy crypto') || lowerMessage.includes('buy cryptocurrency') || 
+            lowerMessage.includes('purchase crypto') || lowerMessage.includes('buy tokens') ||
+            lowerMessage.includes('buy usdc') || lowerMessage.includes('buy usdt') ||
+            lowerMessage.includes('onramp') || lowerMessage.includes('fiat to crypto') ||
+            (lowerMessage.includes('buy') && (lowerMessage.includes('ngn') || lowerMessage.includes('naira')))) {
+          console.log('[TelegramBot] Forcing onramp intent due to clear onramp keywords');
+          finalIntent = 'onramp';
+          finalParams = { text: message };
+        }
+      }
+
       // Special-case: Offramp intent should open the mini app (not conversational flow)
-      if (intent === 'offramp' || intent === 'withdraw') {
+      if (finalIntent === 'offramp' || finalIntent === 'withdraw') {
         // If the user provided complete information (amount, token, chain), start the flow directly
         if (params.hasCompleteInfo) {
           console.log('[TelegramBot] Complete offramp info provided, starting flow with params:', params);
-          
+
           // Execute the offramp action with the parsed parameters
           try {
             const actionResult = await handleAction(
               'offramp',
-              { 
+              {
                 ...params,
                 step: 'amount',
                 skipAmountStep: true // Flag to skip amount input since we have it
               },
               user.id
             );
-            
+
             // Handle the action result
             if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
               await this.sendMessage(chatId, actionResult.text || 'Processing your withdrawal...', {
@@ -819,16 +920,18 @@ Choose an action below:`;
       // Execute the action based on the intent using the user's UUID
       let actionResult: ActionResult | string;
       try {
+        console.log('[TelegramBot] Calling handleAction with:', { intent: finalIntent, params: finalParams, userId: user.id });
         actionResult = await handleAction(
-          intent,
-          params,
+          finalIntent,
+          finalParams,
           user.id
         );
+        console.log('[TelegramBot] handleAction result:', actionResult);
       } catch (actionError) {
         console.error('[TelegramBot] Action execution error:', actionError);
         return 'I encountered an error processing your request. Please try again.';
       }
-      
+
       // Handle the action result - if it has reply_markup, send it directly
       if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
         await this.sendMessage(chatId, actionResult.text || 'Request processed', {
@@ -836,10 +939,16 @@ Choose an action below:`;
         });
         return 'Message sent with interactive options';
       }
-      
+
+      // Check if action handler already sent the message (empty text response)
+      if (actionResult && typeof actionResult === 'object' && actionResult.text === '') {
+        console.log('[TelegramBot] Action handler already sent message, skipping response');
+        return 'Message already sent by action handler';
+      }
+
       // Format the response for Telegram (simple text response)
       let responseMessage = 'Request processed successfully';
-      
+
       if (actionResult) {
         if (typeof actionResult === 'string') {
           responseMessage = actionResult;
@@ -852,7 +961,8 @@ Choose an action below:`;
           }
         }
       }
-      
+
+      console.log('[TelegramBot] Final response message:', responseMessage);
       return responseMessage || "I'm sorry, I couldn't process your request at the moment. Please try again.";
     } catch (error) {
       console.error('[TelegramBot] Error processing with AI:', error);
@@ -865,14 +975,14 @@ Choose an action below:`;
    */
   private async ensureUserExists(from: TelegramBot.User, chatId: number): Promise<void> {
     try {
-      
+
       // Check if user already exists
       const { data: existingUser } = await supabase
         .from('users')
         .select('id')
         .eq('telegram_chat_id', chatId)
         .single();
-      
+
       // Create or get user
       const { error } = await supabase.rpc('get_or_create_telegram_user', {
         p_telegram_chat_id: chatId,
@@ -918,7 +1028,7 @@ Choose an action below:`;
    */
   private async checkAndRequestEmail(chatId: number): Promise<void> {
     try {
-      
+
       // Get user data
       const { data: user, error } = await supabase
         .from('users')
@@ -958,7 +1068,7 @@ Choose an action below:`;
       const message = `👋 Hi ${userName}! To personalize your invoices and proposals, I need your email address.
 
 📧 Please reply with your email address:`;
-      
+
       await this.sendMessage(chatId, message);
     } catch (error) {
       console.error('[TelegramBot] Error requesting user email:', error);
@@ -1012,7 +1122,7 @@ Choose an action below:`;
       await this.sendMessage(chatId, `✅ Great! Your email (${email}) has been saved.
 
 Now you can create personalized invoices and proposals. Type /help to see what I can do for you!`);
-      
+
       return true; // Successfully handled
     } catch (error) {
       console.error('[TelegramBot] Error handling email collection:', error);
@@ -1024,9 +1134,9 @@ Now you can create personalized invoices and proposals. Type /help to see what I
    * Log message to database
    */
   private async logMessage(
-    chatId: number, 
-    direction: 'incoming' | 'outgoing', 
-    content: string, 
+    chatId: number,
+    direction: 'incoming' | 'outgoing',
+    content: string,
     userId?: number
   ): Promise<void> {
     try {
@@ -1074,6 +1184,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'wallet', description: '👛 View wallet information' },
         { command: 'balance', description: '💰 Check wallet balance' },
         { command: 'send', description: '💸 Send crypto to someone' },
+
         { command: 'offramp', description: '🏦 Withdraw crypto to bank account' },
         { command: 'earnings', description: '📊 View earnings summary' },
         { command: 'summary', description: '📈 View earnings summary' },
@@ -1151,32 +1262,32 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         // Clear user session state
         const { sessionManager } = await import('./sessionManager');
         const { supabase } = await import('./supabase');
-        
+
         // Get user's wallet address to clear session
         const { data: userWallet } = await supabase
           .from('wallets')
           .select('address')
           .eq('user_id', userId)
           .maybeSingle();
-        
+
         if (userWallet?.address) {
           sessionManager.invalidateSession(userWallet.address);
         }
-        
+
         // Clear offramp session if exists
         const { offrampSessionService } = await import('../services/offrampSessionService');
         const activeOfframpSession = await offrampSessionService.getActiveSession(userId);
         if (activeOfframpSession) {
           await offrampSessionService.clearSession(activeOfframpSession.id);
         }
-        
+
         // Clear any other state management
         await supabase
           .from('user_states')
           .delete()
           .eq('user_id', userId);
       }
-      
+
       await this.bot.sendMessage(chatId, '✅ All ongoing actions have been cancelled. You can start fresh with any command.');
     } catch (error) {
       console.error('[TelegramBot] Error handling cancel command:', error);
@@ -1195,7 +1306,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
       }
 
       await this.bot.sendMessage(chatId, '📧 Please provide the email address to send the reminder to:');
-      
+
       // Set user state to expect email input for reminder
       const { supabase } = await import('./supabase');
       await supabase
@@ -1208,7 +1319,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         }, {
           onConflict: 'user_id,state_type'
         });
-      
+
     } catch (error) {
       console.error('[TelegramBot] Error handling send reminder command:', error);
       await this.bot.sendMessage(chatId, '❌ Error setting up reminder. Please try again.');
@@ -1226,6 +1337,453 @@ Now you can create personalized invoices and proposals. Type /help to see what I
       throw error;
     }
   }
+
+  /**
+   * Handle Buy Crypto command - route through bot-integration
+   */
+  private async handleBuyCryptoCommand(chatId: number, userId: string, params: any = {}): Promise<void> {
+    try {
+      console.log(`[TelegramBot] Routing onramp to bot-integration for user ${userId}`);
+
+      // Route to bot-integration for consistent handling
+      await this.botIntegration.handleBuyCrypto(chatId, userId, params);
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling buy crypto command:', error);
+      await this.sendMessage(chatId, '❌ Sorry, there was an error starting the purchase flow. Please try again.');
+    }
+  }
+
+  /**
+   * Handle Buy Crypto command with conversation flow (legacy method)
+   */
+  private async handleBuyCryptoCommandWithFlow(chatId: number, userId: string): Promise<void> {
+    try {
+      console.log(`[TelegramBot] Starting onramp conversation flow for user ${userId}`);
+
+      // Track onramp started event
+      try {
+        const { trackEvent } = await import('./posthog');
+        await trackEvent('onramp_started', {
+          feature: 'onramp',
+          timestamp: new Date().toISOString(),
+        }, userId);
+      } catch (trackingError) {
+        console.error('[TelegramBot] Error tracking onramp_started event:', trackingError);
+      }
+
+      // Initialize conversation state
+      this.onrampConversations.set(chatId, {
+        step: 'token_selection',
+        userId: userId
+      });
+
+      // Show token selection
+      await this.showTokenSelection(chatId);
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling buy crypto command with flow:', error);
+      await this.sendMessage(chatId, '❌ Sorry, there was an error starting the purchase flow. Please try again.');
+    }
+  }
+
+  /**
+   * Show token selection interface
+   */
+  private async showTokenSelection(chatId: number): Promise<void> {
+    try {
+      const supportedTokens = await this.fonbnkService.getSupportedTokens();
+
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: supportedTokens.map(token => [{
+          text: `${token.symbol} - ${token.name}`,
+          callback_data: `onramp_token_${token.symbol.toLowerCase()}`
+        }])
+      };
+
+      await this.sendMessage(chatId,
+        '🪙 **Choose the token you want to buy:**\n\n' +
+        supportedTokens.map(token =>
+          `• **${token.symbol}** - ${token.name}\n  Available on: ${token.chains.join(', ')}`
+        ).join('\n\n'),
+        { reply_markup: keyboard }
+      );
+
+    } catch (error) {
+      console.error('[TelegramBot] Error showing token selection:', error);
+      await this.sendMessage(chatId, '❌ Error loading available tokens. Please try again.');
+    }
+  }
+
+  /**
+   * Show chain selection interface
+   */
+  private async showChainSelection(chatId: number, token: string): Promise<void> {
+    try {
+      const supportedTokens = await this.fonbnkService.getSupportedTokens();
+      const tokenInfo = supportedTokens.find(t => t.symbol.toLowerCase() === token.toLowerCase());
+
+      if (!tokenInfo) {
+        throw new Error(`Token ${token} not found`);
+      }
+
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: tokenInfo.chains.map(chain => [{
+          text: `${chain.charAt(0).toUpperCase() + chain.slice(1)} Network`,
+          callback_data: `onramp_chain_${chain.toLowerCase()}`
+        }])
+      };
+
+      await this.sendMessage(chatId,
+        `🔗 **Choose the network for ${tokenInfo.symbol}:**\n\n` +
+        tokenInfo.chains.map(chain =>
+          `• **${chain.charAt(0).toUpperCase() + chain.slice(1)}** Network`
+        ).join('\n'),
+        { reply_markup: keyboard }
+      );
+
+    } catch (error) {
+      console.error('[TelegramBot] Error showing chain selection:', error);
+      await this.sendMessage(chatId, '❌ Error loading available networks. Please try again.');
+    }
+  }
+
+  /**
+   * Show currency/region selection interface
+   */
+  private async showCurrencySelection(chatId: number): Promise<void> {
+    try {
+      const supportedCurrencies = await this.fonbnkService.getSupportedCurrencies();
+
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: supportedCurrencies.map(currency => [{
+          text: `${currency.symbol} ${currency.name} (${currency.code})`,
+          callback_data: `onramp_currency_${currency.code.toLowerCase()}`
+        }])
+      };
+
+      await this.sendMessage(chatId,
+        '🌍 **Choose your currency/region:**\n\n' +
+        supportedCurrencies.map(currency =>
+          `• **${currency.symbol} ${currency.name}** (${currency.code})\n  Regions: ${currency.regions.join(', ')}`
+        ).join('\n\n'),
+        { reply_markup: keyboard }
+      );
+
+    } catch (error) {
+      console.error('[TelegramBot] Error showing currency selection:', error);
+      await this.sendMessage(chatId, '❌ Error loading available currencies. Please try again.');
+    }
+  }
+
+  /**
+   * Handle onramp callback queries
+   */
+  private async handleOnrampCallback(callbackQuery: TelegramBot.CallbackQuery): Promise<void> {
+    const chatId = callbackQuery.message?.chat.id;
+    const data = callbackQuery.data;
+    const userId = callbackQuery.from.id.toString();
+
+    if (!chatId || !data) return;
+
+    try {
+      const conversation = this.onrampConversations.get(chatId);
+      if (!conversation) {
+        await this.sendMessage(chatId, '❌ Session expired. Please start again with /buy_crypto');
+        return;
+      }
+
+      if (data.startsWith('onramp_token_')) {
+        const token = data.replace('onramp_token_', '').toUpperCase();
+        conversation.selectedToken = token;
+        conversation.step = 'chain_selection';
+
+        // Track token selection
+        try {
+          const { trackEvent } = await import('./posthog');
+          await trackEvent('onramp_token_selected', {
+            feature: 'onramp',
+            token: token,
+            timestamp: new Date().toISOString(),
+          }, userId);
+        } catch (trackingError) {
+          console.error('[TelegramBot] Error tracking onramp_token_selected event:', trackingError);
+        }
+
+        await this.showChainSelection(chatId, token);
+
+      } else if (data.startsWith('onramp_chain_')) {
+        const chain = data.replace('onramp_chain_', '').toLowerCase();
+        conversation.selectedChain = chain;
+        conversation.step = 'region_selection';
+
+        // Track chain selection
+        try {
+          const { trackEvent } = await import('./posthog');
+          await trackEvent('onramp_chain_selected', {
+            feature: 'onramp',
+            token: conversation.selectedToken,
+            chain: chain,
+            timestamp: new Date().toISOString(),
+          }, userId);
+        } catch (trackingError) {
+          console.error('[TelegramBot] Error tracking onramp_chain_selected event:', trackingError);
+        }
+
+        await this.showCurrencySelection(chatId);
+
+      } else if (data.startsWith('onramp_currency_')) {
+        const currency = data.replace('onramp_currency_', '').toUpperCase();
+        conversation.selectedCurrency = currency;
+        conversation.step = 'amount_input';
+
+        await this.sendMessage(chatId,
+          `💰 **Enter the amount you want to spend in ${currency}:**\n\n` +
+          `Example: 1000 (for ${currency} 1,000)\n\n` +
+          `Minimum: $5 USD equivalent\n` +
+          `Maximum: $10,000 USD equivalent`
+        );
+
+      } else if (data.startsWith('onramp_confirm_')) {
+        await this.processOnrampTransaction(chatId, conversation);
+
+      } else if (data === 'onramp_cancel') {
+        this.onrampConversations.delete(chatId);
+        await this.sendMessage(chatId, '❌ Purchase cancelled. You can start again with /buy_crypto');
+      }
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling onramp callback:', error);
+      await this.sendMessage(chatId, '❌ Error processing your request. Please try again.');
+    }
+  }
+
+  /**
+   * Process onramp transaction creation
+   */
+  private async processOnrampTransaction(chatId: number, conversation: OnrampConversationState): Promise<void> {
+    try {
+      if (!conversation.selectedToken || !conversation.selectedChain || !conversation.selectedCurrency || !conversation.amount || !conversation.userId) {
+        throw new Error('Missing required information');
+      }
+
+      await this.sendMessage(chatId, '⏳ Creating your purchase transaction...');
+
+      // Get user's wallet address
+      const wallet = await getOrCreateCdpWallet(conversation.userId, conversation.selectedChain);
+      if (!wallet || !wallet.address) {
+        throw new Error('Failed to get wallet address');
+      }
+
+      // Create transaction
+      const transactionResponse = await this.fonbnkService.createTransaction({
+        userId: conversation.userId,
+        token: conversation.selectedToken,
+        chain: conversation.selectedChain,
+        amount: conversation.amount,
+        currency: conversation.selectedCurrency,
+        walletAddress: wallet.address
+      });
+
+      // Track transaction creation
+      try {
+        const { trackEvent } = await import('./posthog');
+        await trackEvent('onramp_transaction_created', {
+          feature: 'onramp',
+          token: conversation.selectedToken,
+          chain: conversation.selectedChain,
+          currency: conversation.selectedCurrency,
+          amount: conversation.amount,
+          transaction_id: transactionResponse.transactionId,
+          timestamp: new Date().toISOString(),
+        }, conversation.userId);
+      } catch (trackingError) {
+        console.error('[TelegramBot] Error tracking onramp_transaction_created event:', trackingError);
+      }
+
+      // Send success message with payment link
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: [[
+          { text: '💳 Complete Payment', url: transactionResponse.paymentUrl }
+        ]]
+      };
+
+      await this.sendMessage(chatId,
+        `✅ **Transaction Created Successfully!**\n\n` +
+        `🪙 **Token:** ${conversation.selectedToken}\n` +
+        `🔗 **Network:** ${conversation.selectedChain}\n` +
+        `💰 **Amount:** ${conversation.amount} ${conversation.selectedCurrency}\n` +
+        `📍 **Wallet:** ${wallet.address}\n\n` +
+        `🔗 **Transaction ID:** \`${transactionResponse.transactionId}\`\n\n` +
+        `⏰ **Expires:** ${transactionResponse.expiresAt.toLocaleString()}\n\n` +
+        `👆 Click the button below to complete your payment. You'll receive your tokens within 1-5 minutes after payment confirmation.`,
+        { reply_markup: keyboard }
+      );
+
+      // Clear conversation state
+      this.onrampConversations.delete(chatId);
+
+    } catch (error) {
+      console.error('[TelegramBot] Error processing onramp transaction:', error);
+      await this.sendMessage(chatId, `❌ Error creating transaction: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle onramp transaction history
+   */
+  private async handleOnrampHistory(chatId: number, userId: string): Promise<void> {
+    try {
+      const transactions = await this.fonbnkService.getUserTransactionHistory(userId, 10);
+
+      if (transactions.length === 0) {
+        await this.sendMessage(chatId, '📝 No onramp transactions found. Start your first purchase with /buy_crypto');
+        return;
+      }
+
+      let message = '📋 **Your Recent Onramp Transactions:**\n\n';
+
+      transactions.forEach((tx, index) => {
+        const statusEmoji = tx.status === 'completed' ? '✅' :
+          tx.status === 'failed' ? '❌' :
+            tx.status === 'processing' ? '⏳' : '🕐';
+
+        message += `${index + 1}. ${statusEmoji} **${tx.token}** on ${tx.chain}\n`;
+        message += `   💰 ${tx.amount} ${tx.token} (${tx.fiatAmount} ${tx.fiatCurrency})\n`;
+        message += `   📅 ${tx.createdAt.toLocaleDateString()}\n`;
+        message += `   🆔 \`${tx.fonbnkTransactionId}\`\n\n`;
+      });
+
+      await this.sendMessage(chatId, message);
+
+    } catch (error) {
+      console.error('[TelegramBot] Error getting onramp history:', error);
+      await this.sendMessage(chatId, '❌ Error loading transaction history. Please try again.');
+    }
+  }
+
+  /**
+   * Handle onramp transaction status check
+   */
+  private async handleOnrampStatus(chatId: number, userId: string, transactionId: string): Promise<void> {
+    try {
+      const transaction = await this.fonbnkService.checkTransactionStatus(transactionId);
+
+      if (!transaction) {
+        await this.sendMessage(chatId, '❌ Transaction not found. Please check the transaction ID.');
+        return;
+      }
+
+      if (transaction.userId !== userId) {
+        await this.sendMessage(chatId, '❌ You can only check your own transactions.');
+        return;
+      }
+
+      const statusEmoji = transaction.status === 'completed' ? '✅' :
+        transaction.status === 'failed' ? '❌' :
+          transaction.status === 'processing' ? '⏳' : '🕐';
+
+      let message = `${statusEmoji} **Transaction Status**\n\n`;
+      message += `🆔 **ID:** \`${transaction.fonbnkTransactionId}\`\n`;
+      message += `🪙 **Token:** ${transaction.token} on ${transaction.chain}\n`;
+      message += `💰 **Amount:** ${transaction.amount} ${transaction.token}\n`;
+      message += `💵 **Paid:** ${transaction.fiatAmount} ${transaction.fiatCurrency}\n`;
+      message += `📍 **Wallet:** \`${transaction.walletAddress}\`\n`;
+      message += `📊 **Status:** ${transaction.status.toUpperCase()}\n`;
+      message += `📅 **Created:** ${transaction.createdAt.toLocaleString()}\n`;
+
+      if (transaction.txHash) {
+        message += `🔗 **Tx Hash:** \`${transaction.txHash}\`\n`;
+      }
+
+      if (transaction.completedAt) {
+        message += `✅ **Completed:** ${transaction.completedAt.toLocaleString()}\n`;
+      }
+
+      if (transaction.errorMessage) {
+        message += `❌ **Error:** ${transaction.errorMessage}\n`;
+      }
+
+      await this.sendMessage(chatId, message);
+
+    } catch (error) {
+      console.error('[TelegramBot] Error checking onramp status:', error);
+      await this.sendMessage(chatId, '❌ Error checking transaction status. Please try again.');
+    }
+  }
+
+  /**
+   * Handle text messages during onramp flow (for amount input)
+   */
+  private async handleOnrampTextInput(chatId: number, messageText: string): Promise<boolean> {
+    const conversation = this.onrampConversations.get(chatId);
+
+    if (!conversation || conversation.step !== 'amount_input') {
+      return false; // Not in onramp flow or not expecting text input
+    }
+
+    try {
+      const amount = parseFloat(messageText.replace(/[^\d.]/g, ''));
+
+      if (isNaN(amount) || amount <= 0) {
+        await this.sendMessage(chatId, '❌ Please enter a valid amount (numbers only).');
+        return true;
+      }
+
+      if (amount < 5) {
+        await this.sendMessage(chatId, '❌ Minimum amount is $5 USD equivalent.');
+        return true;
+      }
+
+      if (amount > 10000) {
+        await this.sendMessage(chatId, '❌ Maximum amount is $10,000 USD equivalent.');
+        return true;
+      }
+
+      conversation.amount = amount;
+      conversation.step = 'confirmation';
+
+      // Get exchange rate
+      try {
+        const rateResponse = await this.fonbnkService.getExchangeRates(
+          conversation.selectedToken!,
+          amount,
+          conversation.selectedCurrency!
+        );
+
+        const keyboard: TelegramBot.InlineKeyboardMarkup = {
+          inline_keyboard: [
+            [{ text: '✅ Confirm Purchase', callback_data: 'onramp_confirm_yes' }],
+            [{ text: '❌ Cancel', callback_data: 'onramp_cancel' }]
+          ]
+        };
+
+        await this.sendMessage(chatId,
+          `📋 **Purchase Summary:**\n\n` +
+          `🪙 **Token:** ${conversation.selectedToken}\n` +
+          `🔗 **Network:** ${conversation.selectedChain}\n` +
+          `💰 **You Pay:** ${amount} ${conversation.selectedCurrency}\n` +
+          `🎯 **You Get:** ~${(amount / rateResponse.rate).toFixed(6)} ${conversation.selectedToken}\n` +
+          `📊 **Rate:** 1 ${conversation.selectedToken} = ${rateResponse.rate.toFixed(2)} ${conversation.selectedCurrency}\n` +
+          `💸 **Fees:** ${rateResponse.fees.totalFee.toFixed(2)} ${conversation.selectedCurrency}\n\n` +
+          `⏰ **Rate expires in 30 seconds**\n\n` +
+          `Confirm to proceed with the purchase?`,
+          { reply_markup: keyboard }
+        );
+
+      } catch (error) {
+        console.error('[TelegramBot] Error getting exchange rate:', error);
+        await this.sendMessage(chatId, '❌ Error getting current rates. Please try again.');
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling onramp text input:', error);
+      await this.sendMessage(chatId, '❌ Error processing amount. Please try again.');
+      return true;
+    }
+  }
 }
 
 // Factory function to create bot instance
@@ -1236,28 +1794,3 @@ export const createTelegramBot = (config: TelegramBotConfig): TelegramBotService
 // Export for backward compatibility
 export { TelegramBotService as TelegramBot };
 
-
-// Add this function to the end of the file
-export async function processWithAI(text: string, chatId: number): Promise<string> {
-  const { runLLM } = await import('./llmAgent');
-  const { handleAction } = await import('../api/actions');
-  
-  const actionResult = await runLLM({
-    userId: String(chatId),
-    message: text
-  });
-
-  if (actionResult && typeof actionResult === 'object') {
-    // Type guard to ensure actionResult is a record
-    const actionParams = actionResult as Record<string, any>;
-
-    if ('intent' in actionParams && typeof actionParams.intent === 'string') {
-      // Call handleAction and return its string result
-      const result = await handleAction(actionParams.intent, actionParams.params, String(chatId));
-      return result.text || 'Action completed successfully.';
-    }
-  }
-  
-  // Fallback for unexpected cases
-  return 'I received a response I couldn\'t process. Please try again.';
-}

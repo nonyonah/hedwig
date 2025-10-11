@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 // Card components removed - using new design without cards
 import { Badge } from '@/components/ui/badge';
 // Separator component removed - using new design without separators
-import { Download, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2, RefreshCw, ChevronDown, Check } from 'lucide-react';
+import { Download, Wallet, CreditCard, Calendar, User, Building, FileText, DollarSign, CheckCircle, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
@@ -152,66 +152,7 @@ function PaymentFlow({
   );
 }
 
-const DropdownModal = ({
-  visible,
-  onClose,
-  options,
-  selectedValue,
-  onSelect,
-  title,
-  type = 'default'
-}: {
-  visible: boolean;
-  onClose: () => void;
-  options: any[];
-  selectedValue: any;
-  onSelect: (value: any) => void;
-  title: string;
-  type?: 'chain' | 'token' | 'default';
-}) => {
-  if (!visible) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm mx-4">
-        <h3 className="text-lg font-semibold text-slate-900 text-center mb-4">
-          {title}
-        </h3>
-        <div className="space-y-2">
-          {options.map((item) => (
-            <button
-              key={type === 'chain' ? item.id : item.symbol}
-              onClick={() => {
-                onSelect(type === 'chain' ? item.id : item);
-                onClose();
-              }}
-              className="w-full flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center">
-                {type === 'chain' && (
-                  <div className={`w-3 h-3 rounded-full ${item.color} mr-3`}></div>
-                )}
-                <span className="text-slate-900 font-medium">
-                  {type === 'chain' ? item.name : item.symbol}
-                </span>
-              </div>
-              {((type === 'chain' && selectedValue === item.id) || 
-                (type === 'token' && selectedValue?.symbol === item.symbol)) && (
-                <Check className="w-5 h-5 text-blue-500" />
-              )}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={onClose}
-          className="w-full mt-4 py-2 text-gray-500 hover:text-gray-700"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-};
 
 export default function InvoicePage() {
   const [deleting, setDeleting] = useState(false);
@@ -223,15 +164,8 @@ export default function InvoicePage() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Network selection state
+  // Network selection state - will be set from invoice data
   const [selectedChain, setSelectedChain] = useState({ id: 8453, name: 'Base', color: 'bg-blue-500' });
-  const [showChainModal, setShowChainModal] = useState(false);
-
-  // Chain options for Base and Celo
-  const chainOptions = [
-    { id: 8453, name: 'Base', color: 'bg-blue-500' },
-    { id: 42220, name: 'Celo', color: 'bg-green-500' }
-  ];
 
   // Get USDC token for selected chain
   const getUSDCForChain = (chainId: number) => {
@@ -335,6 +269,14 @@ export default function InvoicePage() {
           console.warn('Wallet fallback lookup failed:', e);
         }
         setInvoiceData(data);
+        
+        // Set the chain based on invoice data
+        if (data.blockchain === 'celo' || data.chain_id === 42220) {
+          setSelectedChain({ id: 42220, name: 'Celo', color: 'bg-green-500' });
+        } else {
+          // Default to Base
+          setSelectedChain({ id: 8453, name: 'Base', color: 'bg-blue-500' });
+        }
       } else {
         console.error('Failed to fetch invoice data');
       }
@@ -655,14 +597,10 @@ export default function InvoicePage() {
                 <div className="flex items-center space-x-2">
                   <span className="font-bold">${total.toLocaleString()} USDC</span>
                   <span className="text-gray-400">on</span>
-                  <button
-                    onClick={() => setShowChainModal(true)}
-                    className="flex items-center px-3 py-1 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
+                  <div className="flex items-center px-3 py-1 bg-white border border-gray-200 rounded-lg">
                     <div className={`w-3 h-3 rounded-full ${selectedChain.color} mr-2`}></div>
                     <span className="text-gray-900 font-medium text-sm">{selectedChain.name}</span>
-                    <ChevronDown className="h-3 w-3 ml-1 text-gray-400" />
-                  </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -705,19 +643,7 @@ export default function InvoicePage() {
 
       </div>
 
-      {/* Chain Selection Modal */}
-      <DropdownModal
-        visible={showChainModal}
-        onClose={() => setShowChainModal(false)}
-        options={chainOptions}
-        selectedValue={selectedChain}
-        onSelect={(chain) => {
-          setSelectedChain(chain);
-          setShowChainModal(false);
-        }}
-        title="Select Network"
-        type="chain"
-      />
+
     </div>
   );
 }

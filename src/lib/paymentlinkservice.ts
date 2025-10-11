@@ -123,6 +123,8 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
         amount,
         token: token.toUpperCase(),
         network: network.toLowerCase(),
+        blockchain: network.toLowerCase(), // Store blockchain info
+        // Note: chain_id will be added when database migration is run
         wallet_address: walletAddress.toLowerCase(),
         user_name: userName,
         payment_reason: paymentReason,

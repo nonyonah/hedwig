@@ -981,6 +981,114 @@ export const HedwigEvents = {
   },
 
   /**
+   * Track onramp/crypto purchase usage
+   */
+  onrampStarted: async (userId: string, details?: { token?: string; chain?: string; currency?: string }) => {
+    await trackEvent('onramp_started', {
+      category: 'features',
+      feature: 'onramp',
+      token: details?.token,
+      chain: details?.chain,
+      currency: details?.currency
+    }, userId);
+  },
+
+  onrampTokenSelected: async (userId: string, token: string, availableChains?: string[]) => {
+    await trackEvent('onramp_token_selected', {
+      category: 'features',
+      feature: 'onramp',
+      token: token,
+      available_chains: availableChains?.join(',')
+    }, userId);
+  },
+
+  onrampChainSelected: async (userId: string, token: string, chain: string) => {
+    await trackEvent('onramp_chain_selected', {
+      category: 'features',
+      feature: 'onramp',
+      token: token,
+      chain: chain
+    }, userId);
+  },
+
+  onrampCurrencySelected: async (userId: string, currency: string, region?: string) => {
+    await trackEvent('onramp_currency_selected', {
+      category: 'features',
+      feature: 'onramp',
+      currency: currency,
+      region: region
+    }, userId);
+  },
+
+  onrampTransactionCreated: async (userId: string, details: { 
+    token: string; 
+    chain: string; 
+    amount: number; 
+    fiatAmount: number; 
+    currency: string; 
+    transactionId: string;
+    walletAddress: string;
+  }) => {
+    await trackEvent('onramp_transaction_created', {
+      category: 'features',
+      feature: 'onramp',
+      token: details.token,
+      chain: details.chain,
+      amount: details.amount,
+      fiat_amount: details.fiatAmount,
+      currency: details.currency,
+      transaction_id: details.transactionId,
+      wallet_address: details.walletAddress
+    }, userId);
+  },
+
+  onrampTransactionCompleted: async (userId: string, details: { 
+    token: string; 
+    chain: string; 
+    amount: number; 
+    fiatAmount: number; 
+    currency: string; 
+    transactionId: string;
+    txHash?: string;
+  }) => {
+    await trackEvent('onramp_transaction_completed', {
+      category: 'features',
+      feature: 'onramp',
+      token: details.token,
+      chain: details.chain,
+      amount: details.amount,
+      fiat_amount: details.fiatAmount,
+      currency: details.currency,
+      transaction_id: details.transactionId,
+      tx_hash: details.txHash,
+      success: true
+    }, userId);
+  },
+
+  onrampTransactionFailed: async (userId: string, details: { 
+    token: string; 
+    chain: string; 
+    amount: number; 
+    fiatAmount: number; 
+    currency: string; 
+    transactionId: string;
+    errorMessage?: string;
+  }) => {
+    await trackEvent('onramp_transaction_failed', {
+      category: 'features',
+      feature: 'onramp',
+      token: details.token,
+      chain: details.chain,
+      amount: details.amount,
+      fiat_amount: details.fiatAmount,
+      currency: details.currency,
+      transaction_id: details.transactionId,
+      error_message: details.errorMessage,
+      success: false
+    }, userId);
+  },
+
+  /**
    * Track generic feature usage
    */
   featureUsed: async (userId: string, feature: string, action?: string, details?: Record<string, any>) => {

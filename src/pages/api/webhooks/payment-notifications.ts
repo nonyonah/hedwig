@@ -23,14 +23,14 @@ try {
 }
 
 interface PaymentNotificationData {
-  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp';
+  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp' | 'onramp';
   id: string;
   amount: number;
   currency: string;
   transactionHash?: string;
   payerWallet?: string;
   recipientWallet?: string;
-  status: 'paid' | 'completed' | 'failed';
+  status: 'paid' | 'completed' | 'failed' | 'processing';
   chain?: string;
   senderAddress?: string;
   recipientUserId?: string;
@@ -42,6 +42,13 @@ interface PaymentNotificationData {
   // Additional fields for offramp notifications
   orderId?: string;
   liquidityProvider?: string;
+  // Additional fields for onramp notifications
+  token?: string;
+  fiatAmount?: number;
+  fiatCurrency?: string;
+  transactionId?: string;
+  walletAddress?: string;
+  errorMessage?: string;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -51,8 +58,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     console.log('Payment notification webhook received:', JSON.stringify(req.body, null, 2));
-    
-    const { 
+
+    const {
       type, id, amount, currency, transactionHash, payerWallet, recipientWallet, status,
       senderAddress, recipientUserId, chain, freelancerName, clientName, userName, paymentReason
     } = req.body as PaymentNotificationData;
@@ -216,7 +223,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else if (type === 'direct_transfer') {
       // For direct transfers, we get the recipient user ID directly
       console.log('🔄 Processing direct transfer notification for recipientUserId:', req.body.recipientUserId);
-      
+
       if (!req.body.recipientUserId) {
         console.error('❌ No recipient user ID provided for direct transfer');
         return res.status(400).json({ error: 'Recipient user ID required for direct transfer' });
@@ -234,20 +241,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(404).json({ error: 'User not found' });
       }
 
-      console.log('✅ Found user for direct transfer:', { 
-        id: user.id, 
-        name: user.name, 
+      console.log('✅ Found user for direct transfer:', {
+        id: user.id,
+        name: user.name,
         hasTelegramChatId: !!user.telegram_chat_id,
-        telegramChatId: user.telegram_chat_id 
+        telegramChatId: user.telegram_chat_id
       });
-      
+
       recipientUser = user;
       itemData = {
         senderAddress: req.body.senderAddress,
         recipientWallet: req.body.recipientWallet,
         chain: req.body.chain
       };
-      
+
       console.log('📋 Direct transfer itemData:', itemData);
     } else if (type === 'offramp') {
       // For offramp transactions, get the user from the transaction
@@ -274,6 +281,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         transactionId: id,
         status: status
       };
+    } else if (type === 'onramp') {
+      // For onramp transactions, get the user from the transaction
+      if (!req.body.recipientUserId) {
+        console.error('No recipient user ID provided for onramp');
+        return res.status(400).json({ error: 'Recipient user ID required for onramp' });
+      }
+
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email, telegram_chat_id')
+        .eq('id', req.body.recipientUserId)
+        .single();
+
+      if (userError || !user) {
+        console.error('Error fetching user for onramp:', userError);
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      recipientUser = user;
+      itemData = {
+        transactionId: req.body.transactionId,
+        token: req.body.token,
+        chain: req.body.chain,
+        fiatAmount: req.body.fiatAmount,
+        fiatCurrency: req.body.fiatCurrency,
+        walletAddress: req.body.walletAddress,
+        status: status,
+        errorMessage: req.body.errorMessage
+      };
     }
 
     if (!recipientUser) {
@@ -293,7 +329,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           senderAddress: senderAddress || payerWallet,
           chain
         });
-        
+
         await sendTelegramNotification(
           recipientUser.telegram_chat_id,
           type,
@@ -305,7 +341,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           chain
         );
         console.log('✅ Telegram notification sent successfully');
-        
+
         // Mark notification as sent in database to prevent duplicates
         if (transactionHash) {
           await supabase
@@ -356,7 +392,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function sendTelegramNotification(
   chatId: number,
-  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp',
+  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp' | 'onramp',
   itemData: any,
   amount: number,
   currency: string,
@@ -370,7 +406,7 @@ async function sendTelegramNotification(
       console.error('❌ Telegram bot is not configured - TELEGRAM_BOT_TOKEN missing');
       throw new Error('Telegram bot not configured');
     }
-    
+
     console.log('📤 Sending Telegram notification:', {
       chatId,
       type,
@@ -382,7 +418,7 @@ async function sendTelegramNotification(
       itemData: JSON.stringify(itemData, null, 2)
     });
     let emoji, itemType, itemIdentifier, customTitle;
-    
+
     if (type === 'invoice') {
       emoji = '📄';
       itemType = 'Invoice';
@@ -410,15 +446,32 @@ async function sendTelegramNotification(
         itemIdentifier = 'Failed';
         customTitle = `❌ <b>Offramp Failed!</b>`;
       }
+    } else if (type === 'onramp') {
+      if (itemData.status === 'completed') {
+        emoji = '🪙';
+        itemType = 'Crypto Purchase';
+        itemIdentifier = 'Completed';
+        customTitle = `🪙 <b>Crypto Purchase Completed!</b>`;
+      } else if (itemData.status === 'processing') {
+        emoji = '⏳';
+        itemType = 'Crypto Purchase';
+        itemIdentifier = 'Processing';
+        customTitle = `⏳ <b>Crypto Purchase Processing</b>`;
+      } else {
+        emoji = '❌';
+        itemType = 'Crypto Purchase';
+        itemIdentifier = 'Failed';
+        customTitle = `❌ <b>Crypto Purchase Failed!</b>`;
+      }
     } else {
       emoji = '💰';
       itemType = 'Payment Link';
       itemIdentifier = itemData.title;
       customTitle = `💰 <b>Payment Link Paid!</b>`;
     }
-    
+
     let message = `${customTitle}\n\n`;
-    
+
     if (type === 'direct_transfer') {
       message += `💰 <b>Amount:</b> ${amount} ${currency}\n`;
       message += `👤 <b>From:</b> ${itemData.senderAddress}\n`;
@@ -432,6 +485,16 @@ async function sendTelegramNotification(
         message += `🏢 <b>Provider:</b> ${itemData.liquidityProvider}\n`;
       }
       message += `📊 <b>Status:</b> ${itemData.status === 'completed' ? '✅ Completed' : '❌ Failed'}\n`;
+    } else if (type === 'onramp') {
+      message += `🆔 <b>Transaction ID:</b> ${itemData.transactionId}\n`;
+      message += `🪙 <b>Token:</b> ${itemData.token} on ${itemData.chain}\n`;
+      message += `💰 <b>Amount:</b> ${amount} ${itemData.token}\n`;
+      message += `💵 <b>Paid:</b> ${itemData.fiatAmount} ${itemData.fiatCurrency}\n`;
+      message += `📍 <b>Wallet:</b> ${itemData.walletAddress?.substring(0, 6)}...${itemData.walletAddress?.substring(itemData.walletAddress.length - 4)}\n`;
+      message += `📊 <b>Status:</b> ${itemData.status === 'completed' ? '✅ Completed' : itemData.status === 'processing' ? '⏳ Processing' : '❌ Failed'}\n`;
+      if (itemData.errorMessage && itemData.status === 'failed') {
+        message += `❌ <b>Error:</b> ${itemData.errorMessage}\n`;
+      }
     } else {
       if (type === 'invoice' || type === 'proposal') {
         // Add specific ID for tracking
@@ -450,7 +513,7 @@ async function sendTelegramNotification(
         // Show payment link ID as requested
         message += `🆔 <b>Payment Link ID:</b> ${itemData.id || 'N/A'}\n`;
         message += `💵 <b>Amount Paid:</b> ${amount} ${currency}\n`;
-        
+
         // Show payer info - wallet address or email if available
         if (itemData.recipientEmail) {
           message += `👤 <b>Paid By:</b> ${itemData.recipientEmail}\n`;
@@ -459,32 +522,32 @@ async function sendTelegramNotification(
         } else {
           message += `👤 <b>Paid By:</b> Unknown\n`;
         }
-        
+
         // Show description
         message += `📝 <b>Description:</b> ${itemData.description || itemData.payment_reason || 'N/A'}\n`;
-        
+
         // Show recipient (actual user's name)
         if (itemData.user_name) {
           message += `👨‍💼 <b>Recipient:</b> ${itemData.user_name}\n`;
         }
       }
-      
+
       if (senderWallet) {
         message += `🔗 <b>Payer Wallet:</b> ${senderWallet.substring(0, 6)}...${senderWallet.substring(senderWallet.length - 4)}\n`;
       }
-      
+
       if (chain) {
         message += `⛓️ <b>Network:</b> ${chain.charAt(0).toUpperCase() + chain.slice(1)}\n`;
       }
     }
-    
+
     if (transactionHash) {
       message += `🧾 <b>Transaction Hash:</b> \n<code>${transactionHash}</code>\n`;
     }
-    
+
     message += `\n✅ <b>Status:</b> Payment Confirmed & Processed\n`;
     message += `⏰ <b>Confirmed At:</b> ${new Date().toLocaleString()}\n`;
-    
+
     // Add success footer based on payment type
     if (type === 'invoice') {
       message += `\n🎉 Your invoice has been successfully paid!`;
@@ -496,7 +559,15 @@ async function sendTelegramNotification(
       if (itemData.status === 'completed') {
         message += `\n🎉 Your crypto has been successfully converted to fiat!`;
       } else {
-        message += `\n😞 Your offramp transaction failed. Please try again or contact support.`;
+        message += `\n❌ Your crypto conversion failed. Please contact support.`;
+      }
+    } else if (type === 'onramp') {
+      if (itemData.status === 'completed') {
+        message += `\n🎉 Your crypto purchase is complete! Tokens have been sent to your wallet.`;
+      } else if (itemData.status === 'processing') {
+        message += `\n⏳ Your crypto purchase is being processed. You'll receive another notification when complete.`;
+      } else {
+        message += `\n❌ Your crypto purchase failed. ${itemData.errorMessage ? 'Reason: ' + itemData.errorMessage : 'Please contact support.'}`;
       }
     } else {
       message += `\n💰 Direct payment received in your wallet!`;
@@ -508,7 +579,7 @@ async function sendTelegramNotification(
       let explorerUrl = '';
       let explorerName = '';
       let addressUrl = '';
-      
+
       if (chain === 'base-mainnet' || chain === 'BASE_MAINNET') {
         explorerUrl = `https://basescan.org/tx/${transactionHash}`;
         explorerName = 'BaseScan';
@@ -541,7 +612,7 @@ async function sendTelegramNotification(
           addressUrl = `https://basescan.org/address/${itemData.recipientWallet}`;
         }
       }
-      
+
       if (type === 'direct_transfer' && addressUrl) {
         keyboard = {
           inline_keyboard: [
@@ -591,12 +662,12 @@ async function sendTelegramNotification(
       parse_mode: 'HTML',
       reply_markup: keyboard
     });
-    
+
     console.log(`✅ Telegram notification sent successfully to chat ID: ${chatId}`, {
       messageId: telegramResponse.message_id,
       date: telegramResponse.date
     });
-    
+
     // Mark notification as sent in database to prevent duplicates
     if (transactionHash) {
       await supabase
@@ -610,13 +681,13 @@ async function sendTelegramNotification(
       code: error.code,
       response: error.response?.body
     });
-    
+
     // Handle specific Telegram API errors
     if (error.code === 'ETELEGRAM') {
       const telegramError = error.response?.body;
       if (telegramError?.error_code === 400 && telegramError?.description?.includes('chat not found')) {
         console.error(`🚫 Chat not found for chat ID ${chatId}. User may need to start a conversation with the bot first.`);
-        
+
         // Update user record to mark Telegram as inactive
         try {
           await supabase
@@ -633,7 +704,7 @@ async function sendTelegramNotification(
         console.error(`🚫 Telegram API error for chat ID ${chatId}:`, telegramError);
       }
     }
-    
+
     // Re-throw the error so the caller knows the notification failed
     throw error;
   }
@@ -642,7 +713,7 @@ async function sendTelegramNotification(
 async function sendEmailNotification(
   email: string,
   name: string,
-  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp',
+  type: 'invoice' | 'payment_link' | 'proposal' | 'direct_transfer' | 'offramp' | 'onramp',
   itemData: any,
   amount: number,
   currency: string,
@@ -653,9 +724,9 @@ async function sendEmailNotification(
   try {
     // Import email service
     const { sendEmail } = await import('../../../lib/emailService');
-    
+
     let itemType, itemIdentifier;
-    
+
     if (type === 'invoice') {
       itemType = 'Invoice';
       itemIdentifier = itemData.number;
@@ -672,11 +743,11 @@ async function sendEmailNotification(
       itemType = 'Payment Link';
       itemIdentifier = itemData.title;
     }
-    
-    const subject = type === 'offramp' && itemData.status === 'failed' 
+
+    const subject = type === 'offramp' && itemData.status === 'failed'
       ? `❌ Offramp Failed - ${itemType} ${itemIdentifier}`
       : `🎉 ${type === 'offramp' ? 'Offramp Completed' : 'Payment Received'} - ${itemType} ${itemIdentifier}`;
-    
+
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, ${type === 'offramp' && itemData.status === 'failed' ? '#dc3545 0%, #c82333 100%' : '#8e01bb 0%, #7a01a5 100%'}); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -687,11 +758,11 @@ async function sendEmailNotification(
           <p style="font-size: 18px; margin-bottom: 20px;">Hi ${name},</p>
           
           <p style="font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-            ${type === 'offramp' && itemData.status === 'failed' 
-              ? 'We\'re sorry, but your offramp transaction has failed.' 
-              : type === 'offramp' 
-                ? 'Great news! Your crypto has been successfully converted to fiat currency.' 
-                : `Great news! You've received a payment for your ${itemType.toLowerCase()}.`}
+            ${type === 'offramp' && itemData.status === 'failed'
+        ? 'We\'re sorry, but your offramp transaction has failed.'
+        : type === 'offramp'
+          ? 'Great news! Your crypto has been successfully converted to fiat currency.'
+          : `Great news! You've received a payment for your ${itemType.toLowerCase()}.`}
           </p>
           
           <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid ${type === 'offramp' && itemData.status === 'failed' ? '#dc3545' : '#28a745'}; margin-bottom: 25px;">
@@ -727,7 +798,7 @@ async function sendEmailNotification(
         </div>
       </div>
     `;
-    
+
     await sendEmail({
       to: email,
       subject,
