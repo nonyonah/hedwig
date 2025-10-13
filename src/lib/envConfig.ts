@@ -89,6 +89,16 @@ export const NetworkConfig = {
     apiKey: (network?: NetworkEnvironment) => getNetworkEnvVar('HELIUS_API_KEY', network),
   },
   
+  // Google Calendar Configuration
+  googleCalendar: {
+    clientId: () => process.env.GOOGLE_CLIENT_ID,
+    clientSecret: () => process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri: () => process.env.GOOGLE_REDIRECT_URI,
+    enabled: () => process.env.CALENDAR_SYNC_ENABLED === 'true',
+    apiTimeout: () => parseInt(process.env.CALENDAR_API_TIMEOUT || '10000'),
+    cacheTtl: () => parseInt(process.env.CALENDAR_CACHE_TTL || '300000'),
+  },
+  
   // Contract Addresses
   contracts: {
     hedwigPayment: (network?: NetworkEnvironment) => getNetworkEnvVar('HEDWIG_PAYMENT_CONTRACT_ADDRESS', network),
@@ -152,6 +162,14 @@ export function getCurrentConfig() {
     helius: {
       apiKey: NetworkConfig.helius.apiKey(network),
     },
+    googleCalendar: {
+      clientId: NetworkConfig.googleCalendar.clientId(),
+      clientSecret: NetworkConfig.googleCalendar.clientSecret(),
+      redirectUri: NetworkConfig.googleCalendar.redirectUri(),
+      enabled: NetworkConfig.googleCalendar.enabled(),
+      apiTimeout: NetworkConfig.googleCalendar.apiTimeout(),
+      cacheTtl: NetworkConfig.googleCalendar.cacheTtl(),
+    },
     contracts: {
       hedwigPayment: NetworkConfig.contracts.hedwigPayment(network),
       platformWallet: NetworkConfig.contracts.platformWallet(network),
@@ -177,6 +195,13 @@ export function validateNetworkConfig(network?: NetworkEnvironment): { valid: bo
     'CDP_API_KEY_SECRET',
     'HEDWIG_PAYMENT_CONTRACT_ADDRESS',
     'HEDWIG_PLATFORM_WALLET',
+  ];
+  
+  // Optional Google Calendar variables (not required for core functionality)
+  const optionalVars = [
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET', 
+    'GOOGLE_REDIRECT_URI',
   ];
   
   for (const baseKey of requiredVars) {
@@ -205,6 +230,7 @@ export function logCurrentConfig() {
     hasPaycrestKey: !!config.paycrest.apiKey,
     hasFonbnkKey: !!config.fonbnk.apiKey,
     hasHeliusKey: !!config.helius.apiKey,
+    hasGoogleCalendarConfig: !!(config.googleCalendar.clientId && config.googleCalendar.clientSecret),
     contractAddress: config.contracts.hedwigPayment,
     platformWallet: config.contracts.platformWallet,
     baseRpc: config.rpc.base,

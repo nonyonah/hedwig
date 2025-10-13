@@ -2375,6 +2375,19 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
+      // Calendar suggestion callbacks
+      else if (data.startsWith('calendar_connect_then_invoice_')) {
+        const targetUserId = data.replace('calendar_connect_then_invoice_', '');
+        await this.handleCalendarConnectThenInvoice(chatId, targetUserId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data.startsWith('create_invoice_skip_calendar_')) {
+        const targetUserId = data.replace('create_invoice_skip_calendar_', '');
+        await this.invoiceModule.handleInvoiceCreation(chatId, targetUserId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
       // Referral link callback
       else if (data === 'referral_link') {
         await this.handleReferralCommand(chatId, userId!);
@@ -2482,7 +2495,7 @@ export class BotIntegration {
 
       switch (text) {
         case '📄 Invoice':
-          await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+          await this.handleInvoiceCreationWithCalendarSuggestion(chatId, userId);
           return true;
 
         case '📋 Proposal':
@@ -2694,6 +2707,205 @@ export class BotIntegration {
     } catch (error) {
       console.error('Error handling business message:', error);
       return false;
+    }
+  }
+
+  /**
+   * Handle invoice creation with optional calendar suggestion
+   */
+  async handleInvoiceCreationWithCalendarSuggestion(chatId: number, userId: string) {
+    try {
+      // Check if calendar sync is enabled
+      const { getCurrentConfig } = await import('../lib/envConfig');
+      const config = getCurrentConfig();
+      
+      if (!config.googleCalendar.enabled) {
+        // Calendar sync disabled, proceed directly to invoice creation
+        await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+        return;
+      }
+
+      // Check if user already has calendar connected
+      const { googleCalendarService } = await import('../lib/googleCalendarService');
+      const isCalendarConnected = await googleCalendarService.isConnected(userId);
+
+      if (isCalendarConnected) {
+        // User already has calendar connected, proceed directly to invoice creation
+        await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+        return;
+      }
+
+      // User doesn't have calendar connected, suggest it
+      await this.bot.sendMessage(chatId,
+        '📅 **Pro Tip: Calendar Sync**\n\n' +
+        'Before creating your invoice, would you like to connect your Google Calendar?\n\n' +
+        '✨ **Benefits:**\n' +
+        '• Automatic due date tracking\n' +
+        '• Payment reminders\n' +
+        '• Never miss a deadline\n\n' +
+        '🎯 **Your choice:**',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📅 Connect Calendar First', callback_data: `calendar_connect_then_invoice_${userId}` },
+                { text: '📄 Create Invoice Now', callback_data: `create_invoice_skip_calendar_${userId}` }
+              ],
+              [
+                { text: '❌ Cancel', callback_data: 'cancel_invoice_creation' }
+              ]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+      console.error('[BotIntegration] Error in handleInvoiceCreationWithCalendarSuggestion:', error);
+      // Fallback to direct invoice creation
+      await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+    }
+  }
+
+  /**
+   * Handle calendar connection followed by invoice creation
+   */
+  async handleCalendarConnectThenInvoice(chatId: number, userId: string) {
+    try {
+      // Import Telegram bot service to handle calendar connection
+      const { TelegramBotService } = await import('../lib/telegramBot');
+      
+      // Send message about starting calendar connection
+      await this.bot.sendMessage(chatId,
+        '📅 **Connecting Your Calendar**\n\n' +
+        'Great choice! Let\'s connect your Google Calendar first, then we\'ll create your invoice.\n\n' +
+        '⏳ Starting calendar connection...',
+        { parse_mode: 'Markdown' }
+      );
+
+      // Store the intent to create invoice after calendar connection
+      await this.storePostCalendarIntent(userId, 'create_invoice');
+
+      // Trigger calendar connection flow
+      // We'll use the existing calendar connection command handler
+      const { googleCalendarService } = await import('../lib/googleCalendarService');
+      
+      // Check if user is already connected (double-check)
+      const isConnected = await googleCalendarService.isConnected(userId);
+      if (isConnected) {
+        await this.bot.sendMessage(chatId,
+          '✅ **Calendar Already Connected!**\n\n' +
+          'Your Google Calendar is already connected. Let\'s proceed with creating your invoice.',
+          { parse_mode: 'Markdown' }
+        );
+        
+        // Proceed directly to invoice creation
+        await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+        return;
+      }
+
+      // Generate authorization URL
+      const authUrl = googleCalendarService.generateAuthUrl(userId);
+
+      await this.bot.sendMessage(chatId,
+        '🔗 **Connect Your Google Calendar**\n\n' +
+        '👆 Click the button below to connect your Google Calendar.\n\n' +
+        '📝 **After connecting, I\'ll automatically start your invoice creation.**',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔗 Connect Google Calendar', url: authUrl }],
+              [{ text: '📄 Skip & Create Invoice', callback_data: `create_invoice_skip_calendar_${userId}` }],
+              [{ text: '❌ Cancel', callback_data: 'cancel_invoice_creation' }]
+            ]
+          }
+        }
+      );
+
+      // Track calendar connection attempt
+      try {
+        const { trackEvent } = await import('../lib/posthog');
+        await trackEvent(
+          'calendar_connect_initiated_from_invoice',
+          {
+            feature: 'calendar_sync',
+            source: 'invoice_creation_flow',
+            timestamp: new Date().toISOString(),
+          },
+          userId,
+        );
+      } catch (trackingError) {
+        console.error('[BotIntegration] Error tracking calendar_connect_initiated_from_invoice event:', trackingError);
+      }
+
+    } catch (error) {
+      console.error('[BotIntegration] Error in handleCalendarConnectThenInvoice:', error);
+      
+      // Fallback to direct invoice creation
+      await this.bot.sendMessage(chatId,
+        '⚠️ **Calendar Connection Issue**\n\n' +
+        'There was an issue setting up calendar connection. Let\'s proceed with creating your invoice.',
+        { parse_mode: 'Markdown' }
+      );
+      
+      await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+    }
+  }
+
+  /**
+   * Store intent to execute after calendar connection
+   */
+  private async storePostCalendarIntent(userId: string, intent: string) {
+    try {
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'post_calendar_intent',
+          state_data: { intent },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+    } catch (error) {
+      console.error('[BotIntegration] Error storing post-calendar intent:', error);
+    }
+  }
+
+  /**
+   * Execute stored intent after calendar connection
+   */
+  async executePostCalendarIntent(userId: string, chatId: number) {
+    try {
+      const { data } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'post_calendar_intent')
+        .single();
+
+      if (data?.state_data?.intent === 'create_invoice') {
+        // Clear the intent
+        await supabase
+          .from('user_states')
+          .delete()
+          .eq('user_id', userId)
+          .eq('state_type', 'post_calendar_intent');
+
+        // Send success message
+        await this.bot.sendMessage(chatId,
+          '✅ **Calendar Connected Successfully!**\n\n' +
+          '🎉 Your Google Calendar is now connected. Invoice due dates will be automatically tracked.\n\n' +
+          '📄 **Now let\'s create your invoice...**',
+          { parse_mode: 'Markdown' }
+        );
+
+        // Start invoice creation
+        await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+      }
+    } catch (error) {
+      console.error('[BotIntegration] Error executing post-calendar intent:', error);
     }
   }
 

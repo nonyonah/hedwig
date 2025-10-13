@@ -51,6 +51,8 @@ interface InvoiceData {
   freelancer_name: string;
   client_name: string;
   created_by: string;
+  invoice_number: string;
+  calendar_event_id?: string;
 }
 
 interface PaymentLinkData {
@@ -269,6 +271,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             payment_transaction: transfer.hash
           })
           .eq('id', invoiceData.id);
+
+        // Update Google Calendar event if user has connected calendar
+        try {
+          const { googleCalendarService } = await import('../../../lib/googleCalendarService');
+          
+          if (invoiceData.calendar_event_id && invoiceData.created_by) {
+            console.log(`[AlchemyWebhook] Updating calendar event for paid invoice ${invoiceData.id}`);
+            
+            const success = await googleCalendarService.markInvoiceAsPaid(invoiceData.created_by, {
+              id: invoiceData.id,
+              invoice_number: invoiceData.invoice_number,
+              client_name: invoiceData.client_name,
+              calendar_event_id: invoiceData.calendar_event_id
+            });
+
+            if (success) {
+              console.log(`[AlchemyWebhook] Calendar event updated successfully for invoice ${invoiceData.id}`);
+              
+              // Track calendar event update
+              try {
+                const { trackEvent } = await import('../../../lib/posthog');
+                await trackEvent(
+                  'calendar_event_updated',
+                  {
+                    feature: 'calendar_sync',
+                    invoice_id: invoiceData.id,
+                    calendar_event_id: invoiceData.calendar_event_id,
+                    status: 'paid',
+                    timestamp: new Date().toISOString(),
+                  },
+                  invoiceData.created_by,
+                );
+              } catch (trackingError) {
+                console.error('[AlchemyWebhook] Error tracking calendar_event_updated event:', trackingError);
+              }
+            } else {
+              console.warn(`[AlchemyWebhook] Failed to update calendar event for invoice ${invoiceData.id}`);
+            }
+          } else {
+            console.log(`[AlchemyWebhook] Skipping calendar update - no calendar event ID or created_by field`);
+          }
+        } catch (calendarError) {
+          console.error('[AlchemyWebhook] Error updating calendar event:', calendarError);
+          // Don't fail payment processing if calendar update fails
+        }
 
         // Record payment in payments table
         await supabase

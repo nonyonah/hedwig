@@ -466,6 +466,85 @@ export class TelegramBotService {
           // Onramp feature is currently disabled
           await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction history will be available when the feature launches!', { parse_mode: 'Markdown' });
           break;
+        case 'calendar_connect_start':
+        case 'calendar_reconnect_start': {
+          console.log('[TelegramBot] Processing calendar_connect_start callback through action system');
+          const { handleAction } = await import('../api/actions');
+          try {
+            const actionResult = await handleAction('connect_calendar', {}, userId);
+            console.log('[handleAction] Intent: connect_calendar Params: {} UserId:', userId);
+            
+            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+              await this.sendMessage(chatId, actionResult.text, {
+                reply_markup: actionResult.reply_markup,
+                parse_mode: 'Markdown'
+              });
+            } else {
+              await this.sendMessage(chatId, actionResult?.text || 'Calendar connection processed', {
+                parse_mode: 'Markdown'
+              });
+            }
+          } catch (error) {
+            console.error('[TelegramBot] Error processing connect_calendar callback:', error);
+            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar connection request. Please try again later.');
+          }
+          break;
+        }
+        case 'calendar_connect_cancel':
+          await this.sendMessage(chatId, '❌ Calendar connection cancelled.', { parse_mode: 'Markdown' });
+          break;
+        case 'calendar_disconnect_start': {
+          console.log('[TelegramBot] Processing calendar_disconnect_start callback through action system');
+          const { handleAction } = await import('../api/actions');
+          try {
+            const actionResult = await handleAction('disconnect_calendar', {}, userId);
+            console.log('[handleAction] Intent: disconnect_calendar Params: {} UserId:', userId);
+            
+            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+              await this.sendMessage(chatId, actionResult.text, {
+                reply_markup: actionResult.reply_markup,
+                parse_mode: 'Markdown'
+              });
+            } else {
+              await this.sendMessage(chatId, actionResult?.text || 'Calendar disconnection processed', {
+                parse_mode: 'Markdown'
+              });
+            }
+          } catch (error) {
+            console.error('[TelegramBot] Error processing disconnect_calendar callback:', error);
+            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar disconnection request. Please try again later.');
+          }
+          break;
+        }
+        case 'calendar_disconnect_confirm':
+          await this.handleCalendarDisconnectConfirm(chatId, userId);
+          break;
+        case 'calendar_disconnect_cancel':
+          await this.sendMessage(chatId, '✅ Calendar disconnect cancelled. Your calendar remains connected.', { parse_mode: 'Markdown' });
+          break;
+        case 'calendar_status_check': {
+          console.log('[TelegramBot] Processing calendar_status_check callback through action system');
+          const { handleAction } = await import('../api/actions');
+          try {
+            const actionResult = await handleAction('calendar_status', {}, userId);
+            console.log('[handleAction] Intent: calendar_status Params: {} UserId:', userId);
+            
+            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+              await this.sendMessage(chatId, actionResult.text, {
+                reply_markup: actionResult.reply_markup,
+                parse_mode: 'Markdown'
+              });
+            } else {
+              await this.sendMessage(chatId, actionResult?.text || 'Calendar status checked', {
+                parse_mode: 'Markdown'
+              });
+            }
+          } catch (error) {
+            console.error('[TelegramBot] Error processing calendar_status callback:', error);
+            await this.sendMessage(chatId, 'Sorry, I encountered an error while checking your calendar status. Please try again later.');
+          }
+          break;
+        }
         default:
           // Handle onramp callbacks
           if (data.startsWith('onramp_')) {
@@ -641,6 +720,93 @@ export class TelegramBotService {
         await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction status checking will be available when the feature launches!', { parse_mode: 'Markdown' });
         break;
       }
+      case '/connect_calendar': {
+        // Handle calendar connection command through action system
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
+        if (resolvedUserId) {
+          console.log('[TelegramBot] Processing /connect_calendar command through action system');
+          const { handleAction } = await import('../api/actions');
+          try {
+            const actionResult = await handleAction('connect_calendar', {}, resolvedUserId);
+            console.log('[handleAction] Intent: connect_calendar Params: {} UserId:', resolvedUserId);
+            
+            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+              await this.sendMessage(chatId, actionResult.text, {
+                reply_markup: actionResult.reply_markup,
+                parse_mode: 'Markdown'
+              });
+            } else {
+              await this.sendMessage(chatId, actionResult?.text || 'Calendar connection processed', {
+                parse_mode: 'Markdown'
+              });
+            }
+          } catch (error) {
+            console.error('[TelegramBot] Error processing connect_calendar action:', error);
+            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar connection request. Please try again later.');
+          }
+        } else {
+          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
+        }
+        break;
+      }
+      case '/disconnect_calendar': {
+        // Handle calendar disconnection command through action system
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
+        if (resolvedUserId) {
+          console.log('[TelegramBot] Processing /disconnect_calendar command through action system');
+          const { handleAction } = await import('../api/actions');
+          try {
+            const actionResult = await handleAction('disconnect_calendar', {}, resolvedUserId);
+            console.log('[handleAction] Intent: disconnect_calendar Params: {} UserId:', resolvedUserId);
+            
+            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+              await this.sendMessage(chatId, actionResult.text, {
+                reply_markup: actionResult.reply_markup,
+                parse_mode: 'Markdown'
+              });
+            } else {
+              await this.sendMessage(chatId, actionResult?.text || 'Calendar disconnection processed', {
+                parse_mode: 'Markdown'
+              });
+            }
+          } catch (error) {
+            console.error('[TelegramBot] Error processing disconnect_calendar action:', error);
+            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar disconnection request. Please try again later.');
+          }
+        } else {
+          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
+        }
+        break;
+      }
+      case '/calendar_status': {
+        // Handle calendar status command through action system
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
+        if (resolvedUserId) {
+          console.log('[TelegramBot] Processing /calendar_status command through action system');
+          const { handleAction } = await import('../api/actions');
+          try {
+            const actionResult = await handleAction('calendar_status', {}, resolvedUserId);
+            console.log('[handleAction] Intent: calendar_status Params: {} UserId:', resolvedUserId);
+            
+            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+              await this.sendMessage(chatId, actionResult.text, {
+                reply_markup: actionResult.reply_markup,
+                parse_mode: 'Markdown'
+              });
+            } else {
+              await this.sendMessage(chatId, actionResult?.text || 'Calendar status checked', {
+                parse_mode: 'Markdown'
+              });
+            }
+          } catch (error) {
+            console.error('[TelegramBot] Error processing calendar_status action:', error);
+            await this.sendMessage(chatId, 'Sorry, I encountered an error while checking your calendar status. Please try again later.');
+          }
+        } else {
+          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
+        }
+        break;
+      }
       default:
         await this.sendMessage(
           chatId,
@@ -676,6 +842,7 @@ export class TelegramBotService {
 • 💰 Payment tracking
 • 📊 Earnings summaries
 • 🔄 Token swaps
+• 📅 Calendar sync for due dates
 • 💬 General assistance
 
 Just send me a message and I'll help you out! ✨`;
@@ -689,6 +856,9 @@ Just send me a message and I'll help you out! ✨`;
         [
           { text: '📄 Create Invoice', callback_data: 'create_invoice' },
           { text: '📊 Check Earnings', callback_data: 'check_earnings' }
+        ],
+        [
+          { text: '📅 Connect Calendar', callback_data: 'calendar_connect_start' }
         ]
       ]
     };
@@ -708,12 +878,17 @@ Just send me a message and I'll help you out! ✨`;
 /about - ℹ️ About Hedwig
 /menu - 📱 Show quick action menu
 
+📅 **Calendar Commands:**
+/connect_calendar - 🔗 Connect Google Calendar
+/disconnect_calendar - 🔌 Disconnect Google Calendar
+/calendar_status - 📊 Check calendar connection status
 
 ✨ **What I can do:**
 • 📄 Create professional invoices
 • 💰 Track your payments and earnings
 • 📊 Provide payment summaries
 • 🔄 Help with token swaps
+• 📅 Sync invoice due dates with Google Calendar
 • 🪙 Buy crypto with local currency (onramp)
 • 💱 Sell crypto for local currency (offramp)
 • 💬 Answer questions about your business
@@ -724,6 +899,7 @@ Just type your request in natural language, like:
 - "Show me my earnings this month" 📈
 - "Send a payment reminder" 📧
 - "I want to swap tokens" 🔄
+- "Connect my calendar" or "calendar status" 📅
 - "Buy crypto with NGN" 🪙
 
 Feel free to ask me anything! 😊`;
@@ -774,6 +950,10 @@ Choose an action below:`;
         [
           { text: 'Payment Status', callback_data: 'payment_status' },
           { text: 'Check Balance', callback_data: 'check_balance' }
+        ],
+        [
+          { text: '📅 Calendar Status', callback_data: 'calendar_status_check' },
+          { text: '🔗 Connect Calendar', callback_data: 'calendar_connect_start' }
         ],
         [
           { text: 'Help', callback_data: 'help' },
@@ -840,12 +1020,12 @@ Choose an action below:`;
       const directIntent = parseIntentAndParams(message);
       console.log('[TelegramBot] Direct intent parsing (bypass LLM):', directIntent);
 
-      // Fallback: If LLM didn't recognize onramp but direct parser did, use direct parser
+      // Fallback: If LLM didn't recognize intent but direct parser did, use direct parser
       let finalIntent = intent;
       let finalParams = params;
       
-      if (intent === 'unknown' && directIntent.intent === 'onramp') {
-        console.log('[TelegramBot] Using direct parser result as fallback for onramp');
+      if (intent === 'unknown' && (directIntent.intent === 'onramp' || directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status')) {
+        console.log('[TelegramBot] Using direct parser result as fallback for:', directIntent.intent);
         finalIntent = directIntent.intent;
         finalParams = directIntent.params;
       }
@@ -863,6 +1043,30 @@ Choose an action below:`;
           console.log('[TelegramBot] Forcing onramp intent due to clear onramp keywords');
           finalIntent = 'onramp';
           finalParams = { text: message };
+        }
+        // Calendar fallback: If LLM didn't recognize calendar but direct parser did, use direct parser
+        else if (directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status') {
+          console.log('[TelegramBot] Using direct parser result as fallback for calendar intent');
+          finalIntent = directIntent.intent;
+          finalParams = directIntent.params;
+        }
+        // Additional calendar fallback: Check for clear calendar keywords
+        else if (lowerMessage.includes('calendar')) {
+          if (lowerMessage.includes('connect') || lowerMessage.includes('sync') || lowerMessage.includes('link') || lowerMessage.includes('add') || lowerMessage.includes('setup')) {
+            if (!lowerMessage.includes('disconnect') && !lowerMessage.includes('unlink') && !lowerMessage.includes('remove')) {
+              console.log('[TelegramBot] Forcing connect_calendar intent due to clear calendar keywords');
+              finalIntent = 'connect_calendar';
+              finalParams = { text: message };
+            }
+          } else if (lowerMessage.includes('disconnect') || lowerMessage.includes('unlink') || lowerMessage.includes('remove') || lowerMessage.includes('disable')) {
+            console.log('[TelegramBot] Forcing disconnect_calendar intent due to clear calendar keywords');
+            finalIntent = 'disconnect_calendar';
+            finalParams = { text: message };
+          } else if (lowerMessage.includes('status') || lowerMessage.includes('check') || lowerMessage.includes('connected')) {
+            console.log('[TelegramBot] Forcing calendar_status intent due to clear calendar keywords');
+            finalIntent = 'calendar_status';
+            finalParams = { text: message };
+          }
         }
       }
 
@@ -1194,7 +1398,10 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'proposal', description: '📝 Create a proposal' },
         { command: 'paymentlink', description: '🔗 Create a payment link' },
         { command: 'referral', description: '🎁 Get your referral link and stats' },
-        { command: 'leaderboard', description: '🏆 View referral leaderboard' }
+        { command: 'leaderboard', description: '🏆 View referral leaderboard' },
+        { command: 'connect_calendar', description: '📅 Connect Google Calendar' },
+        { command: 'disconnect_calendar', description: '🔌 Disconnect Google Calendar' },
+        { command: 'calendar_status', description: '📊 Check calendar connection status' }
       ];
 
       await this.bot.setMyCommands(commands);
@@ -1782,6 +1989,293 @@ Now you can create personalized invoices and proposals. Type /help to see what I
       console.error('[TelegramBot] Error handling onramp text input:', error);
       await this.sendMessage(chatId, '❌ Error processing amount. Please try again.');
       return true;
+    }
+  }
+
+  /**
+   * Handle connect calendar command
+   */
+  private async handleConnectCalendarCommand(chatId: number, userId: string): Promise<void> {
+    try {
+      console.log(`[TelegramBot] Handling connect calendar command for user ${userId}`);
+
+      // Import Google Calendar service
+      const { googleCalendarService } = await import('./googleCalendarService');
+
+      // Check if user is already connected
+      const isConnected = await googleCalendarService.isConnected(userId);
+      if (isConnected) {
+        // Test if connection is still working
+        const connectionWorking = await googleCalendarService.testConnection(userId);
+        if (connectionWorking) {
+          await this.sendMessage(chatId, 
+            '📅 **Google Calendar Already Connected!**\n\n' +
+            '✅ Your Google Calendar is already connected and working properly.\n\n' +
+            'Your invoice due dates will automatically be added to your calendar when you create invoices.',
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        } else {
+          await this.sendMessage(chatId, 
+            '📅 **Calendar Connection Needs Refresh**\n\n' +
+            '⚠️ Your Google Calendar connection needs to be refreshed. Let\'s reconnect it.',
+            { parse_mode: 'Markdown' }
+          );
+        }
+      }
+
+      // Generate authorization URL
+      const authUrl = googleCalendarService.generateAuthUrl(userId);
+
+      await this.sendMessage(chatId,
+        '📅 **Connect Your Google Calendar**\n\n' +
+        '🎯 **What this does:**\n' +
+        '• Automatically adds invoice due dates to your calendar\n' +
+        '• Sets up reminders for upcoming payments\n' +
+        '• Updates events when invoices are paid\n\n' +
+        '🔒 **Privacy:** We only access your calendar to manage invoice-related events.\n\n' +
+        '👆 Click the button below to connect your Google Calendar:',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔗 Connect Google Calendar', url: authUrl }],
+              [{ text: '❌ Cancel', callback_data: 'calendar_connect_cancel' }]
+            ]
+          }
+        }
+      );
+
+      // Track calendar connection attempt
+      try {
+        const { trackEvent } = await import('./posthog');
+        await trackEvent(
+          'calendar_connect_initiated',
+          {
+            feature: 'calendar_sync',
+            timestamp: new Date().toISOString(),
+          },
+          userId,
+        );
+      } catch (trackingError) {
+        console.error('[TelegramBot] Error tracking calendar_connect_initiated event:', trackingError);
+      }
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling connect calendar command:', error);
+      
+      // Use error templates for user-friendly messages
+      const { CalendarErrorTemplates } = await import('./calendarErrorTemplates');
+      const errorMessage = CalendarErrorTemplates.getConnectionErrorMessage({
+        userId,
+        operation: 'connect',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      await this.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
+    }
+  }
+
+  /**
+   * Handle disconnect calendar command
+   */
+  private async handleDisconnectCalendarCommand(chatId: number, userId: string): Promise<void> {
+    try {
+      console.log(`[TelegramBot] Handling disconnect calendar command for user ${userId}`);
+
+      // Import Google Calendar service
+      const { googleCalendarService } = await import('./googleCalendarService');
+
+      // Check if user has calendar connected
+      const isConnected = await googleCalendarService.isConnected(userId);
+      if (!isConnected) {
+        await this.sendMessage(chatId, 
+          '📅 **No Calendar Connected**\n\n' +
+          'You don\'t have a Google Calendar connected to your account.\n\n' +
+          'Use /connect_calendar to connect your Google Calendar and automatically track invoice due dates.',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      // Show confirmation dialog
+      await this.sendMessage(chatId,
+        '📅 **Disconnect Google Calendar?**\n\n' +
+        '⚠️ **This will:**\n' +
+        '• Remove access to your Google Calendar\n' +
+        '• Stop creating calendar events for new invoices\n' +
+        '• Keep existing calendar events (they won\'t be deleted)\n\n' +
+        'Are you sure you want to disconnect?',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Yes, Disconnect', callback_data: 'calendar_disconnect_confirm' }],
+              [{ text: '❌ Cancel', callback_data: 'calendar_disconnect_cancel' }]
+            ]
+          }
+        }
+      );
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling disconnect calendar command:', error);
+      
+      // Use error templates for user-friendly messages
+      const { CalendarErrorTemplates } = await import('./calendarErrorTemplates');
+      const errorMessage = CalendarErrorTemplates.getConnectionErrorMessage({
+        userId,
+        operation: 'disconnect',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      await this.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
+    }
+  }
+
+  /**
+   * Handle calendar status command
+   */
+  private async handleCalendarStatusCommand(chatId: number, userId: string): Promise<void> {
+    try {
+      console.log(`[TelegramBot] Handling calendar status command for user ${userId}`);
+
+      // Import Google Calendar service
+      const { googleCalendarService } = await import('./googleCalendarService');
+
+      // Check connection status
+      const isConnected = await googleCalendarService.isConnected(userId);
+      
+      if (!isConnected) {
+        await this.sendMessage(chatId,
+          '📅 **Calendar Status: Not Connected**\n\n' +
+          '❌ You don\'t have a Google Calendar connected.\n\n' +
+          '🎯 **Benefits of connecting:**\n' +
+          '• Automatic invoice due date tracking\n' +
+          '• Payment reminders in your calendar\n' +
+          '• Never miss a payment deadline\n\n' +
+          'Use /connect_calendar to get started!',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔗 Connect Calendar', callback_data: 'calendar_connect_start' }]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      // Test if connection is working
+      const connectionWorking = await googleCalendarService.testConnection(userId);
+      
+      if (connectionWorking) {
+        await this.sendMessage(chatId,
+          '📅 **Calendar Status: Connected & Working**\n\n' +
+          '✅ Your Google Calendar is connected and working properly!\n\n' +
+          '🎯 **Active features:**\n' +
+          '• Invoice due dates automatically added to calendar\n' +
+          '• Payment reminders set up\n' +
+          '• Calendar events updated when invoices are paid\n\n' +
+          '📊 Your invoices will continue to sync with your calendar.',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔌 Disconnect Calendar', callback_data: 'calendar_disconnect_start' }]
+              ]
+            }
+          }
+        );
+      } else {
+        await this.sendMessage(chatId,
+          '📅 **Calendar Status: Connected but Needs Refresh**\n\n' +
+          '⚠️ Your Google Calendar connection exists but needs to be refreshed.\n\n' +
+          '🔄 **What happened:**\n' +
+          '• Your access token may have expired\n' +
+          '• Google Calendar permissions may have changed\n\n' +
+          '💡 **Solution:** Reconnect your calendar to restore functionality.',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔄 Reconnect Calendar', callback_data: 'calendar_reconnect_start' }],
+                [{ text: '🔌 Disconnect Calendar', callback_data: 'calendar_disconnect_start' }]
+              ]
+            }
+          }
+        );
+      }
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling calendar status command:', error);
+      
+      // Use error templates for user-friendly messages
+      const { CalendarErrorTemplates } = await import('./calendarErrorTemplates');
+      const errorMessage = CalendarErrorTemplates.getConnectionErrorMessage({
+        userId,
+        operation: 'status_check',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      await this.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
+    }
+  }
+
+  /**
+   * Handle calendar disconnect confirmation
+   */
+  private async handleCalendarDisconnectConfirm(chatId: number, userId: string): Promise<void> {
+    try {
+      console.log(`[TelegramBot] Handling calendar disconnect confirmation for user ${userId}`);
+
+      // Import Google Calendar service
+      const { googleCalendarService } = await import('./googleCalendarService');
+
+      // Disconnect the calendar
+      const success = await googleCalendarService.disconnectCalendar(userId);
+
+      if (success) {
+        await this.sendMessage(chatId,
+          '✅ **Google Calendar Disconnected**\n\n' +
+          '📅 Your Google Calendar has been successfully disconnected.\n\n' +
+          '📝 **What this means:**\n' +
+          '• New invoices won\'t be added to your calendar\n' +
+          '• Existing calendar events remain untouched\n' +
+          '• You can reconnect anytime with /connect_calendar\n\n' +
+          'Thanks for using the calendar sync feature!',
+          { parse_mode: 'Markdown' }
+        );
+
+        // Track calendar disconnection
+        try {
+          const { trackEvent } = await import('./posthog');
+          await trackEvent(
+            'calendar_disconnected',
+            {
+              feature: 'calendar_sync',
+              timestamp: new Date().toISOString(),
+            },
+            userId,
+          );
+        } catch (trackingError) {
+          console.error('[TelegramBot] Error tracking calendar_disconnected event:', trackingError);
+        }
+      } else {
+        await this.sendMessage(chatId,
+          '❌ **Error Disconnecting Calendar**\n\n' +
+          'Sorry, I encountered an error while trying to disconnect your Google Calendar. Please try again later.',
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling calendar disconnect confirmation:', error);
+      await this.sendMessage(chatId, 
+        '❌ **Error**\n\n' +
+        'Sorry, I encountered an error. Please try again later.',
+        { parse_mode: 'Markdown' }
+      );
     }
   }
 }

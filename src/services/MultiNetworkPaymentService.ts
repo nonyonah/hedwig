@@ -302,6 +302,52 @@ export class MultiNetworkPaymentService {
     }
 
     console.log(`✅ Updated invoice ${invoiceId} status to paid on ${network}`);
+    
+    // Update Google Calendar event if user has connected calendar
+    try {
+      const { googleCalendarService } = await import('../lib/googleCalendarService');
+      
+      if (currentInvoice.calendar_event_id && currentInvoice.created_by) {
+        console.log(`[MultiNetworkPaymentService] Updating calendar event for paid invoice ${invoiceId}`);
+        
+        const success = await googleCalendarService.markInvoiceAsPaid(currentInvoice.created_by, {
+          id: invoiceId,
+          invoice_number: currentInvoice.invoice_number,
+          client_name: currentInvoice.client_name,
+          calendar_event_id: currentInvoice.calendar_event_id
+        });
+
+        if (success) {
+          console.log(`[MultiNetworkPaymentService] Calendar event updated successfully for invoice ${invoiceId}`);
+          
+          // Track calendar event update
+          try {
+            const { trackEvent } = await import('../lib/posthog');
+            await trackEvent(
+              'calendar_event_updated',
+              {
+                feature: 'calendar_sync',
+                invoice_id: invoiceId,
+                calendar_event_id: currentInvoice.calendar_event_id,
+                status: 'paid',
+                timestamp: new Date().toISOString(),
+              },
+              currentInvoice.created_by,
+            );
+          } catch (trackingError) {
+            console.error('[MultiNetworkPaymentService] Error tracking calendar_event_updated event:', trackingError);
+          }
+        } else {
+          console.warn(`[MultiNetworkPaymentService] Failed to update calendar event for invoice ${invoiceId}`);
+        }
+      } else {
+        console.log(`[MultiNetworkPaymentService] Skipping calendar update - no calendar event ID or created_by field`);
+      }
+    } catch (calendarError) {
+      console.error('[MultiNetworkPaymentService] Error updating calendar event:', calendarError);
+      // Don't fail payment processing if calendar update fails
+    }
+    
     await this.sendPaymentNotification('invoice', invoiceId, event, network);
   }
 

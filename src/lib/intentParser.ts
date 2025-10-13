@@ -648,6 +648,63 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
+    // Calendar disconnection keywords (check BEFORE connection to avoid conflicts)
+    if (text.includes('disconnect calendar') ||
+      text.includes('unlink calendar') ||
+      text.includes('remove calendar') ||
+      text.includes('disconnect google calendar') ||
+      text.includes('unlink google calendar') ||
+      text.includes('remove google calendar') ||
+      text.includes('disable calendar') ||
+      text.includes('turn off calendar') ||
+      text.includes('stop calendar sync') ||
+      (text.includes('disconnect') && text.includes('calendar')) ||
+      (text.includes('unlink') && text.includes('calendar')) ||
+      (text.includes('remove') && text.includes('calendar')) ||
+      (text.includes('calendar') && (text.includes('disconnect') || text.includes('unlink') || text.includes('remove') || text.includes('disable')))) {
+      const result = { intent: 'disconnect_calendar', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
+    // Calendar connection keywords
+    if (text.includes('connect calendar') ||
+      text.includes('link calendar') ||
+      text.includes('sync calendar') ||
+      text.includes('connect google calendar') ||
+      text.includes('link google calendar') ||
+      text.includes('sync google calendar') ||
+      text.includes('calendar integration') ||
+      text.includes('calendar sync') ||
+      text.includes('add calendar') ||
+      text.includes('setup calendar') ||
+      text.includes('enable calendar') ||
+      (text.includes('connect') && text.includes('calendar') && !text.includes('disconnect')) ||
+      (text.includes('link') && text.includes('calendar') && !text.includes('unlink')) ||
+      (text.includes('sync') && text.includes('calendar') && !text.includes('stop')) ||
+      (text.includes('calendar') && (text.includes('connect') || text.includes('link') || text.includes('sync') || text.includes('add') || text.includes('setup')) && !text.includes('disconnect') && !text.includes('unlink') && !text.includes('remove') && !text.includes('disable'))) {
+      const result = { intent: 'connect_calendar', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
+    // Calendar status keywords
+    if (text.includes('calendar status') ||
+      text.includes('calendar connection') ||
+      text.includes('is calendar connected') ||
+      text.includes('calendar connected') ||
+      text.includes('check calendar') ||
+      text.includes('calendar sync status') ||
+      text.includes('google calendar status') ||
+      text.includes('my calendar') ||
+      (text.includes('calendar') && (text.includes('status') || text.includes('connected') || text.includes('working'))) ||
+      (text.includes('check') && text.includes('calendar')) ||
+      (text.includes('is') && text.includes('calendar') && text.includes('connected'))) {
+      const result = { intent: 'calendar_status', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
     // Welcome/help keywords
     if (text.includes('hello') ||
       text.includes('hi') ||

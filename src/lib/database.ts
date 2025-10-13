@@ -293,6 +293,35 @@ export interface Database {
           updated_at?: string
         }
       }
+      google_calendar_credentials: {
+        Row: {
+          id: string
+          user_id: string
+          access_token: string
+          refresh_token: string
+          calendar_id: string
+          connected_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          access_token: string
+          refresh_token: string
+          calendar_id?: string
+          connected_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          access_token?: string
+          refresh_token?: string
+          calendar_id?: string
+          connected_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

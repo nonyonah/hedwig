@@ -19,6 +19,8 @@ export interface InvoiceData {
   status: string;
   blockchain?: string; // Optional blockchain field
   chain_id?: number; // Optional chain ID field
+  calendar_event_id?: string; // Optional calendar event ID
+  created_by?: string; // User ID who created the invoice
   payment_methods: {
     usdc_base?: boolean;
   };
@@ -413,27 +415,117 @@ export class InvoiceModule {
         console.error('[InvoiceModule] Error awarding referral points:', error);
       }
 
+      // Create Google Calendar event if user has connected calendar
+      try {
+        const { googleCalendarService } = await import('../lib/googleCalendarService');
+        
+        // Check if user has connected calendar
+        const isConnected = await googleCalendarService.isConnected(userId);
+        if (isConnected && invoice.due_date) {
+          console.log(`[InvoiceModule] Creating calendar event for invoice ${invoice.invoice_number}`);
+          
+          const calendarEventId = await googleCalendarService.createInvoiceEvent(userId, {
+            id: invoice.id,
+            invoice_number: invoice.invoice_number,
+            client_name: invoice.client_name,
+            amount: invoice.amount,
+            currency: invoice.currency,
+            due_date: invoice.due_date,
+            project_description: invoice.project_description
+          });
+
+          if (calendarEventId) {
+            // Store calendar event ID in invoice record
+            await supabase
+              .from('invoices')
+              .update({ calendar_event_id: calendarEventId })
+              .eq('id', invoice.id);
+
+            console.log(`[InvoiceModule] Calendar event created successfully: ${calendarEventId}`);
+            
+            // Track calendar event creation
+            try {
+              const { trackEvent } = await import('../lib/posthog');
+              await trackEvent(
+                'calendar_event_created',
+                {
+                  feature: 'calendar_sync',
+                  invoice_id: invoice.id,
+                  calendar_event_id: calendarEventId,
+                  timestamp: new Date().toISOString(),
+                },
+                userId,
+              );
+            } catch (trackingError) {
+              console.error('[InvoiceModule] Error tracking calendar_event_created event:', trackingError);
+            }
+          } else {
+            console.warn(`[InvoiceModule] Failed to create calendar event for invoice ${invoice.invoice_number}`);
+          }
+        } else {
+          console.log(`[InvoiceModule] Skipping calendar event creation - user not connected or no due date`);
+        }
+      } catch (calendarError) {
+        console.error('[InvoiceModule] Error creating calendar event:', calendarError);
+        // Don't fail invoice creation if calendar fails
+      }
+
       // Clear user state
       await this.clearUserState(userId);
 
       // Generate preview message
       const previewMessage = this.generateInvoicePreview(invoice);
 
+      // Check if user has calendar connected for feature discovery
+      let calendarConnected = false;
+      try {
+        const { googleCalendarService } = await import('../lib/googleCalendarService');
+        calendarConnected = await googleCalendarService.isConnected(userId);
+      } catch (error) {
+        console.error('[InvoiceModule] Error checking calendar connection:', error);
+      }
+
+      // Add calendar sync info to keyboard if not connected
+      const keyboard = [
+        [
+          { text: '📧 Send to Client', callback_data: `send_invoice_${invoiceId}` },
+          { text: '📄 Generate PDF', callback_data: `pdf_invoice_${invoiceId}` }
+        ],
+        [
+          { text: '✏️ Edit Invoice', callback_data: `edit_invoice_${invoiceId}` },
+          { text: '🗑️ Delete', callback_data: `delete_invoice_${invoiceId}` }
+        ]
+      ];
+
+      // Add calendar sync promotion if not connected
+      if (!calendarConnected) {
+        keyboard.push([
+          { text: '📅 Connect Calendar for Due Date Tracking', callback_data: 'calendar_connect_start' }
+        ]);
+      }
+
       await this.bot.sendMessage(chatId, previewMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '📧 Send to Client', callback_data: `send_invoice_${invoiceId}` },
-              { text: '📄 Generate PDF', callback_data: `pdf_invoice_${invoiceId}` }
-            ],
-            [
-              { text: '✏️ Edit Invoice', callback_data: `edit_invoice_${invoiceId}` },
-              { text: '🗑️ Delete', callback_data: `delete_invoice_${invoiceId}` }
-            ]
-          ]
+          inline_keyboard: keyboard
         }
       });
+
+      // Send calendar feature discovery message if not connected
+      if (!calendarConnected && invoice.due_date) {
+        setTimeout(async () => {
+          await this.bot.sendMessage(chatId,
+            '💡 **Pro Tip: Calendar Sync**\n\n' +
+            '📅 Connect your Google Calendar to automatically:\n' +
+            '• Track invoice due dates\n' +
+            '• Get payment reminders\n' +
+            '• Update events when invoices are paid\n\n' +
+            '🚀 Never miss a payment deadline again!\n\n' +
+            'Use /connect_calendar to get started.',
+            { parse_mode: 'Markdown' }
+          );
+        }, 2000); // Send after 2 seconds
+      }
 
       return 'Invoice created successfully!';
     } catch (error) {
@@ -1034,6 +1126,36 @@ export class InvoiceModule {
   // Cancel invoice creation
   async cancelInvoiceCreation(chatId: number, invoiceId: string, userId?: string) {
     try {
+      // Get invoice data for calendar cleanup
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('invoice_number, calendar_event_id, created_by')
+        .eq('id', invoiceId)
+        .single();
+
+      // Delete Google Calendar event if it exists
+      if (invoice?.calendar_event_id && invoice.created_by) {
+        try {
+          const { googleCalendarService } = await import('../lib/googleCalendarService');
+          
+          console.log(`[InvoiceModule] Deleting calendar event for cancelled invoice ${invoice.invoice_number}`);
+          
+          const success = await googleCalendarService.deleteInvoiceEvent(
+            invoice.created_by, 
+            invoice.calendar_event_id
+          );
+
+          if (success) {
+            console.log(`[InvoiceModule] Calendar event deleted successfully for cancelled invoice ${invoice.invoice_number}`);
+          } else {
+            console.warn(`[InvoiceModule] Failed to delete calendar event for cancelled invoice ${invoice.invoice_number}`);
+          }
+        } catch (calendarError) {
+          console.error('[InvoiceModule] Error deleting calendar event during cancellation:', calendarError);
+          // Don't fail invoice cancellation if calendar cleanup fails
+        }
+      }
+
       // Delete the invoice
       await supabase
         .from('invoices')
@@ -1143,13 +1265,53 @@ export class InvoiceModule {
     try {
       const { data: invoice } = await supabase
         .from('invoices')
-        .select('invoice_number')
+        .select('invoice_number, calendar_event_id, created_by')
         .eq('id', invoiceId)
         .single();
 
       if (!invoice) {
         await this.bot.sendMessage(chatId, '❌ Invoice not found.');
         return;
+      }
+
+      // Delete Google Calendar event if it exists
+      if (invoice.calendar_event_id && invoice.created_by) {
+        try {
+          const { googleCalendarService } = await import('../lib/googleCalendarService');
+          
+          console.log(`[InvoiceModule] Deleting calendar event for invoice ${invoice.invoice_number}`);
+          
+          const success = await googleCalendarService.deleteInvoiceEvent(
+            invoice.created_by, 
+            invoice.calendar_event_id
+          );
+
+          if (success) {
+            console.log(`[InvoiceModule] Calendar event deleted successfully for invoice ${invoice.invoice_number}`);
+            
+            // Track calendar event deletion
+            try {
+              const { trackEvent } = await import('../lib/posthog');
+              await trackEvent(
+                'calendar_event_deleted',
+                {
+                  feature: 'calendar_sync',
+                  invoice_id: invoiceId,
+                  calendar_event_id: invoice.calendar_event_id,
+                  timestamp: new Date().toISOString(),
+                },
+                invoice.created_by,
+              );
+            } catch (trackingError) {
+              console.error('[InvoiceModule] Error tracking calendar_event_deleted event:', trackingError);
+            }
+          } else {
+            console.warn(`[InvoiceModule] Failed to delete calendar event for invoice ${invoice.invoice_number} - event may not exist`);
+          }
+        } catch (calendarError) {
+          console.error('[InvoiceModule] Error deleting calendar event:', calendarError);
+          // Don't fail invoice deletion if calendar cleanup fails
+        }
       }
 
       // Delete the invoice
