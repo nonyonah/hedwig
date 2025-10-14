@@ -43,13 +43,13 @@ export class MultiNetworkPaymentService {
     // Initialize Supabase client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
+
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Supabase configuration missing');
     }
-    
+
     this.supabase = createClient(supabaseUrl, supabaseKey);
-    
+
     // Initialize payment services for each network
     this.initializeNetworkServices();
   }
@@ -65,7 +65,7 @@ export class MultiNetworkPaymentService {
             config.contractAddress,
             config.rpcUrl
           );
-          
+
           this.services.set(network, service);
           console.log(`✅ Initialized ${network} payment service:`, {
             contractAddress: config.contractAddress,
@@ -125,7 +125,7 @@ export class MultiNetworkPaymentService {
   public getTokenAddress(network: string, tokenSymbol: string): string | null {
     const config = this.getNetworkConfig(network);
     if (!config) return null;
-    
+
     return config.tokens[tokenSymbol as keyof typeof config.tokens] || null;
   }
 
@@ -147,7 +147,7 @@ export class MultiNetworkPaymentService {
     }
 
     console.log('🚀 Starting multi-network payment listener...');
-    
+
     const promises = Array.from(this.services.entries()).map(async ([network, service]) => {
       try {
         await service.listenForPayments(async (event: PaymentReceivedEvent) => {
@@ -156,11 +156,11 @@ export class MultiNetworkPaymentService {
             amount: event.amount.toString(),
             transactionHash: event.transactionHash
           });
-          
+
           // Process the payment event with network context
           await this.processPaymentEvent(event, network);
         });
-        
+
         console.log(`✅ Started listening for payments on ${network}`);
       } catch (error) {
         console.error(`❌ Failed to start listener for ${network}:`, error);
@@ -245,7 +245,7 @@ export class MultiNetworkPaymentService {
    */
   private async updatePaymentRecord(event: PaymentReceivedEvent, network: string): Promise<void> {
     const networkConfig = this.getNetworkConfig(network);
-    
+
     if (event.invoiceId.startsWith('invoice_')) {
       const invoiceId = event.invoiceId.replace('invoice_', '');
       await this.updateInvoice(invoiceId, event, network, networkConfig);
@@ -302,14 +302,14 @@ export class MultiNetworkPaymentService {
     }
 
     console.log(`✅ Updated invoice ${invoiceId} status to paid on ${network}`);
-    
+
     // Update Google Calendar event if user has connected calendar
     try {
       const { googleCalendarService } = await import('../lib/googleCalendarService');
-      
+
       if (currentInvoice.calendar_event_id && currentInvoice.created_by) {
         console.log(`[MultiNetworkPaymentService] Updating calendar event for paid invoice ${invoiceId}`);
-        
+
         const success = await googleCalendarService.markInvoiceAsPaid(currentInvoice.created_by, {
           id: invoiceId,
           invoice_number: currentInvoice.invoice_number,
@@ -319,7 +319,7 @@ export class MultiNetworkPaymentService {
 
         if (success) {
           console.log(`[MultiNetworkPaymentService] Calendar event updated successfully for invoice ${invoiceId}`);
-          
+
           // Track calendar event update
           try {
             const { trackEvent } = await import('../lib/posthog');
@@ -347,7 +347,7 @@ export class MultiNetworkPaymentService {
       console.error('[MultiNetworkPaymentService] Error updating calendar event:', calendarError);
       // Don't fail payment processing if calendar update fails
     }
-    
+
     await this.sendPaymentNotification('invoice', invoiceId, event, network);
   }
 
@@ -524,7 +524,7 @@ export class MultiNetworkPaymentService {
    */
   public stopListening(): void {
     console.log('🛑 Stopping multi-network payment listener...');
-    
+
     for (const [network, service] of this.services.entries()) {
       try {
         service.stopListening();
@@ -533,7 +533,7 @@ export class MultiNetworkPaymentService {
         console.error(`❌ Error stopping ${network} listener:`, error);
       }
     }
-    
+
     this.isListening = false;
     console.log('✅ Multi-network payment listener stopped');
   }

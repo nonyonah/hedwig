@@ -46,6 +46,23 @@ export async function runLLM({
   systemOverride?: string;
   generateNaturalResponse?: boolean;
 }) {
+  // If generateNaturalResponse is false, use direct intent parsing instead of LLM
+  if (!generateNaturalResponse) {
+    const { parseIntentAndParams } = await import('./intentParser');
+    const result = parseIntentAndParams(message);
+    
+    // Convert result to JSON string to match expected LLM response format
+    const jsonResult = JSON.stringify(result);
+    
+    // Update user context with the parsed result
+    await setUserContext(userId, [
+      { role: 'user', content: message },
+      { role: 'assistant', content: jsonResult }
+    ]);
+    
+    return jsonResult;
+  }
+
   // 1. Get last N messages for context
   let context = await getUserContext(userId);
 
@@ -93,6 +110,9 @@ Valid intents:
 - view_proposals: For viewing existing proposals
 - edit_proposal: For editing existing proposals
 - send_reminder: For sending manual payment reminders to clients
+- connect_calendar: For connecting Google Calendar to sync invoices and events
+- disconnect_calendar: For disconnecting Google Calendar integration
+- calendar_status: For checking Google Calendar connection status
 
 - offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
 - kyc_verification: For KYC status, identity verification, or compliance requirements
@@ -364,6 +384,21 @@ IMPORTANT INTENT RECOGNITION RULES:
     // - original_message: Always include the full original message for parsing
     // NOTE: Currency conversion feature has been disabled.
 
+24. CALENDAR REQUESTS: Always use appropriate calendar intent for:
+    - "connect_calendar" intent for:
+      * "connect calendar", "link calendar", "sync calendar", "add calendar"
+      * "connect Google Calendar", "link Google Calendar", "calendar integration"
+      * "set up calendar", "enable calendar sync", "calendar connection"
+      * "I want to connect my calendar", "sync with calendar"
+    - "disconnect_calendar" intent for:
+      * "disconnect calendar", "unlink calendar", "remove calendar", "stop calendar sync"
+      * "disconnect Google Calendar", "unlink Google Calendar", "disable calendar"
+      * "turn off calendar sync", "remove calendar integration"
+    - "calendar_status" intent for:
+      * "calendar status", "check calendar", "calendar connection status"
+      * "is my calendar connected", "calendar sync status", "show calendar status"
+      * "calendar info", "calendar settings", "my calendar connection"
+
 EXAMPLES:
 User: "/send" or "send" or "how to send" or "how do I send crypto"
 Response: {"intent": "instruction_send", "params": {}}
@@ -430,6 +465,15 @@ Response: {"intent": "get_spending", "params": {"token": "ETH", "timeframe": "th
 
 User: "0x1234567890123456789012345678901234567890" (after being asked for address)
 Response: {"intent": "send", "params": {"recipient": "0x1234567890123456789012345678901234567890"}}
+
+User: "connect calendar" or "link my calendar" or "sync calendar"
+Response: {"intent": "connect_calendar", "params": {}}
+
+User: "disconnect calendar" or "unlink calendar" or "remove calendar sync"
+Response: {"intent": "disconnect_calendar", "params": {}}
+
+User: "calendar status" or "is my calendar connected" or "check calendar"
+Response: {"intent": "calendar_status", "params": {}}
 
 User: "create proposal for web development project for ABC Corp, $5000 budget"
 Response: {"intent": "create_proposal", "params": {"service_type": "web development", "client_name": "ABC Corp", "budget": "5000", "currency": "USD"}}

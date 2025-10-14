@@ -2571,6 +2571,81 @@ export class BotIntegration {
           await this.handleLeaderboardCommand(chatId);
           return true;
 
+        case '/connect_calendar':
+        case 'connect calendar':
+        case 'sync calendar':
+        case 'link calendar': {
+          // Handle calendar connection via actions
+          try {
+            const result = await handleAction('connect_calendar', {}, userId);
+            await this.bot.sendMessage(chatId, result.text, {
+              parse_mode: 'Markdown',
+              reply_markup: result.reply_markup
+            });
+          } catch (error) {
+            console.error('[BotIntegration] Error connecting calendar:', error);
+            await this.bot.sendMessage(chatId, '❌ Failed to connect calendar. Please try again.');
+          }
+          return true;
+        }
+
+        case '/disconnect_calendar':
+        case 'disconnect calendar':
+        case 'unlink calendar':
+        case 'remove calendar': {
+          // Handle calendar disconnection via actions
+          try {
+            const result = await handleAction('disconnect_calendar', {}, userId);
+            await this.bot.sendMessage(chatId, result.text, {
+              parse_mode: 'Markdown',
+              reply_markup: result.reply_markup
+            });
+          } catch (error) {
+            console.error('[BotIntegration] Error disconnecting calendar:', error);
+            await this.bot.sendMessage(chatId, '❌ Failed to disconnect calendar. Please try again.');
+          }
+          return true;
+        }
+
+        case '/calendar_status':
+        case 'calendar status':
+        case 'check calendar':
+        case 'calendar connection': {
+          // Handle calendar status via actions
+          try {
+            const result = await handleAction('calendar_status', {}, userId);
+            await this.bot.sendMessage(chatId, result.text, {
+              parse_mode: 'Markdown',
+              reply_markup: result.reply_markup
+            });
+          } catch (error) {
+            console.error('[BotIntegration] Error checking calendar status:', error);
+            await this.bot.sendMessage(chatId, '❌ Failed to check calendar status. Please try again.');
+          }
+          return true;
+        }
+
+        case '/buy_crypto':
+        case '/buy':
+        case '/onramp':
+        case 'buy crypto':
+        case 'buy cryptocurrency':
+        case 'onramp':
+        case 'purchase crypto': {
+          // Handle onramp via actions
+          try {
+            const result = await handleAction('onramp', {}, userId);
+            await this.bot.sendMessage(chatId, result.text, {
+              parse_mode: 'Markdown',
+              reply_markup: result.reply_markup
+            });
+          } catch (error) {
+            console.error('[BotIntegration] Error handling onramp:', error);
+            await this.bot.sendMessage(chatId, '❌ Failed to process buy crypto request. Please try again.');
+          }
+          return true;
+        }
+
         case 'cancel proposal':
           // Handle cancellation of ongoing proposal creation
           const ongoingProposal = await this.getOngoingProposal(userId);

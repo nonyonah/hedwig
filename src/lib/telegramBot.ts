@@ -332,12 +332,12 @@ export class TelegramBotService {
 
       // Quick check for common onramp phrases - feature currently disabled
       const lowerText = messageText.toLowerCase();
-      if (lowerText.includes('buy crypto') || lowerText.includes('buy cryptocurrency') || 
-          lowerText.includes('purchase crypto') || lowerText.includes('buy tokens') ||
-          lowerText.includes('buy usdc') || lowerText.includes('buy usdt') ||
-          lowerText.includes('onramp') || lowerText.includes('buy with') ||
-          (lowerText.includes('buy') && (lowerText.includes('ngn') || lowerText.includes('naira') || 
-           lowerText.includes('kes') || lowerText.includes('ghs') || lowerText.includes('ugx')))) {
+      if (lowerText.includes('buy crypto') || lowerText.includes('buy cryptocurrency') ||
+        lowerText.includes('purchase crypto') || lowerText.includes('buy tokens') ||
+        lowerText.includes('buy usdc') || lowerText.includes('buy usdt') ||
+        lowerText.includes('onramp') || lowerText.includes('buy with') ||
+        (lowerText.includes('buy') && (lowerText.includes('ngn') || lowerText.includes('naira') ||
+          lowerText.includes('kes') || lowerText.includes('ghs') || lowerText.includes('ugx')))) {
         console.log('[TelegramBot] Onramp phrase detected but feature is disabled');
         await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nI understand you want to buy cryptocurrency! This feature is currently under development and will be available soon.\n\nIn the meantime, you can:\n• Check your wallet balance\n• Send crypto to others\n• Create invoices and payment links', { parse_mode: 'Markdown' });
         return;
@@ -467,84 +467,24 @@ export class TelegramBotService {
           await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction history will be available when the feature launches!', { parse_mode: 'Markdown' });
           break;
         case 'calendar_connect_start':
-        case 'calendar_reconnect_start': {
-          console.log('[TelegramBot] Processing calendar_connect_start callback through action system');
-          const { handleAction } = await import('../api/actions');
-          try {
-            const actionResult = await handleAction('connect_calendar', {}, userId);
-            console.log('[handleAction] Intent: connect_calendar Params: {} UserId:', userId);
-            
-            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
-              await this.sendMessage(chatId, actionResult.text, {
-                reply_markup: actionResult.reply_markup,
-                parse_mode: 'Markdown'
-              });
-            } else {
-              await this.sendMessage(chatId, actionResult?.text || 'Calendar connection processed', {
-                parse_mode: 'Markdown'
-              });
-            }
-          } catch (error) {
-            console.error('[TelegramBot] Error processing connect_calendar callback:', error);
-            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar connection request. Please try again later.');
-          }
+        case 'calendar_reconnect_start':
+          await this.botIntegration.handleBusinessMessage({ chat: { id: chatId }, text: '/connect_calendar', from: { id: parseInt(userId) } } as any, userId);
           break;
-        }
         case 'calendar_connect_cancel':
           await this.sendMessage(chatId, '❌ Calendar connection cancelled.', { parse_mode: 'Markdown' });
           break;
-        case 'calendar_disconnect_start': {
-          console.log('[TelegramBot] Processing calendar_disconnect_start callback through action system');
-          const { handleAction } = await import('../api/actions');
-          try {
-            const actionResult = await handleAction('disconnect_calendar', {}, userId);
-            console.log('[handleAction] Intent: disconnect_calendar Params: {} UserId:', userId);
-            
-            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
-              await this.sendMessage(chatId, actionResult.text, {
-                reply_markup: actionResult.reply_markup,
-                parse_mode: 'Markdown'
-              });
-            } else {
-              await this.sendMessage(chatId, actionResult?.text || 'Calendar disconnection processed', {
-                parse_mode: 'Markdown'
-              });
-            }
-          } catch (error) {
-            console.error('[TelegramBot] Error processing disconnect_calendar callback:', error);
-            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar disconnection request. Please try again later.');
-          }
+        case 'calendar_disconnect_start':
+          await this.botIntegration.handleBusinessMessage({ chat: { id: chatId }, text: '/disconnect_calendar', from: { id: parseInt(userId) } } as any, userId);
           break;
-        }
         case 'calendar_disconnect_confirm':
           await this.handleCalendarDisconnectConfirm(chatId, userId);
           break;
         case 'calendar_disconnect_cancel':
           await this.sendMessage(chatId, '✅ Calendar disconnect cancelled. Your calendar remains connected.', { parse_mode: 'Markdown' });
           break;
-        case 'calendar_status_check': {
-          console.log('[TelegramBot] Processing calendar_status_check callback through action system');
-          const { handleAction } = await import('../api/actions');
-          try {
-            const actionResult = await handleAction('calendar_status', {}, userId);
-            console.log('[handleAction] Intent: calendar_status Params: {} UserId:', userId);
-            
-            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
-              await this.sendMessage(chatId, actionResult.text, {
-                reply_markup: actionResult.reply_markup,
-                parse_mode: 'Markdown'
-              });
-            } else {
-              await this.sendMessage(chatId, actionResult?.text || 'Calendar status checked', {
-                parse_mode: 'Markdown'
-              });
-            }
-          } catch (error) {
-            console.error('[TelegramBot] Error processing calendar_status callback:', error);
-            await this.sendMessage(chatId, 'Sorry, I encountered an error while checking your calendar status. Please try again later.');
-          }
+        case 'calendar_status_check':
+          await this.botIntegration.handleBusinessMessage({ chat: { id: chatId }, text: '/calendar_status', from: { id: parseInt(userId) } } as any, userId);
           break;
-        }
         default:
           // Handle onramp callbacks
           if (data.startsWith('onramp_')) {
@@ -706,8 +646,10 @@ export class TelegramBotService {
       case '/buy_crypto':
       case '/buy':
       case '/onramp': {
-        // Onramp feature is currently disabled
-        await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. We\'ll notify you when it\'s available!\n\nIn the meantime, you can:\n• Check your wallet balance with /balance\n• Send crypto with /send\n• Create invoices with /invoice\n• Create payment links with /paymentlink', { parse_mode: 'Markdown' });
+        // Handle onramp commands via bot-integration (same as calendar/invoice)
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
+        console.log('[TelegramBot] Onramp command user resolution:', { resolvedUserId });
+        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
         break;
       }
       case '/onramp_history': {
@@ -721,90 +663,21 @@ export class TelegramBotService {
         break;
       }
       case '/connect_calendar': {
-        // Handle calendar connection command through action system
-        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
-        if (resolvedUserId) {
-          console.log('[TelegramBot] Processing /connect_calendar command through action system');
-          const { handleAction } = await import('../api/actions');
-          try {
-            const actionResult = await handleAction('connect_calendar', {}, resolvedUserId);
-            console.log('[handleAction] Intent: connect_calendar Params: {} UserId:', resolvedUserId);
-            
-            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
-              await this.sendMessage(chatId, actionResult.text, {
-                reply_markup: actionResult.reply_markup,
-                parse_mode: 'Markdown'
-              });
-            } else {
-              await this.sendMessage(chatId, actionResult?.text || 'Calendar connection processed', {
-                parse_mode: 'Markdown'
-              });
-            }
-          } catch (error) {
-            console.error('[TelegramBot] Error processing connect_calendar action:', error);
-            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar connection request. Please try again later.');
-          }
-        } else {
-          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
-        }
+        // Handle calendar connection command via bot-integration
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
+        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
         break;
       }
       case '/disconnect_calendar': {
-        // Handle calendar disconnection command through action system
-        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
-        if (resolvedUserId) {
-          console.log('[TelegramBot] Processing /disconnect_calendar command through action system');
-          const { handleAction } = await import('../api/actions');
-          try {
-            const actionResult = await handleAction('disconnect_calendar', {}, resolvedUserId);
-            console.log('[handleAction] Intent: disconnect_calendar Params: {} UserId:', resolvedUserId);
-            
-            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
-              await this.sendMessage(chatId, actionResult.text, {
-                reply_markup: actionResult.reply_markup,
-                parse_mode: 'Markdown'
-              });
-            } else {
-              await this.sendMessage(chatId, actionResult?.text || 'Calendar disconnection processed', {
-                parse_mode: 'Markdown'
-              });
-            }
-          } catch (error) {
-            console.error('[TelegramBot] Error processing disconnect_calendar action:', error);
-            await this.sendMessage(chatId, 'Sorry, I encountered an error while processing your calendar disconnection request. Please try again later.');
-          }
-        } else {
-          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
-        }
+        // Handle calendar disconnection command via bot-integration
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
+        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
         break;
       }
       case '/calendar_status': {
-        // Handle calendar status command through action system
-        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId);
-        if (resolvedUserId) {
-          console.log('[TelegramBot] Processing /calendar_status command through action system');
-          const { handleAction } = await import('../api/actions');
-          try {
-            const actionResult = await handleAction('calendar_status', {}, resolvedUserId);
-            console.log('[handleAction] Intent: calendar_status Params: {} UserId:', resolvedUserId);
-            
-            if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
-              await this.sendMessage(chatId, actionResult.text, {
-                reply_markup: actionResult.reply_markup,
-                parse_mode: 'Markdown'
-              });
-            } else {
-              await this.sendMessage(chatId, actionResult?.text || 'Calendar status checked', {
-                parse_mode: 'Markdown'
-              });
-            }
-          } catch (error) {
-            console.error('[TelegramBot] Error processing calendar_status action:', error);
-            await this.sendMessage(chatId, 'Sorry, I encountered an error while checking your calendar status. Please try again later.');
-          }
-        } else {
-          await this.sendMessage(chatId, 'I don\'t see you in our system yet. Please run /start first to get set up!');
-        }
+        // Handle calendar status command via bot-integration
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
+        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
         break;
       }
       default:
@@ -882,6 +755,10 @@ Just send me a message and I'll help you out! ✨`;
 /connect_calendar - 🔗 Connect Google Calendar
 /disconnect_calendar - 🔌 Disconnect Google Calendar
 /calendar_status - 📊 Check calendar connection status
+
+🪙 **Buy Crypto Commands:**
+/buy_crypto - 💰 Buy cryptocurrency with fiat
+/onramp - 🪙 Purchase crypto with local currency
 
 ✨ **What I can do:**
 • 📄 Create professional invoices
@@ -1004,17 +881,21 @@ Choose an action below:`;
       const { handleAction } = await import('../api/actions');
 
       // Get LLM response
+      console.log('🔥 [TelegramBot] About to call runLLM with:', { userId: llmUserId, message, generateNaturalResponse: false });
       const llmResponse = await runLLM({
         userId: llmUserId,
-        message
+        message,
+        generateNaturalResponse: false
       });
+      console.log('🔥 [TelegramBot] runLLM returned:', llmResponse);
 
       console.log('[TelegramBot] LLM Response:', llmResponse);
 
       // Parse the intent and parameters
       const { intent, params } = parseIntentAndParams(llmResponse);
 
-      console.log('[TelegramBot] Parsed intent:', intent, 'Params:', params);
+      console.log('[TelegramBot] LLM Response:', llmResponse);
+      console.log('[TelegramBot] Parsed intent from LLM:', intent, 'Params:', params);
 
       // Debug: Also try direct intent parsing for comparison
       const directIntent = parseIntentAndParams(message);
@@ -1023,7 +904,7 @@ Choose an action below:`;
       // Fallback: If LLM didn't recognize intent but direct parser did, use direct parser
       let finalIntent = intent;
       let finalParams = params;
-      
+
       if (intent === 'unknown' && (directIntent.intent === 'onramp' || directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status')) {
         console.log('[TelegramBot] Using direct parser result as fallback for:', directIntent.intent);
         finalIntent = directIntent.intent;
@@ -1035,18 +916,18 @@ Choose an action below:`;
       // Additional fallback: If still unknown but message clearly indicates onramp, force onramp intent
       if (finalIntent === 'unknown' || finalIntent === 'conversation' || finalIntent === 'clarification') {
         const lowerMessage = message.toLowerCase();
-        if (lowerMessage.includes('buy crypto') || lowerMessage.includes('buy cryptocurrency') || 
-            lowerMessage.includes('purchase crypto') || lowerMessage.includes('buy tokens') ||
-            lowerMessage.includes('buy usdc') || lowerMessage.includes('buy usdt') ||
-            lowerMessage.includes('onramp') || lowerMessage.includes('fiat to crypto') ||
-            (lowerMessage.includes('buy') && (lowerMessage.includes('ngn') || lowerMessage.includes('naira')))) {
+        if (lowerMessage.includes('buy crypto') || lowerMessage.includes('buy cryptocurrency') ||
+          lowerMessage.includes('purchase crypto') || lowerMessage.includes('buy tokens') ||
+          lowerMessage.includes('buy usdc') || lowerMessage.includes('buy usdt') ||
+          lowerMessage.includes('onramp') || lowerMessage.includes('fiat to crypto') ||
+          (lowerMessage.includes('buy') && (lowerMessage.includes('ngn') || lowerMessage.includes('naira')))) {
           console.log('[TelegramBot] Forcing onramp intent due to clear onramp keywords');
           finalIntent = 'onramp';
           finalParams = { text: message };
         }
         // Calendar fallback: If LLM didn't recognize calendar but direct parser did, use direct parser
         else if (directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status') {
-          console.log('[TelegramBot] Using direct parser result as fallback for calendar intent');
+          console.log('[TelegramBot] Using direct parser result as fallback for calendar intent:', directIntent.intent);
           finalIntent = directIntent.intent;
           finalParams = directIntent.params;
         }
@@ -1120,6 +1001,8 @@ Choose an action below:`;
           return 'Opening mini app…';
         }
       }
+
+
 
       // Execute the action based on the intent using the user's UUID
       let actionResult: ActionResult | string;
@@ -1401,7 +1284,9 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'leaderboard', description: '🏆 View referral leaderboard' },
         { command: 'connect_calendar', description: '📅 Connect Google Calendar' },
         { command: 'disconnect_calendar', description: '🔌 Disconnect Google Calendar' },
-        { command: 'calendar_status', description: '📊 Check calendar connection status' }
+        { command: 'calendar_status', description: '📊 Check calendar connection status' },
+        { command: 'buy_crypto', description: '🪙 Buy crypto with fiat currency' },
+        { command: 'onramp', description: '💰 Purchase cryptocurrency' }
       ];
 
       await this.bot.setMyCommands(commands);
@@ -2008,7 +1893,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         // Test if connection is still working
         const connectionWorking = await googleCalendarService.testConnection(userId);
         if (connectionWorking) {
-          await this.sendMessage(chatId, 
+          await this.sendMessage(chatId,
             '📅 **Google Calendar Already Connected!**\n\n' +
             '✅ Your Google Calendar is already connected and working properly.\n\n' +
             'Your invoice due dates will automatically be added to your calendar when you create invoices.',
@@ -2016,7 +1901,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
           );
           return;
         } else {
-          await this.sendMessage(chatId, 
+          await this.sendMessage(chatId,
             '📅 **Calendar Connection Needs Refresh**\n\n' +
             '⚠️ Your Google Calendar connection needs to be refreshed. Let\'s reconnect it.',
             { parse_mode: 'Markdown' }
@@ -2063,7 +1948,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
 
     } catch (error) {
       console.error('[TelegramBot] Error handling connect calendar command:', error);
-      
+
       // Use error templates for user-friendly messages
       const { CalendarErrorTemplates } = await import('./calendarErrorTemplates');
       const errorMessage = CalendarErrorTemplates.getConnectionErrorMessage({
@@ -2071,7 +1956,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         operation: 'connect',
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
-      
+
       await this.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
     }
   }
@@ -2089,7 +1974,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
       // Check if user has calendar connected
       const isConnected = await googleCalendarService.isConnected(userId);
       if (!isConnected) {
-        await this.sendMessage(chatId, 
+        await this.sendMessage(chatId,
           '📅 **No Calendar Connected**\n\n' +
           'You don\'t have a Google Calendar connected to your account.\n\n' +
           'Use /connect_calendar to connect your Google Calendar and automatically track invoice due dates.',
@@ -2119,7 +2004,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
 
     } catch (error) {
       console.error('[TelegramBot] Error handling disconnect calendar command:', error);
-      
+
       // Use error templates for user-friendly messages
       const { CalendarErrorTemplates } = await import('./calendarErrorTemplates');
       const errorMessage = CalendarErrorTemplates.getConnectionErrorMessage({
@@ -2127,7 +2012,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         operation: 'disconnect',
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
-      
+
       await this.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
     }
   }
@@ -2144,7 +2029,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
 
       // Check connection status
       const isConnected = await googleCalendarService.isConnected(userId);
-      
+
       if (!isConnected) {
         await this.sendMessage(chatId,
           '📅 **Calendar Status: Not Connected**\n\n' +
@@ -2168,7 +2053,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
 
       // Test if connection is working
       const connectionWorking = await googleCalendarService.testConnection(userId);
-      
+
       if (connectionWorking) {
         await this.sendMessage(chatId,
           '📅 **Calendar Status: Connected & Working**\n\n' +
@@ -2209,7 +2094,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
 
     } catch (error) {
       console.error('[TelegramBot] Error handling calendar status command:', error);
-      
+
       // Use error templates for user-friendly messages
       const { CalendarErrorTemplates } = await import('./calendarErrorTemplates');
       const errorMessage = CalendarErrorTemplates.getConnectionErrorMessage({
@@ -2217,7 +2102,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         operation: 'status_check',
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
-      
+
       await this.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
     }
   }
@@ -2271,7 +2156,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
 
     } catch (error) {
       console.error('[TelegramBot] Error handling calendar disconnect confirmation:', error);
-      await this.sendMessage(chatId, 
+      await this.sendMessage(chatId,
         '❌ **Error**\n\n' +
         'Sorry, I encountered an error. Please try again later.',
         { parse_mode: 'Markdown' }

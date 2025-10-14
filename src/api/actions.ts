@@ -1179,10 +1179,7 @@ Your wallets are now ready! Please try your command again.`
     case "buy_crypto":
     case "buy":
     case "purchase":
-      console.log('[handleAction] Onramp feature is currently disabled');
-      return {
-        text: "🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. We'll notify you when it's available!\n\nIn the meantime, you can:\n• Check your wallet balance\n• Send crypto\n• Create invoices and payment links",
-      };
+      return await handleOnramp(params, userId);
 
 
 
@@ -2031,15 +2028,15 @@ async function handleSend(params: ActionParams, userId: string) {
 // Extract network from natural language text
 function extractNetwork(text: string): string | null {
   const normalizedText = text.toLowerCase().trim();
-  
+
   if (normalizedText.includes('on base') || normalizedText.includes('base network') || normalizedText.includes('base chain')) {
     return 'base';
   }
-  
+
   if (normalizedText.includes('on celo') || normalizedText.includes('celo network') || normalizedText.includes('celo chain')) {
     return 'celo';
   }
-  
+
   return null;
 }
 
@@ -2732,7 +2729,7 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
     const TelegramBot = require('node-telegram-bot-api');
     const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
     const { BotIntegration } = await import('../modules/bot-integration');
-    
+
     const botIntegration = new BotIntegration(bot);
     await botIntegration.handleInvoiceCreationWithCalendarSuggestion(user.telegram_chat_id, actualUserId);
 
@@ -5267,11 +5264,11 @@ async function handleConnectCalendar(params: ActionParams, userId: string): Prom
     // Check if calendar sync is enabled
     const { getCurrentConfig } = await import('../lib/envConfig');
     const config = getCurrentConfig();
-    
+
     if (!config.googleCalendar.enabled) {
       return {
         text: '📅 **Calendar Sync Unavailable**\n\n' +
-              'Calendar sync is currently disabled. Please contact support if you need this feature.'
+          'Calendar sync is currently disabled. Please contact support if you need this feature.'
       };
     }
 
@@ -5298,6 +5295,9 @@ async function handleConnectCalendar(params: ActionParams, userId: string): Prom
       actualUserId = user.id;
     }
 
+    // Import calendar templates
+    const { CalendarErrorTemplates } = await import('../lib/calendarErrorTemplates');
+
     // Check if user already has calendar connected
     const { googleCalendarService } = await import('../lib/googleCalendarService');
     const isConnected = await googleCalendarService.isConnected(actualUserId);
@@ -5306,16 +5306,19 @@ async function handleConnectCalendar(params: ActionParams, userId: string): Prom
       // Test if connection is still working
       const connectionWorking = await googleCalendarService.testConnection(actualUserId);
       if (connectionWorking) {
+        // Use success template for already connected
         return {
-          text: '📅 **Google Calendar Already Connected!**\n\n' +
-                '✅ Your Google Calendar is already connected and working properly.\n\n' +
-                'Your invoice due dates will automatically be added to your calendar when you create invoices.'
+          text: CalendarErrorTemplates.getSuccessMessage('connect', { userId: actualUserId })
         };
       } else {
+        // Use error template for expired connection
         return {
-          text: '📅 **Calendar Connection Needs Refresh**\n\n' +
-                '⚠️ Your Google Calendar connection needs to be refreshed. Let me help you reconnect it.\n\n' +
-                'Use the link below to reconnect your calendar.'
+          text: CalendarErrorTemplates.getConnectionErrorMessage({
+            userId: actualUserId,
+            operation: 'connect',
+            errorCode: 401,
+            errorMessage: 'invalid_grant'
+          })
         };
       }
     }
@@ -5323,27 +5326,33 @@ async function handleConnectCalendar(params: ActionParams, userId: string): Prom
     // Generate authorization URL
     const authUrl = googleCalendarService.generateAuthUrl(actualUserId);
 
+    // Use a template-like message for consistency
     return {
       text: '📅 **Connect Your Google Calendar**\n\n' +
-            '🎯 **What this does:**\n' +
-            '• Automatically adds invoice due dates to your calendar\n' +
-            '• Sets up reminders for upcoming payments\n' +
-            '• Updates events when invoices are paid\n\n' +
-            '🔒 **Privacy:** We only access your calendar to manage invoice-related events.\n\n' +
-            '👆 Click the link below to connect your Google Calendar:\n\n' +
-            `🔗 ${authUrl}`,
+        '🎯 **What this does:**\n' +
+        '• Automatically adds invoice due dates to your calendar\n' +
+        '• Sets up reminders for upcoming payments\n' +
+        '• Updates events when invoices are paid\n\n' +
+        '🔒 **Privacy:** We only access your calendar to manage invoice-related events.\n\n' +
+        '� Cliuck the button below to connect your Google Calendar:',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '🔗 Connect Google Calendar', url: authUrl }]
+          [{ text: '🔗 Connect Google Calendar', url: authUrl }],
+          [{ text: '❌ Cancel', callback_data: 'calendar_connect_cancel' }]
         ]
       }
     };
 
   } catch (error) {
     console.error('[handleConnectCalendar] Error:', error);
+    // Use error template for connection errors
+    const { CalendarErrorTemplates } = await import('../lib/calendarErrorTemplates');
     return {
-      text: '❌ **Error Connecting Calendar**\n\n' +
-            'Sorry, I encountered an error while trying to set up your Google Calendar connection. Please try again later.'
+      text: CalendarErrorTemplates.getConnectionErrorMessage({
+        userId,
+        operation: 'connect',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      })
     };
   }
 }
@@ -5356,11 +5365,11 @@ async function handleDisconnectCalendar(params: ActionParams, userId: string): P
     // Check if calendar sync is enabled
     const { getCurrentConfig } = await import('../lib/envConfig');
     const config = getCurrentConfig();
-    
+
     if (!config.googleCalendar.enabled) {
       return {
         text: '📅 **Calendar Sync Unavailable**\n\n' +
-              'Calendar sync is currently disabled.'
+          'Calendar sync is currently disabled.'
       };
     }
 
@@ -5387,6 +5396,9 @@ async function handleDisconnectCalendar(params: ActionParams, userId: string): P
       actualUserId = user.id;
     }
 
+    // Import calendar templates
+    const { CalendarErrorTemplates } = await import('../lib/calendarErrorTemplates');
+
     // Check if user has calendar connected
     const { googleCalendarService } = await import('../lib/googleCalendarService');
     const isConnected = await googleCalendarService.isConnected(actualUserId);
@@ -5394,36 +5406,37 @@ async function handleDisconnectCalendar(params: ActionParams, userId: string): P
     if (!isConnected) {
       return {
         text: '📅 **No Calendar Connected**\n\n' +
-              'You don\'t have a Google Calendar connected to your account.\n\n' +
-              'Use "connect calendar" to connect your Google Calendar and automatically track invoice due dates.'
+          'You don\'t have a Google Calendar connected to your account.\n\n' +
+          'Use "connect calendar" to connect your Google Calendar and automatically track invoice due dates.'
       };
     }
 
-    // Disconnect the calendar
-    const success = await googleCalendarService.disconnectCalendar(actualUserId);
-
-    if (success) {
-      return {
-        text: '✅ **Google Calendar Disconnected**\n\n' +
-              '📅 Your Google Calendar has been successfully disconnected.\n\n' +
-              '📝 **What this means:**\n' +
-              '• New invoices won\'t be added to your calendar\n' +
-              '• Existing calendar events remain untouched\n' +
-              '• You can reconnect anytime with "connect calendar"\n\n' +
-              'Thanks for using the calendar sync feature!'
-      };
-    } else {
-      return {
-        text: '❌ **Error Disconnecting Calendar**\n\n' +
-              'Sorry, I encountered an error while trying to disconnect your Google Calendar. Please try again later.'
-      };
-    }
+    // Show confirmation dialog instead of immediately disconnecting
+    return {
+      text: '📅 **Disconnect Google Calendar?**\n\n' +
+        '⚠️ **This will:**\n' +
+        '• Remove access to your Google Calendar\n' +
+        '• Stop creating calendar events for new invoices\n' +
+        '• Keep existing calendar events (they won\'t be deleted)\n\n' +
+        'Are you sure you want to disconnect?',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✅ Yes, Disconnect', callback_data: 'calendar_disconnect_confirm' }],
+          [{ text: '❌ Cancel', callback_data: 'calendar_disconnect_cancel' }]
+        ]
+      }
+    };
 
   } catch (error) {
     console.error('[handleDisconnectCalendar] Error:', error);
+    // Use error template for disconnection errors
+    const { CalendarErrorTemplates } = await import('../lib/calendarErrorTemplates');
     return {
-      text: '❌ **Error**\n\n' +
-            'Sorry, I encountered an error. Please try again later.'
+      text: CalendarErrorTemplates.getConnectionErrorMessage({
+        userId,
+        operation: 'disconnect',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      })
     };
   }
 }
@@ -5436,11 +5449,11 @@ async function handleCalendarStatus(params: ActionParams, userId: string): Promi
     // Check if calendar sync is enabled
     const { getCurrentConfig } = await import('../lib/envConfig');
     const config = getCurrentConfig();
-    
+
     if (!config.googleCalendar.enabled) {
       return {
         text: '📅 **Calendar Sync Unavailable**\n\n' +
-              'Calendar sync is currently disabled in this system.'
+          'Calendar sync is currently disabled in this system.'
       };
     }
 
@@ -5467,51 +5480,70 @@ async function handleCalendarStatus(params: ActionParams, userId: string): Promi
       actualUserId = user.id;
     }
 
+    // Import calendar templates
+    const { CalendarErrorTemplates } = await import('../lib/calendarErrorTemplates');
+
     // Check connection status
     const { googleCalendarService } = await import('../lib/googleCalendarService');
     const isConnected = await googleCalendarService.isConnected(actualUserId);
-    
+
     if (!isConnected) {
       return {
         text: '📅 **Calendar Status: Not Connected**\n\n' +
-              '❌ You don\'t have a Google Calendar connected.\n\n' +
-              '🎯 **Benefits of connecting:**\n' +
-              '• Automatic invoice due date tracking\n' +
-              '• Payment reminders in your calendar\n' +
-              '• Never miss a payment deadline\n\n' +
-              'Use "connect calendar" to get started!'
+          '❌ You don\'t have a Google Calendar connected.\n\n' +
+          '🎯 **Benefits of connecting:**\n' +
+          '• Automatic invoice due date tracking\n' +
+          '• Payment reminders in your calendar\n' +
+          '• Never miss a payment deadline\n\n' +
+          'Use "connect calendar" to get started!',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔗 Connect Calendar', callback_data: 'calendar_connect_start' }]
+          ]
+        }
       };
     }
 
     // Test if connection is working
     const connectionWorking = await googleCalendarService.testConnection(actualUserId);
-    
+
     if (connectionWorking) {
       return {
         text: '📅 **Calendar Status: Connected & Working**\n\n' +
-              '✅ Your Google Calendar is connected and working properly!\n\n' +
-              '🎯 **Active features:**\n' +
-              '• Invoice due dates automatically added to calendar\n' +
-              '• Payment reminders set up\n' +
-              '• Calendar events updated when invoices are paid\n\n' +
-              '📊 Your invoices will continue to sync with your calendar.'
+          '✅ Your Google Calendar is connected and working properly!\n\n' +
+          '🎯 **Active features:**\n' +
+          '• Invoice due dates automatically added to calendar\n' +
+          '• Payment reminders set up\n' +
+          '• Calendar events updated when invoices are paid\n\n' +
+          '📊 Your invoices will continue to sync with your calendar.',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔌 Disconnect Calendar', callback_data: 'calendar_disconnect_start' }]
+          ]
+        }
       };
     } else {
+      // Use error template for expired connection
       return {
-        text: '📅 **Calendar Status: Connected but Needs Refresh**\n\n' +
-              '⚠️ Your Google Calendar connection exists but needs to be refreshed.\n\n' +
-              '🔄 **What happened:**\n' +
-              '• Your access token may have expired\n' +
-              '• Google Calendar permissions may have changed\n\n' +
-              '💡 **Solution:** Use "connect calendar" to restore functionality.'
+        text: CalendarErrorTemplates.getConnectionErrorMessage({
+          userId: actualUserId,
+          operation: 'status_check',
+          errorCode: 401,
+          errorMessage: 'invalid_grant'
+        })
       };
     }
 
   } catch (error) {
     console.error('[handleCalendarStatus] Error:', error);
+    // Use error template for status check errors
+    const { CalendarErrorTemplates } = await import('../lib/calendarErrorTemplates');
     return {
-      text: '❌ **Error Checking Calendar Status**\n\n' +
-            'Sorry, I encountered an error while checking your calendar status. Please try again later.'
+      text: CalendarErrorTemplates.getConnectionErrorMessage({
+        userId,
+        operation: 'status_check',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      })
     };
   }
 }
