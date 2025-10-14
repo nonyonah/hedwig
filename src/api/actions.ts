@@ -1176,7 +1176,6 @@ Your wallets are now ready! Please try your command again.`
       return handleOfframpSubmit(params, userId);
 
     case "onramp":
-    case "buy_crypto":
     case "buy":
     case "purchase":
       return await handleOnramp(params, userId);
@@ -2811,66 +2810,22 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
 // Handle onramp intent - buy crypto with fiat (route through bot-integration)
 async function handleOnramp(params: ActionParams, userId: string): Promise<ActionResult> {
   console.log('[handleOnramp] Called with params:', params, 'userId:', userId);
-  try {
-    const actualUserId = await resolveUserId(userId);
-    if (!actualUserId) {
-      return {
-        text: "User not found. Please make sure you're registered with the bot.",
-      };
-    }
-
-    // Get the user's chat ID for Telegram interaction
-    const { data: user } = await supabase
-      .from('users')
-      .select('telegram_chat_id')
-      .eq('id', actualUserId)
-      .single();
-
-    if (!user?.telegram_chat_id) {
-      // If no chat ID, provide a generic response
-      return {
-        text: "🪙 **Buy Crypto with Fiat**\n\nUse `/buy_crypto` to start purchasing cryptocurrency with your local currency.\n\n**Supported:**\n• USDC, USDT, cUSD\n• Solana, Base, Celo, Lisk networks\n• NGN, KES, GHS, UGX, TZS currencies\n\n**Limits:** $5 - $10,000 USD equivalent",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🪙 Start Purchase', callback_data: 'start_onramp' }],
-            [{ text: '📋 View History', callback_data: 'onramp_history' }]
-          ]
-        }
-      };
-    }
-
-    // Route to bot-integration for consistent handling
-    const TelegramBot = require('node-telegram-bot-api');
-
-    if (!process.env.TELEGRAM_BOT_TOKEN) {
-      console.error('[handleOnramp] TELEGRAM_BOT_TOKEN not found');
-      return {
-        text: "❌ Bot configuration error. Please contact support.",
-      };
-    }
-
-    const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
-
-    const { BotIntegration } = await import('../modules/bot-integration');
-    const botIntegration = new BotIntegration(bot);
-
-    console.log('[handleOnramp] About to call botIntegration.handleOnramp');
-
-    // Call the bot-integration handler
-    await botIntegration.handleOnramp(user.telegram_chat_id, actualUserId, params);
-    console.log('[handleOnramp] botIntegration.handleOnramp completed');
-
-    // Return empty text to avoid double messaging
-    return {
-      text: ""
-    };
-
-  } catch (error) {
-    console.error('[handleOnramp] Error:', error);
-    return {
-      text: "❌ Error processing onramp request. Please try again or contact support.",
-    };
-  }
+  
+  // Return "coming soon" message for now
+  return {
+    text: '🚧 **Buy Crypto Feature Coming Soon**\n\n' +
+      'We\'re working hard to bring you a seamless cryptocurrency purchase experience! This feature will be available soon.\n\n' +
+      '🔔 **What to expect:**\n' +
+      '• Buy crypto with your local currency\n' +
+      '• Secure and compliant transactions\n' +
+      '• Competitive exchange rates\n' +
+      '• Multiple payment methods\n\n' +
+      'In the meantime, you can:\n' +
+      '• Check your wallet balance\n' +
+      '• Send crypto to others\n' +
+      '• Create invoices and payment links\n\n' +
+      'Stay tuned for updates! 🚀'
+  };
 }
 
 // Handle offramp intent
@@ -5261,11 +5216,16 @@ async function handleFailedWithdrawal(userId: string, orderId: string, orderData
  */
 async function handleConnectCalendar(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
+    console.log('[handleConnectCalendar] Called with userId:', userId, 'params:', params);
+    
     // Check if calendar sync is enabled
     const { getCurrentConfig } = await import('../lib/envConfig');
     const config = getCurrentConfig();
+    
+    console.log('[handleConnectCalendar] Calendar sync enabled:', config.googleCalendar.enabled);
 
     if (!config.googleCalendar.enabled) {
+      console.log('[handleConnectCalendar] Calendar sync is disabled');
       return {
         text: '📅 **Calendar Sync Unavailable**\n\n' +
           'Calendar sync is currently disabled. Please contact support if you need this feature.'
@@ -5324,17 +5284,19 @@ async function handleConnectCalendar(params: ActionParams, userId: string): Prom
     }
 
     // Generate authorization URL
+    console.log('[handleConnectCalendar] Generating auth URL for user:', actualUserId);
     const authUrl = googleCalendarService.generateAuthUrl(actualUserId);
+    console.log('[handleConnectCalendar] Generated auth URL:', authUrl);
 
     // Use a template-like message for consistency
-    return {
+    const result = {
       text: '📅 **Connect Your Google Calendar**\n\n' +
         '🎯 **What this does:**\n' +
         '• Automatically adds invoice due dates to your calendar\n' +
         '• Sets up reminders for upcoming payments\n' +
         '• Updates events when invoices are paid\n\n' +
         '🔒 **Privacy:** We only access your calendar to manage invoice-related events.\n\n' +
-        '� Cliuck the button below to connect your Google Calendar:',
+        'Click the button below to connect your Google Calendar:',
       reply_markup: {
         inline_keyboard: [
           [{ text: '🔗 Connect Google Calendar', url: authUrl }],
@@ -5342,6 +5304,9 @@ async function handleConnectCalendar(params: ActionParams, userId: string): Prom
         ]
       }
     };
+    
+    console.log('[handleConnectCalendar] Returning result:', result);
+    return result;
 
   } catch (error) {
     console.error('[handleConnectCalendar] Error:', error);

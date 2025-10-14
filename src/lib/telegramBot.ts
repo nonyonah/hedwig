@@ -98,6 +98,8 @@ export class TelegramBotService {
       }
     });
 
+    // Calendar commands are handled via the main message handler and AI processing
+
     // Handle all text messages
     this.bot.on('message', async (msg) => {
       try {
@@ -347,27 +349,30 @@ export class TelegramBotService {
       if (messageText.startsWith('/')) {
         const commandName = messageText.split(' ')[0].toLowerCase();
         const baseCmd = commandName.includes('@') ? commandName.split('@')[0] : commandName;
+        
+        console.log('[TelegramBot] Command detected:', { messageText, commandName, baseCmd });
 
         // Allow certain commands to be processed by AI instead of handleCommand
-        if (baseCmd === '/send' || baseCmd === '/balance' || baseCmd === '/swap' || baseCmd === '/bridge' || baseCmd === '/price' || baseCmd === '/buy' || baseCmd === '/purchase') {
+        if (baseCmd === '/send' || baseCmd === '/balance' || baseCmd === '/swap' || baseCmd === '/bridge' || baseCmd === '/price' || baseCmd === '/buy' || baseCmd === '/purchase' || baseCmd === '/connect_calendar' || baseCmd === '/disconnect_calendar' || baseCmd === '/calendar_status' || baseCmd === '/onramp') {
           console.log('[TelegramBot] Processing AI-handled command:', baseCmd);
+          console.log('[TelegramBot] Full message text:', messageText);
           const response = await this.processWithAI(messageText, chatId);
-          console.log('[TelegramBot] AI response received, sending to user');
+          console.log('[TelegramBot] AI response received:', response);
           await this.sendMessage(chatId, response);
           return;
         }
 
-        console.log('[TelegramBot] Processing command:', messageText ? messageText.split(' ')[0] : 'unknown');
+        console.log('[TelegramBot] Processing command via handleCommand:', messageText ? messageText.split(' ')[0] : 'unknown');
         await this.handleCommand(msg);
         return;
       }
 
       // Process with AI if not a command
       if (messageText.trim()) {
-        console.log('[TelegramBot] Processing message with AI');
+        console.log('[TelegramBot] Processing non-command message with AI:', messageText);
         const response = await this.processWithAI(messageText, chatId);
 
-        console.log('[TelegramBot] AI response received, sending to user');
+        console.log('[TelegramBot] AI response received:', response);
         await this.sendMessage(chatId, response);
       } else {
         console.log('[TelegramBot] Empty message, sending default response');
@@ -662,24 +667,7 @@ export class TelegramBotService {
         await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction status checking will be available when the feature launches!', { parse_mode: 'Markdown' });
         break;
       }
-      case '/connect_calendar': {
-        // Handle calendar connection command via bot-integration
-        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
-        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
-        break;
-      }
-      case '/disconnect_calendar': {
-        // Handle calendar disconnection command via bot-integration
-        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
-        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
-        break;
-      }
-      case '/calendar_status': {
-        // Handle calendar status command via bot-integration
-        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
-        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
-        break;
-      }
+      // Calendar commands are handled via AI processing path, not here
       default:
         await this.sendMessage(
           chatId,
@@ -913,26 +901,15 @@ Choose an action below:`;
 
       console.log('[TelegramBot] Final intent to execute:', finalIntent, 'Final params:', finalParams);
 
-      // Additional fallback: If still unknown but message clearly indicates onramp, force onramp intent
+      // Enhanced fallback logic with priority for calendar and onramp
+      console.log('[TelegramBot] Checking fallback logic. Current finalIntent:', finalIntent);
       if (finalIntent === 'unknown' || finalIntent === 'conversation' || finalIntent === 'clarification') {
         const lowerMessage = message.toLowerCase();
-        if (lowerMessage.includes('buy crypto') || lowerMessage.includes('buy cryptocurrency') ||
-          lowerMessage.includes('purchase crypto') || lowerMessage.includes('buy tokens') ||
-          lowerMessage.includes('buy usdc') || lowerMessage.includes('buy usdt') ||
-          lowerMessage.includes('onramp') || lowerMessage.includes('fiat to crypto') ||
-          (lowerMessage.includes('buy') && (lowerMessage.includes('ngn') || lowerMessage.includes('naira')))) {
-          console.log('[TelegramBot] Forcing onramp intent due to clear onramp keywords');
-          finalIntent = 'onramp';
-          finalParams = { text: message };
-        }
-        // Calendar fallback: If LLM didn't recognize calendar but direct parser did, use direct parser
-        else if (directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status') {
-          console.log('[TelegramBot] Using direct parser result as fallback for calendar intent:', directIntent.intent);
-          finalIntent = directIntent.intent;
-          finalParams = directIntent.params;
-        }
-        // Additional calendar fallback: Check for clear calendar keywords
-        else if (lowerMessage.includes('calendar')) {
+        console.log('[TelegramBot] Applying enhanced fallback for message:', lowerMessage);
+        
+        // Calendar fallback: Check for calendar keywords first (higher priority)
+        if (lowerMessage.includes('calendar')) {
+          console.log('[TelegramBot] Message contains "calendar", checking specific keywords');
           if (lowerMessage.includes('connect') || lowerMessage.includes('sync') || lowerMessage.includes('link') || lowerMessage.includes('add') || lowerMessage.includes('setup')) {
             if (!lowerMessage.includes('disconnect') && !lowerMessage.includes('unlink') && !lowerMessage.includes('remove')) {
               console.log('[TelegramBot] Forcing connect_calendar intent due to clear calendar keywords');
@@ -949,7 +926,27 @@ Choose an action below:`;
             finalParams = { text: message };
           }
         }
+        // Onramp fallback: Check for onramp keywords
+        else if (lowerMessage.includes('buy crypto') || lowerMessage.includes('buy cryptocurrency') || 
+            lowerMessage.includes('purchase crypto') || lowerMessage.includes('buy tokens') ||
+            lowerMessage.includes('buy usdc') || lowerMessage.includes('buy usdt') ||
+            lowerMessage.includes('onramp') || lowerMessage.includes('fiat to crypto') ||
+            (lowerMessage.includes('buy') && (lowerMessage.includes('ngn') || lowerMessage.includes('naira')))) {
+          console.log('[TelegramBot] Forcing onramp intent due to clear onramp keywords');
+          finalIntent = 'onramp';
+          finalParams = { text: message };
+        }
       }
+      
+      // Always check direct parser for calendar intents as additional fallback
+      console.log('[TelegramBot] Checking direct parser fallback. directIntent:', directIntent.intent, 'finalIntent:', finalIntent);
+      if (finalIntent === 'unknown' && (directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status')) {
+        console.log('[TelegramBot] Using direct parser result as fallback for calendar intent:', directIntent.intent);
+        finalIntent = directIntent.intent;
+        finalParams = directIntent.params;
+      }
+      
+      console.log('[TelegramBot] Final intent after all fallbacks:', finalIntent);
 
       // Special-case: Offramp intent should open the mini app (not conversational flow)
       if (finalIntent === 'offramp' || finalIntent === 'withdraw') {
@@ -1007,13 +1004,15 @@ Choose an action below:`;
       // Execute the action based on the intent using the user's UUID
       let actionResult: ActionResult | string;
       try {
-        console.log('[TelegramBot] Calling handleAction with:', { intent: finalIntent, params: finalParams, userId: user.id });
+        console.log('[handleAction] Intent:', finalIntent, 'Params:', finalParams, 'UserId:', user.id);
         actionResult = await handleAction(
           finalIntent,
           finalParams,
           user.id
         );
         console.log('[TelegramBot] handleAction result:', actionResult);
+        console.log('[TelegramBot] actionResult type:', typeof actionResult);
+        console.log('[TelegramBot] actionResult has reply_markup:', actionResult && typeof actionResult === 'object' && 'reply_markup' in actionResult);
       } catch (actionError) {
         console.error('[TelegramBot] Action execution error:', actionError);
         return 'I encountered an error processing your request. Please try again.';
@@ -1021,6 +1020,7 @@ Choose an action below:`;
 
       // Handle the action result - if it has reply_markup, send it directly
       if (actionResult && typeof actionResult === 'object' && actionResult.reply_markup) {
+        console.log('[TelegramBot] Sending message with reply_markup:', actionResult.reply_markup);
         await this.sendMessage(chatId, actionResult.text || 'Request processed', {
           reply_markup: actionResult.reply_markup
         });
@@ -1285,7 +1285,6 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'connect_calendar', description: '📅 Connect Google Calendar' },
         { command: 'disconnect_calendar', description: '🔌 Disconnect Google Calendar' },
         { command: 'calendar_status', description: '📊 Check calendar connection status' },
-        { command: 'buy_crypto', description: '🪙 Buy crypto with fiat currency' },
         { command: 'onramp', description: '💰 Purchase cryptocurrency' }
       ];
 

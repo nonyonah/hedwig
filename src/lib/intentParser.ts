@@ -658,11 +658,13 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       text.includes('disable calendar') ||
       text.includes('turn off calendar') ||
       text.includes('stop calendar sync') ||
+      text.includes('/disconnect_calendar') ||
       (text.includes('disconnect') && text.includes('calendar')) ||
       (text.includes('unlink') && text.includes('calendar')) ||
       (text.includes('remove') && text.includes('calendar')) ||
       (text.includes('calendar') && (text.includes('disconnect') || text.includes('unlink') || text.includes('remove') || text.includes('disable')))) {
       const result = { intent: 'disconnect_calendar', params: {} };
+      console.log('[intentParser] Detected disconnect_calendar intent for text:', text);
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }
@@ -679,11 +681,13 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       text.includes('add calendar') ||
       text.includes('setup calendar') ||
       text.includes('enable calendar') ||
+      text.includes('/connect_calendar') ||
       (text.includes('connect') && text.includes('calendar') && !text.includes('disconnect')) ||
       (text.includes('link') && text.includes('calendar') && !text.includes('unlink')) ||
       (text.includes('sync') && text.includes('calendar') && !text.includes('stop')) ||
       (text.includes('calendar') && (text.includes('connect') || text.includes('link') || text.includes('sync') || text.includes('add') || text.includes('setup')) && !text.includes('disconnect') && !text.includes('unlink') && !text.includes('remove') && !text.includes('disable'))) {
       const result = { intent: 'connect_calendar', params: {} };
+      console.log('[intentParser] Detected connect_calendar intent for text:', text);
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }
@@ -697,10 +701,12 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       text.includes('calendar sync status') ||
       text.includes('google calendar status') ||
       text.includes('my calendar') ||
+      text.includes('/calendar_status') ||
       (text.includes('calendar') && (text.includes('status') || text.includes('connected') || text.includes('working'))) ||
       (text.includes('check') && text.includes('calendar')) ||
       (text.includes('is') && text.includes('calendar') && text.includes('connected'))) {
       const result = { intent: 'calendar_status', params: {} };
+      console.log('[intentParser] Detected calendar_status intent for text:', text);
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }

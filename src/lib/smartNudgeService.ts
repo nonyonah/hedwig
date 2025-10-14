@@ -84,6 +84,10 @@ export class SmartNudgeService {
 
     if (paymentError) {
       console.error('❌ Error fetching payment links:', paymentError);
+      console.log('💡 This might be due to missing columns. Run the database migrations:');
+      console.log('   - add_viewed_at_to_payment_links.sql');
+      console.log('   - fix_invoices_users_relationship.sql');
+      // Continue with invoices even if payment links fail
     } else if (paymentLinks) {
       console.log(`📋 Found ${paymentLinks.length} payment links to evaluate`);
 
@@ -191,6 +195,11 @@ export class SmartNudgeService {
 
     if (invoiceError) {
       console.error('❌ Error fetching invoices:', invoiceError);
+      console.log('💡 This might be due to missing columns or user relationship. Run the database migrations:');
+      console.log('   - add_viewed_at_to_invoices.sql');
+      console.log('   - fix_invoices_users_relationship.sql');
+      console.log('   - create_nudge_logs_table.sql');
+      return targets; // Return whatever targets we have so far
     } else if (invoices) {
       console.log(`📋 Found ${invoices.length} invoices to evaluate`);
 

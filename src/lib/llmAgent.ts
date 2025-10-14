@@ -47,12 +47,15 @@ export async function runLLM({
   generateNaturalResponse?: boolean;
 }) {
   // If generateNaturalResponse is false, use direct intent parsing instead of LLM
+  console.log('[runLLM] Called with userId:', userId, 'generateNaturalResponse:', generateNaturalResponse, 'message:', message.substring(0, 50));
   if (!generateNaturalResponse) {
+    console.log('[runLLM] Using direct intent parsing, bypassing LLM');
     const { parseIntentAndParams } = await import('./intentParser');
     const result = parseIntentAndParams(message);
     
     // Convert result to JSON string to match expected LLM response format
     const jsonResult = JSON.stringify(result);
+    console.log('[runLLM] Direct parsing result:', jsonResult);
     
     // Update user context with the parsed result
     await setUserContext(userId, [
@@ -62,6 +65,8 @@ export async function runLLM({
     
     return jsonResult;
   }
+  
+  console.log('[runLLM] Using LLM path for userId:', userId);
 
   // 1. Get last N messages for context
   let context = await getUserContext(userId);
