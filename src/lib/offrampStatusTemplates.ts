@@ -42,13 +42,13 @@ export interface StatusTemplate {
  * Handles all possible order statuses with user-friendly messages
  */
 export class OfframpStatusTemplates {
-  
+
   /**
    * Get status template based on Paycrest order status
    */
   static getStatusTemplate(status: string, data: OfframpStatusData): StatusTemplate {
     const normalizedStatus = status.toLowerCase().trim();
-    
+
     switch (normalizedStatus) {
       // Success states
       case 'completed':
@@ -57,7 +57,7 @@ export class OfframpStatusTemplates {
       case 'settled':
       case 'delivered':
         return this.getCompletedTemplate(data);
-      
+
       // Processing states
       case 'pending':
       case 'processing':
@@ -66,7 +66,7 @@ export class OfframpStatusTemplates {
       case 'submitted':
       case 'confirming':
         return this.getProcessingTemplate(data);
-      
+
       // Failure states
       case 'failed':
       case 'error':
@@ -74,25 +74,25 @@ export class OfframpStatusTemplates {
       case 'rejected':
       case 'declined':
         return this.getFailedTemplate(data);
-      
+
       // Refund states
       case 'refunded':
       case 'refund_pending':
       case 'refund_processing':
       case 'refund_completed':
         return this.getRefundTemplate(data);
-      
+
       // Expired states
       case 'expired':
       case 'timeout':
         return this.getExpiredTemplate(data);
-      
+
       // On-hold states
       case 'on_hold':
       case 'under_review':
       case 'requires_verification':
         return this.getOnHoldTemplate(data);
-      
+
       // Unknown status
       default:
         return this.getUnknownStatusTemplate(status, data);
@@ -103,15 +103,15 @@ export class OfframpStatusTemplates {
    * Template for completed/successful withdrawals
    */
   private static getCompletedTemplate(data: OfframpStatusData): StatusTemplate {
-    const amount = data.expectedAmount || data.amount;
-    const currency = data.recipient?.currency || data.currency;
+    const nairaAmount = data.expectedAmount || (data.amount * (data.rate || 1));
+    const currency = data.recipient?.currency || 'NGN';
     const institution = data.recipient?.institution || 'your bank';
     const accountName = data.recipient?.accountName || 'your account';
-    
+
     return {
       text: `✅ **Withdrawal Completed Successfully!**\n\n` +
         `🎉 Your funds have been delivered to ${institution}!\n\n` +
-        `💰 **Amount:** ${amount} ${currency}\n` +
+        `💰 **Amount:** ₦${nairaAmount.toLocaleString()}\n` +
         `🏦 **Recipient:** ${accountName}\n` +
         `📋 **Order ID:** ${data.orderId}\n` +
         `⏰ **Completed:** ${new Date().toLocaleString()}\n\n` +
@@ -120,11 +120,7 @@ export class OfframpStatusTemplates {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "📊 View History", callback_data: "offramp_history" },
             { text: "💸 New Withdrawal", callback_data: "action_offramp" }
-          ],
-          [
-            { text: "💬 Rate Experience", callback_data: "rate_offramp" }
           ]
         ]
       },
@@ -136,24 +132,23 @@ export class OfframpStatusTemplates {
    * Template for processing/pending withdrawals
    */
   private static getProcessingTemplate(data: OfframpStatusData): StatusTemplate {
-    const amount = data.expectedAmount || data.amount;
-    const currency = data.recipient?.currency || data.currency;
+    const nairaAmount = data.expectedAmount || (data.amount * (data.rate || 1));
     const institution = data.recipient?.institution || 'your bank';
-    
+
     return {
       text: `🔄 **Withdrawal In Progress**\n\n` +
-        `Your withdrawal is being processed by ${institution}.\n\n` +
-        `💰 **Amount:** ${amount} ${currency}\n` +
+        `Your withdrawal is being processed by our partners.\n\n` +
+        `💰 **Amount:** ₦${nairaAmount.toLocaleString()}\n` +
+        `🏦 **Destination:** ${institution}\n` +
         `📋 **Order ID:** ${data.orderId}\n` +
         `⏰ **Status:** Processing\n\n` +
         `⏳ **Estimated completion:** 5-15 minutes\n` +
         `📱 **You'll receive a notification when complete**\n\n` +
-        `Please be patient while we process your withdrawal.`,
+        `Please be patient while our partners process your withdrawal.`,
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "🔍 Check Status", callback_data: `check_offramp_status_${data.orderId}` },
-            { text: "📞 Contact Support", callback_data: "contact_support" }
+            { text: "🔍 Check Status", callback_data: `check_offramp_status_${data.orderId}` }
           ]
         ]
       },
@@ -165,14 +160,13 @@ export class OfframpStatusTemplates {
    * Template for failed withdrawals
    */
   private static getFailedTemplate(data: OfframpStatusData): StatusTemplate {
-    const amount = data.expectedAmount || data.amount;
-    const currency = data.recipient?.currency || data.currency;
+    const nairaAmount = data.expectedAmount || (data.amount * (data.rate || 1));
     const reason = data.failureReason || 'Technical issue occurred';
-    
+
     return {
       text: `❌ **Withdrawal Failed**\n\n` +
         `We're sorry, your withdrawal could not be completed.\n\n` +
-        `💰 **Amount:** ${amount} ${currency}\n` +
+        `💰 **Amount:** ₦${nairaAmount.toLocaleString()}\n` +
         `📋 **Order ID:** ${data.orderId}\n` +
         `❗ **Reason:** ${reason}\n\n` +
         `🔄 **Next Steps:**\n` +
@@ -202,7 +196,7 @@ export class OfframpStatusTemplates {
     const amount = data.amount;
     const token = data.token;
     const reason = data.refundReason || 'withdrawal could not be completed';
-    
+
     return {
       text: `🔄 **Refund Processed**\n\n` +
         `Your withdrawal has been refunded successfully.\n\n` +
@@ -216,9 +210,6 @@ export class OfframpStatusTemplates {
           [
             { text: "🔄 Try Again", callback_data: "action_offramp" },
             { text: "💰 Check Balance", callback_data: "check_balance" }
-          ],
-          [
-            { text: "💬 Contact Support", callback_data: "contact_support" }
           ]
         ]
       },
@@ -232,7 +223,7 @@ export class OfframpStatusTemplates {
   private static getExpiredTemplate(data: OfframpStatusData): StatusTemplate {
     const amount = data.amount;
     const token = data.token;
-    
+
     return {
       text: `⏰ **Withdrawal Expired**\n\n` +
         `Your withdrawal order has expired and been cancelled.\n\n` +
@@ -256,13 +247,12 @@ export class OfframpStatusTemplates {
    * Template for orders on hold or under review
    */
   private static getOnHoldTemplate(data: OfframpStatusData): StatusTemplate {
-    const amount = data.expectedAmount || data.amount;
-    const currency = data.recipient?.currency || data.currency;
-    
+    const nairaAmount = data.expectedAmount || (data.amount * (data.rate || 1));
+
     return {
       text: `⏸️ **Withdrawal Under Review**\n\n` +
-        `Your withdrawal is currently under review for security purposes.\n\n` +
-        `💰 **Amount:** ${amount} ${currency}\n` +
+        `Your withdrawal is currently under review by our partners for security purposes.\n\n` +
+        `💰 **Amount:** ₦${nairaAmount.toLocaleString()}\n` +
         `📋 **Order ID:** ${data.orderId}\n` +
         `🔍 **Status:** Under Review\n\n` +
         `⏳ **This usually takes 15-30 minutes**\n` +
@@ -284,22 +274,21 @@ export class OfframpStatusTemplates {
    * Template for unknown/unhandled statuses
    */
   private static getUnknownStatusTemplate(status: string, data: OfframpStatusData): StatusTemplate {
-    const amount = data.expectedAmount || data.amount;
-    const currency = data.recipient?.currency || data.currency;
-    
+    const nairaAmount = data.expectedAmount || (data.amount * (data.rate || 1));
+
     return {
       text: `🔄 **Withdrawal Status Update**\n\n` +
-        `Your withdrawal status has been updated.\n\n` +
-        `💰 **Amount:** ${amount} ${currency}\n` +
-        `📋 **Order ID:** ${data.orderId}\n` +
-        `📊 **Status:** ${status}\n` +
+        `Your withdrawal status has been updated by our partners.\n\n` +
+        `💰 **Amount:** ₦${nairaAmount.toLocaleString()}\n` +
+        `� **Omrder ID:** ${data.orderId}\n` +
+        `� **OStatus:** ${status}\n` +
         `⏰ **Updated:** ${new Date().toLocaleString()}\n\n` +
         `We're monitoring your withdrawal and will notify you of any changes.`,
       reply_markup: {
         inline_keyboard: [
           [
             { text: "🔍 Check Status", callback_data: `check_offramp_status_${data.orderId}` },
-            { text: "💬 Contact Support", callback_data: "contact_support" }
+            { text: "�  Contact Support", callback_data: "contact_support" }
           ]
         ]
       },
@@ -312,7 +301,7 @@ export class OfframpStatusTemplates {
    */
   static getStatusEmoji(status: string): string {
     const normalizedStatus = status.toLowerCase().trim();
-    
+
     switch (normalizedStatus) {
       case 'completed':
       case 'fulfilled':
@@ -320,7 +309,7 @@ export class OfframpStatusTemplates {
       case 'settled':
       case 'delivered':
         return '✅';
-      
+
       case 'pending':
       case 'processing':
       case 'awaiting_transfer':
@@ -328,29 +317,29 @@ export class OfframpStatusTemplates {
       case 'submitted':
       case 'confirming':
         return '🔄';
-      
+
       case 'failed':
       case 'error':
       case 'cancelled':
       case 'rejected':
       case 'declined':
         return '❌';
-      
+
       case 'refunded':
       case 'refund_pending':
       case 'refund_processing':
       case 'refund_completed':
         return '🔄';
-      
+
       case 'expired':
       case 'timeout':
         return '⏰';
-      
+
       case 'on_hold':
       case 'under_review':
       case 'requires_verification':
         return '⏸️';
-      
+
       default:
         return '📊';
     }
@@ -361,7 +350,7 @@ export class OfframpStatusTemplates {
    */
   static getStatusText(status: string): string {
     const normalizedStatus = status.toLowerCase().trim();
-    
+
     switch (normalizedStatus) {
       case 'completed':
       case 'fulfilled':
@@ -369,7 +358,7 @@ export class OfframpStatusTemplates {
       case 'settled':
       case 'delivered':
         return 'Completed';
-      
+
       case 'pending':
         return 'Pending';
       case 'processing':
@@ -382,7 +371,7 @@ export class OfframpStatusTemplates {
         return 'Submitted';
       case 'confirming':
         return 'Confirming';
-      
+
       case 'failed':
         return 'Failed';
       case 'error':
@@ -393,7 +382,7 @@ export class OfframpStatusTemplates {
         return 'Rejected';
       case 'declined':
         return 'Declined';
-      
+
       case 'refunded':
         return 'Refunded';
       case 'refund_pending':
@@ -402,19 +391,19 @@ export class OfframpStatusTemplates {
         return 'Refund Processing';
       case 'refund_completed':
         return 'Refund Completed';
-      
+
       case 'expired':
         return 'Expired';
       case 'timeout':
         return 'Timed Out';
-      
+
       case 'on_hold':
         return 'On Hold';
       case 'under_review':
         return 'Under Review';
       case 'requires_verification':
         return 'Requires Verification';
-      
+
       default:
         return status.charAt(0).toUpperCase() + status.slice(1);
     }

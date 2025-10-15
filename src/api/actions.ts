@@ -4184,8 +4184,8 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
             `💵 **You'll Receive:** ₦${nairaAmount}\n` +
             `📋 **Order ID:** ${orderResult.orderId}\n\n` +
             `🔍 **What's happening:**\n` +
-            `• Your USDC is being transferred to Paycrest\n` +
-            `• Order is being processed by our partner\n` +
+            `• Your USDC is being transferred to our partners\n` +
+            `• Order is being processed by our partners\n` +
             `• Funds will be delivered to your bank account\n\n` +
             `⏰ **Expected completion:** 5-15 minutes\n` +
             `📱 **You'll receive real-time updates on progress**\n\n` +
