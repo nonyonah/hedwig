@@ -9,6 +9,7 @@ import { useAccount } from 'wagmi';
 import dynamic from 'next/dynamic';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { AppKitButton } from '@/components/AppKitButton';
 import { getSupportedTokens } from '@/contracts/config';
 
 // ERC20_ABI is now shared from '@/lib/abi/erc20'
@@ -82,10 +83,12 @@ function PaymentFlow({ paymentData, total, selectedChain, selectedToken }: {
     });
   };
 
-  const ConnectWallet = dynamic(() => import('@coinbase/onchainkit/wallet').then(m => m.ConnectWallet), { ssr: false });
-
   if (!isConnected) {
-    return <ConnectWallet className="w-full" />;
+    return (
+      <div className="w-full">
+        <AppKitButton className="w-full" size="lg" />
+      </div>
+    );
   }
 
   const isAlreadyPaid = paymentData.status === 'paid';

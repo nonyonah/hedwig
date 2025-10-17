@@ -115,9 +115,7 @@ Valid intents:
 - view_proposals: For viewing existing proposals
 - edit_proposal: For editing existing proposals
 - send_reminder: For sending manual payment reminders to clients
-- connect_calendar: For connecting Google Calendar to sync invoices and events
-- disconnect_calendar: For disconnecting Google Calendar integration
-- calendar_status: For checking Google Calendar connection status
+
 
 - offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
 - kyc_verification: For KYC status, identity verification, or compliance requirements
@@ -226,13 +224,24 @@ IMPORTANT INTENT RECOGNITION RULES:
      * "Generate payment link: 0.05 ETH to john@example.com for website design"
 
 6. EARNINGS REQUESTS: Always use "get_earnings" intent for:
-   - "earnings", "how much have I earned", "money received", "income"
-   - "payments received", "what did I receive", "how much did I get"
-   - "earnings summary", "earnings report", "payment history"
-   - "how much money came in", "received payments", "incoming payments"
+   - "earnings", "how much have I earned", "how much did I earn", "money received", "income", "revenue"
+   - "payments received", "what did I receive", "how much did I get", "show my earnings"
+   - "earnings summary", "earnings report", "payment history", "earnings breakdown"
+   - "how much money came in", "received payments", "incoming payments", "total earnings"
+   - "my earnings", "earnings dashboard", "earnings overview", "earnings analysis"
    - Time-based earnings: "earnings this week", "how much this month", "yearly earnings"
+     * "earnings this month", "earnings last month", "earned this week", "made this year"
+     * "monthly earnings", "weekly earnings", "earnings in January", "earnings in 2024"
+     * "show earnings this month", "how much did I earn last month"
    - Token-specific earnings: "USDC earnings", "ETH received", "how much USDT earned"
-   - Network-specific earnings: "earnings on Base", "Polygon earnings"
+     * "my USDC earnings", "ETH earnings on Ethereum", "Solana earnings"
+   - Network-specific earnings: "earnings on Base", "Polygon earnings", "Base earnings"
+
+6a. PDF EARNINGS REQUESTS: Always use "generate_earnings_pdf" intent for:
+   - "earnings report", "generate earnings report", "create earnings PDF"
+   - "earnings PDF", "download earnings", "export earnings", "send me earnings report"
+   - "pdf summary", "earnings summary PDF", "create report", "generate report"
+   - Any earnings request combined with: "pdf", "report", "download", "export", "send me"
 
 7. SPENDING REQUESTS: Always use "get_spending" intent for:
    - "spending", "how much have I spent", "money sent", "payments made"
@@ -389,20 +398,7 @@ IMPORTANT INTENT RECOGNITION RULES:
     // - original_message: Always include the full original message for parsing
     // NOTE: Currency conversion feature has been disabled.
 
-24. CALENDAR REQUESTS: Always use appropriate calendar intent for:
-    - "connect_calendar" intent for:
-      * "connect calendar", "link calendar", "sync calendar", "add calendar"
-      * "connect Google Calendar", "link Google Calendar", "calendar integration"
-      * "set up calendar", "enable calendar sync", "calendar connection"
-      * "I want to connect my calendar", "sync with calendar"
-    - "disconnect_calendar" intent for:
-      * "disconnect calendar", "unlink calendar", "remove calendar", "stop calendar sync"
-      * "disconnect Google Calendar", "unlink Google Calendar", "disable calendar"
-      * "turn off calendar sync", "remove calendar integration"
-    - "calendar_status" intent for:
-      * "calendar status", "check calendar", "calendar connection status"
-      * "is my calendar connected", "calendar sync status", "show calendar status"
-      * "calendar info", "calendar settings", "my calendar connection"
+24. CALENDAR REQUESTS: Calendar functionality is currently disabled. For any calendar-related requests, respond with a helpful message explaining that the feature is unavailable.
 
 EXAMPLES:
 User: "/send" or "send" or "how to send" or "how do I send crypto"
@@ -445,10 +441,40 @@ User: "How much USDC do I have on Ethereum?"
 Response: {"intent": "balance", "params": {"token": "USDC", "network": "Ethereum"}}
 
 User: "How much have I earned this month?"
-Response: {"intent": "get_earnings", "params": {"timeframe": "this month"}}
+Response: {"intent": "get_earnings", "params": {"timeframe": "thisMonth"}}
+
+User: "show my earnings this month"
+Response: {"intent": "get_earnings", "params": {"timeframe": "thisMonth"}}
+
+User: "how much did I earn last month"
+Response: {"intent": "get_earnings", "params": {"timeframe": "lastMonth"}}
+
+User: "earnings in January"
+Response: {"intent": "get_earnings", "params": {"month": "january", "timeframe": "custom"}}
+
+User: "my earnings this week"
+Response: {"intent": "get_earnings", "params": {"timeframe": "thisWeek"}}
 
 User: "Show me my USDC earnings on Base"
-Response: {"intent": "get_earnings", "params": {"token": "USDC", "network": "Base"}}
+Response: {"intent": "get_earnings", "params": {"token": "USDC", "network": "base"}}
+
+User: "ETH earnings this year"
+Response: {"intent": "get_earnings", "params": {"token": "ETH", "timeframe": "thisYear"}}
+
+User: "earnings on Solana"
+Response: {"intent": "get_earnings", "params": {"network": "solana"}}
+
+User: "how much made in 2024"
+Response: {"intent": "get_earnings", "params": {"year": 2024}}
+
+User: "generate earnings report"
+Response: {"intent": "generate_earnings_pdf", "params": {"generatePdf": true}}
+
+User: "create earnings PDF"
+Response: {"intent": "generate_earnings_pdf", "params": {"generatePdf": true}}
+
+User: "send me earnings report this month"
+Response: {"intent": "generate_earnings_pdf", "params": {"generatePdf": true, "timeframe": "thisMonth"}}
 
 User: "earnings summary"
 Response: {"intent": "earnings_summary", "params": {}}
@@ -472,13 +498,9 @@ User: "0x1234567890123456789012345678901234567890" (after being asked for addres
 Response: {"intent": "send", "params": {"recipient": "0x1234567890123456789012345678901234567890"}}
 
 User: "connect calendar" or "link my calendar" or "sync calendar"
-Response: {"intent": "connect_calendar", "params": {}}
+Response: {"intent": "conversation", "params": {"message": "Calendar sync is currently disabled. Please contact support if you need this feature."}}
 
-User: "disconnect calendar" or "unlink calendar" or "remove calendar sync"
-Response: {"intent": "disconnect_calendar", "params": {}}
-
-User: "calendar status" or "is my calendar connected" or "check calendar"
-Response: {"intent": "calendar_status", "params": {}}
+Response: {"intent": "conversation", "params": {"message": "Calendar sync is currently disabled. Please contact support if you need this feature."}}
 
 User: "create proposal for web development project for ABC Corp, $5000 budget"
 Response: {"intent": "create_proposal", "params": {"service_type": "web development", "client_name": "ABC Corp", "budget": "5000", "currency": "USD"}}

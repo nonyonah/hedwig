@@ -32,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 1) Optionally fetch invoice to check wallet field and validate existence
     const { data: existingInvoice, error: fetchErr } = await supabase
       .from('invoices')
-      .select('id, wallet_address')
+      .select('id, wallet_address, currency')
       .eq('id', invoiceId)
       .single();
 
@@ -81,6 +81,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           payer_wallet: payerWallet,
           tx_hash: transactionHash || null,
           status: 'completed',
+          currency: existingInvoice.currency || 'USDC', // Use invoice currency or default to USDC
+          chain: 'base' // Default to base chain
         });
       if (paymentErr) {
         console.warn('Payment succeeded but failed to insert payments row:', paymentErr);

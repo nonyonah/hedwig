@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { getSupportedTokens } from '@/contracts/config';
+import { AppKitButton } from '@/components/AppKitButton';
 
 interface InvoiceItem {
   id: string;
@@ -113,10 +114,12 @@ function PaymentFlow({
     });
   };
 
-  const ConnectWallet = dynamic(() => import('@coinbase/onchainkit/wallet').then(m => m.ConnectWallet), { ssr: false });
-
   if (!isConnected) {
-    return <ConnectWallet className="w-full" />;
+    return (
+      <div className="w-full">
+        <AppKitButton className="w-full" size="lg" />
+      </div>
+    );
   }
 
   const isAlreadyPaid = invoiceData.status === 'paid';

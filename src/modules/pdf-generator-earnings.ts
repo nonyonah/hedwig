@@ -73,8 +73,8 @@ export async function generateEarningsPDF(data: EarningsData): Promise<Buffer> {
       // Generate dynamic content
       const userName = getUserDisplayName(data.userData);
       const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      const dynamicTitle = generateDynamicTitle(data.totalEarnings, data.totalPayments);
-      const dynamicSubtitle = generateDynamicSubtitle(data.earnings, data.totalEarnings);
+      const dynamicTitle = generateDynamicTitle(data.totalEarnings, data.totalPayments, data.timeframe, data.period);
+      const dynamicSubtitle = generateDynamicSubtitle(data.earnings, data.totalEarnings, data.timeframe, data.period);
       const offrampAmount = calculateOfframpAmount(data);
 
       // Header Section
@@ -144,7 +144,52 @@ export async function generateEarningsPDF(data: EarningsData): Promise<Buffer> {
       const mostUsedChain = getMostUsedChain(data.earnings);
       drawRoundedStatCard(doc, margin + (cardWidth + 10) * 3, cardY, cardWidth, cardHeight, mostUsedChain, 'Most Used Chain', '#1E40AF');
       
-      yPos += cardHeight + 60;
+      yPos += cardHeight + 40;
+      
+      // Comparative Insights Section (if available)
+      const comparativeInsight = generateComparativeInsights(
+        data.totalFiatValue || data.totalEarnings,
+        undefined, // TODO: Add previous period data
+        data.timeframe
+      );
+      
+      if (comparativeInsight) {
+        // Insight box
+        doc.roundedRect(margin, yPos, contentWidth, 50, 8)
+           .fillColor('#F0F9FF')
+           .fill()
+           .strokeColor('#0EA5E9')
+           .lineWidth(1)
+           .stroke();
+        
+        doc.fillColor('#0369A1')
+           .fontSize(12)
+           .font('Helvetica')
+           .text(comparativeInsight, margin + 20, yPos + 18, { width: contentWidth - 40 });
+        
+        yPos += 70;
+      } else {
+        yPos += 20;
+      }
+      
+      // Period Summary Box
+      if (data.timeframe && data.timeframe !== 'allTime') {
+        const periodSummary = `📅 ${getPeriodDescription(data.timeframe, data.period).charAt(0).toUpperCase() + getPeriodDescription(data.timeframe, data.period).slice(1)}`;
+        
+        doc.roundedRect(margin, yPos, contentWidth, 40, 8)
+           .fillColor('#F9FAFB')
+           .fill()
+           .strokeColor('#E5E7EB')
+           .lineWidth(1)
+           .stroke();
+        
+        doc.fillColor('#374151')
+           .fontSize(11)
+           .font('Helvetica-Bold')
+           .text(periodSummary, margin + 20, yPos + 15, { width: contentWidth - 40 });
+        
+        yPos += 60;
+      }
       
       // Earnings Breakdown Table
       if (data.earnings && data.earnings.length > 0) {
@@ -303,7 +348,25 @@ function getUserDisplayName(userData?: { name?: string; telegramFirstName?: stri
   return 'User';
 }
 
-function generateDynamicTitle(totalEarnings: number, totalPayments: number): string {
+function generateDynamicTitle(totalEarnings: number, totalPayments: number, timeframe?: string, period?: { startDate: string; endDate: string }): string {
+  // Period-specific titles
+  if (timeframe) {
+    const periodContext = getPeriodContext(timeframe, period);
+    
+    if (totalEarnings === 0) {
+      return `No earnings\n${periodContext}`;
+    } else if (totalEarnings < 100) {
+      return `Growing\n${periodContext}`;
+    } else if (totalEarnings < 1000) {
+      return `Strong\n${periodContext}`;
+    } else if (totalEarnings < 5000) {
+      return `Excellent\n${periodContext}`;
+    } else {
+      return `Outstanding\n${periodContext}`;
+    }
+  }
+  
+  // Default titles (fallback)
   if (totalEarnings === 0) {
     return "Ready to\nstart earning!";
   } else if (totalEarnings < 100) {
@@ -317,8 +380,13 @@ function generateDynamicTitle(totalEarnings: number, totalPayments: number): str
   }
 }
 
-function generateDynamicSubtitle(earnings: any[], totalEarnings: number): string {
+function generateDynamicSubtitle(earnings: any[], totalEarnings: number, timeframe?: string, period?: { startDate: string; endDate: string }): string {
+  const periodDescription = getPeriodDescription(timeframe, period);
+  
   if (!earnings || earnings.length === 0) {
+    if (timeframe) {
+      return `No earnings recorded ${periodDescription}.\n\nEvery journey starts with a single step - your next payment is just around the corner!`;
+    }
     return "Start your crypto earnings journey today!\n\nEvery expert was once a beginner - let's get you started!";
   }
   
@@ -329,7 +397,20 @@ function generateDynamicSubtitle(earnings: any[], totalEarnings: number): string
     .join(' and ');
   
   const networks = [...new Set(earnings.map(e => e.network))].slice(0, 2).join(' and ');
+  const paymentCount = earnings.reduce((sum, e) => sum + e.count, 0);
   
+  // Period-specific subtitles
+  if (timeframe) {
+    if (totalEarnings < 100) {
+      return `${topTokens} earnings ${periodDescription} across ${networks}.\n\nSolid foundation with ${paymentCount} payment${paymentCount > 1 ? 's' : ''} - keep the momentum going!`;
+    } else if (totalEarnings < 1000) {
+      return `Strong ${topTokens} performance ${periodDescription}!\n\nYour ${networks} strategy is paying off with ${paymentCount} successful payment${paymentCount > 1 ? 's' : ''}.`;
+    } else {
+      return `Exceptional ${topTokens} results ${periodDescription}!\n\nDominating ${networks} with ${paymentCount} payment${paymentCount > 1 ? 's' : ''} - you're absolutely crushing it!`;
+    }
+  }
+  
+  // Default subtitles (fallback)
   if (totalEarnings < 100) {
     return `${topTokens} strategist across ${networks} - you're playing it smart!\n\nKeep building that crypto portfolio, you're doing great!`;
   } else if (totalEarnings < 1000) {
@@ -360,4 +441,98 @@ function calculateOfframpAmount(data: EarningsData): number {
   
   // If no offramp data available, return 0 instead of estimating
   return 0;
+}
+/**
+ *
+ Get period context for titles
+ */
+function getPeriodContext(timeframe?: string, period?: { startDate: string; endDate: string }): string {
+  if (!timeframe) return 'this period';
+  
+  const contexts: { [key: string]: string } = {
+    'thisMonth': 'this month',
+    'lastMonth': 'last month',
+    'thisWeek': 'this week',
+    'lastWeek': 'last week',
+    'thisYear': 'this year',
+    'lastYear': 'last year',
+    'today': 'today',
+    'yesterday': 'yesterday',
+    'last7days': 'past week',
+    'last3months': 'past quarter',
+    'custom': 'this period'
+  };
+  
+  return contexts[timeframe] || 'this period';
+}
+
+/**
+ * Get period description for subtitles
+ */
+function getPeriodDescription(timeframe?: string, period?: { startDate: string; endDate: string }): string {
+  if (!timeframe) return 'during this period';
+  
+  // For custom periods, try to be more specific
+  if (timeframe === 'custom' && period) {
+    const startDate = new Date(period.startDate);
+    const endDate = new Date(period.endDate);
+    const startMonth = startDate.toLocaleDateString('en-US', { month: 'long' });
+    const endMonth = endDate.toLocaleDateString('en-US', { month: 'long' });
+    const startYear = startDate.getFullYear();
+    const endYear = endDate.getFullYear();
+    
+    // Same month and year
+    if (startMonth === endMonth && startYear === endYear) {
+      return `in ${startMonth} ${startYear}`;
+    }
+    
+    // Same year, different months
+    if (startYear === endYear) {
+      return `from ${startMonth} to ${endMonth} ${startYear}`;
+    }
+    
+    // Different years
+    return `from ${startMonth} ${startYear} to ${endMonth} ${endYear}`;
+  }
+  
+  const descriptions: { [key: string]: string } = {
+    'thisMonth': 'this month',
+    'lastMonth': 'last month',
+    'thisWeek': 'this week',
+    'lastWeek': 'last week',
+    'thisYear': 'this year',
+    'lastYear': 'last year',
+    'today': 'today',
+    'yesterday': 'yesterday',
+    'last7days': 'over the past week',
+    'last3months': 'over the past quarter',
+    'custom': 'during this period'
+  };
+  
+  return descriptions[timeframe] || 'during this period';
+}
+
+/**
+ * Generate comparative insights for period-over-period analysis
+ */
+function generateComparativeInsights(
+  currentEarnings: number,
+  previousEarnings?: number,
+  timeframe?: string
+): string {
+  if (!previousEarnings || previousEarnings === 0) {
+    return '';
+  }
+  
+  const change = currentEarnings - previousEarnings;
+  const percentChange = (change / previousEarnings) * 100;
+  const periodName = getPeriodContext(timeframe);
+  
+  if (Math.abs(percentChange) < 5) {
+    return `📊 Steady performance compared to previous ${periodName} (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(1)}%)`;
+  } else if (percentChange > 0) {
+    return `📈 Great growth! Up ${percentChange.toFixed(1)}% from previous ${periodName} (+$${change.toFixed(2)})`;
+  } else {
+    return `📉 Down ${Math.abs(percentChange).toFixed(1)}% from previous ${periodName} (-$${Math.abs(change).toFixed(2)})`;
+  }
 }

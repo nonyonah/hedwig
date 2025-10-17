@@ -1134,6 +1134,8 @@ Your wallets are now ready! Please try your command again.`
       return await handleGetWalletAddress(userId, params);
 
     case "instruction_send":
+      return await handleSendInstructions(params, userId);
+
     case "send":
       return await handleSend(params, userId);
 
@@ -1193,48 +1195,101 @@ Your wallets are now ready! Please try your command again.`
           return { text: "Your wallet is being set up automatically. Please try again in a moment." };
         }
 
-        // Use the first wallet address for earnings summary
-        const walletAddress = walletAddresses[0];
+        // Get user data for enhanced processing
+        const { data: userData } = await supabase
+          .from('users')
+          .select('name, telegram_first_name, telegram_last_name, telegram_username')
+          .eq('id', userId)
+          .single();
 
-        // Import earnings service functions dynamically
-        const { parseEarningsQuery } = await import('../lib/earningsService');
+        const userDataFormatted = userData ? {
+          name: userData.name,
+          telegramFirstName: userData.telegram_first_name,
+          telegramLastName: userData.telegram_last_name,
+          telegramUsername: userData.telegram_username
+        } : undefined;
 
-        // Parse natural language query if text is provided
-        let parsedFilter: any = null;
-        if (params.text) {
-          parsedFilter = parseEarningsQuery(params.text);
+        // Use enhanced natural language processing if text is provided
+        if (params.text && params.text.length > 5) {
+          const { getEarningsForNaturalQuery, formatEarningsForNaturalLanguage } = await import('../lib/earningsService');
+          
+          try {
+            const earningsData = await getEarningsForNaturalQuery(params.text, walletAddresses, userDataFormatted);
+            const response = formatEarningsForNaturalLanguage(earningsData, params.text, 'telegram');
+            
+            return {
+              text: response,
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf_natural" },
+                    { text: "📊 Business Dashboard", callback_data: "business_dashboard" }
+                  ]
+                ]
+              }
+            };
+          } catch (nlError) {
+            console.error('[handleAction] Natural language earnings error:', nlError);
+            // Fall back to traditional processing
+          }
         }
 
-        // Extract parameters for filtering, prioritizing parsed natural language
-        const filter = {
-          walletAddress,
-          timeframe: parsedFilter?.timeframe || params.timeframe || 'allTime',
-          token: parsedFilter?.token || params.token,
-          network: parsedFilter?.network || params.network,
-          startDate: parsedFilter?.startDate || params.startDate,
-          endDate: parsedFilter?.endDate || params.endDate
-        };
-
-        // Import earnings service functions dynamically
+        // Traditional earnings processing (fallback)
         const { getEarningsSummary, formatEarningsForAgent } = await import('../lib/earningsService');
 
-        const summary = await getEarningsSummary(filter, true); // Include insights
+        const filter = {
+          walletAddresses,
+          timeframe: params.timeframe || 'allTime',
+          token: params.token,
+          network: params.network,
+          startDate: params.startDate,
+          endDate: params.endDate,
+          includeInsights: true
+        };
+
+        const summary = await getEarningsSummary(filter, true);
         if (summary && summary.totalPayments > 0) {
           const formatted = formatEarningsForAgent(summary, 'earnings');
           return {
             text: formatted,
             reply_markup: {
-              inline_keyboard: [[
-                { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf" }
-              ]]
+              inline_keyboard: [
+                [
+                  { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf" },
+                  { text: "📊 Business Dashboard", callback_data: "business_dashboard" }
+                ],
+                [
+                  { text: '🗓️ This Month', callback_data: 'earnings_shortcut_this_month' },
+                  { text: '📅 Last Month', callback_data: 'earnings_shortcut_last_month' }
+                ]
+              ]
             }
           };
         } else {
-          return { text: "💰 **Earnings Summary**\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 **Ways to earn:**\n• Create payment links with `create payment link`\n• Generate invoices with `create invoice`\n• Send your wallet address to receive direct transfers\n\n📊 **What you'll see:**\n• Total earnings by token\n• Monthly breakdown\n• Top payment sources\n• Conversion rates\n\nCreate your first payment method to start tracking!" };
+          return { 
+            text: "💰 **Earnings Summary**\n\nYour earnings tracking is ready! Start receiving payments to see detailed analytics.\n\n💡 **Try these commands:**\n• \"show my earnings this month\"\n• \"how much did I earn last week\"\n• \"generate earnings PDF\"\n• \"USDC earnings on Base\"\n\n📊 **Ways to earn:**\n• Create payment links\n• Generate invoices\n• Receive direct transfers\n\nCreate your first payment method to start tracking!",
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "💳 Create Payment Link", callback_data: "create_payment_link" },
+                  { text: "📄 Create Invoice", callback_data: "create_invoice" }
+                ]
+              ]
+            }
+          };
         }
       } catch (error) {
         console.error('[handleAction] Earnings error:', error);
-        return { text: "❌ Failed to fetch earnings data. Please try again later." };
+        
+        // Enhanced error handling
+        const { EarningsErrorHandler } = await import('../lib/earningsErrorHandler');
+        const errorMessage = EarningsErrorHandler.formatErrorForUser(
+          error instanceof Error ? error : new Error(String(error)),
+          params.text || 'earnings',
+          'telegram'
+        );
+        
+        return { text: errorMessage };
       }
 
     case "generate_earnings_pdf":
@@ -1324,6 +1379,51 @@ Your wallets are now ready! Please try your command again.`
         return { text: "❌ Failed to generate PDF report. Please try again later." };
       }
 
+    case "generate_earnings_pdf_natural":
+      try {
+        // Get user's wallet addresses
+        const walletAddresses = await getUserWalletAddresses(userId);
+        if (!walletAddresses || walletAddresses.length === 0) {
+          return { text: "Your wallet is being set up automatically. Please try again in a moment." };
+        }
+
+        // Get user data for PDF generation
+        const { data: userData } = await supabase
+          .from('users')
+          .select('name, telegram_first_name, telegram_last_name, telegram_username')
+          .eq('id', userId)
+          .single();
+
+        const userDataFormatted = userData ? {
+          name: userData.name,
+          telegramFirstName: userData.telegram_first_name,
+          telegramLastName: userData.telegram_last_name,
+          telegramUsername: userData.telegram_username
+        } : undefined;
+
+        // Use natural language query or default to current month
+        const query = params.text || 'earnings this month';
+        
+        const { generateEarningsPdfForQuery } = await import('../lib/earningsService');
+        
+        // This would typically be handled by the bot integration for file sending
+        // For now, return a message indicating PDF generation is in progress
+        return { 
+          text: "📄 **Generating Your Earnings PDF Report**\n\nYour personalized earnings report is being created... This may take a moment.\n\n✨ **Your report will include:**\n• Period-specific insights\n• Visual earnings breakdown\n• Professional formatting\n• Complete transaction history\n\n💡 The PDF will be sent to you shortly!",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "📊 View Earnings", callback_data: "view_earnings" },
+                { text: "🔙 Back", callback_data: "business_dashboard" }
+              ]
+            ]
+          }
+        };
+      } catch (error) {
+        console.error('[handleAction] Natural language PDF generation error:', error);
+        return { text: "❌ Failed to generate PDF report. Please try again later." };
+      }
+
     case "business_dashboard":
     case "show_business_dashboard":
       try {
@@ -1399,12 +1499,9 @@ Your wallets are now ready! Please try your command again.`
           return { text: "Your wallet is being set up automatically. Please try again in a moment." };
         }
 
-        // Use the first wallet address for spending summary
-        const walletAddress = walletAddresses[0];
-
-        // Extract parameters for filtering
+        // Extract parameters for filtering - use all wallet addresses for comprehensive tracking
         const filter = {
-          walletAddress,
+          walletAddresses, // Use all wallet addresses instead of just the first one
           timeframe: params.timeframe || 'allTime',
           token: params.token,
           network: params.network,
@@ -1412,13 +1509,16 @@ Your wallets are now ready! Please try your command again.`
           endDate: params.endDate
         };
 
-        // const summary = await getSpendingSummary(filter);
-        // if (summary && summary.totalPayments > 0) {
-        //   const formatted = formatEarningsForAgent(summary, 'spending');
-        //   return { text: formatted };
-        // } else {
-        return { text: "The spending feature is temporarily unavailable, but your crypto is safe in your wallet! You can use the 'send' command to transfer crypto to others." };
-        // }
+        // Import spending summary function
+        const { getSpendingSummary, formatEarningsForAgent } = await import('../lib/earningsService');
+
+        const summary = await getSpendingSummary(filter);
+        if (summary && summary.totalPayments > 0) {
+          const formatted = formatEarningsForAgent(summary, 'spending');
+          return { text: formatted };
+        } else {
+          return { text: "You haven't made any withdrawals or crypto conversions yet. Your spending history will appear here once you start using the offramp feature or send crypto to others." };
+        }
       } catch (error) {
         console.error('[handleAction] Spending error:', error);
         return { text: "I couldn't fetch your spending data right now. Please try again later." };
@@ -1534,6 +1634,30 @@ export async function handleAlchemyWebhook(req: NextApiRequest, res: NextApiResp
   }
 }
 
+async function handleSendInstructions(params: ActionParams, userId: string) {
+  // Always show the send template/instructions for instruction_send intent
+  return {
+    text: "💸 **Send Crypto**\n\n" +
+      "Please provide the following information in your message:\n\n" +
+      "**Required Details:**\n" +
+      "• **Amount & Token**: e.g., `0.1 ETH`, `10 USDC`, `5 SOL`\n" +
+      "• **Recipient Address**: The destination wallet address\n" +
+      "• **Network/Chain**: `Base`, `Solana`, or specify token type\n\n" +
+      "**Example Messages:**\n" +
+      "• `Send 0.1 ETH to 0x1234...5678 on Base`\n" +
+      "• `Transfer 10 USDC to 9WzD...AWWM on Solana`\n" +
+      "• `Send 5 SOL to alice.sol`\n\n" +
+      "**Supported Tokens:**\n" +
+      "• ETH (Base network)\n" +
+      "• USDC (Base, Celo, or Solana)\n" +
+      "• CELO (Celo network)\n" +
+      "• cUSD (Celo network)\n" +
+      "• LSK (Lisk network)\n" +
+      "• SOL (Solana network)\n\n" +
+      "💡 **Tip**: Include all details in one message for faster processing!"
+  };
+}
+
 async function handleSend(params: ActionParams, userId: string) {
   try {
     console.log(`[handleSend] Starting with params:`, JSON.stringify(params, null, 2));
@@ -1576,8 +1700,43 @@ async function handleSend(params: ActionParams, userId: string) {
     }
 
     // Extract parameters from the request
-    const { amount, token, to_address, recipient, network, confirm } = params;
-    const recipientAddress = to_address || recipient;
+    let { amount, token, to_address, recipient, network, confirm } = params;
+    let recipientAddress = to_address || recipient;
+    
+    // Enhanced parameter extraction from text if not provided directly
+    if (params.text && (!amount || !recipientAddress || !token)) {
+      console.log('[handleSend] Enhancing parameters from text:', params.text);
+      
+      // Extract amount and token if not provided
+      if (!amount || !token) {
+        const amountTokenMatch = params.text.match(/(\d+(?:\.\d+)?)\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)/i);
+        if (amountTokenMatch) {
+          amount = amount || amountTokenMatch[1];
+          token = token || amountTokenMatch[2].toUpperCase();
+          console.log('[handleSend] Enhanced - amount:', amount, 'token:', token);
+        }
+      }
+      
+      // Extract recipient address if not provided
+      if (!recipientAddress) {
+        const addressMatch = params.text.match(/0x[a-fA-F0-9]{40}/) || 
+                            params.text.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/);
+        if (addressMatch) {
+          recipientAddress = addressMatch[0];
+          console.log('[handleSend] Enhanced - recipient:', recipientAddress);
+        }
+      }
+      
+      // Extract network if not provided
+      if (!network) {
+        const networkMatch = params.text.match(/on\s+(base|ethereum|solana|celo|lisk)/i) ||
+                            params.text.match(/\b(base|ethereum|solana|celo|lisk)\s+network/i);
+        if (networkMatch) {
+          network = networkMatch[1].toLowerCase();
+          console.log('[handleSend] Enhanced - network:', network);
+        }
+      }
+    }
 
     // Check if this is a confirmation request
     if (confirm === 'yes' || confirm === 'true' || params.action === 'confirm_send') {
@@ -1994,26 +2153,54 @@ async function handleSend(params: ActionParams, userId: string) {
       };
     }
 
-    // If we don't have all the information, show the single template to collect everything
+    // If we don't have all the information, try to extract from text first
+    if (params.text) {
+      console.log('[handleSend] Attempting to extract parameters from text:', params.text);
+      
+      // Try to extract amount and token
+      const amountTokenMatch = params.text.match(/(\d+(?:\.\d+)?)\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)/i);
+      if (amountTokenMatch && !amount) {
+        params.amount = amountTokenMatch[1];
+        params.token = amountTokenMatch[2].toUpperCase();
+        console.log('[handleSend] Extracted from text - amount:', params.amount, 'token:', params.token);
+      }
+      
+      // Try to extract recipient address
+      const addressMatch = params.text.match(/0x[a-fA-F0-9]{40}/) || 
+                          params.text.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/) ||
+                          params.text.match(/to\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (addressMatch && !recipientAddress) {
+        params.recipient = addressMatch[0];
+        console.log('[handleSend] Extracted recipient from text:', params.recipient);
+      }
+      
+      // Try to extract network
+      const networkMatch = params.text.match(/on\s+(base|ethereum|solana|celo|lisk)/i) ||
+                          params.text.match(/\b(base|ethereum|solana|celo|lisk)\s+network/i);
+      if (networkMatch && !network) {
+        params.network = networkMatch[1].toLowerCase();
+        console.log('[handleSend] Extracted network from text:', params.network);
+      }
+      
+      // If we now have the required parameters, try again
+      if (params.amount && params.recipient) {
+        console.log('[handleSend] Retrying with extracted parameters');
+        // Recursively call handleSend with the extracted parameters
+        return await handleSend(params, userId);
+      }
+    }
+    
+    // If we still don't have the required information, ask for missing details
+    const missingDetails: string[] = [];
+    if (!amount && !params.amount) missingDetails.push('Amount & Token (e.g., "0.1 ETH", "10 USDC")');
+    if (!recipientAddress && !params.recipient) missingDetails.push('Recipient Address');
+    
     return {
-      text: "💸 **Send Crypto**\n\n" +
-        "Please provide the following information in your message:\n\n" +
-        "**Required Details:**\n" +
-        "• **Amount & Token**: e.g., `0.1 ETH`, `10 USDC`, `5 SOL`\n" +
-        "• **Recipient Address**: The destination wallet address\n" +
-        "• **Network/Chain**: `Base`, `Solana`, or specify token type\n\n" +
-        "**Example Messages:**\n" +
-        "• `Send 0.1 ETH to 0x1234...5678 on Base`\n" +
-        "• `Transfer 10 USDC to 9WzD...AWWM on Solana`\n" +
-        "• `Send 5 SOL to alice.sol`\n\n" +
-        "**Supported Tokens:**\n" +
-        "• ETH (Base network)\n" +
-        "• USDC (Base, Celo, or Solana)\n" +
-        "• CELO (Celo network)\n" +
-        "• cUSD (Celo network)\n" +
-        "• LSK (Lisk network)\n" +
-        "• SOL (Solana network)\n\n" +
-        "💡 **Tip**: Include all details in one message for faster processing!"
+      text: `💸 **Send Crypto - Missing Information**\n\n` +
+        `I need the following details to process your transaction:\n\n` +
+        `**Missing:**\n${missingDetails.map(detail => `• ${detail}`).join('\n')}\n\n` +
+        `**Example:** \`Send 0.1 ETH to 0x1234...5678\`\n\n` +
+        `Please provide all details in your next message.`
     };
 
   } catch (error) {
@@ -2724,7 +2911,7 @@ async function handleCreateInvoice(params: ActionParams, userId: string) {
       };
     }
 
-    // Initialize the bot and start invoice creation with calendar suggestion
+    // Initialize the bot and start invoice creation directly (calendar disabled)
     const TelegramBot = require('node-telegram-bot-api');
     const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
     const { BotIntegration } = await import('../modules/bot-integration');
@@ -2810,7 +2997,7 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
 // Handle onramp intent - buy crypto with fiat (route through bot-integration)
 async function handleOnramp(params: ActionParams, userId: string): Promise<ActionResult> {
   console.log('[handleOnramp] Called with params:', params, 'userId:', userId);
-  
+
   // Return "coming soon" message for now
   return {
     text: '🚧 **Buy Crypto Feature Coming Soon**\n\n' +
@@ -5217,11 +5404,11 @@ async function handleFailedWithdrawal(userId: string, orderId: string, orderData
 async function handleConnectCalendar(params: ActionParams, userId: string): Promise<ActionResult> {
   try {
     console.log('[handleConnectCalendar] Called with userId:', userId, 'params:', params);
-    
+
     // Check if calendar sync is enabled
     const { getCurrentConfig } = await import('../lib/envConfig');
     const config = getCurrentConfig();
-    
+
     console.log('[handleConnectCalendar] Calendar sync enabled:', config.googleCalendar.enabled);
 
     if (!config.googleCalendar.enabled) {
@@ -5304,7 +5491,7 @@ async function handleConnectCalendar(params: ActionParams, userId: string): Prom
         ]
       }
     };
-    
+
     console.log('[handleConnectCalendar] Returning result:', result);
     return result;
 

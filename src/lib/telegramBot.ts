@@ -349,11 +349,11 @@ export class TelegramBotService {
       if (messageText.startsWith('/')) {
         const commandName = messageText.split(' ')[0].toLowerCase();
         const baseCmd = commandName.includes('@') ? commandName.split('@')[0] : commandName;
-        
+
         console.log('[TelegramBot] Command detected:', { messageText, commandName, baseCmd });
 
         // Allow certain commands to be processed by AI instead of handleCommand
-        if (baseCmd === '/send' || baseCmd === '/balance' || baseCmd === '/swap' || baseCmd === '/bridge' || baseCmd === '/price' || baseCmd === '/buy' || baseCmd === '/purchase' || baseCmd === '/connect_calendar' || baseCmd === '/disconnect_calendar' || baseCmd === '/calendar_status' || baseCmd === '/onramp') {
+        if (baseCmd === '/send' || baseCmd === '/balance' || baseCmd === '/swap' || baseCmd === '/bridge' || baseCmd === '/price' || baseCmd === '/buy' || baseCmd === '/purchase' || baseCmd === '/onramp') {
           console.log('[TelegramBot] Processing AI-handled command:', baseCmd);
           console.log('[TelegramBot] Full message text:', messageText);
           const response = await this.processWithAI(messageText, chatId);
@@ -473,22 +473,23 @@ export class TelegramBotService {
           break;
         case 'calendar_connect_start':
         case 'calendar_reconnect_start':
-          await this.botIntegration.handleBusinessMessage({ chat: { id: chatId }, text: '/connect_calendar', from: { id: parseInt(userId) } } as any, userId);
+        case 'calendar_disconnect_start':
+        case 'calendar_disconnect_confirm':
+        case 'calendar_status_check':
+          await this.sendMessage(chatId, '📅 **Calendar Sync Unavailable**\n\nCalendar sync is currently disabled. Please contact support if you need this feature.', { parse_mode: 'Markdown' });
           break;
         case 'calendar_connect_cancel':
-          await this.sendMessage(chatId, '❌ Calendar connection cancelled.', { parse_mode: 'Markdown' });
-          break;
-        case 'calendar_disconnect_start':
-          await this.botIntegration.handleBusinessMessage({ chat: { id: chatId }, text: '/disconnect_calendar', from: { id: parseInt(userId) } } as any, userId);
-          break;
-        case 'calendar_disconnect_confirm':
-          await this.handleCalendarDisconnectConfirm(chatId, userId);
-          break;
         case 'calendar_disconnect_cancel':
-          await this.sendMessage(chatId, '✅ Calendar disconnect cancelled. Your calendar remains connected.', { parse_mode: 'Markdown' });
+          await this.sendMessage(chatId, '❌ Calendar action cancelled.', { parse_mode: 'Markdown' });
           break;
-        case 'calendar_status_check':
-          await this.botIntegration.handleBusinessMessage({ chat: { id: chatId }, text: '/calendar_status', from: { id: parseInt(userId) } } as any, userId);
+        case 'check_balance':
+          await this.botIntegration.handleBusinessMessage({ chat: { id: chatId }, text: '/balance', from: { id: parseInt(userId) } } as any, userId);
+          break;
+        case 'price_check':
+          await this.sendMessage(chatId, '💰 **Token Prices**\n\nTo check token prices, just ask me! For example:\n• "What\'s the price of ETH?"\n• "Show me USDC price"\n• "How much is Bitcoin worth?"', { parse_mode: 'Markdown' });
+          break;
+        case 'swap_tokens':
+          await this.sendMessage(chatId, '🔄 **Token Swap**\n\nTo swap tokens, just tell me what you want to do! For example:\n• "Swap 100 USDC to ETH"\n• "I want to swap tokens"\n• "Convert my USDT to USDC"', { parse_mode: 'Markdown' });
           break;
         default:
           // Handle onramp callbacks
@@ -667,7 +668,13 @@ export class TelegramBotService {
         await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction status checking will be available when the feature launches!', { parse_mode: 'Markdown' });
         break;
       }
-      // Calendar commands are handled via AI processing path, not here
+      // Calendar commands - disabled
+      case '/connect_calendar':
+      case '/disconnect_calendar':
+      case '/calendar_status': {
+        await this.sendMessage(chatId, '📅 **Calendar Sync Unavailable**\n\nCalendar sync is currently disabled. Please contact support if you need this feature.', { parse_mode: 'Markdown' });
+        break;
+      }
       default:
         await this.sendMessage(
           chatId,
@@ -703,7 +710,7 @@ export class TelegramBotService {
 • 💰 Payment tracking
 • 📊 Earnings summaries
 • 🔄 Token swaps
-• 📅 Calendar sync for due dates
+• 📊 Payment tracking and analytics
 • 💬 General assistance
 
 Just send me a message and I'll help you out! ✨`;
@@ -719,7 +726,7 @@ Just send me a message and I'll help you out! ✨`;
           { text: '📊 Check Earnings', callback_data: 'check_earnings' }
         ],
         [
-          { text: '📅 Connect Calendar', callback_data: 'calendar_connect_start' }
+          { text: '🔄 Token Swap', callback_data: 'swap_tokens' }
         ]
       ]
     };
@@ -739,10 +746,6 @@ Just send me a message and I'll help you out! ✨`;
 /about - ℹ️ About Hedwig
 /menu - 📱 Show quick action menu
 
-📅 **Calendar Commands:**
-/connect_calendar - 🔗 Connect Google Calendar
-/disconnect_calendar - 🔌 Disconnect Google Calendar
-/calendar_status - 📊 Check calendar connection status
 
 🪙 **Buy Crypto Commands:**
 /buy_crypto - 💰 Buy cryptocurrency with fiat
@@ -753,7 +756,7 @@ Just send me a message and I'll help you out! ✨`;
 • 💰 Track your payments and earnings
 • 📊 Provide payment summaries
 • 🔄 Help with token swaps
-• 📅 Sync invoice due dates with Google Calendar
+• 📊 Track payment status and history
 • 🪙 Buy crypto with local currency (onramp)
 • 💱 Sell crypto for local currency (offramp)
 • 💬 Answer questions about your business
@@ -764,7 +767,7 @@ Just type your request in natural language, like:
 - "Show me my earnings this month" 📈
 - "Send a payment reminder" 📧
 - "I want to swap tokens" 🔄
-- "Connect my calendar" or "calendar status" 📅
+- "Check my balance" or "token prices" 💰
 - "Buy crypto with NGN" 🪙
 
 Feel free to ask me anything! 😊`;
@@ -817,8 +820,8 @@ Choose an action below:`;
           { text: 'Check Balance', callback_data: 'check_balance' }
         ],
         [
-          { text: '📅 Calendar Status', callback_data: 'calendar_status_check' },
-          { text: '🔗 Connect Calendar', callback_data: 'calendar_connect_start' }
+          { text: '💰 Check Balance', callback_data: 'check_balance' },
+          { text: '📊 Price Check', callback_data: 'price_check' }
         ],
         [
           { text: 'Help', callback_data: 'help' },
@@ -893,59 +896,46 @@ Choose an action below:`;
       let finalIntent = intent;
       let finalParams = params;
 
-      if (intent === 'unknown' && (directIntent.intent === 'onramp' || directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status')) {
+      if (intent === 'unknown' && (directIntent.intent === 'onramp')) {
         console.log('[TelegramBot] Using direct parser result as fallback for:', directIntent.intent);
         finalIntent = directIntent.intent;
-        finalParams = directIntent.params;
+        finalParams = directIntent.params || {};
       }
 
       console.log('[TelegramBot] Final intent to execute:', finalIntent, 'Final params:', finalParams);
 
-      // Enhanced fallback logic with priority for calendar and onramp
+      // Enhanced fallback logic for onramp
       console.log('[TelegramBot] Checking fallback logic. Current finalIntent:', finalIntent);
       if (finalIntent === 'unknown' || finalIntent === 'conversation' || finalIntent === 'clarification') {
         const lowerMessage = message.toLowerCase();
         console.log('[TelegramBot] Applying enhanced fallback for message:', lowerMessage);
-        
-        // Calendar fallback: Check for calendar keywords first (higher priority)
-        if (lowerMessage.includes('calendar')) {
-          console.log('[TelegramBot] Message contains "calendar", checking specific keywords');
-          if (lowerMessage.includes('connect') || lowerMessage.includes('sync') || lowerMessage.includes('link') || lowerMessage.includes('add') || lowerMessage.includes('setup')) {
-            if (!lowerMessage.includes('disconnect') && !lowerMessage.includes('unlink') && !lowerMessage.includes('remove')) {
-              console.log('[TelegramBot] Forcing connect_calendar intent due to clear calendar keywords');
-              finalIntent = 'connect_calendar';
-              finalParams = { text: message };
-            }
-          } else if (lowerMessage.includes('disconnect') || lowerMessage.includes('unlink') || lowerMessage.includes('remove') || lowerMessage.includes('disable')) {
-            console.log('[TelegramBot] Forcing disconnect_calendar intent due to clear calendar keywords');
-            finalIntent = 'disconnect_calendar';
-            finalParams = { text: message };
-          } else if (lowerMessage.includes('status') || lowerMessage.includes('check') || lowerMessage.includes('connected')) {
-            console.log('[TelegramBot] Forcing calendar_status intent due to clear calendar keywords');
-            finalIntent = 'calendar_status';
-            finalParams = { text: message };
-          }
-        }
+
         // Onramp fallback: Check for onramp keywords
-        else if (lowerMessage.includes('buy crypto') || lowerMessage.includes('buy cryptocurrency') || 
-            lowerMessage.includes('purchase crypto') || lowerMessage.includes('buy tokens') ||
-            lowerMessage.includes('buy usdc') || lowerMessage.includes('buy usdt') ||
-            lowerMessage.includes('onramp') || lowerMessage.includes('fiat to crypto') ||
-            (lowerMessage.includes('buy') && (lowerMessage.includes('ngn') || lowerMessage.includes('naira')))) {
+        if (lowerMessage.includes('buy crypto') || lowerMessage.includes('buy cryptocurrency') ||
+          lowerMessage.includes('purchase crypto') || lowerMessage.includes('buy tokens') ||
+          lowerMessage.includes('buy usdc') || lowerMessage.includes('buy usdt') ||
+          lowerMessage.includes('onramp') || lowerMessage.includes('fiat to crypto') ||
+          (lowerMessage.includes('buy') && (lowerMessage.includes('ngn') || lowerMessage.includes('naira')))) {
           console.log('[TelegramBot] Forcing onramp intent due to clear onramp keywords');
           finalIntent = 'onramp';
           finalParams = { text: message };
         }
+        // Calendar fallback: Show disabled message for calendar keywords
+        else if (lowerMessage.includes('calendar')) {
+          console.log('[TelegramBot] Calendar keywords detected, but calendar is disabled');
+          await this.sendMessage(chatId, '📅 **Calendar Sync Unavailable**\n\nCalendar sync is currently disabled. Please contact support if you need this feature.', { parse_mode: 'Markdown' });
+          return 'Calendar sync is currently disabled.';
+        }
       }
-      
-      // Always check direct parser for calendar intents as additional fallback
+
+      // Check direct parser for non-calendar intents as additional fallback
       console.log('[TelegramBot] Checking direct parser fallback. directIntent:', directIntent.intent, 'finalIntent:', finalIntent);
-      if (finalIntent === 'unknown' && (directIntent.intent === 'connect_calendar' || directIntent.intent === 'disconnect_calendar' || directIntent.intent === 'calendar_status')) {
-        console.log('[TelegramBot] Using direct parser result as fallback for calendar intent:', directIntent.intent);
+      if (finalIntent === 'unknown' && directIntent.intent === 'onramp') {
+        console.log('[TelegramBot] Using direct parser result as fallback for onramp intent:', directIntent.intent);
         finalIntent = directIntent.intent;
-        finalParams = directIntent.params;
+        finalParams = directIntent.params || {};
       }
-      
+
       console.log('[TelegramBot] Final intent after all fallbacks:', finalIntent);
 
       // Special-case: Offramp intent should open the mini app (not conversational flow)
@@ -1282,9 +1272,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'paymentlink', description: '🔗 Create a payment link' },
         { command: 'referral', description: '🎁 Get your referral link and stats' },
         { command: 'leaderboard', description: '🏆 View referral leaderboard' },
-        { command: 'connect_calendar', description: '📅 Connect Google Calendar' },
-        { command: 'disconnect_calendar', description: '🔌 Disconnect Google Calendar' },
-        { command: 'calendar_status', description: '📊 Check calendar connection status' },
+
         { command: 'onramp', description: '💰 Purchase cryptocurrency' }
       ];
 

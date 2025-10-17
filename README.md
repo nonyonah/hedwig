@@ -31,7 +31,8 @@ Hedwig is a comprehensive freelancer assistant that helps manage invoices, payme
 - **Payment Verification**: Real-time transaction monitoring and confirmation
 
 ### 🔐 Security & Compliance
-- **Wallet Integration**: Support for MetaMask, WalletConnect, and other Web3 wallets
+- **Modern Wallet Integration**: Powered by Reown AppKit for seamless Web3 wallet connections
+- **Multi-Wallet Support**: MetaMask, Coinbase Wallet, WalletConnect, and more
 - **Smart Contract Security**: Audited payment contracts with reentrancy protection
 - **Access Control**: Role-based permissions and secure API endpoints
 - **Transaction Safety**: Safe ERC20 transfers with comprehensive error handling
@@ -42,6 +43,7 @@ Hedwig is a comprehensive freelancer assistant that helps manage invoices, payme
 - **Next.js 14**: React framework with App Router
 - **TypeScript**: Type-safe development
 - **Tailwind CSS**: Modern styling framework
+- **Reown AppKit**: Modern Web3 wallet connection
 - **Wagmi**: React hooks for Ethereum
 - **CDP Server Wallets**: Wallet infrastructure
 - **Viem**: TypeScript interface for Ethereum
@@ -99,6 +101,9 @@ Hedwig is a comprehensive freelancer assistant that helps manage invoices, payme
    
    # Analytics
    NEXT_PUBLIC_POSTHOG_KEY=your_posthog_key
+   
+   # Wallet Connection
+   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
    ```
 
 4. **Start Development Server**
@@ -173,6 +178,17 @@ npm run build
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🔄 Recent Updates
+
+### Wallet Migration (v2.0)
+We've migrated from Coinbase OnchainKit to Reown AppKit for improved wallet connectivity:
+- **Better Multi-Chain Support**: Enhanced network switching and management
+- **Improved Mobile Experience**: Better mobile wallet integration
+- **Modern UI**: Updated wallet connection interface
+- **Enhanced Error Handling**: Better user feedback and recovery
+
+See [WALLET_MIGRATION.md](WALLET_MIGRATION.md) for detailed migration information.
 
 ## 🆘 Support
 

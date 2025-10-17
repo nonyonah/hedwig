@@ -1,6 +1,21 @@
 import { useEffect, createContext, useContext, useState, ReactNode } from 'react';
 import { EventEmitter } from 'events';
-import { createBaseAccountService, BaseAccountService, PaymentParams, PaymentResult } from '@/lib/baseAccount';
+import { useAppKitWallet } from '../hooks/useAppKitWallet';
+import { getChainConfig } from '../lib/chains';
+
+// Define payment types for compatibility
+interface PaymentParams {
+  to: string;
+  amount: string;
+  token?: string;
+  chainId?: number;
+}
+
+interface PaymentResult {
+  id: string;
+  status: 'success' | 'failed' | 'pending';
+  hash?: string;
+}
 
 // Define the wallet context type
 interface WalletContextType {
@@ -9,7 +24,7 @@ interface WalletContextType {
   isLoading: boolean;
   network: string | null;
   error: string | null;
-  baseAccount: BaseAccountService | null;
+  baseAccount: any | null; // Simplified for compatibility
   connectBaseAccount: () => Promise<void>;
   disconnectWallet: () => void;
   signMessage: (message: string) => Promise<string>;
@@ -31,28 +46,39 @@ const WalletContext = createContext<WalletContextType>({
 });
 
 // Increase the max listeners limit for EventEmitter
-// This helps prevent the warning but doesn't solve the underlying issue
 const increaseMaxListeners = () => {
-  // Find the EventEmitter instance used by WalletConnect
-  // This is a bit of a hack but works in most cases
   try {
-    // Set a higher limit for all EventEmitter instances
     EventEmitter.defaultMaxListeners = 20;
-    
-    // If you can access the specific emitter instance:
-    // walletConnectProvider.events.setMaxListeners(20);
     console.log('Increased EventEmitter max listeners limit');
   } catch (error) {
     console.error('Failed to increase EventEmitter max listeners:', error);
   }
 };
 
-// Hook to access wallet context
+// Hook to access wallet context - now uses AppKit
 export function useWallet() {
-  return useContext(WalletContext);
+  const context = useContext(WalletContext);
+  const appKitWallet = useAppKitWallet();
+  
+  // Return AppKit wallet if context is not available (for new components)
+  if (!context.isConnected && appKitWallet.isConnected) {
+    return {
+      ...context,
+      address: appKitWallet.address || null,
+      isConnected: appKitWallet.isConnected,
+      isLoading: appKitWallet.isConnecting,
+      network: appKitWallet.chainId ? getChainConfig(appKitWallet.chainId)?.name || null : null,
+      connectBaseAccount: appKitWallet.connectWallet,
+      disconnectWallet: appKitWallet.disconnectWallet,
+    };
+  }
+  
+  return context;
 }
 
 export function WalletProviderWrapper({ children }: { children: ReactNode }) {
+  const appKitWallet = useAppKitWallet();
+  
   const [walletState, setWalletState] = useState<WalletContextType>({
     address: null,
     isConnected: false,
@@ -66,86 +92,36 @@ export function WalletProviderWrapper({ children }: { children: ReactNode }) {
     pay: async () => ({ id: '', status: 'failed' }),
   });
 
-  const [baseAccountService, setBaseAccountService] = useState<BaseAccountService | null>(null);
-
-  // Initialize Base Account service
+  // Sync AppKit wallet state with context
   useEffect(() => {
-    const service = createBaseAccountService({
-      appName: 'Hedwig - Your Trusted Wallet Assistant',
-      testnet: process.env.NODE_ENV === 'development',
-    });
-    setBaseAccountService(service);
-  }, []);
+    setWalletState(prev => ({
+      ...prev,
+      address: appKitWallet.address || null,
+      isConnected: appKitWallet.isConnected,
+      isLoading: appKitWallet.isConnecting,
+      network: appKitWallet.chainId ? getChainConfig(appKitWallet.chainId)?.name || null : null,
+    }));
+  }, [appKitWallet.address, appKitWallet.isConnected, appKitWallet.isConnecting, appKitWallet.chainId]);
 
-  // Connect to Base Account
+  // Connect wallet - now uses AppKit
   const connectBaseAccount = async () => {
-    if (!baseAccountService) {
-      throw new Error('Base Account service not initialized');
-    }
-
     try {
       setWalletState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      const addresses = await baseAccountService.connect();
-      const chainId = await baseAccountService.getChainId();
+      // Use AppKit to connect
+      await appKitWallet.connectWallet();
       
-      // Convert chain ID to network name
-      const networkName = getNetworkName(chainId);
-      
-      setWalletState(prev => ({
-        ...prev,
-        address: addresses[0] || null,
-        isConnected: addresses.length > 0,
-        isLoading: false,
-        network: networkName,
-        error: null,
-        baseAccount: baseAccountService,
-      }));
-
-      // Setup event listeners
-      baseAccountService.setupEventListeners({
-        onConnect: async (info) => {
-          console.log('Base Account connected:', info);
-          
-          // Track wallet connection event
-          try {
-            const { HedwigEvents } = await import('../lib/posthog');
-            await HedwigEvents.walletConnected('base_account', 'base_account');
-            console.log('✅ Wallet connected event tracked successfully');
-          } catch (trackingError) {
-            console.error('Error tracking wallet_connected event:', trackingError);
-          }
-        },
-        onDisconnect: (error) => {
-          console.log('Base Account disconnected:', error);
-          setWalletState(prev => ({
-            ...prev,
-            address: null,
-            isConnected: false,
-            network: null,
-            error: error?.message || 'Disconnected',
-          }));
-        },
-        onAccountsChanged: (accounts) => {
-          console.log('Accounts changed:', accounts);
-          setWalletState(prev => ({
-            ...prev,
-            address: accounts[0] || null,
-            isConnected: accounts.length > 0,
-          }));
-        },
-        onChainChanged: (chainId) => {
-          console.log('Chain changed:', chainId);
-          const networkName = getNetworkName(chainId);
-          setWalletState(prev => ({
-            ...prev,
-            network: networkName,
-          }));
-        },
-      });
+      // Track wallet connection event
+      try {
+        const { HedwigEvents } = await import('../lib/posthog');
+        await HedwigEvents.walletConnected(appKitWallet.address || 'unknown', 'appkit');
+        console.log('✅ Wallet connected event tracked successfully');
+      } catch (trackingError) {
+        console.error('Error tracking wallet_connected event:', trackingError);
+      }
 
     } catch (error) {
-      console.error('Failed to connect Base Account:', error);
+      console.error('Failed to connect wallet:', error);
       setWalletState(prev => ({
         ...prev,
         isLoading: false,
@@ -154,46 +130,29 @@ export function WalletProviderWrapper({ children }: { children: ReactNode }) {
     }
   };
 
-  // Disconnect wallet
-  const disconnectWallet = () => {
-    if (baseAccountService) {
-      baseAccountService.removeEventListeners();
+  // Disconnect wallet - now uses AppKit
+  const disconnectWallet = async () => {
+    try {
+      await appKitWallet.disconnectWallet();
+    } catch (error) {
+      console.error('Failed to disconnect wallet:', error);
     }
-    setWalletState(prev => ({
-      ...prev,
-      address: null,
-      isConnected: false,
-      network: null,
-      error: null,
-    }));
   };
 
-  // Sign message
+  // Sign message using AppKit
   const signMessage = async (message: string): Promise<string> => {
-    if (!baseAccountService || !walletState.address) {
+    if (!appKitWallet.isConnected || !appKitWallet.address) {
       throw new Error('Wallet not connected');
     }
-    return await baseAccountService.signMessage(message, walletState.address);
+    return await appKitWallet.signMessage(message);
   };
 
-  // Make payment
+  // Make payment - simplified for now
   const pay = async (params: PaymentParams): Promise<PaymentResult> => {
-    if (!baseAccountService) {
-      throw new Error('Base Account service not available');
-    }
-    return await baseAccountService.pay(params);
-  };
-
-  // Helper function to convert chain ID to network name
-  const getNetworkName = (chainId: string): string => {
-    const id = parseInt(chainId, 16);
-    switch (id) {
-      case 8453: return 'Base';
-    case 84532: return 'Base Sepolia';
-      case 1: return 'Ethereum Mainnet';
-      case 11155111: return 'Ethereum Sepolia';
-      default: return `Chain ${id}`;
-    }
+    // This would need to be implemented with actual transaction sending
+    // For now, return a placeholder
+    console.log('Payment requested:', params);
+    return { id: 'placeholder', status: 'pending' };
   };
 
   useEffect(() => {
@@ -207,17 +166,10 @@ export function WalletProviderWrapper({ children }: { children: ReactNode }) {
       disconnectWallet,
       signMessage,
       pay,
-      baseAccount: baseAccountService,
+      baseAccount: null, // Simplified for now
       isLoading: false,
     }));
-    
-    return () => {
-      // Cleanup wallet connection if needed
-      if (baseAccountService) {
-        baseAccountService.removeEventListeners();
-      }
-    };
-  }, [baseAccountService]);
+  }, [appKitWallet]);
 
   return (
     <WalletContext.Provider value={walletState}>

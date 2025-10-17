@@ -76,11 +76,12 @@ export class BotIntegration {
       // Create filter object with all wallet addresses (supports both EVM and Solana)
       const filter = {
         walletAddresses: wallets.map(w => w.address),
-        timeframe: timeframe as 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime'
+        timeframe: timeframe as 'last7days' | 'lastMonth' | 'last3months' | 'lastYear' | 'allTime',
+        includeInsights: true
       };
 
       const summary = await getEarningsSummary(filter, true);
-      const formattedSummary = formatEarningsForAgent(summary);
+      const formattedSummary = formatEarningsForAgent(summary, 'earnings');
 
       await this.bot.sendMessage(chatId, formattedSummary, {
         parse_mode: 'Markdown',
@@ -2317,6 +2318,11 @@ export class BotIntegration {
         }
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data.startsWith('earnings_shortcut_')) {
+        const shortcut = data.replace('earnings_shortcut_', '');
+        await this.handleEarningsShortcuts(chatId, userId, shortcut);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       } else if (data === 'help') {
         await this.handleHelp(chatId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -2375,10 +2381,11 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
-      // Calendar suggestion callbacks
+      // Calendar suggestion callbacks - disabled
       else if (data.startsWith('calendar_connect_then_invoice_')) {
         const targetUserId = data.replace('calendar_connect_then_invoice_', '');
-        await this.handleCalendarConnectThenInvoice(chatId, targetUserId);
+        await this.bot.sendMessage(chatId, '📅 **Calendar Sync Unavailable**\n\nCalendar sync is currently disabled. Creating your invoice directly.', { parse_mode: 'Markdown' });
+        await this.invoiceModule.handleInvoiceCreation(chatId, targetUserId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
@@ -2495,7 +2502,7 @@ export class BotIntegration {
 
       switch (text) {
         case '📄 Invoice':
-          await this.handleInvoiceCreationWithCalendarSuggestion(chatId, userId);
+          await this.invoiceModule.handleInvoiceCreation(chatId, userId);
           return true;
 
         case '📋 Proposal':
@@ -2546,13 +2553,16 @@ export class BotIntegration {
         }
 
         case '💰 Earnings Summary':
-          // Simulate a message object to pass to the AI processor
-          const fakeMessage = {
-            chat: { id: chatId },
-            from: { id: userId },
-            text: '/earnings_summary',
-          } as any;
-          await this.processWithAI(fakeMessage, 'earnings_summary');
+        case '/earnings':
+        case '/earnings_summary':
+          // Use enhanced earnings handling
+          await this.handleEnhancedEarningsCommand(chatId, userId, text);
+          return true;
+
+        case '/earnings_pdf':
+        case '/generate_pdf':
+          // Generate PDF directly
+          await this.handleEarningsShortcuts(chatId, userId, 'generate_pdf');
           return true;
 
         case '❓ Help':
@@ -2574,54 +2584,17 @@ export class BotIntegration {
         case '/connect_calendar':
         case 'connect calendar':
         case 'sync calendar':
-        case 'link calendar': {
-          // Handle calendar connection via actions
-          try {
-            const result = await handleAction('connect_calendar', {}, userId);
-            await this.bot.sendMessage(chatId, result.text, {
-              parse_mode: 'Markdown',
-              reply_markup: result.reply_markup
-            });
-          } catch (error) {
-            console.error('[BotIntegration] Error connecting calendar:', error);
-            await this.bot.sendMessage(chatId, '❌ Failed to connect calendar. Please try again.');
-          }
-          return true;
-        }
-
+        case 'link calendar':
         case '/disconnect_calendar':
         case 'disconnect calendar':
         case 'unlink calendar':
-        case 'remove calendar': {
-          // Handle calendar disconnection via actions
-          try {
-            const result = await handleAction('disconnect_calendar', {}, userId);
-            await this.bot.sendMessage(chatId, result.text, {
-              parse_mode: 'Markdown',
-              reply_markup: result.reply_markup
-            });
-          } catch (error) {
-            console.error('[BotIntegration] Error disconnecting calendar:', error);
-            await this.bot.sendMessage(chatId, '❌ Failed to disconnect calendar. Please try again.');
-          }
-          return true;
-        }
-
+        case 'remove calendar':
         case '/calendar_status':
         case 'calendar status':
         case 'check calendar':
         case 'calendar connection': {
-          // Handle calendar status via actions
-          try {
-            const result = await handleAction('calendar_status', {}, userId);
-            await this.bot.sendMessage(chatId, result.text, {
-              parse_mode: 'Markdown',
-              reply_markup: result.reply_markup
-            });
-          } catch (error) {
-            console.error('[BotIntegration] Error checking calendar status:', error);
-            await this.bot.sendMessage(chatId, '❌ Failed to check calendar status. Please try again.');
-          }
+          // Calendar functionality is disabled
+          await this.bot.sendMessage(chatId, '📅 **Calendar Sync Unavailable**\n\nCalendar sync is currently disabled. Please contact support if you need this feature.', { parse_mode: 'Markdown' });
           return true;
         }
 
@@ -2721,12 +2694,30 @@ export class BotIntegration {
             try {
               const lowerText = message.text.toLowerCase();
 
-              // Check for business queries first
+              // Check for earnings queries first (more specific)
+              const earningsPatterns = [
+                /(show|view|check|get|see).*(my )?earnings/i,
+                /(how much|what).*(did i|have i).*(earn|made|receive)/i,
+                /earnings.*(this|last|past).*(month|week|year)/i,
+                /(this|last|past).*(month|week|year).*(earnings|earned|made)/i,
+                /earnings.*(january|february|march|april|may|june|july|august|september|october|november|december)/i,
+                /(usdc|usdt|eth|sol|celo).*(earnings|earned)/i,
+                /earnings.*(on|in).*(base|ethereum|solana|celo|lisk)/i,
+                /(generate|create|make).*(earnings|pdf|report)/i,
+                /earnings.*(pdf|report)/i
+              ];
+
+              if (earningsPatterns.some(pattern => pattern.test(lowerText))) {
+                await this.handleNaturalLanguageEarnings(message.chat.id, userId, message.text);
+                return true;
+              }
+
+              // Check for business queries
               const businessPatterns = [
-                /(how many|how much|what['']?s my|show me my|tell me about my).*(invoice|proposal|payment link|earning|revenue)/i,
+                /(how many|how much|what['']?s my|show me my|tell me about my).*(invoice|proposal|payment link|revenue)/i,
                 /(invoice|proposal|payment link).*(paid|unpaid|pending|draft|expired|count|total)/i,
-                /my (business|earning|revenue|income|invoice|proposal|payment)/i,
-                /(total|sum|amount).*(earned|made|received|invoice|proposal|payment)/i
+                /my (business|revenue|income|invoice|proposal|payment)/i,
+                /(total|sum|amount).*(invoice|proposal|payment)/i
               ];
 
               if (businessPatterns.some(pattern => pattern.test(lowerText))) {
@@ -2741,6 +2732,14 @@ export class BotIntegration {
               if (intent === 'offramp' || intent === 'withdraw') {
                 // Delegate to the centralized offramp handler
                 await this.handleOfframp(message);
+              } else if (intent === 'get_earnings' || intent === 'earnings_summary') {
+                // Handle earnings queries with natural language support
+                await this.handleNaturalLanguageEarnings(message.chat.id, userId, message.text);
+                return true;
+              } else if (intent === 'generate_earnings_pdf') {
+                // Handle PDF generation requests
+                await this.handleNaturalLanguagePdfGeneration(message.chat.id, userId, message.text, [], undefined);
+                return true;
               } else if (intent === 'create_payment_link') { }
               else if (intent === 'referral') {
                 await this.handleReferralCommand(message.chat.id, userId);
@@ -2790,50 +2789,9 @@ export class BotIntegration {
    */
   async handleInvoiceCreationWithCalendarSuggestion(chatId: number, userId: string) {
     try {
-      // Check if calendar sync is enabled
-      const { getCurrentConfig } = await import('../lib/envConfig');
-      const config = getCurrentConfig();
-      
-      if (!config.googleCalendar.enabled) {
-        // Calendar sync disabled, proceed directly to invoice creation
-        await this.invoiceModule.handleInvoiceCreation(chatId, userId);
-        return;
-      }
-
-      // Check if user already has calendar connected
-      const { googleCalendarService } = await import('../lib/googleCalendarService');
-      const isCalendarConnected = await googleCalendarService.isConnected(userId);
-
-      if (isCalendarConnected) {
-        // User already has calendar connected, proceed directly to invoice creation
-        await this.invoiceModule.handleInvoiceCreation(chatId, userId);
-        return;
-      }
-
-      // User doesn't have calendar connected, suggest it
-      await this.bot.sendMessage(chatId,
-        '📅 **Pro Tip: Calendar Sync**\n\n' +
-        'Before creating your invoice, would you like to connect your Google Calendar?\n\n' +
-        '✨ **Benefits:**\n' +
-        '• Automatic due date tracking\n' +
-        '• Payment reminders\n' +
-        '• Never miss a deadline\n\n' +
-        '🎯 **Your choice:**',
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '📅 Connect Calendar First', callback_data: `calendar_connect_then_invoice_${userId}` },
-                { text: '📄 Create Invoice Now', callback_data: `create_invoice_skip_calendar_${userId}` }
-              ],
-              [
-                { text: '❌ Cancel', callback_data: 'cancel_invoice_creation' }
-              ]
-            ]
-          }
-        }
-      );
+      // Calendar sync is disabled, proceed directly to invoice creation
+      await this.invoiceModule.handleInvoiceCreation(chatId, userId);
+      return;
 
     } catch (error) {
       console.error('[BotIntegration] Error in handleInvoiceCreationWithCalendarSuggestion:', error);
@@ -3491,4 +3449,163 @@ export class BotIntegration {
       await this.bot.sendMessage(chatId, '❌ Error loading onramp information. Please try again.');
     }
   }
-}
+
+  // Enhanced Natural Language Earnings Processing
+  async handleNaturalLanguageEarnings(chatId: number, userId: string, query: string) {
+    try {
+      console.log('[BotIntegration] Processing natural language earnings query:', query);
+      
+      // Get user's wallet addresses
+      const actualUserId = await this.getUserIdByChatId(chatId);
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('address')
+        .eq('user_id', actualUserId);
+
+      if (!wallets || wallets.length === 0) {
+        await this.bot.sendMessage(chatId,
+          '💡 You don\'t have a wallet yet. Create one to start tracking your earnings.',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🔗 Create Wallet', callback_data: 'create_wallets' }
+              ]]
+            }
+          }
+        );
+        return;
+      }
+
+      // Get user data for PDF generation
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, telegram_first_name, telegram_last_name, telegram_username')
+        .eq('id', actualUserId)
+        .single();
+
+      const userDataFormatted = userData ? {
+        name: userData.name,
+        telegramFirstName: userData.telegram_first_name,
+        telegramLastName: userData.telegram_last_name,
+        telegramUsername: userData.telegram_username
+      } : undefined;
+
+      // Process natural language query
+      const { getEarningsForNaturalQuery, formatEarningsForNaturalLanguage } = await import('../lib/earningsService');
+      
+      const walletAddresses = wallets.map(w => w.address);
+      const earningsData = await getEarningsForNaturalQuery(query, walletAddresses, userDataFormatted);
+      
+      // Format response for Telegram with safe text formatting
+      const response = formatEarningsForNaturalLanguage(earningsData, query, 'telegram');
+      
+      // Clean response to avoid Telegram parsing errors
+      const safeResponse = response
+        .replace(/\*\*(.*?)\*\*/g, '*$1*') // Convert ** to * for Telegram
+        .replace(/([_~`])/g, '\\$1') // Escape special characters
+        .replace(/\n{3,}/g, '\n\n'); // Limit consecutive newlines
+      
+      // Check if this is a PDF generation request
+      const isPdfRequest = query.toLowerCase().includes('pdf') || 
+                          query.toLowerCase().includes('report') || 
+                          query.toLowerCase().includes('generate') ||
+                          query.toLowerCase().includes('download');
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            { text: "📄 Generate PDF Report", callback_data: "generate_earnings_pdf_natural" },
+            { text: "📊 Business Dashboard", callback_data: "business_dashboard" }
+          ]
+        ]
+      };
+
+      await this.bot.sendMessage(chatId, safeResponse, {
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup
+      });
+
+      // Auto-generate PDF if requested
+      if (isPdfRequest) {
+        await this.handleNaturalLanguagePdfGeneration(chatId, actualUserId, query, walletAddresses, userDataFormatted);
+      }
+
+    } catch (error) {
+      console.error('[BotIntegration] Error processing natural language earnings:', error);
+      
+      // Import error handler for better error messages
+      const { EarningsErrorHandler } = await import('../lib/earningsErrorHandler');
+      const errorMessage = EarningsErrorHandler.formatErrorForUser(
+        error instanceof Error ? error : new Error(String(error)),
+        query,
+        'telegram'
+      );
+      
+      await this.bot.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
+    }
+  }
+
+  // Enhanced PDF Generation with Natural Language Support
+  async handleNaturalLanguagePdfGeneration(
+    chatId: number, 
+    userId: string, 
+    query: string, 
+    walletAddresses: string[], 
+    userData?: any
+  ) {
+    try {
+      await this.bot.sendMessage(chatId, '📄 Generating your personalized earnings PDF report... Please wait.');
+
+      const { generateEarningsPdfForQuery } = await import('../lib/earningsService');
+      const pdfBuffer = await generateEarningsPdfForQuery(query, walletAddresses, userData);
+
+      // Extract time context for filename
+      const { TimePeriodExtractor } = await import('../lib/timePeriodExtractor');
+      const timePeriod = TimePeriodExtractor.extractFromQuery(query);
+      const timeContext = timePeriod ? timePeriod.displayName.replace(/\s+/g, '-').toLowerCase() : 'custom';
+      
+      const filename = `earnings-report-${timeContext}-${new Date().toISOString().split('T')[0]}.pdf`;
+
+      await this.bot.sendDocument(chatId, pdfBuffer, {
+        caption: '📄 **Your Personalized Earnings Report is Ready!**\n\n✨ This report includes:\n• Period-specific insights\n• Visual earnings breakdown\n• Professional formatting\n• Motivational content\n• Complete transaction history\n\n💡 Keep building your financial future!',
+        parse_mode: 'Markdown'
+      }, {
+        filename
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error generating natural language PDF:', error);
+      await this.bot.sendMessage(chatId, '❌ Error generating PDF report. Please try again later.');
+    }
+  }
+
+  // Enhanced earnings command with natural language support
+  async handleEnhancedEarningsCommand(chatId: number, userId: string, message?: string) {
+    // If message contains natural language, process it
+    if (message && message.length > 10) {
+      await this.handleNaturalLanguageEarnings(chatId, userId, message);
+      return;
+    }
+
+    // Otherwise, show the traditional earnings interface
+    await this.handleEarningsWithWallet(chatId, userId);
+  }
+
+  // Quick earnings shortcuts
+  async handleEarningsShortcuts(chatId: number, userId: string, shortcut: string) {
+    const shortcuts: { [key: string]: string } = {
+      'this_month': 'show my earnings this month',
+      'last_month': 'show my earnings last month',
+      'this_week': 'show my earnings this week',
+      'this_year': 'show my earnings this year',
+      'generate_pdf': 'generate earnings PDF this month'
+    };
+
+    const query = shortcuts[shortcut];
+    if (query) {
+      await this.handleNaturalLanguageEarnings(chatId, userId, query);
+    } else {
+      await this.handleEarningsWithWallet(chatId, userId);
+    }
+  }}

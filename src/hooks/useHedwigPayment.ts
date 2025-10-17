@@ -3,7 +3,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadCont
 import { waitForTransactionReceipt, readContract } from 'wagmi/actions';
 import { parseUnits, formatUnits } from 'viem';
 import { toast } from 'sonner';
-import { config } from '../lib/wagmi';
+import { wagmiConfig as config } from '../lib/appkit';
 import { getWalletConfig, getSupportedTokens } from '../contracts/config';
 
 // Complete ABI for the HedwigPayment contract

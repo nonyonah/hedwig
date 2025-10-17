@@ -9,9 +9,9 @@ import { toast } from "sonner";
 import { createClient } from '@supabase/supabase-js';
 import { useHedwigPayment } from '@/hooks/useHedwigPayment';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { ConnectWallet } from '@coinbase/onchainkit/wallet';
 import { useAccount } from 'wagmi';
 import { BASE_MAINNET_CONFIG, SUPPORTED_TOKENS } from '@/contracts/config';
+import { AppKitButton } from '@/components/AppKitButton';
 
 interface ProposalSection {
   title: string;
@@ -552,7 +552,7 @@ const Proposal = () => {
                 </div>
               ) : (
                 <div className="flex flex-col sm:flex-row gap-4 items-start">
-                  <ConnectWallet />
+                  <AppKitButton />
                   {isConnected && (
                     <Button 
                       className="bg-blue-600 hover:bg-blue-700 text-white"

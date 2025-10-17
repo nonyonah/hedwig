@@ -325,7 +325,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             amount_paid: amount,
             payer_wallet: transfer.fromAddress,
             tx_hash: transfer.hash,
-            status: 'completed'
+            status: 'completed',
+            currency: currency,
+            chain: normalizedNetwork || 'base'
           });
 
         // Record completed transaction for permanent storage
@@ -400,7 +402,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               status: 'completed',
               payment_type: 'direct_transfer',
               recipient_wallet: transfer.toAddress,
-              recipient_user_id: walletData.user_id
+              recipient_user_id: walletData.user_id,
+              currency: currency,
+              chain: normalizedNetwork || 'base'
             });
 
           // Record completed transaction for permanent storage

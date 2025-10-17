@@ -134,11 +134,18 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
-    // Send/withdraw instruction keywords
-    if ((text.includes('send') || text.includes('withdraw') || text.includes('transfer')) &&
-      (text.includes('help') || text.includes('how') || text.includes('instruct') ||
-        text.includes('guide') || text.includes('would like to') || text.includes('want to') ||
-        text.includes('template') || text.includes('crypto template'))) {
+    // Send/withdraw instruction keywords - Check for help requests FIRST
+    if ((text.includes('how to send') || text.includes('how do i send') || 
+         text.includes('how to transfer') || text.includes('how do i transfer') ||
+         text.includes('send instructions') || text.includes('help me send') ||
+         text.includes('send help') || text.includes('transfer instructions') ||
+         text.includes('how to withdraw') || text.includes('withdraw instructions') || 
+         text.includes('send template') || text.includes('crypto template') ||
+         text.includes('how to send crypto') || text.includes('how to send tokens') ||
+         text.includes('how do i send crypto') || text.includes('how do i send tokens')) ||
+        // Only match bare "send" if it's clearly asking for help
+        (text.trim() === 'send' || text.trim() === '/send' || 
+         (text.includes('send') && text.includes('?') && text.length < 20))) {
       const result = { intent: 'instruction_send', params: {} };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
@@ -153,26 +160,71 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
-    // Actual send transaction keywords - if the user is actually trying to send
+    // Actual send transaction keywords - Check for actual sends
     if ((text.includes('send') || text.includes('transfer')) &&
       (text.includes('crypto') || text.includes('token') || text.includes('eth') ||
         text.includes('sol') || text.includes('usdc') || text.includes('usdt') ||
         text.includes('btc') || text.includes('matic') || text.includes('avax') ||
-        /\d+\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni)/i.test(text) ||
+        text.includes('celo') || text.includes('lsk') ||
+        /\d+\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk)/i.test(text) ||
         /send\s+\d+/i.test(text) || /transfer\s+\d+/i.test(text))) {
-      const result = { intent: 'send', params: {} };
+      
+      // Extract parameters for actual send transactions
+      const params: any = {};
+      
+      // Extract amount
+      const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk)/i) ||
+                          text.match(/send\s+(\d+(?:\.\d+)?)/i) ||
+                          text.match(/transfer\s+(\d+(?:\.\d+)?)/i);
+      if (amountMatch) {
+        params.amount = amountMatch[1];
+        if (amountMatch[2]) {
+          params.token = amountMatch[2].toUpperCase();
+        }
+      }
+      
+      // Extract token if not already extracted
+      if (!params.token) {
+        const tokenMatch = text.match(/\b(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk)\b/i);
+        if (tokenMatch) {
+          params.token = tokenMatch[1].toUpperCase();
+        }
+      }
+      
+      // Extract recipient address
+      const addressMatch = text.match(/0x[a-fA-F0-9]{40}/) || 
+                          text.match(/[a-zA-Z0-9]{32,44}/) ||
+                          text.match(/to\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (addressMatch) {
+        params.recipient = addressMatch[0];
+      }
+      
+      const result = { intent: 'send', params };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }
 
-    // More general send patterns
+    // More general send patterns with addresses
     if (text.includes('send') &&
       (text.includes('to') || text.includes('address') || /@/.test(text) ||
         /0x[a-fA-F0-9]{40}/.test(text) || /[a-zA-Z0-9]{32,44}/.test(text))) {
-      const result = { intent: 'send', params: {} };
+      
+      const params: any = {};
+      
+      // Extract recipient address
+      const addressMatch = text.match(/0x[a-fA-F0-9]{40}/) || 
+                          text.match(/[a-zA-Z0-9]{32,44}/) ||
+                          text.match(/to\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (addressMatch) {
+        params.recipient = addressMatch[0];
+      }
+      
+      const result = { intent: 'send', params };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }
+
+
 
     // Actual swap keywords - if the user is actually trying to swap
     if (text.includes('swap') ||
@@ -415,11 +467,14 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
-    // Earnings keywords - comprehensive detection without requiring emojis
+    // Enhanced Earnings keywords - comprehensive detection with time period and PDF support
     if (text.includes('earnings') ||
       text.includes('how much have i earned') ||
+      text.includes('how much did i earn') ||
+      text.includes('show my earnings') ||
       text.includes('money received') ||
       text.includes('income') ||
+      text.includes('revenue') ||
       text.includes('payments received') ||
       text.includes('what did i receive') ||
       text.includes('how much did i get') ||
@@ -429,16 +484,185 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       text.includes('how much money came in') ||
       text.includes('received payments') ||
       text.includes('incoming payments') ||
+      text.includes('total earnings') ||
+      text.includes('my earnings') ||
+      text.includes('earnings breakdown') ||
+      text.includes('earnings analysis') ||
+      text.includes('earnings dashboard') ||
+      text.includes('earnings overview') ||
+      // Time-specific earnings queries
+      text.includes('earnings this month') ||
+      text.includes('earnings last month') ||
+      text.includes('earnings this week') ||
+      text.includes('earnings this year') ||
+      text.includes('monthly earnings') ||
+      text.includes('weekly earnings') ||
+      text.includes('yearly earnings') ||
+      text.includes('earned this month') ||
+      text.includes('earned last month') ||
+      text.includes('earned this week') ||
+      text.includes('earned this year') ||
+      text.includes('made this month') ||
+      text.includes('made last month') ||
+      // Month-specific queries
+      text.includes('earnings in january') ||
+      text.includes('earnings in february') ||
+      text.includes('earnings in march') ||
+      text.includes('earnings in april') ||
+      text.includes('earnings in may') ||
+      text.includes('earnings in june') ||
+      text.includes('earnings in july') ||
+      text.includes('earnings in august') ||
+      text.includes('earnings in september') ||
+      text.includes('earnings in october') ||
+      text.includes('earnings in november') ||
+      text.includes('earnings in december') ||
+      // Natural language patterns
       (text.includes('how much') && text.includes('earned')) ||
-      (text.includes('money') && text.includes('received'))) {
-      const result = { intent: 'get_earnings', params: {} };
+      (text.includes('how much') && text.includes('made')) ||
+      (text.includes('money') && text.includes('received')) ||
+      (text.includes('show') && text.includes('earnings')) ||
+      (text.includes('view') && text.includes('earnings')) ||
+      (text.includes('check') && text.includes('earnings'))) {
+
+      const params: any = {};
+
+      // Extract time period information
+      const timePatterns = [
+        { pattern: /this\s+month/i, timeframe: 'thisMonth' },
+        { pattern: /last\s+month/i, timeframe: 'lastMonth' },
+        { pattern: /this\s+week/i, timeframe: 'thisWeek' },
+        { pattern: /last\s+week/i, timeframe: 'lastWeek' },
+        { pattern: /this\s+year/i, timeframe: 'thisYear' },
+        { pattern: /last\s+year/i, timeframe: 'lastYear' },
+        { pattern: /today/i, timeframe: 'today' },
+        { pattern: /yesterday/i, timeframe: 'yesterday' },
+        { pattern: /past\s+7\s+days/i, timeframe: 'last7days' },
+        { pattern: /past\s+30\s+days/i, timeframe: 'lastMonth' },
+        { pattern: /last\s+30\s+days/i, timeframe: 'lastMonth' },
+        { pattern: /past\s+3\s+months/i, timeframe: 'last3months' },
+        { pattern: /quarterly/i, timeframe: 'last3months' },
+        { pattern: /monthly/i, timeframe: 'lastMonth' },
+        { pattern: /weekly/i, timeframe: 'lastWeek' },
+        { pattern: /yearly/i, timeframe: 'lastYear' },
+        { pattern: /annual/i, timeframe: 'lastYear' }
+      ];
+
+      for (const { pattern, timeframe } of timePatterns) {
+        if (pattern.test(text)) {
+          params.timeframe = timeframe;
+          break;
+        }
+      }
+
+      // Extract specific month references
+      const monthPatterns = [
+        { pattern: /\b(january|jan)\b/i, month: 'january' },
+        { pattern: /\b(february|feb)\b/i, month: 'february' },
+        { pattern: /\b(march|mar)\b/i, month: 'march' },
+        { pattern: /\b(april|apr)\b/i, month: 'april' },
+        { pattern: /\b(may)\b/i, month: 'may' },
+        { pattern: /\b(june|jun)\b/i, month: 'june' },
+        { pattern: /\b(july|jul)\b/i, month: 'july' },
+        { pattern: /\b(august|aug)\b/i, month: 'august' },
+        { pattern: /\b(september|sep|sept)\b/i, month: 'september' },
+        { pattern: /\b(october|oct)\b/i, month: 'october' },
+        { pattern: /\b(november|nov)\b/i, month: 'november' },
+        { pattern: /\b(december|dec)\b/i, month: 'december' }
+      ];
+
+      for (const { pattern, month } of monthPatterns) {
+        if (pattern.test(text)) {
+          params.month = month;
+          params.timeframe = 'custom';
+          break;
+        }
+      }
+
+      // Extract year if specified
+      const yearMatch = text.match(/\b(20\d{2})\b/);
+      if (yearMatch) {
+        params.year = parseInt(yearMatch[1]);
+      }
+
+      // Extract token-specific earnings
+      const tokenPatterns = [
+        { pattern: /\busdc\s+earnings/i, token: 'USDC' },
+        { pattern: /\busdt\s+earnings/i, token: 'USDT' },
+        { pattern: /\beth\s+earnings/i, token: 'ETH' },
+        { pattern: /\bsol\s+earnings/i, token: 'SOL' },
+        { pattern: /\bcusd\s+earnings/i, token: 'CUSD' },
+        { pattern: /\bcelo\s+earnings/i, token: 'CELO' },
+        { pattern: /earnings\s+in\s+usdc/i, token: 'USDC' },
+        { pattern: /earnings\s+in\s+usdt/i, token: 'USDT' },
+        { pattern: /earnings\s+in\s+eth/i, token: 'ETH' },
+        { pattern: /how\s+much\s+usdc/i, token: 'USDC' },
+        { pattern: /how\s+much\s+usdt/i, token: 'USDT' },
+        { pattern: /how\s+much\s+eth/i, token: 'ETH' }
+      ];
+
+      for (const { pattern, token } of tokenPatterns) {
+        if (pattern.test(text)) {
+          params.token = token;
+          break;
+        }
+      }
+
+      // Extract network-specific earnings
+      const networkPatterns = [
+        { pattern: /\bon\s+base/i, network: 'base' },
+        { pattern: /\bon\s+ethereum/i, network: 'ethereum' },
+        { pattern: /\bon\s+polygon/i, network: 'polygon' },
+        { pattern: /\bon\s+solana/i, network: 'solana' },
+        { pattern: /\bon\s+celo/i, network: 'celo' },
+        { pattern: /\bon\s+lisk/i, network: 'lisk' },
+        { pattern: /base\s+earnings/i, network: 'base' },
+        { pattern: /ethereum\s+earnings/i, network: 'ethereum' },
+        { pattern: /polygon\s+earnings/i, network: 'polygon' },
+        { pattern: /solana\s+earnings/i, network: 'solana' },
+        { pattern: /celo\s+earnings/i, network: 'celo' },
+        { pattern: /lisk\s+earnings/i, network: 'lisk' }
+      ];
+
+      for (const { pattern, network } of networkPatterns) {
+        if (pattern.test(text)) {
+          params.network = network;
+          break;
+        }
+      }
+
+      // Check for PDF generation requests
+      if (text.includes('pdf') ||
+          text.includes('report') ||
+          text.includes('download') ||
+          text.includes('export') ||
+          text.includes('generate report') ||
+          text.includes('earnings report') ||
+          text.includes('summary report') ||
+          text.includes('create pdf') ||
+          text.includes('pdf summary') ||
+          text.includes('earnings pdf') ||
+          (text.includes('send') && text.includes('report')) ||
+          (text.includes('email') && text.includes('report'))) {
+        params.generatePdf = true;
+        params.intent = 'generate_earnings_pdf';
+      }
+
+      // Store original query for advanced processing
+      params.originalQuery = llmResponse;
+
+      const result = { 
+        intent: params.intent || 'get_earnings', 
+        params 
+      };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }
 
-    // Spending keywords - comprehensive detection without requiring emojis
+    // Enhanced Spending keywords - comprehensive detection with time period support
     if (text.includes('spending') ||
       text.includes('how much have i spent') ||
+      text.includes('how much did i spend') ||
       text.includes('money sent') ||
       text.includes('payments made') ||
       text.includes('what did i spend') ||
@@ -450,9 +674,83 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       text.includes('how much money went out') ||
       text.includes('sent payments') ||
       text.includes('transactions sent') ||
+      text.includes('my spending') ||
+      text.includes('total spending') ||
+      text.includes('spending breakdown') ||
+      // Time-specific spending queries
+      text.includes('spent this month') ||
+      text.includes('spent last month') ||
+      text.includes('spent this week') ||
+      text.includes('spent this year') ||
+      text.includes('spending this month') ||
+      text.includes('spending last month') ||
+      // Token-specific spending patterns
+      text.includes('usdc spent') ||
+      text.includes('usdt spent') ||
+      text.includes('eth spent') ||
+      text.includes('sol spent') ||
       (text.includes('how much') && text.includes('spent')) ||
       (text.includes('money') && text.includes('sent'))) {
-      const result = { intent: 'get_spending', params: {} };
+
+      const params: any = {};
+
+      // Extract time period information (same patterns as earnings)
+      const timePatterns = [
+        { pattern: /this\s+month/i, timeframe: 'thisMonth' },
+        { pattern: /last\s+month/i, timeframe: 'lastMonth' },
+        { pattern: /this\s+week/i, timeframe: 'thisWeek' },
+        { pattern: /last\s+week/i, timeframe: 'lastWeek' },
+        { pattern: /this\s+year/i, timeframe: 'thisYear' },
+        { pattern: /last\s+year/i, timeframe: 'lastYear' },
+        { pattern: /today/i, timeframe: 'today' },
+        { pattern: /yesterday/i, timeframe: 'yesterday' },
+        { pattern: /past\s+7\s+days/i, timeframe: 'last7days' },
+        { pattern: /past\s+30\s+days/i, timeframe: 'lastMonth' },
+        { pattern: /last\s+30\s+days/i, timeframe: 'lastMonth' }
+      ];
+
+      for (const { pattern, timeframe } of timePatterns) {
+        if (pattern.test(text)) {
+          params.timeframe = timeframe;
+          break;
+        }
+      }
+
+      // Extract token and network (same patterns as earnings)
+      const tokenPatterns = [
+        { pattern: /\busdc\s+spent/i, token: 'USDC' },
+        { pattern: /\busdt\s+spent/i, token: 'USDT' },
+        { pattern: /\beth\s+spent/i, token: 'ETH' },
+        { pattern: /spent\s+in\s+usdc/i, token: 'USDC' },
+        { pattern: /how\s+much\s+usdc.*spent/i, token: 'USDC' },
+        { pattern: /\busdc\s+.*\s+spent/i, token: 'USDC' },
+        { pattern: /\busdc\s+.*on/i, token: 'USDC' }
+      ];
+
+      for (const { pattern, token } of tokenPatterns) {
+        if (pattern.test(text)) {
+          params.token = token;
+          break;
+        }
+      }
+
+      const networkPatterns = [
+        { pattern: /\bon\s+base/i, network: 'base' },
+        { pattern: /\bon\s+ethereum/i, network: 'ethereum' },
+        { pattern: /\bon\s+solana/i, network: 'solana' },
+        { pattern: /\bon\s+celo/i, network: 'celo' }
+      ];
+
+      for (const { pattern, network } of networkPatterns) {
+        if (pattern.test(text)) {
+          params.network = network;
+          break;
+        }
+      }
+
+      params.originalQuery = llmResponse;
+
+      const result = { intent: 'get_spending', params };
       console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
       return result;
     }
@@ -648,66 +946,10 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
-    // Calendar disconnection keywords (check BEFORE connection to avoid conflicts)
-    if (text.includes('disconnect calendar') ||
-      text.includes('unlink calendar') ||
-      text.includes('remove calendar') ||
-      text.includes('disconnect google calendar') ||
-      text.includes('unlink google calendar') ||
-      text.includes('remove google calendar') ||
-      text.includes('disable calendar') ||
-      text.includes('turn off calendar') ||
-      text.includes('stop calendar sync') ||
-      text.includes('/disconnect_calendar') ||
-      (text.includes('disconnect') && text.includes('calendar')) ||
-      (text.includes('unlink') && text.includes('calendar')) ||
-      (text.includes('remove') && text.includes('calendar')) ||
-      (text.includes('calendar') && (text.includes('disconnect') || text.includes('unlink') || text.includes('remove') || text.includes('disable')))) {
-      const result = { intent: 'disconnect_calendar', params: {} };
-      console.log('[intentParser] Detected disconnect_calendar intent for text:', text);
-      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
-      return result;
-    }
-
-    // Calendar connection keywords
-    if (text.includes('connect calendar') ||
-      text.includes('link calendar') ||
-      text.includes('sync calendar') ||
-      text.includes('connect google calendar') ||
-      text.includes('link google calendar') ||
-      text.includes('sync google calendar') ||
-      text.includes('calendar integration') ||
-      text.includes('calendar sync') ||
-      text.includes('add calendar') ||
-      text.includes('setup calendar') ||
-      text.includes('enable calendar') ||
-      text.includes('/connect_calendar') ||
-      (text.includes('connect') && text.includes('calendar') && !text.includes('disconnect')) ||
-      (text.includes('link') && text.includes('calendar') && !text.includes('unlink')) ||
-      (text.includes('sync') && text.includes('calendar') && !text.includes('stop')) ||
-      (text.includes('calendar') && (text.includes('connect') || text.includes('link') || text.includes('sync') || text.includes('add') || text.includes('setup')) && !text.includes('disconnect') && !text.includes('unlink') && !text.includes('remove') && !text.includes('disable'))) {
-      const result = { intent: 'connect_calendar', params: {} };
-      console.log('[intentParser] Detected connect_calendar intent for text:', text);
-      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
-      return result;
-    }
-
-    // Calendar status keywords
-    if (text.includes('calendar status') ||
-      text.includes('calendar connection') ||
-      text.includes('is calendar connected') ||
-      text.includes('calendar connected') ||
-      text.includes('check calendar') ||
-      text.includes('calendar sync status') ||
-      text.includes('google calendar status') ||
-      text.includes('my calendar') ||
-      text.includes('/calendar_status') ||
-      (text.includes('calendar') && (text.includes('status') || text.includes('connected') || text.includes('working'))) ||
-      (text.includes('check') && text.includes('calendar')) ||
-      (text.includes('is') && text.includes('calendar') && text.includes('connected'))) {
-      const result = { intent: 'calendar_status', params: {} };
-      console.log('[intentParser] Detected calendar_status intent for text:', text);
-      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+    // Calendar functionality is disabled - return unknown for calendar keywords
+    if (text.includes('calendar')) {
+      console.log('[intentParser] Calendar keywords detected but feature is disabled');
+      const result = { intent: 'unknown', params: {} };
       return result;
     }
 

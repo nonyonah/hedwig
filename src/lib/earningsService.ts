@@ -109,38 +109,47 @@ async function fetchCompletedTransactions(filter: EarningsFilter, startDate: str
     }
 
     console.log('[fetchCompletedTransactions] Fetching completed transactions for wallets:', walletAddresses);
-    
+
     // Get completed transactions for each wallet
     const allCompletedTransactions: any[] = [];
-    for (const walletAddress of walletAddresses) {
+
+    // First, get user IDs from wallet addresses
+    const { data: userWallets } = await supabase
+      .from('wallets')
+      .select('user_id, address')
+      .in('address', walletAddresses);
+
+    const userIds = userWallets ? Array.from(new Set(userWallets.map(w => w.user_id))) : [];
+
+    for (const userId of userIds) {
       try {
-        const transactions = await transactionStorage.getCompletedTransactionsByUserId(walletAddress);
-        
+        const transactions = await transactionStorage.getCompletedTransactionsByUserId(userId);
+
         // Filter by date range if specified
         let filteredTransactions = transactions;
         if (startDate || endDate) {
           filteredTransactions = transactions.filter(tx => {
             const txDate = tx.expiresAt || tx.createdAt;
             if (!txDate) return false;
-            
+
             const txDateObj = new Date(txDate);
             if (startDate && txDateObj < new Date(startDate)) return false;
             if (endDate && txDateObj > new Date(endDate)) return false;
-            
+
             return true;
           });
         }
 
         // Filter by token if specified
         if (filter.token) {
-          filteredTransactions = filteredTransactions.filter(tx => 
+          filteredTransactions = filteredTransactions.filter(tx =>
             tx.tokenSymbol?.toUpperCase() === filter.token?.toUpperCase()
           );
         }
 
         // Filter by network if specified
         if (filter.network) {
-          filteredTransactions = filteredTransactions.filter(tx => 
+          filteredTransactions = filteredTransactions.filter(tx =>
             tx.network === filter.network
           );
         }
@@ -154,14 +163,14 @@ async function fetchCompletedTransactions(filter: EarningsFilter, startDate: str
           paid_at: tx.expiresAt || tx.createdAt, // Use expiresAt which contains completed_at
           transaction_hash: tx.transactionHash,
           payment_reason: tx.errorMessage || 'Completed Transaction',
-          wallet_address: walletAddress,
+          wallet_address: tx.toAddress, // Use the actual wallet address from transaction
           source: 'completed_transaction',
           category: 'transaction'
         }));
 
         allCompletedTransactions.push(...transformedTransactions);
       } catch (error) {
-        console.error(`[fetchCompletedTransactions] Error fetching for wallet ${walletAddress}:`, error);
+        console.error(`[fetchCompletedTransactions] Error fetching for user ${userId}:`, error);
       }
     }
 
@@ -176,6 +185,175 @@ async function fetchCompletedTransactions(filter: EarningsFilter, startDate: str
 /**
  * Get earnings summary for a wallet address with optional filtering
  */
+/**
+ * Get spending summary for a wallet address with optional filtering
+ */
+export async function getSpendingSummary(filter: EarningsFilter, includeInsights = false): Promise<EarningsSummaryResponse> {
+  try {
+    console.log('[getSpendingSummary] Fetching spending for:', filter);
+
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
+      throw new Error('No wallet addresses provided');
+    }
+
+    // Calculate date range based on timeframe
+    const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
+
+    // Fetch spending sources (withdrawals and offramp transactions)
+    const [withdrawalTransactions, offrampTransactions] = await Promise.all([
+      fetchWithdrawalTransactions(filter, startDate, endDate),
+      fetchOfframpTransactions(filter, startDate, endDate)
+    ]);
+
+    console.log(`[getSpendingSummary] Found ${withdrawalTransactions.length} withdrawals, ${offrampTransactions.length} offramp transactions`);
+
+    // Combine all spending sources
+    const allSpending: any[] = [
+      ...withdrawalTransactions.map(w => ({
+        ...w,
+        source: 'withdrawal' as const,
+        paid_amount: Math.abs(parseFloat(String(w.amount))), // Positive amount for spending calculation
+        title: 'Crypto Withdrawal',
+        description: `Sent to: ${w.to_address || 'Unknown'}`
+      })),
+      ...offrampTransactions.map(o => ({
+        ...o,
+        source: 'offramp' as const,
+        paid_amount: Math.abs(parseFloat(String(o.amount))), // Positive amount for spending calculation
+        title: 'Crypto to Fiat Conversion',
+        description: `Converted to ${o.fiat_currency || 'USD'}`
+      }))
+    ];
+
+    if (allSpending.length === 0) {
+      return {
+        walletAddress: filter.walletAddress,
+        walletAddresses: walletAddresses,
+        timeframe: filter.timeframe || 'allTime',
+        totalEarnings: 0, // This represents total spending
+        totalFiatValue: 0,
+        totalPayments: 0,
+        earnings: [], // This represents spending breakdown
+        period: {
+          startDate: startDate || '',
+          endDate: endDate || new Date().toISOString()
+        }
+      };
+    }
+
+    // Get unique tokens for price fetching
+    const spendingTokens = allSpending.map(s => s.token);
+    const uniqueTokens = Array.from(new Set(spendingTokens));
+
+    let tokenPrices: { [key: string]: number } = {};
+
+    try {
+      const priceData = await getTokenPricesBySymbol(uniqueTokens);
+      tokenPrices = priceData.reduce((acc, price) => {
+        acc[price.symbol] = price.price;
+        return acc;
+      }, {} as { [key: string]: number });
+    } catch (priceError) {
+      console.warn('[getSpendingSummary] Could not fetch token prices:', priceError);
+    }
+
+    // Process spending data similar to earnings
+    const spendingMap = new Map<string, {
+      token: string;
+      network: string;
+      total: number;
+      count: number;
+      payments: any[];
+      fiatValue: number;
+      category?: string;
+      sources: Set<string>;
+    }>();
+
+    let totalSpending = 0;
+    let totalFiatValue = 0;
+
+    for (const spending of allSpending) {
+      const key = `${spending.token}-${spending.network}`;
+      const amount = parseFloat(spending.paid_amount) || 0;
+
+      // Calculate fiat value using token prices
+      const tokenPrice = tokenPrices[spending.token] || 0;
+      const isStablecoin = ['USDC', 'USDT', 'cUSD', 'DAI', 'BUSD', 'TUSD', 'FRAX'].includes(spending.token?.toUpperCase());
+      const fiatValue = tokenPrice > 0 ? (tokenPrice * amount) : (isStablecoin ? amount : 0);
+
+      totalSpending += fiatValue;
+      totalFiatValue += fiatValue;
+
+      if (spendingMap.has(key)) {
+        const existing = spendingMap.get(key)!;
+        existing.total += amount;
+        existing.count += 1;
+        existing.payments.push(spending);
+        existing.fiatValue += fiatValue;
+        existing.sources.add(spending.source);
+      } else {
+        spendingMap.set(key, {
+          token: spending.token,
+          network: spending.network,
+          total: amount,
+          count: 1,
+          payments: [spending],
+          fiatValue: fiatValue,
+          category: spending.category || 'spending',
+          sources: new Set([spending.source])
+        });
+      }
+    }
+
+    // Convert to final format
+    const spendingBreakdown = Array.from(spendingMap.values()).map(item => {
+      const lastItem = item.payments.sort((a, b) => {
+        return new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime();
+      })[0];
+
+      return {
+        token: item.token,
+        network: item.network,
+        total: Math.round(item.total * 100000000) / 100000000,
+        count: item.count,
+        averageAmount: Math.round((item.total / item.count) * 100000000) / 100000000,
+        lastPayment: lastItem?.paid_at,
+        fiatValue: Math.round(item.fiatValue * 100) / 100,
+        fiatCurrency: 'USD',
+        exchangeRate: tokenPrices[item.token] || 0,
+        percentage: totalSpending > 0 ? Math.round((item.fiatValue / totalSpending) * 10000) / 100 : 0,
+        category: item.category,
+        source: Array.from(item.sources).join(', ')
+      };
+    });
+
+    // Sort by total spending descending
+    spendingBreakdown.sort((a, b) => b.total - a.total);
+
+    const result: EarningsSummaryResponse = {
+      walletAddress: filter.walletAddress,
+      walletAddresses: walletAddresses,
+      timeframe: filter.timeframe || 'allTime',
+      totalEarnings: Math.round(totalSpending * 100) / 100, // This represents total spending
+      totalFiatValue: Math.round(totalFiatValue * 100) / 100,
+      totalPayments: allSpending.length,
+      earnings: spendingBreakdown, // This represents spending breakdown
+      period: {
+        startDate: startDate || '',
+        endDate: endDate || new Date().toISOString()
+      }
+    };
+
+    return result;
+
+  } catch (error) {
+    console.error('[getSpendingSummary] Error:', error);
+    throw error;
+  }
+}
+
 export async function getEarningsSummary(filter: EarningsFilter, includeInsights = false): Promise<EarningsSummaryResponse> {
   try {
     console.log('[getEarningsSummary] Fetching earnings for:', filter);
@@ -191,42 +369,43 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
 
     // Fetch all earnings sources including completed transactions from permanent storage
     console.log('[getEarningsSummary] About to fetch payment events for wallets:', walletAddresses);
-    const [paymentLinks, invoices, proposals, paymentEvents, offrampTransactions, completedTransactions] = await Promise.all([
+    const [paymentLinks, invoices, proposals, paymentEvents, offrampTransactions, completedTransactions, withdrawalTransactions] = await Promise.all([
       fetchPaymentLinks(filter, startDate, endDate),
       fetchPaidInvoices(filter, startDate, endDate),
       fetchAcceptedProposals(filter, startDate, endDate),
       fetchPaymentEvents(filter, startDate, endDate),
       fetchOfframpTransactions(filter, startDate, endDate),
-      fetchCompletedTransactions(filter, startDate, endDate)
+      fetchCompletedTransactions(filter, startDate, endDate),
+      fetchWithdrawalTransactions(filter, startDate, endDate)
     ]);
 
-    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events, ${offrampTransactions.length} offramp transactions, ${completedTransactions.length} completed transactions`);
+    console.log(`[getEarningsSummary] Found ${paymentLinks.length} payment links, ${invoices.length} paid invoices, ${proposals.length} accepted proposals, ${paymentEvents.length} payment events, ${offrampTransactions.length} offramp transactions, ${completedTransactions.length} completed transactions, ${withdrawalTransactions.length} withdrawal transactions`);
 
     // Combine all earnings sources
     const allEarnings: any[] = [
       ...paymentLinks.map(p => ({ ...p, source: 'payment_link' as const })),
-      ...invoices.map(i => ({ 
-        ...i, 
+      ...invoices.map(i => ({
+        ...i,
         source: 'invoice' as const,
-        token: i.currency || 'USD', // Invoices are typically in USD
-        network: i.blockchain || 'unknown',
+        token: i.token || i.currency || 'USD', // Use token field first, then currency, then default to USD
+        network: i.network || i.blockchain || 'base', // Use network field first, then blockchain, then default to base
         paid_amount: i.amount,
         paid_at: i.paid_at || i.created_at || new Date().toISOString(), // Use paid_at if available, fallback to created_at
         title: i.project_description || 'Invoice Payment',
         description: i.additional_notes || ''
       })),
-      ...proposals.map(p => ({ 
-        ...p, 
+      ...proposals.map(p => ({
+        ...p,
         source: 'proposal' as const,
-        token: p.currency || 'USD', // Proposals have currency field
-        network: 'unknown', // Proposals don't specify network
+        token: p.token || p.currency || 'USD', // Use token field first, then currency, then default to USD
+        network: p.network || 'base', // Use network field or default to base
         paid_amount: p.amount,
         paid_at: p.paid_at || p.created_at || new Date().toISOString(), // Use paid_at if available, fallback to created_at
         title: p.project_title || 'Proposal Payment',
         description: p.description || ''
       })),
-      ...paymentEvents.map(e => ({ 
-        ...e, 
+      ...paymentEvents.map(e => ({
+        ...e,
         source: 'payment_events' as const,
         paid_amount: e.amount,
         title: e.payment_reason || 'Direct Transfer',
@@ -235,6 +414,8 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
       ...offrampTransactions.map(o => ({
         ...o,
         source: 'offramp' as const,
+        token: o.token || 'USDC', // Ensure token is set, default to USDC for offramp
+        network: o.network || 'base', // Ensure network is set, default to base
         paid_amount: o.amount,
         title: 'Crypto Withdrawal',
         description: `Offramp to ${o.fiat_currency || 'USD'}`
@@ -245,6 +426,13 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
         paid_amount: t.amount,
         title: t.errorMessage || 'Completed Transaction',
         description: `Transaction: ${t.transaction_hash || 'N/A'}`
+      })),
+      ...withdrawalTransactions.map(w => ({
+        ...w,
+        source: 'withdrawal' as const,
+        paid_amount: -Math.abs(parseFloat(String(w.amount))), // Negative amount for withdrawals
+        title: 'Crypto Withdrawal',
+        description: `Sent to: ${w.to_address || 'Unknown'}`
       }))
     ];
 
@@ -265,11 +453,16 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     }
 
     // Get unique tokens for price fetching
-    const paymentTokens = allEarnings.map(p => p.token);
+    const paymentTokens = allEarnings.map(p => p.token).filter(token => token && token !== 'Unknown');
     const uniqueTokens = Array.from(new Set(paymentTokens));
-    
+
+    console.log('[getEarningsSummary] Token distribution:', paymentTokens.reduce((acc: any, token: string) => {
+      acc[token] = (acc[token] || 0) + 1;
+      return acc;
+    }, {}));
+
     let tokenPrices: { [key: string]: number } = {};
-    
+
     try {
       const priceData = await getTokenPricesBySymbol(uniqueTokens);
       tokenPrices = priceData.reduce((acc, price) => {
@@ -301,23 +494,37 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     let totalEarnings = 0;
     let totalFiatValue = 0;
 
-    // Define stablecoins to track (excluding ETH and other volatile tokens)
-    const STABLECOINS = ['USDC', 'USDT', 'cUSD', 'DAI', 'BUSD', 'TUSD', 'FRAX'];
-    
-    // Filter earnings to only include stablecoins
-    const stablecoinEarnings = categorizedEarnings.filter(earning => 
-      STABLECOINS.includes(earning.token?.toUpperCase())
+    // Define supported tokens based on actual supported chains (Base, Celo, Lisk, Solana)
+    // Removed Ethereum, Polygon, BSC, and Arbitrum as they're not in the active supported networks
+    const SUPPORTED_TOKENS = [
+      // Stablecoins
+      'USDC', 'USDT', 'cUSD', 'DAI',
+      // Native tokens for supported chains
+      'ETH', // Base uses ETH
+      'SOL', // Solana native
+      'CELO', // Celo native
+      'LSK', // Lisk native
+      // Other supported tokens
+      'cNGN' // Nigerian Naira stablecoin on multiple chains
+    ];
+
+    // Process all earnings sources (not just stablecoins)
+    const allValidEarnings = categorizedEarnings.filter(earning =>
+      earning.token && earning.paid_amount && parseFloat(earning.paid_amount) > 0
     );
 
-    // Process only stablecoin earnings sources
-    for (const earning of stablecoinEarnings) {
+    // Process all valid earnings sources
+    for (const earning of allValidEarnings) {
       const key = `${earning.token}-${earning.network}`;
       const amount = parseFloat(earning.paid_amount) || 0;
-      
-      // For stablecoins, use 1:1 USD conversion or actual price if available
-      const isStablecoin = STABLECOINS.includes(earning.token?.toUpperCase());
-      const fiatValue = isStablecoin ? amount : ((tokenPrices[earning.token] || 0) * amount);
-      
+
+      // Calculate fiat value using token prices
+      const tokenPrice = tokenPrices[earning.token] || 0;
+
+      // For stablecoins, use 1:1 USD conversion if no price available, otherwise use actual price
+      const isStablecoin = ['USDC', 'USDT', 'cUSD', 'DAI', 'BUSD', 'TUSD', 'FRAX'].includes(earning.token?.toUpperCase());
+      const fiatValue = tokenPrice > 0 ? (tokenPrice * amount) : (isStablecoin ? amount : 0);
+
       // Use fiat value for totalEarnings to properly aggregate different tokens in USD
       totalEarnings += fiatValue;
       totalFiatValue += fiatValue;
@@ -371,40 +578,40 @@ export async function getEarningsSummary(filter: EarningsFilter, includeInsights
     earnings.sort((a, b) => b.total - a.total);
 
     // Calculate offramp summary - only from actual offramp transactions
-    const offrampEarnings = stablecoinEarnings.filter(e => e.source === 'offramp');
+    const offrampEarnings = allValidEarnings.filter(e => e.source === 'offramp');
     const totalOfframped = offrampEarnings.reduce((sum, e) => {
       const amount = parseFloat(e.paid_amount) || 0;
-      // For stablecoins, use 1:1 USD conversion
-      const isStablecoin = STABLECOINS.includes(e.token?.toUpperCase());
-      const fiatValue = isStablecoin ? amount : ((tokenPrices[e.token] || 0) * amount);
+      const tokenPrice = tokenPrices[e.token] || 0;
+      const isStablecoin = ['USDC', 'USDT', 'cUSD', 'DAI', 'BUSD', 'TUSD', 'FRAX'].includes(e.token?.toUpperCase());
+      const fiatValue = tokenPrice > 0 ? (tokenPrice * amount) : (isStablecoin ? amount : 0);
       return sum + fiatValue;
     }, 0);
     const remainingCrypto = totalEarnings - totalOfframped;
     const offrampPercentage = totalEarnings > 0 ? (totalOfframped / totalEarnings) * 100 : 0;
 
     const result: EarningsSummaryResponse = {
-    walletAddress: filter.walletAddress, // For backward compatibility
-    walletAddresses: walletAddresses,
-    timeframe: filter.timeframe || 'allTime',
-    totalEarnings: Math.round(totalEarnings * 100) / 100,
-    totalFiatValue: Math.round(totalFiatValue * 100) / 100,
-    totalPayments: stablecoinEarnings.length, // Use stablecoin earnings count
-    earnings,
-    period: {
-      startDate: startDate || '',
-      endDate: endDate || new Date().toISOString()
-    },
-    offrampSummary: {
-      totalOfframped: Math.round(totalOfframped * 100) / 100,
-      remainingCrypto: Math.round(remainingCrypto * 100) / 100,
-      offrampPercentage: Math.round(offrampPercentage * 100) / 100
-    }
-  };
+      walletAddress: filter.walletAddress, // For backward compatibility
+      walletAddresses: walletAddresses,
+      timeframe: filter.timeframe || 'allTime',
+      totalEarnings: Math.round(totalEarnings * 100) / 100,
+      totalFiatValue: Math.round(totalFiatValue * 100) / 100,
+      totalPayments: allValidEarnings.length, // Use all valid earnings count
+      earnings,
+      period: {
+        startDate: startDate || '',
+        endDate: endDate || new Date().toISOString()
+      },
+      offrampSummary: {
+        totalOfframped: Math.round(totalOfframped * 100) / 100,
+        remainingCrypto: Math.round(remainingCrypto * 100) / 100,
+        offrampPercentage: Math.round(offrampPercentage * 100) / 100
+      }
+    };
 
     // Add insights if requested
-  if (includeInsights && stablecoinEarnings.length > 0) {
-    result.insights = await generateEarningsInsights(stablecoinEarnings, earnings, filter);
-  }
+    if (includeInsights && allValidEarnings.length > 0) {
+      result.insights = await generateEarningsInsights(allValidEarnings, earnings, filter);
+    }
 
     return result;
 
@@ -429,10 +636,12 @@ async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | nu
     console.log('[fetchPaymentEvents] Querying payments table for wallets:', walletAddresses);
     // Convert wallet addresses to lowercase for case-insensitive matching
     const lowerCaseWallets = walletAddresses.map(addr => addr.toLowerCase());
+
+    // Query both recipient_wallet and payer_wallet to catch all transactions
     let query = supabase
       .from('payments')
       .select('*')
-      .in('recipient_wallet', lowerCaseWallets);
+      .or(`recipient_wallet.in.(${lowerCaseWallets.join(',')}),payer_wallet.in.(${lowerCaseWallets.join(',')})`);
 
     // Add time filtering
     if (startDate) {
@@ -469,8 +678,8 @@ async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | nu
     return (payments || []).map(payment => ({
       id: payment.id,
       amount: parseFloat(payment.amount_paid) || 0,
-      token: payment.currency || 'Unknown',
-      network: payment.chain || 'Base',
+      token: payment.currency || 'ETH', // Use ETH as default to match database schema
+      network: payment.chain || 'base', // Use lowercase 'base' for consistency
       paid_at: payment.created_at,
       transaction_hash: payment.tx_hash,
       payment_reason: 'Direct Transfer',
@@ -490,41 +699,25 @@ async function fetchPaymentEvents(filter: EarningsFilter, startDate: string | nu
  */
 function getTokenSymbol(tokenAddress: string): string {
   const tokens: { [key: string]: string } = {
-    // Base
+    // Base Mainnet (Primary supported chain)
     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913': 'USDC',
     '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb': 'USDT',
     '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA': 'USDbC',
     '0x46C85152bFe9f96829aA94755D9f915F9B10EF5F': 'cNGN', // Base cNGN
     '0x0000000000000000000000000000000000000000': 'ETH', // Native ETH on Base
-    // Ethereum - Removed ETH/WETH support
-    '0xA0b86a33E6441b8C4505E2c52C6b6046d5b0b6e6': 'USDC',
-    '0xdAC17F958D2ee523a2206206994597C13D831ec7': 'USDT',
-    // Polygon
-    '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359': 'USDC',
-    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': 'USDT',
-    '0x52828daa48C1a9A06F37500882b42daf0bE04C3B': 'cNGN', // Polygon cNGN
-    '0x0000000000000000000000000000000000000001': 'MATIC', // Native MATIC (using different address to avoid conflicts)
-    // Arbitrum
-    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
-    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',
-    '0x0000000000000000000000000000000000000002': 'ETH', // Native ETH on Arbitrum (using different address to avoid conflicts)
-    // BSC
-    '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d': 'USDC',
-    '0x55d398326f99059fF775485246999027B3197955': 'USDT',
-    '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c': 'WBNB',
-    '0xa8AEA66B361a8d53e8865c62D142167Af28Af058': 'cNGN', // BSC cNGN
-    '0x0000000000000000000000000000000000000003': 'BNB', // Native BNB (using different address to avoid conflicts)
-    // Celo - Updated with correct addresses
+    // Celo Mainnet
     '0xcebA9300f2b948710d2653dD7B07f33A8B32118C': 'USDC', // Celo USDC
     '0x765DE816845861e75A25fCA122bb6898B8B1282a': 'cUSD', // Celo Dollar
     '0x471EcE3750Da237f93B8E339c536989b8978a438': 'CELO',
-    '0x62492A644A588FD904270BeD06ad52B9abfEA1aE': 'cNGN', // Celo cNGN (correct address)
-    // Lisk - Updated with correct addresses  
+    '0x62492A644A588FD904270BeD06ad52B9abfEA1aE': 'cNGN', // Celo cNGN
+    // Lisk Mainnet
     '0x05D032ac25d322df992303dCa074EE7392C117b9': 'USDT', // Lisk USDT
     '0x3e7eF8f50246f725885102E8238CBba33F276747': 'USDC', // Lisk USDC
     '0x6033F7f88332B8db6ad452B7C6d5bB643990aE3f': 'LSK',
-    // Solana
+    // Solana Mainnet
+    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 'USDC', // Solana USDC
     'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': 'USDT', // Solana USDT
+    '11111111111111111111111111111111': 'SOL' // Native SOL
   };
   return tokens[tokenAddress] || 'Unknown';
 }
@@ -637,7 +830,7 @@ async function fetchPaidInvoices(filter: EarningsFilter, startDate: string | nul
         .from('invoices')
         .select('paid_at')
         .limit(1);
-      
+
       if (testQuery.error && testQuery.error.message.includes('paid_at')) {
         usePaidAt = false;
       }
@@ -685,27 +878,35 @@ async function fetchPaidInvoices(filter: EarningsFilter, startDate: string | nul
  */
 async function fetchOfframpTransactions(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
   try {
-    // First get the user_id from the wallet address
-    const { data: userWallets, error: walletError } = await supabase
-      .from('wallets')
-      .select('user_id')
-      .eq('address', filter.walletAddress)
-      .limit(1);
-
-    if (walletError || !userWallets || userWallets.length === 0) {
-      console.log('[fetchOfframpTransactions] No user found for wallet address:', filter.walletAddress);
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
       return [];
     }
 
-    const userId = userWallets[0].user_id;
+    // Get user_ids from all wallet addresses
+    const { data: userWallets, error: walletError } = await supabase
+      .from('wallets')
+      .select('user_id')
+      .in('address', walletAddresses);
 
-    // Build the query for completed offramp transactions
+    if (walletError || !userWallets || userWallets.length === 0) {
+      console.log('[fetchOfframpTransactions] No users found for wallet addresses:', walletAddresses);
+      return [];
+    }
+
+    const userIds = Array.from(new Set(userWallets.map(w => w.user_id))); // Remove duplicates
+
+    // Build the query for successful offramp transactions
+    // Include multiple success statuses that indicate money was withdrawn
     let query = supabase
       .from('offramp_transactions')
       .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'completed')
+      .in('user_id', userIds)
+      .in('status', ['completed', 'success', 'fulfilled', 'settled', 'delivered'])
       .not('amount', 'is', null);
+
+    console.log('[fetchOfframpTransactions] Querying for user IDs:', userIds);
 
     // Add time filtering
     if (startDate) {
@@ -730,17 +931,24 @@ async function fetchOfframpTransactions(filter: EarningsFilter, startDate: strin
       throw new Error(`Failed to fetch offramp transactions: ${error.message}`);
     }
 
+    console.log(`[fetchOfframpTransactions] Found ${transactions?.length || 0} offramp transactions`);
+
     // Transform offramp transactions to match earnings format
-    return (transactions || []).map(tx => ({
+    const transformedTransactions = (transactions || []).map(tx => ({
       id: tx.id,
       amount: parseFloat(tx.amount) || 0,
       token: tx.token || 'USDC',
-      network: 'Base', // Offramp transactions are typically on Base
+      network: 'base', // Offramp transactions are typically on Base
       paid_at: tx.created_at,
       fiat_amount: tx.fiat_amount,
       fiat_currency: tx.fiat_currency || 'USD',
-      category: 'offramp'
+      category: 'offramp',
+      paycrest_order_id: tx.paycrest_order_id,
+      status: tx.status
     }));
+
+    console.log('[fetchOfframpTransactions] Sample transformed transaction:', transformedTransactions[0]);
+    return transformedTransactions;
   } catch (error) {
     console.error('[fetchOfframpTransactions] Error:', error);
     return [];
@@ -787,7 +995,7 @@ async function fetchAcceptedProposals(filter: EarningsFilter, startDate: string 
         .from('proposals')
         .select('paid_at')
         .limit(1);
-      
+
       if (testQuery.error && testQuery.error.message.includes('paid_at')) {
         usePaidAt = false;
       }
@@ -831,69 +1039,138 @@ async function fetchAcceptedProposals(filter: EarningsFilter, startDate: string 
 }
 
 /**
+ * Fetch withdrawal transactions (outgoing payments) from database
+ */
+async function fetchWithdrawalTransactions(filter: EarningsFilter, startDate: string | null, endDate: string | null) {
+  try {
+    // Handle both single and multiple wallet addresses
+    const walletAddresses = filter.walletAddresses || (filter.walletAddress ? [filter.walletAddress] : []);
+    if (walletAddresses.length === 0) {
+      return [];
+    }
+
+    console.log('[fetchWithdrawalTransactions] Querying for withdrawal transactions from wallets:', walletAddresses);
+
+    // Query payments table for outgoing transactions (where user's wallet is the payer)
+    const lowerCaseWallets = walletAddresses.map(addr => addr.toLowerCase());
+    let query = supabase
+      .from('payments')
+      .select('*')
+      .in('payer_wallet', lowerCaseWallets)
+      .eq('payment_type', 'direct_transfer');
+
+    // Add time filtering
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate);
+    }
+
+    // Add token filtering
+    if (filter.token) {
+      query = query.eq('currency', filter.token.toUpperCase());
+    }
+
+    // Add network filtering
+    if (filter.network) {
+      query = query.eq('chain', filter.network);
+    }
+
+    // Order by created_at descending
+    query = query.order('created_at', { ascending: false });
+
+    const { data: withdrawals, error } = await query;
+
+    if (error) {
+      console.error('[fetchWithdrawalTransactions] Database error:', error);
+      return [];
+    }
+
+    // Transform withdrawals to match earnings format
+    return (withdrawals || []).map(withdrawal => ({
+      id: withdrawal.id,
+      amount: parseFloat(withdrawal.amount_paid) || 0,
+      token: withdrawal.currency || 'ETH', // Use ETH as default to match database schema
+      network: withdrawal.chain || 'base', // Use lowercase 'base' for consistency
+      paid_at: withdrawal.created_at,
+      transaction_hash: withdrawal.tx_hash,
+      payment_reason: 'Withdrawal',
+      wallet_address: withdrawal.payer_wallet,
+      to_address: withdrawal.recipient_wallet,
+      source: 'withdrawal',
+      category: 'withdrawal'
+    }));
+  } catch (error) {
+    console.error('[fetchWithdrawalTransactions] Error:', error);
+    return [];
+  }
+}
+
+/**
  * Categorize a payment based on metadata and patterns
  */
 function categorizePayment(payment: any): string {
   const description = (payment.description || '').toLowerCase();
   const title = (payment.title || '').toLowerCase();
   const amount = parseFloat(payment.paid_amount) || 0;
-  
+
   // Airdrop patterns
-  if (description.includes('airdrop') || title.includes('airdrop') || 
-      description.includes('claim') || title.includes('claim')) {
+  if (description.includes('airdrop') || title.includes('airdrop') ||
+    description.includes('claim') || title.includes('claim')) {
     return 'airdrop';
   }
-  
+
   // Staking patterns
   if (description.includes('staking') || title.includes('staking') ||
-      description.includes('reward') || title.includes('reward') ||
-      description.includes('yield') || title.includes('yield')) {
+    description.includes('reward') || title.includes('reward') ||
+    description.includes('yield') || title.includes('yield')) {
     return 'staking';
   }
-  
+
   // Freelance/work patterns
   if (description.includes('freelance') || title.includes('freelance') ||
-      description.includes('project') || title.includes('project') ||
-      description.includes('work') || title.includes('work') ||
-      description.includes('service') || title.includes('service') ||
-      description.includes('consulting') || title.includes('consulting')) {
+    description.includes('project') || title.includes('project') ||
+    description.includes('work') || title.includes('work') ||
+    description.includes('service') || title.includes('service') ||
+    description.includes('consulting') || title.includes('consulting')) {
     return 'freelance';
   }
-  
+
   // Trading patterns
   if (description.includes('trading') || title.includes('trading') ||
-      description.includes('profit') || title.includes('profit') ||
-      description.includes('arbitrage') || title.includes('arbitrage')) {
+    description.includes('profit') || title.includes('profit') ||
+    description.includes('arbitrage') || title.includes('arbitrage')) {
     return 'trading';
   }
-  
+
   // DeFi patterns
   if (description.includes('defi') || title.includes('defi') ||
-      description.includes('liquidity') || title.includes('liquidity') ||
-      description.includes('farming') || title.includes('farming') ||
-      description.includes('pool') || title.includes('pool')) {
+    description.includes('liquidity') || title.includes('liquidity') ||
+    description.includes('farming') || title.includes('farming') ||
+    description.includes('pool') || title.includes('pool')) {
     return 'defi';
   }
-  
+
   // NFT patterns
   if (description.includes('nft') || title.includes('nft') ||
-      description.includes('collectible') || title.includes('collectible') ||
-      description.includes('art') || title.includes('art')) {
+    description.includes('collectible') || title.includes('collectible') ||
+    description.includes('art') || title.includes('art')) {
     return 'nft';
   }
-  
+
   // Gaming patterns
   if (description.includes('gaming') || title.includes('gaming') ||
-      description.includes('game') || title.includes('game') ||
-      description.includes('play') || title.includes('play')) {
+    description.includes('game') || title.includes('game') ||
+    description.includes('play') || title.includes('play')) {
     return 'gaming';
   }
-  
+
   // Large amounts might be investments or major sales
   if (amount > 1000) {
     return 'investment';
   }
-  
+
   // Default category
   return 'other';
 }
@@ -1002,14 +1279,14 @@ export async function getBusinessStats(userId: string) {
  */
 async function generateEarningsInsights(
   items: any[], // All earnings sources
-  earnings: EarningsSummaryItem[], 
+  earnings: EarningsSummaryItem[],
   filter: EarningsFilter
 ): Promise<EarningsInsights> {
   // Find largest payment
   const largestItem = items.reduce((max, item) => {
     const amount = parseFloat(item.paid_amount) || 0;
     const maxAmount = parseFloat(max.paid_amount) || 0;
-    
+
     return amount > maxAmount ? item : max;
   }, items[0]);
 
@@ -1018,11 +1295,11 @@ async function generateEarningsInsights(
     acc[item.network] = (acc[item.network] || 0) + 1;
     return acc;
   }, {} as { [key: string]: number });
-  
-  const mostActiveNetworkName = Object.keys(networkCounts).reduce((a, b) => 
+
+  const mostActiveNetworkName = Object.keys(networkCounts).reduce((a, b) =>
     networkCounts[a] > networkCounts[b] ? a : b
   );
-  
+
   const mostActiveNetworkData = earnings
     .filter(e => e.network === mostActiveNetworkName)
     .reduce((acc, e) => ({
@@ -1055,7 +1332,7 @@ async function generateEarningsInsights(
   largestAmount = parseFloat(largestItem.paid_amount) || 0;
   largestToken = largestItem.token;
   largestDate = largestItem.paid_at;
-  
+
   // Calculate fiat value if we have token prices
   try {
     const priceData = await getTokenPricesBySymbol([largestToken]);
@@ -1100,7 +1377,7 @@ async function calculateGrowthComparison(filter: EarningsFilter): Promise<Earnin
   const currentStart = new Date(startDate);
   const currentEnd = new Date(endDate);
   const periodLength = currentEnd.getTime() - currentStart.getTime();
-  
+
   const previousEnd = new Date(currentStart.getTime() - 1);
   const previousStart = new Date(previousEnd.getTime() - periodLength);
 
@@ -1114,7 +1391,7 @@ async function calculateGrowthComparison(filter: EarningsFilter): Promise<Earnin
   try {
     const previousEarnings = await getEarningsSummary(previousFilter, false);
     const currentTotal = await getEarningsSummary(filter, false);
-    
+
     const growthPercentage = previousEarnings.totalFiatValue && previousEarnings.totalFiatValue > 0
       ? ((currentTotal.totalFiatValue || 0) - previousEarnings.totalFiatValue) / previousEarnings.totalFiatValue * 100
       : 0;
@@ -1190,127 +1467,6 @@ function generateMotivationalMessage(earnings: EarningsSummaryItem[], growthComp
 
   // Default encouraging message
   return `🚀 Every satoshi counts! You're on the path to financial freedom, one transaction at a time. LFG! 🌙`;
-}
-export async function getSpendingSummary(filter: EarningsFilter): Promise<EarningsSummaryResponse> {
-  try {
-    console.log('[getSpendingSummary] Fetching spending for:', filter);
-
-    // Calculate date range based on timeframe
-    const { startDate, endDate } = getDateRange(filter.timeframe, filter.startDate, filter.endDate);
-
-    // Build the query for payments made by this wallet
-    let query = supabase
-      .from('payment_links')
-      .select('*')
-      .eq('payer_wallet_address', filter.walletAddress)
-      .eq('status', 'paid')
-      .not('paid_at', 'is', null)
-      .not('paid_amount', 'is', null);
-
-    // Add time filtering
-    if (startDate) {
-      query = query.gte('paid_at', startDate);
-    }
-    if (endDate) {
-      query = query.lte('paid_at', endDate);
-    }
-
-    // Add token filtering
-    if (filter.token) {
-      query = query.eq('token', filter.token.toUpperCase());
-    }
-
-    // Add network filtering
-    if (filter.network) {
-      query = query.eq('network', filter.network);
-    }
-
-    // Order by paid_at descending
-    query = query.order('paid_at', { ascending: false });
-
-    const { data: payments, error } = await query;
-
-    if (error) {
-      console.error('[getSpendingSummary] Database error:', error);
-      throw new Error(`Failed to fetch spending: ${error.message}`);
-    }
-
-    if (!payments || payments.length === 0) {
-      return {
-        walletAddress: filter.walletAddress,
-        timeframe: filter.timeframe || 'allTime',
-        totalEarnings: 0, // This represents total spending in this context
-        totalPayments: 0,
-        earnings: [], // This represents spending breakdown in this context
-        period: {
-          startDate: startDate || '',
-          endDate: endDate || new Date().toISOString()
-        }
-      };
-    }
-
-    // Group and aggregate spending by token and network
-    const spendingMap = new Map<string, {
-      token: string;
-      network: string;
-      total: number;
-      count: number;
-      payments: any[];
-    }>();
-
-    let totalSpending = 0;
-
-    for (const payment of payments) {
-      const key = `${payment.token}-${payment.network}`;
-      const amount = parseFloat(payment.paid_amount) || 0;
-      
-      totalSpending += amount;
-
-      if (spendingMap.has(key)) {
-        const existing = spendingMap.get(key)!;
-        existing.total += amount;
-        existing.count += 1;
-        existing.payments.push(payment);
-      } else {
-        spendingMap.set(key, {
-          token: payment.token,
-          network: payment.network,
-          total: amount,
-          count: 1,
-          payments: [payment]
-        });
-      }
-    }
-
-    // Convert to final format
-    const spending: EarningsSummaryItem[] = Array.from(spendingMap.values()).map(item => ({
-      token: item.token,
-      network: item.network,
-      total: Math.round(item.total * 100000000) / 100000000,
-      count: item.count,
-      averageAmount: Math.round((item.total / item.count) * 100000000) / 100000000,
-      lastPayment: item.payments[0]?.paid_at
-    }));
-
-    // Sort by total spending descending
-    spending.sort((a, b) => b.total - a.total);
-
-    return {
-      walletAddress: filter.walletAddress,
-      timeframe: filter.timeframe || 'allTime',
-      totalEarnings: Math.round(totalSpending * 100000000) / 100000000,
-      totalPayments: payments.length,
-      earnings: spending,
-      period: {
-        startDate: startDate || '',
-        endDate: endDate || new Date().toISOString()
-      }
-    };
-
-  } catch (error) {
-    console.error('[getSpendingSummary] Error:', error);
-    throw error;
-  }
 }
 
 /**
@@ -1406,7 +1562,7 @@ function formatChainName(network: string): string {
     'solana': 'Solana',
     'solana-mainnet': 'Solana'
   };
-  
+
   const normalized = network.toLowerCase().trim();
   return chainMap[normalized] || network.charAt(0).toUpperCase() + network.slice(1).toLowerCase();
 }
@@ -1416,11 +1572,11 @@ function formatChainName(network: string): string {
  */
 export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: 'earnings' | 'spending' = 'earnings'): string {
   const { walletAddress, timeframe, totalEarnings, totalFiatValue, totalPayments, earnings, period, insights } = summary;
-  
+
   if (totalPayments === 0) {
     const action = type === 'earnings' ? 'earned' : 'spent';
     const emptyEmoji = type === 'earnings' ? '🦉' : '💸';
-    const encouragement = type === 'earnings' 
+    const encouragement = type === 'earnings'
       ? "Time to start earning! Create some payment links or send out invoices. Your crypto journey awaits! 🚀"
       : "Your wallet is staying nice and cozy! No spending means more HODLing. 💎🙌";
     return `${emptyEmoji} You haven't ${action} anything${timeframe !== 'allTime' ? ` in the ${timeframe}` : ''}. ${encouragement}`;
@@ -1429,12 +1585,12 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   const action = type === 'earnings' ? 'earned' : 'spent';
   const timeframeText = timeframe === 'allTime' ? 'all time' : timeframe.replace(/([A-Z])/g, ' $1').toLowerCase();
   const headerEmoji = type === 'earnings' ? '💰' : '💸';
-  
+
   let response = `${headerEmoji} **${type.charAt(0).toUpperCase() + type.slice(1)} Summary**\n\n`;
-  
+
   // Main summary with fiat value and fun language
   if (totalFiatValue && totalFiatValue > 0) {
-    const fiatFormatted = totalFiatValue >= 1000 ? `$${(totalFiatValue/1000).toFixed(1)}k` : `$${totalFiatValue.toFixed(2)}`;
+    const fiatFormatted = totalFiatValue >= 1000 ? `$${(totalFiatValue / 1000).toFixed(1)}k` : `$${totalFiatValue.toFixed(2)}`;
     response += `You've ${action} **${fiatFormatted} USD** across ${totalPayments} payment${totalPayments > 1 ? 's' : ''} ${timeframeText}. `;
     if (type === 'earnings') {
       response += totalFiatValue > 1000 ? "That's some serious bag building! 💪\n\n" : "Nice work stacking those sats! 📈\n\n";
@@ -1468,11 +1624,11 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
       .sort((a, b) => b[1].value - a[1].value)
       .forEach(([source, data]) => {
         const sourceEmoji = source === 'payment_link' ? '🔗' : source === 'invoice' ? '📄' : source === 'payment_events' ? '💸' : source === 'proposal' ? '📋' : '💰';
-        const sourceName = source === 'payment_link' ? 'Payment Links' : 
-                          source === 'invoice' ? 'Invoices' : 
-                          source === 'payment_events' ? 'Direct Transfers' : 
-                          source === 'proposal' ? 'Proposals' : 
-                          source === 'offramp' ? 'Crypto Withdrawals' : source;
+        const sourceName = source === 'payment_link' ? 'Payment Links' :
+          source === 'invoice' ? 'Invoices' :
+            source === 'payment_events' ? 'Direct Transfers' :
+              source === 'proposal' ? 'Proposals' :
+                source === 'offramp' ? 'Crypto Withdrawals' : source;
         const valueText = data.value > 0 ? ` ($${data.value.toFixed(2)})` : '';
         const tokenCount = data.tokens.size;
         const tokenText = tokenCount > 1 ? ` across ${tokenCount} tokens` : '';
@@ -1480,7 +1636,7 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
       });
     response += '\n';
   }
-  
+
   // Token breakdown with blockchain info
   const tokenSummary = new Map<string, { total: number; networks: Set<string>; fiatValue: number; count: number }>();
   earnings.forEach(earning => {
@@ -1503,7 +1659,7 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
       const fiatText = data.fiatValue > 0 ? ` ($${data.fiatValue.toFixed(2)})` : '';
       const networkCount = data.networks.size;
       const networkText = networkCount > 1 ? ` across ${networkCount} blockchain${networkCount > 1 ? 's' : ''}` : ` on ${formatChainName(Array.from(data.networks)[0])}`;
-      
+
       response += `${rankEmoji} **${data.total.toFixed(8)} ${token}** ${tokenEmoji}${fiatText}${networkText}\n`;
       response += `  ${data.count} payment${data.count > 1 ? 's' : ''}\n\n`;
     });
@@ -1525,33 +1681,33 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
   // Add insights if available with fun language
   if (insights) {
     response += `🔍 **Fun Facts:**\n`;
-    
+
     if (insights.largestPayment) {
       const { amount, token, network, fiatValue } = insights.largestPayment;
       const fiatText = fiatValue ? ` ($${fiatValue.toFixed(2)})` : '';
       const bigPaymentEmoji = fiatValue && fiatValue > 1000 ? '🐋' : fiatValue && fiatValue > 100 ? '🦈' : '🐟';
       response += `${bigPaymentEmoji} Biggest splash: **${amount} ${token}** on ${formatChainName(network)}${fiatText}\n`;
     }
-    
+
     if (insights.mostActiveNetwork) {
       const { network, count, totalAmount } = insights.mostActiveNetwork;
       const networkEmoji = network.toLowerCase().includes('polygon') ? '🟣' : network.toLowerCase().includes('ethereum') ? '💎' : network.toLowerCase().includes('base') ? '🔵' : '⛓️';
       response += `${networkEmoji} Network champion: **${formatChainName(network)}** (${count} payments, ${totalAmount.toFixed(4)} total)\n`;
     }
-    
+
     if (insights.topToken) {
       const { token, percentage } = insights.topToken;
       const tokenEmoji = token === 'USDC' ? '👑' : token === 'USDT' ? '🏆' : token === 'cUSD' ? '👑' : token === 'CELO' ? '🟡' : token === 'LSK' ? '🔵' : '🪙';
       response += `${tokenEmoji} Token MVP: **${token}** (${percentage}% of portfolio)\n`;
     }
-    
+
     if (insights.growthComparison) {
       const { growthPercentage, trend } = insights.growthComparison;
       const trendEmoji = trend === 'up' ? '🚀' : trend === 'down' ? '📉' : '🔄';
       const trendText = trend === 'up' ? 'crushing it with a' : trend === 'down' ? 'taking a breather with a' : 'staying steady with';
       response += `${trendEmoji} Momentum check: You're ${trendText} ${Math.abs(growthPercentage)}% ${trend === 'up' ? 'boost' : trend === 'down' ? 'dip' : 'hold'} vs last period\n`;
     }
-    
+
     response += `\n${insights.motivationalMessage}\n`;
   }
 
@@ -1569,15 +1725,15 @@ export function formatEarningsForAgent(summary: EarningsSummaryResponse, type: '
  */
 export function parseEarningsQuery(query: string): EarningsFilter | null {
   const lowerQuery = query.toLowerCase();
-  
+
   // Extract wallet address if mentioned (basic pattern)
   const walletMatch = lowerQuery.match(/0x[a-f0-9]{40}/i);
-  
+
   // Extract timeframe with more patterns
   let timeframe: EarningsFilter['timeframe'] = 'allTime';
   let startDate: string | undefined;
   let endDate: string | undefined;
-  
+
   // Today/Yesterday patterns
   if (lowerQuery.includes('today') || lowerQuery.includes('this day')) {
     timeframe = 'today';
@@ -1586,23 +1742,23 @@ export function parseEarningsQuery(query: string): EarningsFilter | null {
     timeframe = 'yesterday';
   }
   // Week patterns
-  else if (lowerQuery.includes('this week') || lowerQuery.includes('last 7 days') || 
-      lowerQuery.includes('past week') || lowerQuery.includes('last week')) {
+  else if (lowerQuery.includes('this week') || lowerQuery.includes('last 7 days') ||
+    lowerQuery.includes('past week') || lowerQuery.includes('last week')) {
     timeframe = 'last7days';
   }
   // Month patterns
-  else if (lowerQuery.includes('this month') || lowerQuery.includes('last month') || 
-           lowerQuery.includes('past month')) {
+  else if (lowerQuery.includes('this month') || lowerQuery.includes('last month') ||
+    lowerQuery.includes('past month')) {
     timeframe = 'lastMonth';
   }
   // Quarter patterns
   else if (lowerQuery.includes('last 3 months') || lowerQuery.includes('past 3 months') ||
-           lowerQuery.includes('this quarter') || lowerQuery.includes('last quarter')) {
+    lowerQuery.includes('this quarter') || lowerQuery.includes('last quarter')) {
     timeframe = 'last3months';
   }
   // Year patterns
-  else if (lowerQuery.includes('this year') || lowerQuery.includes('last year') || 
-           lowerQuery.includes('past year')) {
+  else if (lowerQuery.includes('this year') || lowerQuery.includes('last year') ||
+    lowerQuery.includes('past year')) {
     timeframe = 'lastYear';
   }
   // Custom date range patterns
@@ -1662,4 +1818,315 @@ export function parseEarningsQuery(query: string): EarningsFilter | null {
     network,
     category
   };
+}
+
+// Enhanced Natural Language Processing for Earnings
+
+import { TimePeriodExtractor, TimePeriod } from './timePeriodExtractor';
+
+export interface EnhancedEarningsFilter extends EarningsFilter {
+  naturalQuery?: string;
+  extractedTimeframe?: string;
+  comparisonPeriod?: boolean;
+  includeInsights?: boolean;
+}
+
+export interface UserData {
+  name?: string;
+  telegramFirstName?: string;
+  telegramLastName?: string;
+  telegramUsername?: string;
+}
+
+/**
+ * Process natural language earnings query and return earnings data
+ */
+export async function getEarningsForNaturalQuery(
+  query: string,
+  walletAddresses: string[],
+  userData?: UserData
+): Promise<EarningsSummaryResponse> {
+  const { EarningsErrorHandler } = await import('./earningsErrorHandler');
+
+  try {
+    // Validate inputs
+    EarningsErrorHandler.validateQuery(query);
+    EarningsErrorHandler.validateWalletAddresses(walletAddresses);
+
+    console.log('[getEarningsForNaturalQuery] Processing query:', query);
+
+    // Extract time period from query with error handling
+    let timePeriod;
+    try {
+      timePeriod = TimePeriodExtractor.extractFromQuery(query);
+      console.log('[getEarningsForNaturalQuery] Extracted time period:', timePeriod);
+    } catch (error) {
+      throw EarningsErrorHandler.handleTimePeriodError(query);
+    }
+
+    // Build enhanced filter
+    const filter: EnhancedEarningsFilter = {
+      walletAddresses,
+      naturalQuery: query,
+      includeInsights: true
+    };
+
+    // Apply time period if extracted
+    if (timePeriod) {
+      filter.timeframe = timePeriod.timeframe as any;
+      filter.startDate = timePeriod.startDate;
+      filter.endDate = timePeriod.endDate;
+      filter.extractedTimeframe = timePeriod.displayName;
+    } else {
+      // Default to current month if no time period specified
+      const defaultPeriod = TimePeriodExtractor.parseRelativeTime('this month');
+      if (defaultPeriod) {
+        filter.timeframe = defaultPeriod.timeframe as any;
+        filter.startDate = defaultPeriod.startDate;
+        filter.endDate = defaultPeriod.endDate;
+        filter.extractedTimeframe = defaultPeriod.displayName;
+      }
+    }
+
+    // Extract token and network from query
+    const queryLower = query.toLowerCase();
+
+    // Token extraction
+    const tokenPatterns = [
+      { pattern: /\busdc\b/i, token: 'USDC' },
+      { pattern: /\busdt\b/i, token: 'USDT' },
+      { pattern: /\beth\b/i, token: 'ETH' },
+      { pattern: /\bsol\b/i, token: 'SOL' },
+      { pattern: /\bcusd\b/i, token: 'CUSD' },
+      { pattern: /\bcelo\b/i, token: 'CELO' }
+    ];
+
+    for (const { pattern, token } of tokenPatterns) {
+      if (pattern.test(query)) {
+        filter.token = token;
+        break;
+      }
+    }
+
+    // Network extraction
+    const networkPatterns = [
+      { pattern: /\bon\s+base\b/i, network: 'base' },
+      { pattern: /\bon\s+ethereum\b/i, network: 'ethereum' },
+      { pattern: /\bon\s+polygon\b/i, network: 'polygon' },
+      { pattern: /\bon\s+solana\b/i, network: 'solana' },
+      { pattern: /\bon\s+celo\b/i, network: 'celo' },
+      { pattern: /\bon\s+lisk\b/i, network: 'lisk' },
+      { pattern: /\bbase\s+earnings\b/i, network: 'base' },
+      { pattern: /\bethereum\s+earnings\b/i, network: 'ethereum' },
+      { pattern: /\bsolana\s+earnings\b/i, network: 'solana' }
+    ];
+
+    for (const { pattern, network } of networkPatterns) {
+      if (pattern.test(query)) {
+        filter.network = network;
+        break;
+      }
+    }
+
+    console.log('[getEarningsForNaturalQuery] Final filter:', filter);
+
+    // Get earnings using existing service with retry logic
+    const earnings = await EarningsErrorHandler.withRetry(async () => {
+      try {
+        return await getEarningsSummary(filter, true);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('database')) {
+          throw EarningsErrorHandler.handleDatabaseError(error);
+        }
+        throw error;
+      }
+    });
+
+    // Check if we got any data
+    if (earnings.totalEarnings === 0 && earnings.totalPayments === 0) {
+      // This might be legitimate (no earnings) or an error, let's check
+      console.log('[getEarningsForNaturalQuery] No earnings data found');
+    }
+
+    // Enhance response with natural language context
+    if (timePeriod) {
+      earnings.period = {
+        startDate: timePeriod.startDate,
+        endDate: timePeriod.endDate
+      };
+    }
+
+    return earnings;
+
+  } catch (error) {
+    console.error('[getEarningsForNaturalQuery] Error:', error);
+
+    // Re-throw EarningsError as-is
+    if (error instanceof Error && error.name === 'EarningsError') {
+      throw error;
+    }
+
+    // Wrap other errors
+    throw EarningsErrorHandler.handleGenericError(
+      error instanceof Error ? error : new Error(String(error)),
+      'processing natural language query'
+    );
+  }
+}
+
+/**
+ * Generate earnings PDF for natural language query
+ */
+export async function generateEarningsPdfForQuery(
+  query: string,
+  walletAddresses: string[],
+  userData?: UserData
+): Promise<Buffer> {
+  try {
+    console.log('[generateEarningsPdfForQuery] Processing query:', query);
+
+    // Get earnings data using natural query processing
+    const earningsData = await getEarningsForNaturalQuery(query, walletAddresses, userData);
+
+    // Import PDF generator
+    const { generateEarningsPDF } = await import('../modules/pdf-generator-earnings');
+
+    // Transform earnings data for PDF generation
+    const pdfData = {
+      ...earningsData,
+      userData
+    };
+
+    console.log('[generateEarningsPdfForQuery] Generating PDF with data:', {
+      totalEarnings: pdfData.totalEarnings,
+      totalPayments: pdfData.totalPayments,
+      timeframe: pdfData.timeframe,
+      period: pdfData.period
+    });
+
+    // Generate PDF
+    const pdfBuffer = await generateEarningsPDF(pdfData);
+
+    return pdfBuffer;
+
+  } catch (error) {
+    console.error('[generateEarningsPdfForQuery] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get enhanced earnings summary with better natural language support
+ */
+export async function getEnhancedEarningsSummary(
+  filter: EnhancedEarningsFilter
+): Promise<EarningsSummaryResponse & { naturalLanguageContext?: string }> {
+  try {
+    // Get base earnings data
+    const earnings = await getEarningsSummary(filter, filter.includeInsights);
+
+    // Add natural language context
+    let naturalLanguageContext = '';
+
+    if (filter.extractedTimeframe) {
+      naturalLanguageContext = `Earnings for ${filter.extractedTimeframe}`;
+    } else if (filter.timeframe) {
+      naturalLanguageContext = `Earnings for ${TimePeriodExtractor.getTimeframeDescription(filter.timeframe)}`;
+    }
+
+    if (filter.token) {
+      naturalLanguageContext += ` in ${filter.token}`;
+    }
+
+    if (filter.network) {
+      naturalLanguageContext += ` on ${filter.network}`;
+    }
+
+    return {
+      ...earnings,
+      naturalLanguageContext
+    };
+
+  } catch (error) {
+    console.error('[getEnhancedEarningsSummary] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Format earnings response for natural language display
+ */
+export function formatEarningsForNaturalLanguage(
+  earnings: EarningsSummaryResponse,
+  query: string,
+  format: 'telegram' | 'web' | 'api' = 'telegram'
+): string {
+  const { EarningsResponseFormatter } = require('./earningsResponseFormatter');
+
+  const formatted = EarningsResponseFormatter.formatEarningsResponse(
+    earnings,
+    query,
+    {
+      includeBreakdown: true,
+      includeInsights: true,
+      includeSuggestions: true,
+      format
+    }
+  );
+
+  // Combine all parts into a single response
+  let response = formatted.message;
+
+  if (formatted.summary) {
+    response += `\n\n${formatted.summary}`;
+  }
+
+  if (formatted.breakdown) {
+    response += `\n\n${formatted.breakdown}`;
+  }
+
+  if (formatted.insights) {
+    response += `\n\n${formatted.insights}`;
+  }
+
+  if (formatted.suggestions) {
+    response += `\n\n${formatted.suggestions}`;
+  }
+
+  return response.trim();
+}
+
+/**
+ * Enhanced date range calculation with TimePeriodExtractor integration
+ */
+export function getEnhancedDateRange(
+  timeframe?: string,
+  startDate?: string,
+  endDate?: string,
+  naturalQuery?: string
+): { startDate: string | null; endDate: string | null } {
+  // If natural query is provided, try to extract time period
+  if (naturalQuery) {
+    const timePeriod = TimePeriodExtractor.extractFromQuery(naturalQuery);
+    if (timePeriod) {
+      return {
+        startDate: timePeriod.startDate,
+        endDate: timePeriod.endDate
+      };
+    }
+  }
+
+  // If timeframe is provided, convert it to time period
+  if (timeframe) {
+    const timePeriod = TimePeriodExtractor.timeframeToTimePeriod(timeframe);
+    if (timePeriod) {
+      return {
+        startDate: timePeriod.startDate,
+        endDate: timePeriod.endDate
+      };
+    }
+  }
+
+  // Fall back to existing getDateRange function
+  return getDateRange(timeframe, startDate, endDate);
 }

@@ -3,8 +3,7 @@
 import '../lib/polyfills';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
-import { RainbowKitProvider } from '@rainbow-me/rainbowkit';
-import { config } from '../lib/wagmi';
+import { wagmiConfig } from '../lib/appkit';
 import { useState } from 'react';
 import { WalletProviderWrapper } from './WalletProvider';
 
@@ -16,13 +15,11 @@ export function Providers({
   const [queryClient] = useState(() => new QueryClient());
 
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
-          <WalletProviderWrapper>
-            {children}
-          </WalletProviderWrapper>
-        </RainbowKitProvider>
+        <WalletProviderWrapper>
+          {children}
+        </WalletProviderWrapper>
       </QueryClientProvider>
     </WagmiProvider>
   );

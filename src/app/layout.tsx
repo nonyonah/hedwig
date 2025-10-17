@@ -1,5 +1,4 @@
 import '@/styles/globals.css'
-import '@rainbow-me/rainbowkit/styles.css'
 import type { Metadata } from 'next'
 import { Providers } from '../providers'
 
