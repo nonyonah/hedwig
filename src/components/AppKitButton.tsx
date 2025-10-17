@@ -1,4 +1,5 @@
-import { useAppKitWallet } from '../hooks/useAppKitWallet'
+import { useAppKit } from '@reown/appkit/react'
+import { useAccount } from 'wagmi'
 import { Button } from './ui/button'
 import { Wallet } from 'lucide-react'
 
@@ -8,14 +9,11 @@ interface AppKitButtonProps {
 }
 
 export function AppKitButton({ className = '', size = 'md' }: AppKitButtonProps) {
-  const { isConnected, isConnecting, connectWallet, disconnectWallet, address } = useAppKitWallet()
+  const { open } = useAppKit()
+  const { address, isConnected, isConnecting } = useAccount()
 
-  const handleClick = async () => {
-    if (isConnected) {
-      await disconnectWallet()
-    } else {
-      await connectWallet()
-    }
+  const handleClick = () => {
+    open()
   }
 
   const getSizeClasses = () => {
@@ -34,7 +32,7 @@ export function AppKitButton({ className = '', size = 'md' }: AppKitButtonProps)
       <Button
         onClick={handleClick}
         variant="outline"
-        className={`${getSizeClasses()} ${className}`}
+        className={`${getSizeClasses()} ${className} border-[#8e01bb] text-[#8e01bb] hover:bg-[#8e01bb] hover:text-white transition-colors`}
       >
         <Wallet className="h-4 w-4 mr-2" />
         {address.slice(0, 6)}...{address.slice(-4)}
@@ -46,7 +44,7 @@ export function AppKitButton({ className = '', size = 'md' }: AppKitButtonProps)
     <Button
       onClick={handleClick}
       disabled={isConnecting}
-      className={`${getSizeClasses()} ${className}`}
+      className={`${getSizeClasses()} ${className} bg-[#8e01bb] hover:bg-[#7a01a5] text-white font-semibold transition-colors`}
     >
       <Wallet className="h-4 w-4 mr-2" />
       {isConnecting ? 'Connecting...' : 'Connect Wallet'}

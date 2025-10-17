@@ -2581,22 +2581,7 @@ export class BotIntegration {
           await this.handleLeaderboardCommand(chatId);
           return true;
 
-        case '/connect_calendar':
-        case 'connect calendar':
-        case 'sync calendar':
-        case 'link calendar':
-        case '/disconnect_calendar':
-        case 'disconnect calendar':
-        case 'unlink calendar':
-        case 'remove calendar':
-        case '/calendar_status':
-        case 'calendar status':
-        case 'check calendar':
-        case 'calendar connection': {
-          // Calendar functionality is disabled
-          await this.bot.sendMessage(chatId, '📅 **Calendar Sync Unavailable**\n\nCalendar sync is currently disabled. Please contact support if you need this feature.', { parse_mode: 'Markdown' });
-          return true;
-        }
+
 
         case '/buy_crypto':
         case '/buy':

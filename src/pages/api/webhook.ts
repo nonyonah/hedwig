@@ -86,9 +86,7 @@ async function setupTelegramMenu() {
       { command: 'business_dashboard', description: 'Business dashboard' },
       { command: 'referral', description: 'Get your referral link and stats' },
       { command: 'leaderboard', description: 'View referral leaderboard' },
-      { command: 'connect_calendar', description: 'Connect Google Calendar' },
-      { command: 'disconnect_calendar', description: 'Disconnect Google Calendar' },
-      { command: 'calendar_status', description: 'Check calendar connection status' },
+
       { command: 'onramp', description: 'Purchase cryptocurrency' }
     ]);
 
@@ -874,9 +872,7 @@ async function handleCommand(msg: any) {
         `• /invoice - Create invoices\n` +
         `• /earnings_summary - View earnings summary\n` +
         `• /business_dashboard - Access business dashboard\n` +
-        `• /connect_calendar - Connect Google Calendar\n` +
-        `• /disconnect_calendar - Disconnect Google Calendar\n` +
-        `• /calendar_status - Check calendar connection\n` +
+
         `• /onramp - Purchase cryptocurrency\n\n` +
         `**Natural Language:**\n` +
         `You can also chat with me naturally! Try:\n` +
@@ -911,10 +907,26 @@ async function handleCommand(msg: any) {
       break;
 
     case '/payment':
-      const paymentResponse = await processWithAI('create payment link', chatId);
-      if (paymentResponse && isStringResponse(paymentResponse) && paymentResponse.trim() !== '' && paymentResponse !== '__NO_MESSAGE__') {
-        await bot.sendMessage(chatId, paymentResponse);
-      }
+      // Provide direct guidance for payment link creation
+      await bot.sendMessage(chatId, 
+        `🔗 **Create Payment Link**\n\n` +
+        `To create a payment link, please provide:\n\n` +
+        `**Required:**\n` +
+        `• Amount and token (e.g., "50 USDC")\n` +
+        `• Purpose/description\n` +
+        `• Network (base or celo)\n\n` +
+        `**Optional:**\n` +
+        `• Recipient email for automatic sending\n\n` +
+        `**Examples:**\n` +
+        `• "Create payment link for 100 USDC on base for web development"\n` +
+        `• "Payment link 50 USDC on celo for consulting services"\n` +
+        `• "Link for 25 USDC on base for design work, send to client@example.com"\n\n` +
+        `**Supported Networks:**\n` +
+        `🔵 Base - Lower fees, faster transactions\n` +
+        `🟢 Celo - Mobile-friendly payments\n\n` +
+        `💡 **Tip:** Include all details in one message for faster processing!`,
+        { parse_mode: 'Markdown' }
+      );
       break;
 
     case '/offramp':
@@ -1189,65 +1201,7 @@ async function handleCommand(msg: any) {
       }
       break;
 
-    case '/connect_calendar':
-      try {
-        console.log('[Webhook] Processing /connect_calendar command');
-        const calendarResponse = await processWithAI('connect calendar', chatId);
-        if (calendarResponse && typeof calendarResponse === 'object' && calendarResponse.text) {
-          // Handle object response with reply_markup
-          const messageOptions: any = { parse_mode: 'Markdown' };
-          if (calendarResponse.reply_markup) {
-            messageOptions.reply_markup = calendarResponse.reply_markup;
-          }
-          await bot.sendMessage(chatId, calendarResponse.text, messageOptions);
-        } else if (calendarResponse && isStringResponse(calendarResponse) && calendarResponse.trim() !== '') {
-          await bot.sendMessage(chatId, calendarResponse, { parse_mode: 'Markdown' });
-        }
-      } catch (error) {
-        console.error('[Webhook] Error handling /connect_calendar command:', error);
-        await bot.sendMessage(chatId, 'Sorry, something went wrong with calendar connection. Please try again.');
-      }
-      break;
 
-    case '/disconnect_calendar':
-      try {
-        console.log('[Webhook] Processing /disconnect_calendar command');
-        const calendarResponse = await processWithAI('disconnect calendar', chatId);
-        if (calendarResponse && typeof calendarResponse === 'object' && calendarResponse.text) {
-          // Handle object response with reply_markup
-          const messageOptions: any = { parse_mode: 'Markdown' };
-          if (calendarResponse.reply_markup) {
-            messageOptions.reply_markup = calendarResponse.reply_markup;
-          }
-          await bot.sendMessage(chatId, calendarResponse.text, messageOptions);
-        } else if (calendarResponse && isStringResponse(calendarResponse) && calendarResponse.trim() !== '') {
-          await bot.sendMessage(chatId, calendarResponse, { parse_mode: 'Markdown' });
-        }
-      } catch (error) {
-        console.error('[Webhook] Error handling /disconnect_calendar command:', error);
-        await bot.sendMessage(chatId, 'Sorry, something went wrong with calendar disconnection. Please try again.');
-      }
-      break;
-
-    case '/calendar_status':
-      try {
-        console.log('[Webhook] Processing /calendar_status command');
-        const calendarResponse = await processWithAI('calendar status', chatId);
-        if (calendarResponse && typeof calendarResponse === 'object' && calendarResponse.text) {
-          // Handle object response with reply_markup
-          const messageOptions: any = { parse_mode: 'Markdown' };
-          if (calendarResponse.reply_markup) {
-            messageOptions.reply_markup = calendarResponse.reply_markup;
-          }
-          await bot.sendMessage(chatId, calendarResponse.text, messageOptions);
-        } else if (calendarResponse && isStringResponse(calendarResponse) && calendarResponse.trim() !== '') {
-          await bot.sendMessage(chatId, calendarResponse, { parse_mode: 'Markdown' });
-        }
-      } catch (error) {
-        console.error('[Webhook] Error handling /calendar_status command:', error);
-        await bot.sendMessage(chatId, 'Sorry, something went wrong checking calendar status. Please try again.');
-      }
-      break;
 
     case '/onramp':
       try {
@@ -1449,9 +1403,7 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
       case 'retry_transaction':
       case 'cancel_transaction':
       case 'transaction_status':
-      case 'connect_calendar':
-      case 'disconnect_calendar':
-      case 'calendar_status':
+
       case 'onramp':
         // Use the existing actions.ts handler for these intents
         console.log('[Webhook] Calling handleAction with:', { intent, params, userId });

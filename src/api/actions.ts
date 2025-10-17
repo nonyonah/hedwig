@@ -1151,14 +1151,7 @@ Your wallets are now ready! Please try your command again.`
     case "create_proposal":
       return await handleCreateProposal(params, userId);
 
-    case "connect_calendar":
-      return await handleConnectCalendar(params, userId);
 
-    case "disconnect_calendar":
-      return await handleDisconnectCalendar(params, userId);
-
-    case "calendar_status":
-      return await handleCalendarStatus(params, userId);
 
     case "offramp":
     case "withdraw":
@@ -2276,8 +2269,61 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     }
 
     // Extract parameters from the request
-    const { amount, token, network, recipient_email, for: paymentReason, description } = params;
-    const finalPaymentReason = paymentReason || description;
+    let { amount, token, network, recipient_email, for: paymentReason, description } = params;
+    let finalPaymentReason = paymentReason || description;
+
+    // If parameters are missing, try to extract them from the text
+    if (params.text && (!amount || !token || !network || !finalPaymentReason)) {
+      console.log('[handleCreatePaymentLink] Attempting to extract parameters from text:', params.text);
+      
+      // Extract amount and token
+      if (!amount || !token) {
+        const amountTokenMatch = params.text.match(/(\d+(?:\.\d+)?)\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)/i);
+        if (amountTokenMatch) {
+          amount = amount || amountTokenMatch[1];
+          token = token || amountTokenMatch[2].toUpperCase();
+          console.log('[handleCreatePaymentLink] Extracted from text - amount:', amount, 'token:', token);
+        }
+      }
+      
+      // Extract network
+      if (!network) {
+        const networkMatch = params.text.match(/on\s+(base|ethereum|solana|celo|lisk)/i) ||
+                            params.text.match(/\b(base|ethereum|solana|celo|lisk)\s+network/i);
+        if (networkMatch) {
+          network = networkMatch[1].toLowerCase();
+          console.log('[handleCreatePaymentLink] Extracted network from text:', network);
+        }
+      }
+      
+      // Extract payment reason/description
+      if (!finalPaymentReason) {
+        const reasonPatterns = [
+          /for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|$)/i,
+          /payment\s+link\s+.*?for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|$)/i,
+          /\d+\s+\w+\s+.*?for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|$)/i
+        ];
+        
+        for (const pattern of reasonPatterns) {
+          const match = params.text.match(pattern);
+          if (match && match[1].trim()) {
+            finalPaymentReason = match[1].trim();
+            console.log('[handleCreatePaymentLink] Extracted reason from text:', finalPaymentReason);
+            break;
+          }
+        }
+      }
+      
+      // Extract email
+      if (!recipient_email) {
+        const emailMatch = params.text.match(/send\s+to\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) ||
+                          params.text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        if (emailMatch) {
+          recipient_email = emailMatch[1];
+          console.log('[handleCreatePaymentLink] Extracted email from text:', recipient_email);
+        }
+      }
+    }
 
     // Check if we have all required information
     if (!amount || !token || !finalPaymentReason) {
@@ -2372,7 +2418,7 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
       let successMessage = `Payment Link Created Successfully!\n\n` +
         `Amount: ${amount} ${selectedToken}\n` +
         `Network: ${selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)}\n` +
-        `For: ${paymentReason}\n` +
+        `For: ${finalPaymentReason}\n` +
         `Wallet: \`${evmWallet.address.slice(0, 8)}...${evmWallet.address.slice(-6)}\`\n\n` +
         `Payment Link: ${paymentUrl}\n\n`;
 

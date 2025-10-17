@@ -129,8 +129,7 @@ function PaymentFlow({
       <Button 
         onClick={handlePay} 
         disabled={isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing} 
-        className="flex-1 px-6 py-3 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
-        style={{ backgroundColor: '#8e01bb' }}
+        className="flex-1 px-6 py-3 bg-[#8e01bb] hover:bg-[#7a01a5] text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
       >
         {isAlreadyPaid ? (
           <><CheckCircle className="h-4 w-4 mr-2" /> Invoice Already Paid</>

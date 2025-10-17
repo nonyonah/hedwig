@@ -477,15 +477,7 @@ export class InvoiceModule {
       const previewMessage = this.generateInvoicePreview(invoice);
 
       // Check if user has calendar connected for feature discovery
-      let calendarConnected = false;
-      try {
-        const { googleCalendarService } = await import('../lib/googleCalendarService');
-        calendarConnected = await googleCalendarService.isConnected(userId);
-      } catch (error) {
-        console.error('[InvoiceModule] Error checking calendar connection:', error);
-      }
-
-      // Add calendar sync info to keyboard if not connected
+      // Create action buttons for the invoice
       const keyboard = [
         [
           { text: '📧 Send to Client', callback_data: `send_invoice_${invoiceId}` },
@@ -497,12 +489,7 @@ export class InvoiceModule {
         ]
       ];
 
-      // Add calendar sync promotion if not connected
-      if (!calendarConnected) {
-        keyboard.push([
-          { text: '📅 Connect Calendar for Due Date Tracking', callback_data: 'calendar_connect_start' }
-        ]);
-      }
+
 
       await this.bot.sendMessage(chatId, previewMessage, {
         parse_mode: 'Markdown',
@@ -511,21 +498,7 @@ export class InvoiceModule {
         }
       });
 
-      // Send calendar feature discovery message if not connected
-      if (!calendarConnected && invoice.due_date) {
-        setTimeout(async () => {
-          await this.bot.sendMessage(chatId,
-            '💡 **Pro Tip: Calendar Sync**\n\n' +
-            '📅 Connect your Google Calendar to automatically:\n' +
-            '• Track invoice due dates\n' +
-            '• Get payment reminders\n' +
-            '• Update events when invoices are paid\n\n' +
-            '🚀 Never miss a payment deadline again!\n\n' +
-            'Use /connect_calendar to get started.',
-            { parse_mode: 'Markdown' }
-          );
-        }, 2000); // Send after 2 seconds
-      }
+
 
       return 'Invoice created successfully!';
     } catch (error) {

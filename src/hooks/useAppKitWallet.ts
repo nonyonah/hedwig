@@ -1,10 +1,11 @@
 import { useAccount, useConnect, useDisconnect, useSwitchChain, useSignMessage } from 'wagmi'
+import { useAppKit } from '@reown/appkit/react'
 import { useCallback } from 'react'
 import { getChainById, isChainSupported } from '../lib/chains'
 
 /**
  * Enhanced wallet hook that provides a unified interface for wallet operations
- * Compatible with both the old wallet system and new AppKit/Wagmi setup
+ * Compatible with AppKit and provides additional utility functions
  */
 export function useAppKitWallet() {
   const { 
@@ -19,26 +20,30 @@ export function useAppKitWallet() {
   const { disconnect } = useDisconnect()
   const { switchChain, isPending: isSwitching } = useSwitchChain()
   const { signMessage, isPending: isSigning } = useSignMessage()
+  const { open, close } = useAppKit()
 
   // Get current chain information
   const currentChain = chainId ? getChainById(chainId) : null
   const isCurrentChainSupported = chainId ? isChainSupported(chainId) : false
 
-  // Connect to wallet
+  // Connect to wallet using AppKit modal
   const connectWallet = useCallback(async (connectorId?: string) => {
     try {
-      const targetConnector = connectorId 
-        ? connectors.find(c => c.id === connectorId)
-        : connectors[0] // Default to first available connector
-      
-      if (targetConnector) {
-        connect({ connector: targetConnector })
+      if (connectorId) {
+        // Connect to specific connector
+        const targetConnector = connectors.find(c => c.id === connectorId)
+        if (targetConnector) {
+          connect({ connector: targetConnector })
+        }
+      } else {
+        // Open AppKit modal for wallet selection
+        open()
       }
     } catch (error) {
       console.error('Failed to connect wallet:', error)
       throw error
     }
-  }, [connect, connectors])
+  }, [connect, connectors, open])
 
   // Disconnect wallet
   const disconnectWallet = useCallback(async () => {
@@ -113,6 +118,10 @@ export function useAppKitWallet() {
     connectWallet,
     disconnectWallet,
     availableConnectors,
+    
+    // AppKit operations
+    openModal: open,
+    closeModal: close,
     
     // Signing operations
     signMessage: signMessageAsync,

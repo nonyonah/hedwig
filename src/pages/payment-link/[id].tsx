@@ -98,8 +98,7 @@ function PaymentFlow({ paymentData, total, selectedChain, selectedToken }: {
       <Button 
         onClick={handlePay} 
         disabled={isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing} 
-        className="w-full bg-[#8e01bb] hover:bg-[#7a01a5] text-white font-semibold text-lg py-4 rounded-2xl transition-colors"
-        style={{ backgroundColor: isAlreadyPaid || !!paymentReceipt || isConfirming || isProcessing ? undefined : '#8e01bb' }}
+        className="w-full bg-[#8e01bb] hover:bg-[#7a01a5] text-white font-semibold text-lg py-4 rounded-2xl transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
       >
           {isAlreadyPaid ? (
             <><CheckCircle className="h-4 w-4 mr-2" /> Payment Already Completed</>
