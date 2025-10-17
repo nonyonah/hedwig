@@ -11,7 +11,7 @@ export interface WalletConfig {
 export const BASE_MAINNET_CONFIG: WalletConfig = {
   platformWallet: process.env.HEDWIG_PLATFORM_WALLET_MAINNET || '0x2f4c8b05d3F4784B0c2C74dbe5FDE142EE431EAc',
   platformFeePercentage: parseInt(process.env.HEDWIG_PLATFORM_FEE || '100'), // Default 1%
-  contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS || '',
+  contractAddress: process.env.HEDWIG_PAYMENT_CONTRACT_ADDRESS_BASE || '',
   rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   chainId: 8453
 };
@@ -145,9 +145,9 @@ export function getWalletConfig(chainId?: number): WalletConfig {
   if (chainId === 42220) {
     return CELO_MAINNET_CONFIG;
   }
-  // Default to Base mainnet
-  const isProduction = process.env.NODE_ENV === 'production';
-  return isProduction ? BASE_MAINNET_CONFIG : BASE_MAINNET_CONFIG;
+  // Always use mainnet configuration for Base chain
+  // TODO: Implement proper environment-based selection when needed
+  return BASE_MAINNET_CONFIG;
 }
 
 // Get supported tokens for a specific chain

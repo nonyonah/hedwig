@@ -90,8 +90,15 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
     }
 
     // Validate token
-    const supportedTokens = ['USDC', 'USDT', 'LISK', 'CELO', 'cUSD']; // Multiple tokens now supported
-    if (!supportedTokens.includes(token.toUpperCase())) {
+    const supportedTokens = ['USDC', 'USDT', 'LISK', 'CELO', 'cUSD', 'cUSDC']; // Multiple tokens now supported
+    
+    // Normalize token names (cUSDC is an alias for cUSD)
+    let normalizedToken = token.toUpperCase();
+    if (normalizedToken === 'CUSDC') {
+      normalizedToken = 'CUSD';
+    }
+    
+    if (!supportedTokens.includes(normalizedToken)) {
       return {
         success: false,
         error: `Unsupported token. Supported tokens: ${supportedTokens.join(', ')}`
@@ -121,7 +128,7 @@ export async function createPaymentLink(params: CreatePaymentLinkParams): Promis
       .from('payment_links')
       .insert({
         amount,
-        token: token.toUpperCase(),
+        token: normalizedToken,
         network: network.toLowerCase(),
         blockchain: network.toLowerCase(), // Store blockchain info
         // Note: chain_id will be added when database migration is run

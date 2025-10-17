@@ -958,20 +958,32 @@ export async function handleAction(
     }
 
     // Onramp intent matching - comprehensive natural language recognition
-    const onrampKeywords = [
-      'buy crypto', 'buy cryptocurrency', 'buy tokens', 'buy token',
-      'purchase crypto', 'purchase cryptocurrency', 'purchase tokens', 'purchase token',
-      'buy usdc', 'buy usdt', 'buy cusd', 'buy celo dollar',
-      'buy with fiat', 'buy with cash', 'buy with money',
-      'convert fiat', 'convert cash', 'convert money',
-      'fiat to crypto', 'cash to crypto', 'money to crypto',
-      'onramp', 'on-ramp', 'on ramp',
-      'buy some crypto', 'buy some tokens', 'buy some token',
-      'want to buy', 'would like to buy', 'i want to buy', "i'd like to buy",
-      'need to buy', 'looking to buy', 'trying to buy',
-      'get some crypto', 'get some tokens', 'get crypto', 'get tokens',
-      'acquire crypto', 'acquire tokens'
-    ];
+    // But first check if this is a payment link context to avoid false positives
+    const isPaymentLinkContext = text.includes('payment link') || 
+                                text.includes('create payment') || 
+                                text.includes('payment for') ||
+                                text.includes('invoice') ||
+                                text.includes('bill') ||
+                                text.includes('charge') ||
+                                text.includes('request payment') ||
+                                text.includes('collect payment');
+
+    // Skip onramp detection if this is clearly a payment link request
+    if (!isPaymentLinkContext) {
+      const onrampKeywords = [
+        'buy crypto', 'buy cryptocurrency', 'buy tokens', 'buy token',
+        'purchase crypto', 'purchase cryptocurrency', 'purchase tokens', 'purchase token',
+        'buy usdc', 'buy usdt', 'buy cusd', 'buy celo dollar',
+        'buy with fiat', 'buy with cash', 'buy with money',
+        'convert fiat', 'convert cash', 'convert money',
+        'fiat to crypto', 'cash to crypto', 'money to crypto',
+        'onramp', 'on-ramp', 'on ramp',
+        'buy some crypto', 'buy some tokens', 'buy some token',
+        'want to buy', 'would like to buy', 'i want to buy', "i'd like to buy",
+        'need to buy', 'looking to buy', 'trying to buy',
+        'get some crypto', 'get some tokens', 'get crypto', 'get tokens',
+        'acquire crypto', 'acquire tokens'
+      ];
 
     // Check for specific token mentions
     const tokenKeywords = [
@@ -997,15 +1009,16 @@ export async function handleAction(
     const hasChainKeyword = chainKeywords.some(keyword => text.includes(keyword));
     const hasCurrencyKeyword = currencyKeywords.some(keyword => text.includes(keyword));
 
-    // If user mentions onramp keywords OR wants to buy specific tokens/chains
-    if (hasOnrampKeyword ||
-      (hasTokenKeyword && (text.includes('buy') || text.includes('purchase') || text.includes('get'))) ||
-      (hasChainKeyword && hasTokenKeyword) ||
-      (text.includes('buy') && (hasTokenKeyword || hasChainKeyword || hasCurrencyKeyword))) {
+      // If user mentions onramp keywords OR wants to buy specific tokens/chains
+      if (hasOnrampKeyword ||
+        (hasTokenKeyword && (text.includes('buy') || text.includes('purchase') || text.includes('get'))) ||
+        (hasChainKeyword && hasTokenKeyword) ||
+        (text.includes('buy') && (hasTokenKeyword || hasChainKeyword || hasCurrencyKeyword))) {
 
-      console.log('[handleAction] Detected onramp intent from natural language:', text);
-      return await handleOnramp(params, userId);
-    }
+        console.log('[handleAction] Detected onramp intent from natural language:', text);
+        return await handleOnramp(params, userId);
+      }
+    } // End of payment link context check
   }
 
   // Special case for clarification intent
@@ -2220,6 +2233,7 @@ function extractNetwork(text: string): string | null {
 }
 
 async function handleCreatePaymentLink(params: ActionParams, userId: string) {
+  console.log('[handleCreatePaymentLink] Called with params:', params, 'userId:', userId);
   try {
     // Determine if userId is a UUID or username and get the actual user UUID
     let actualUserId: string;
@@ -2271,62 +2285,121 @@ async function handleCreatePaymentLink(params: ActionParams, userId: string) {
     // Extract parameters from the request
     let { amount, token, network, recipient_email, for: paymentReason, description } = params;
     let finalPaymentReason = paymentReason || description;
+    
+    console.log('[handleCreatePaymentLink] Initial params:', {
+      amount, token, network, recipient_email, paymentReason, description, finalPaymentReason, text: params.text
+    });
+    
+    console.log('[handleCreatePaymentLink] After text extraction:', {
+      amount, token, network, recipient_email, finalPaymentReason
+    });
 
-    // If parameters are missing, try to extract them from the text
-    if (params.text && (!amount || !token || !network || !finalPaymentReason)) {
+    // Always try to extract parameters from the text to supplement what we have
+    if (params.text) {
       console.log('[handleCreatePaymentLink] Attempting to extract parameters from text:', params.text);
       
-      // Extract amount and token
-      if (!amount || !token) {
-        const amountTokenMatch = params.text.match(/(\d+(?:\.\d+)?)\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)/i);
-        if (amountTokenMatch) {
-          amount = amount || amountTokenMatch[1];
+      // Extract amount and token with more flexible patterns
+      // Try different patterns for amount and token
+      const amountTokenMatch = params.text.match(/(\d+(?:\.\d+)?)\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)/i) ||
+                               params.text.match(/(\d+(?:\.\d+)?)\s*\$?\s*(usdc|usdt|cusd)/i) ||
+                               params.text.match(/\$(\d+(?:\.\d+)?)/i);
+      if (amountTokenMatch) {
+        amount = amount || amountTokenMatch[1];
+        if (amountTokenMatch[2]) {
           token = token || amountTokenMatch[2].toUpperCase();
-          console.log('[handleCreatePaymentLink] Extracted from text - amount:', amount, 'token:', token);
+        } else if (amountTokenMatch[0].includes('$')) {
+          token = token || 'USDC'; // Default to USDC for dollar amounts
+        }
+        console.log('[handleCreatePaymentLink] Extracted from text - amount:', amount, 'token:', token);
+      }
+      
+      // Try to extract just amount if no token found
+      if (!amount) {
+        const amountOnlyMatch = params.text.match(/(\d+(?:\.\d+)?)/);
+        if (amountOnlyMatch) {
+          amount = amountOnlyMatch[1];
+          console.log('[handleCreatePaymentLink] Extracted amount only:', amount);
         }
       }
       
       // Extract network
-      if (!network) {
-        const networkMatch = params.text.match(/on\s+(base|ethereum|solana|celo|lisk)/i) ||
-                            params.text.match(/\b(base|ethereum|solana|celo|lisk)\s+network/i);
-        if (networkMatch) {
-          network = networkMatch[1].toLowerCase();
-          console.log('[handleCreatePaymentLink] Extracted network from text:', network);
-        }
+      const networkMatch = params.text.match(/on\s+(base|ethereum|solana|celo|lisk)/i) ||
+                          params.text.match(/\b(base|ethereum|solana|celo|lisk)\s+network/i);
+      if (networkMatch) {
+        network = network || networkMatch[1].toLowerCase();
+        console.log('[handleCreatePaymentLink] Extracted network from text:', network);
       }
       
-      // Extract payment reason/description
-      if (!finalPaymentReason) {
+      // Extract payment reason/description with more flexible patterns
         const reasonPatterns = [
-          /for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|$)/i,
-          /payment\s+link\s+.*?for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|$)/i,
-          /\d+\s+\w+\s+.*?for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|$)/i
+          /for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|\s+to\s+\w+@|$)/i,
+          /payment\s+link\s+.*?for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|\s+to\s+\w+@|$)/i,
+          /\d+\s+\w+\s+.*?for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|\s+to\s+\w+@|$)/i,
+          /create\s+payment\s+link\s+(.+?)(?:\s+for\s+(.+?))?(?:\s+on\s+\w+|\s+send\s+to|\s+to\s+\w+@|$)/i,
+          /payment\s+link\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|\s+to\s+\w+@|$)/i
         ];
         
         for (const pattern of reasonPatterns) {
           const match = params.text.match(pattern);
-          if (match && match[1].trim()) {
-            finalPaymentReason = match[1].trim();
-            console.log('[handleCreatePaymentLink] Extracted reason from text:', finalPaymentReason);
-            break;
+          if (match) {
+            // Take the longest non-empty match
+            const reason = match[2] || match[1];
+            if (reason && reason.trim() && !reason.match(/^\d+(\.\d+)?\s*(usdc|eth|sol|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)$/i)) {
+              finalPaymentReason = reason.trim();
+              console.log('[handleCreatePaymentLink] Extracted reason from text:', finalPaymentReason);
+              break;
+            }
           }
+        }
+        
+      // If still no reason found, try to extract from the general context
+      if (!finalPaymentReason) {
+        // Remove common payment link keywords and see what's left
+        let cleanText = params.text
+          .replace(/create\s+payment\s+link/gi, '')
+          .replace(/payment\s+link/gi, '')
+          .replace(/\d+(?:\.\d+)?\s*(usdc|eth|sol|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)/gi, '')
+          .replace(/on\s+(base|ethereum|solana|celo|lisk)/gi, '')
+          .replace(/send\s+to\s+\S+@\S+/gi, '')
+          .replace(/to\s+\S+@\S+/gi, '')
+          .trim();
+        
+        if (cleanText && cleanText.length > 3) {
+          finalPaymentReason = cleanText;
+          console.log('[handleCreatePaymentLink] Extracted reason from context:', finalPaymentReason);
         }
       }
       
-      // Extract email
-      if (!recipient_email) {
-        const emailMatch = params.text.match(/send\s+to\s+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) ||
-                          params.text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-        if (emailMatch) {
-          recipient_email = emailMatch[1];
-          console.log('[handleCreatePaymentLink] Extracted email from text:', recipient_email);
-        }
+      // Extract email with better patterns
+      const emailMatch = params.text.match(/(?:send\s+to\s+|to\s+|email\s+)([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) ||
+                        params.text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (emailMatch) {
+        recipient_email = recipient_email || emailMatch[1];
+        console.log('[handleCreatePaymentLink] Extracted email from text:', recipient_email);
       }
     }
 
-    // Check if we have all required information
-    if (!amount || !token || !finalPaymentReason) {
+    // Set defaults for missing parameters
+    if (!amount) {
+      // Try to extract amount from any number in the text
+      const numberMatch = params.text?.match(/(\d+(?:\.\d+)?)/);
+      amount = numberMatch ? numberMatch[1] : '50'; // Default to 50
+    }
+    
+    if (!token) {
+      token = 'USDC'; // Default to USDC
+    }
+    
+    if (!finalPaymentReason) {
+      finalPaymentReason = 'Payment request'; // Default reason
+    }
+    
+    if (!network) {
+      network = 'base'; // Default to base network
+    }
+
+    // Only show template if absolutely no useful information was provided
+    if (!params.text || params.text.trim().length < 5) {
       return {
         text: "Create Payment Link\n\n" +
           "Please provide the following information:\n\n" +

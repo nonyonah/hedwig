@@ -11,6 +11,37 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Helper function to get chain info from network
+function getChainInfo(network: string): { blockchain: string; chain_id: number } {
+  const normalizedNetwork = network.toLowerCase();
+  
+  switch (normalizedNetwork) {
+    case 'celo':
+    case 'celo-mainnet':
+      return { blockchain: 'celo', chain_id: 42220 };
+    case 'celo-sepolia':
+    case 'celo-testnet':
+      return { blockchain: 'celo', chain_id: 44787 };
+    case 'base':
+    case 'base-mainnet':
+      return { blockchain: 'base', chain_id: 8453 };
+    case 'base-sepolia':
+    case 'base-testnet':
+      return { blockchain: 'base', chain_id: 84532 };
+    case 'polygon':
+    case 'polygon-mainnet':
+      return { blockchain: 'polygon', chain_id: 137 };
+    case 'polygon-mumbai':
+    case 'polygon-testnet':
+      return { blockchain: 'polygon', chain_id: 80001 };
+    case 'lisk-sepolia':
+      return { blockchain: 'lisk', chain_id: 4202 };
+    default:
+      // Default to Base for unknown networks
+      return { blockchain: 'base', chain_id: 8453 };
+  }
+}
+
 interface CreatePaymentLinkRequest {
   amount: number;
   token: string;
@@ -99,8 +130,15 @@ export default async function handler(
     }
 
     // Validate token
-    const supportedTokens = ['USDC', 'USDT', 'LISK', 'CELO', 'cUSD']; // Multiple tokens now supported
-    if (!supportedTokens.includes(token.toUpperCase())) {
+    const supportedTokens = ['USDC', 'USDT', 'LISK', 'CELO', 'cUSD', 'cUSDC']; // Multiple tokens now supported
+    
+    // Normalize token names (cUSDC is an alias for cUSD)
+    let normalizedToken = token.toUpperCase();
+    if (normalizedToken === 'CUSDC') {
+      normalizedToken = 'CUSD';
+    }
+    
+    if (!supportedTokens.includes(normalizedToken)) {
       return res.status(400).json({
         success: false,
         error: `Unsupported token. Supported tokens: ${supportedTokens.join(', ')}`
@@ -133,11 +171,16 @@ export default async function handler(
       }
     }
 
+    // Get chain info for proper contract selection
+    const chainInfo = getChainInfo(network);
+
     // Insert payment link into database
     const insertData: any = {
       amount,
-      token: token.toUpperCase(),
+      token: normalizedToken,
       network: network.toLowerCase(),
+      blockchain: chainInfo.blockchain,
+      chain_id: chainInfo.chain_id,
       wallet_address: walletAddress.toLowerCase(),
       user_name: userName,
       payment_reason: paymentReason,

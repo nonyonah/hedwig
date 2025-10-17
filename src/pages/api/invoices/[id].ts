@@ -29,8 +29,14 @@ export default async function handler(
       const walletAddress = (invoice as any).wallet_address || '';
 
       // Calculate subtotal, tax, and total
-      const quantity = invoice.quantity || 1;
-      const rate = invoice.rate || invoice.amount || invoice.price || 0;
+      const quantity = parseFloat(String(invoice.quantity)) || 1;
+      const rate = parseFloat(String(invoice.rate || invoice.amount || invoice.price || 0));
+      
+      // Validate the rate
+      if (isNaN(rate) || !isFinite(rate) || rate < 0) {
+        return res.status(400).json({ error: 'Invalid invoice amount format' });
+      }
+      
       const subtotal = quantity * rate;
       const taxRate = 0.08; // 8% tax
       const tax = subtotal * taxRate;

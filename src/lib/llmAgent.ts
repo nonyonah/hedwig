@@ -207,21 +207,23 @@ IMPORTANT INTENT RECOGNITION RULES:
    - network: Extract network name (e.g., "Base", "Ethereum", "Polygon")
 
 5. PARAMETER EXTRACTION for "create_payment_link" intent:
-   - amount: Extract numerical value if specified
+   - amount: Extract numerical value if specified (can be flexible - system will use defaults)
    - token: Extract token symbol if specified (e.g., "USDC", "USDT", "CUSD") - defaults to "USDC"
    - network: Extract network name if specified (e.g., "base", "celo") - defaults to "base"
    - description/for: Extract payment description, reason, or purpose (e.g., "consulting services", "freelance work", "payment for goods")
    - recipient_email: Extract email address if provided (OPTIONAL)
+   - text: Always include the original user message for parameter extraction
    
    Context awareness for payment links:
-   - Require amount, token, network, and description
-   - Look for keywords like "for", "because", "reason" to extract description
-   - If any required parameters are missing, the system will prompt for them
+   - Be FLEXIBLE with parameters - the system will use sensible defaults
+   - Extract what you can, but don't require all parameters to be present
+   - The system will create payment links with available information and use defaults for missing info
    - IMPORTANT: Always inform users that a 1% platform fee will be deducted from payments
-   - Examples of good payment link requests:
-     * "Create payment link for 0.1 ETH to user@example.com for consulting services"
-     * "Make payment request of 50 USDC to client@company.com for freelance work"
-     * "Generate payment link: 0.05 ETH to john@example.com for website design"
+   - Examples of requests that should work:
+     * "Create payment link for 50 USDC" → amount: 50, token: USDC, defaults for rest
+     * "payment link for consulting" → description: consulting, defaults for amount/token
+     * "create payment link" → use all defaults
+     * "payment link $100 for web development" → amount: 100, token: USDC, description: web development
 
 6. EARNINGS REQUESTS: Always use "get_earnings" intent for:
    - "earnings", "how much have I earned", "how much did I earn", "money received", "income", "revenue"

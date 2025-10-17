@@ -423,7 +423,7 @@ export async function createWallet(userId: string, network: string = 'evm') {
     
     // Fetch user details to get a unique name for the account
     // Handle both UUID and username identifiers
-    let userQuery = supabase.from('users').select('phone_number, telegram_username, telegram_id, id');
+    let userQuery = supabase.from('users').select('phone_number, telegram_username, telegram_chat_id, id');
     
     // Check if userId looks like a UUID (contains hyphens and is 36 chars) or is a username
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
@@ -446,15 +446,15 @@ export async function createWallet(userId: string, network: string = 'evm') {
     const actualUserId = user.id;
 
     // Create account name using the same priority logic as transfer function
-    // Priority: telegram_username > telegram_id > phone_number
+    // Priority: telegram_username > telegram_chat_id > phone_number
     let accountName: string;
     
     if (user.telegram_username) {
       // Use telegram username (this is what's used in webhook.ts)
       accountName = user.telegram_username;
-    } else if (user.telegram_id) {
-      // Use telegram ID with prefix (fallback case)
-      accountName = `telegram${user.telegram_id}`;
+    } else if (user.telegram_chat_id) {
+      // Use telegram chat ID with prefix (fallback case)
+      accountName = `telegram${user.telegram_chat_id}`;
     } else {
       // Use phone number (original logic)
       accountName = user.phone_number;
@@ -1668,7 +1668,7 @@ export async function transferNativeToken(
       // Get user details to recreate the same account name used during wallet creation
       const { data: user, error: userError } = await supabase
         .from('users')
-        .select('phone_number, telegram_username, telegram_id')
+        .select('phone_number, telegram_username, telegram_chat_id')
         .eq('id', walletData.user_id)
         .single();
       
@@ -1678,15 +1678,15 @@ export async function transferNativeToken(
       }
       
       // Recreate the account name using the same logic as wallet creation
-      // Priority: telegram_username > telegram_id > phone_number
+      // Priority: telegram_username > telegram_chat_id > phone_number
       let accountName: string;
       
       if (user.telegram_username) {
         // Use telegram username (this is what's used in webhook.ts)
         accountName = user.telegram_username;
-      } else if (user.telegram_id) {
-        // Use telegram ID with prefix (fallback case)
-        accountName = `telegram${user.telegram_id}`;
+      } else if (user.telegram_chat_id) {
+        // Use telegram chat ID with prefix (fallback case)
+        accountName = `telegram${user.telegram_chat_id}`;
       } else {
         // Use phone number (original logic)
         accountName = user.phone_number;

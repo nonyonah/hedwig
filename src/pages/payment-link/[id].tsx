@@ -192,13 +192,22 @@ export default function PaymentLinkPage() {
         // Parse amount with proper validation and conversion
         let parsedAmount = 0;
         if (data.amount) {
-          const rawAmount = parseFloat(data.amount);
-          // If amount is very small (likely in wei), convert from wei to USDC
+          // Ensure amount is treated as a string first, then parse
+          const amountStr = String(data.amount);
+          const rawAmount = parseFloat(amountStr);
+          
+          // Validate the parsed amount
+          if (isNaN(rawAmount) || !isFinite(rawAmount) || rawAmount <= 0) {
+            toast.error('Invalid payment amount format');
+            return;
+          }
+          
+          // Check if the amount is very small (likely in wei, 18 decimals)
           if (rawAmount > 0 && rawAmount < 0.01) {
-            // Assume it's in wei format (18 decimals) and convert to USDC (6 decimals)
-            parsedAmount = rawAmount * Math.pow(10, 12); // Convert from wei to USDC
-          } else if (rawAmount >= 0.01) {
-            // Amount is already in proper USDC format
+            // Convert from wei to USDC (6 decimals)
+            parsedAmount = rawAmount * Math.pow(10, 12);
+          } else {
+            // Amount is already in the correct format (USDC)
             parsedAmount = rawAmount;
           }
         }

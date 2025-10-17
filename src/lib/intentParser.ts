@@ -161,7 +161,9 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
     }
 
     // Actual send transaction keywords - Check for actual sends
+    // BUT exclude payment link creation contexts
     if ((text.includes('send') || text.includes('transfer')) &&
+      !text.includes('payment link') && !text.includes('create payment') && !text.includes('payment request') &&
       (text.includes('crypto') || text.includes('token') || text.includes('eth') ||
         text.includes('sol') || text.includes('usdc') || text.includes('usdt') ||
         text.includes('btc') || text.includes('matic') || text.includes('avax') ||
@@ -244,8 +246,81 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
+    // Payment link keywords - comprehensive detection without requiring emojis
+    // MOVED BEFORE ONRAMP to give payment links priority
+    if (text.includes('payment link') ||
+      text.includes('create payment link') ||
+      text.includes('generate payment link') ||
+      text.includes('payment request') ||
+      text.includes('request payment') ||
+      text.includes('send me a payment link') ||
+      text.includes('i need a payment link') ||
+      text.includes('request money') ||
+      text.includes('ask for payment') ||
+      (text.includes('create') && text.includes('payment') && text.includes('link')) ||
+      (text.includes('make') && text.includes('payment') && text.includes('link')) ||
+      (text.includes('generate') && text.includes('payment') && text.includes('request'))) {
+
+      // Extract parameters from the text
+      const params: any = {};
+      
+      // Extract chain/network information
+      if (text.includes('on base') || text.includes('base network') || text.includes('base chain')) {
+        params.network = 'base';
+      } else if (text.includes('on celo') || text.includes('celo network') || text.includes('celo chain')) {
+        params.network = 'celo';
+      }
+      
+      // Extract amount and token
+      const amountTokenMatch = text.match(/(\d+(?:\.\d+)?)\s*(eth|sol|usdc|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)/i) ||
+                             text.match(/\$(\d+(?:\.\d+)?)/i);
+      if (amountTokenMatch) {
+        params.amount = amountTokenMatch[1];
+        if (amountTokenMatch[2]) {
+          params.token = amountTokenMatch[2].toUpperCase();
+        } else if (amountTokenMatch[0].includes('$')) {
+          params.token = 'USDC'; // Default to USDC for dollar amounts
+        }
+      }
+      
+      // Extract payment reason/description
+      const reasonPatterns = [
+        /for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|\s+to\s+\w+@|$)/i,
+        /payment\s+link\s+.*?for\s+(.+?)(?:\s+on\s+\w+|\s+send\s+to|\s+to\s+\w+@|$)/i
+      ];
+      
+      for (const pattern of reasonPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1] && match[1].trim()) {
+          const reason = match[1].trim();
+          // Make sure it's not just a token amount
+          if (!reason.match(/^\d+(\.\d+)?\s*(usdc|eth|sol|usdt|btc|matic|avax|bnb|ada|dot|link|uni|celo|lsk|cusd)$/i)) {
+            params.description = reason;
+            break;
+          }
+        }
+      }
+      
+      // Extract email if present
+      const emailMatch = text.match(/(?:send\s+to\s+|to\s+|email\s+)([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) ||
+                        text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (emailMatch) {
+        params.recipient_email = emailMatch[1];
+      }
+
+      const result = {
+        intent: 'create_payment_link',
+        params
+      };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
     // Onramp keywords - comprehensive detection for buying crypto with fiat
-    if (text.includes('buy crypto') || text.includes('buy cryptocurrency') ||
+    // IMPORTANT: Exclude payment link contexts to prevent false positives
+    if (!text.includes('payment link') && !text.includes('create payment') && !text.includes('payment request') && 
+        !text.includes('request payment') && !text.includes('invoice') && !text.includes('bill') &&
+        (text.includes('buy crypto') || text.includes('buy cryptocurrency') ||
       text.includes('buy tokens') || text.includes('buy token') ||
       text.includes('purchase crypto') || text.includes('purchase cryptocurrency') ||
       text.includes('purchase tokens') || text.includes('purchase token') ||
@@ -268,15 +343,21 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       text.includes('get some crypto') || text.includes('get some tokens') ||
       text.includes('acquire crypto') || text.includes('acquire tokens') ||
       text.includes('obtain crypto') || text.includes('obtain tokens') ||
-      // More casual expressions
-      text.includes('top up') || text.includes('add funds') || text.includes('load wallet') ||
-      text.includes('fund wallet') || text.includes('deposit money') || text.includes('add money') ||
-      // Specific token + chain combinations
+      // More casual expressions - but exclude payment link contexts
+      (text.includes('top up') && !text.includes('payment')) || 
+      (text.includes('add funds') && !text.includes('payment') && !text.includes('link')) || 
+      (text.includes('load wallet') && !text.includes('payment')) ||
+      (text.includes('fund wallet') && !text.includes('payment')) || 
+      (text.includes('deposit money') && !text.includes('payment') && !text.includes('link')) || 
+      (text.includes('add money') && !text.includes('payment') && !text.includes('link')) ||
+      // Specific token + chain combinations - but exclude payment contexts
       ((text.includes('usdc') || text.includes('usdt') || text.includes('cusd')) &&
-        (text.includes('buy') || text.includes('purchase') || text.includes('get') || text.includes('acquire'))) ||
+        (text.includes('buy') || text.includes('purchase') || text.includes('get') || text.includes('acquire')) &&
+        !text.includes('payment') && !text.includes('link') && !text.includes('request')) ||
       // Chain-specific purchases
       ((text.includes('solana') || text.includes('base') || text.includes('celo') || text.includes('lisk')) &&
-        (text.includes('buy') || text.includes('purchase')) && (text.includes('token') || text.includes('crypto'))) ||
+        (text.includes('buy') || text.includes('purchase')) && (text.includes('token') || text.includes('crypto')) &&
+        !text.includes('payment') && !text.includes('link')) ||
       // Currency-specific purchases with more variations
       ((text.includes('ngn') || text.includes('naira') || text.includes('nigerian naira') ||
         text.includes('kes') || text.includes('shilling') || text.includes('kenyan shilling') ||
@@ -294,7 +375,7 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
         (text.includes('buy') || text.includes('get') || text.includes('crypto') || text.includes('token'))) ||
       // Investment-like language
       (text.includes('invest') && (text.includes('crypto') || text.includes('token'))) ||
-      (text.includes('put money into') && (text.includes('crypto') || text.includes('token')))) {
+      (text.includes('put money into') && (text.includes('crypto') || text.includes('token'))))) {
 
       const params: any = {};
 
@@ -392,35 +473,7 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
-    // Payment link keywords - comprehensive detection without requiring emojis
-    if (text.includes('payment link') ||
-      text.includes('create payment link') ||
-      text.includes('generate payment link') ||
-      text.includes('payment request') ||
-      text.includes('request payment') ||
-      text.includes('send me a payment link') ||
-      text.includes('i need a payment link') ||
-      text.includes('request money') ||
-      text.includes('ask for payment') ||
-      (text.includes('create') && text.includes('payment') && text.includes('link')) ||
-      (text.includes('make') && text.includes('payment') && text.includes('link')) ||
-      (text.includes('generate') && text.includes('payment') && text.includes('request'))) {
 
-      // Extract chain/network information from the text
-      let network: string | null = null;
-      if (text.includes('on base') || text.includes('base network') || text.includes('base chain')) {
-        network = 'base';
-      } else if (text.includes('on celo') || text.includes('celo network') || text.includes('celo chain')) {
-        network = 'celo';
-      }
-
-      const result = {
-        intent: 'create_payment_link',
-        params: network ? { network } : {}
-      };
-      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
-      return result;
-    }
 
     // Invoice keywords - comprehensive detection without requiring emojis
     if (text.includes('invoice') ||

@@ -2725,7 +2725,10 @@ export class BotIntegration {
                 // Handle PDF generation requests
                 await this.handleNaturalLanguagePdfGeneration(message.chat.id, userId, message.text, [], undefined);
                 return true;
-              } else if (intent === 'create_payment_link') { }
+              } else if (intent === 'create_payment_link') {
+                // Let this be handled by the main actions.ts handler
+                return false;
+              }
               else if (intent === 'referral') {
                 await this.handleReferralCommand(message.chat.id, userId);
                 return true;

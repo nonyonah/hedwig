@@ -417,7 +417,7 @@ const HEDWIG_PAYMENT_ABI = [
 const HEDWIG_PAYMENT_CONTRACT_ADDRESS = (
   process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS_MAINNET ||
   process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS ||
-  '0x1c0A0eFBb438cc7705b947644F6AB88698b2704F' // Fallback to deployed contract address
+  '0xB5d572B160145a6fc353d3b8c7ff3917fC3599d2' // Fallback to deployed contract address
 ) as `0x${string}`;
 const BASE_MAINNET_CHAIN_ID = 8453;
 const USDC_CONTRACT_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`; // Base Mainnet USDC
@@ -448,8 +448,15 @@ const ERC20_ABI = [
 
 // Multi-chain contract addresses
 const getContractAddress = (chainId: number): `0x${string}` => {
-  const config = getWalletConfig(chainId);
-  return (config.contractAddress || '0x1c0A0eFBb438cc7705b947644F6AB88698b2704F') as `0x${string}`;
+  switch (chainId) {
+    case 42220: // Celo
+      return (process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS_CELO || '0xF1c485Ba184262F1EAC91584f6B26fdcaa3F794a') as `0x${string}`;
+    case 8453: // Base
+    default:
+      return (process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS_BASE || 
+              process.env.NEXT_PUBLIC_HEDWIG_PAYMENT_CONTRACT_ADDRESS ||
+              '0xB5d572B160145a6fc353d3b8c7ff3917fC3599d2') as `0x${string}`;
+  }
 };
 
 // Chain configurations
@@ -459,7 +466,7 @@ const SUPPORTED_CHAINS = {
 };
 
 export interface PaymentRequest {
-  amount: number; // Amount in human readable format (e.g., 100.50 for $100.50)
+  amount: number | string; // Amount in human readable format (e.g., 100.50 for $100.50) - accepts both number and string from database
   freelancerAddress: `0x${string}`;
   invoiceId: string;
   paymentLinkId?: string; // Optional payment link ID for payment link payments
@@ -530,24 +537,49 @@ export function useHedwigPayment() {
   });
 
   // Check if token is whitelisted
-  const isTokenWhitelisted = selectedToken ? true : false; // Simplified for now
+  const { data: isTokenWhitelisted } = useReadContract({
+    address: contractAddress,
+    abi: HEDWIG_PAYMENT_ABI,
+    functionName: 'isTokenWhitelisted',
+    args: selectedToken ? [selectedToken.address] : undefined,
+    chainId: selectedChainId,
+    query: {
+      enabled: !!selectedToken && !!contractAddress
+    }
+  });
 
   // Function to check if invoice is processed
-  const checkInvoiceProcessed = useCallback(async (invoiceId: string): Promise<boolean> => {
+  const checkInvoiceProcessed = useCallback(async (invoiceId: string, chainId?: number): Promise<boolean> => {
     try {
+      const targetChainId = chainId || selectedChainId;
+      const targetContractAddress = getContractAddress(targetChainId);
+      
+      console.log('Checking invoice processed:', {
+        invoiceId,
+        contractAddress: targetContractAddress,
+        chainId: targetChainId
+      });
+      
       const result = await readContract(config, {
-        address: contractAddress,
+        address: targetContractAddress,
         abi: HEDWIG_PAYMENT_ABI,
         functionName: 'isInvoiceProcessed',
         args: [invoiceId],
-        chainId: selectedChainId as any
+        chainId: targetChainId
       });
-      return result as boolean;
+      
+      console.log('Raw result from readContract:', result);
+      return Boolean(result);
     } catch (error) {
       console.error('Error checking invoice status:', error);
+      console.error('Error details:', {
+        message: error.message,
+        cause: error.cause,
+        data: error.data
+      });
       return false;
     }
-  }, [contractAddress, selectedChainId]);
+  }, [selectedChainId]);
 
   // Function to verify contract deployment
   const verifyContractDeployment = useCallback(async (): Promise<boolean> => {
@@ -585,7 +617,7 @@ export function useHedwigPayment() {
         functionName: 'balanceOf',
         args: [accountAddress!],
         chainId: chainId as any
-      });
+      } as any);
       return balance as bigint;
     } catch (error) {
       console.error('Error fetching token balance:', error);
@@ -602,7 +634,7 @@ export function useHedwigPayment() {
         functionName: 'allowance',
         args: [accountAddress!, spenderAddress],
         chainId: chainId as any
-      });
+      } as any);
       return allowance as bigint;
     } catch (error) {
       console.error('Error checking allowance:', error);
@@ -622,7 +654,9 @@ export function useHedwigPayment() {
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [spenderAddress, amount],
-        chainId: chainId as any
+        chainId: chainId as any,
+        account: accountAddress,
+        chain: undefined
       });
       
       // Wait for approval transaction
@@ -786,7 +820,7 @@ export function useHedwigPayment() {
       decimals: 6 // Assuming 6 decimals for stablecoins
     });
 
-    // Comprehensive amount validation
+    // Comprehensive amount validation with improved string handling
     console.log('Validating payment amount:', {
       originalAmount: req.amount,
       type: typeof req.amount,
@@ -794,38 +828,48 @@ export function useHedwigPayment() {
       isFinite: Number.isFinite(req.amount)
     });
     
+    // Convert to number if it's a string
+    let validatedAmount = req.amount;
+    if (typeof req.amount === 'string') {
+      validatedAmount = parseFloat(req.amount);
+      console.log('Converted string amount to number:', req.amount, '->', validatedAmount);
+    }
+    
     // Check for undefined, null, or invalid amounts
-    if (req.amount === undefined || req.amount === null || Number.isNaN(req.amount) || !Number.isFinite(req.amount)) {
-      console.error('Invalid amount detected:', req.amount);
-      toast.error('Invalid payment amount - please refresh the page and try again.');
+    if (validatedAmount === undefined || validatedAmount === null || Number.isNaN(validatedAmount) || !Number.isFinite(validatedAmount)) {
+      console.error('Invalid amount detected:', req.amount, 'parsed as:', validatedAmount);
+      toast.error('Invalid payment amount format - please check the amount and try again.');
       return;
     }
     
     // Ensure amount is positive and reasonable
-    if (req.amount <= 0) {
-      console.error('Amount must be positive:', req.amount);
+    if (Number(validatedAmount) <= 0) {
+      console.error('Amount must be positive:', validatedAmount);
       toast.error('Payment amount must be greater than zero.');
       return;
     }
     
     // Check for extremely small amounts that might indicate parsing errors
-    if (req.amount < 0.000001) {
-      console.error('Amount too small, likely a parsing error:', req.amount);
+    if (Number(validatedAmount) < 0.000001) {
+      console.error('Amount too small, likely a parsing error:', validatedAmount);
       toast.error('Payment amount is too small. Please check the amount and try again.');
       return;
     }
     
-    const amountStr = req.amount.toString();
+    // Use the validated amount for string conversion
+    const amountStr = validatedAmount.toString();
     console.log('Converting amount to string:', amountStr);
 
     let amountInUnits;
     try {
-      amountInUnits = parseUnits(amountStr, selectedToken.decimals);
+      // Use 6 decimals for stablecoins (USDC standard)
+      const tokenDecimals = 6;
+      amountInUnits = parseUnits(amountStr, tokenDecimals);
       console.log('Amount converted to units:', {
         original: req.amount,
         string: amountStr,
         units: amountInUnits.toString(),
-        formatted: formatUnits(amountInUnits, selectedToken.decimals)
+        formatted: formatUnits(amountInUnits, tokenDecimals)
       });
     } catch (parseError) {
       console.error('Error parsing amount to units:', parseError);
@@ -888,17 +932,18 @@ export function useHedwigPayment() {
     const safeTokenBalance = freshBalance ?? BigInt(0);
 
     // Check token balance with detailed logging
+    const tokenDecimals = 6; // Use 6 decimals for stablecoins (USDC standard)
     console.log('Balance comparison debug:', {
       freshlyFetchedBalance: safeTokenBalance.toString(),
       amountInUnits: amountInUnits.toString(),
       comparison: safeTokenBalance < amountInUnits,
-      balanceFormatted: formatUnits(safeTokenBalance, selectedToken.decimals),
-      requiredFormatted: formatUnits(amountInUnits, selectedToken.decimals)
+      balanceFormatted: formatUnits(safeTokenBalance, tokenDecimals),
+      requiredFormatted: formatUnits(amountInUnits, tokenDecimals)
     });
 
     if (safeTokenBalance < amountInUnits) {
-      const balanceFormatted = formatUnits(safeTokenBalance, selectedToken.decimals);
-      const requiredFormatted = formatUnits(amountInUnits, selectedToken.decimals);
+      const balanceFormatted = formatUnits(safeTokenBalance, tokenDecimals);
+      const requiredFormatted = formatUnits(amountInUnits, tokenDecimals);
       console.error(`Insufficient ${req.tokenSymbol} balance:`, {
         balance: balanceFormatted,
         required: requiredFormatted
@@ -912,8 +957,8 @@ export function useHedwigPayment() {
       tokenContract: req.tokenAddress,
       spender: currentContractAddress,
       amount: amountInUnits.toString(),
-      amountFormatted: formatUnits(amountInUnits, selectedToken.decimals),
-      userBalance: formatUnits(safeTokenBalance, selectedToken.decimals),
+      amountFormatted: formatUnits(amountInUnits, tokenDecimals),
+      userBalance: formatUnits(safeTokenBalance, tokenDecimals),
       chainId: req.chainId
     });
     
@@ -923,8 +968,8 @@ export function useHedwigPayment() {
       currentAllowance = await checkTokenAllowance(req.tokenAddress, currentContractAddress, req.chainId);
       console.log(`Current ${req.tokenSymbol} allowance:`, {
         allowance: currentAllowance.toString(),
-        formatted: formatUnits(currentAllowance, selectedToken.decimals),
-        required: formatUnits(amountInUnits, selectedToken.decimals)
+        formatted: formatUnits(currentAllowance, tokenDecimals),
+        required: formatUnits(amountInUnits, tokenDecimals)
       });
     } catch (allowanceError) {
       console.error('Failed to check allowance:', allowanceError);
@@ -1013,7 +1058,9 @@ export function useHedwigPayment() {
          functionName: 'pay',
          args: [req.tokenAddress, amountInUnits, req.freelancerAddress, req.invoiceId],
          chainId: req.chainId as any,
-         gas: 300000n // Increase gas limit to 300,000 for safety
+         gas: BigInt(300000), // Increase gas limit to 300,000 for safety
+         account: accountAddress,
+         chain: undefined
        });
        
        console.log('Payment transaction triggered, waiting for hash...');
@@ -1070,7 +1117,8 @@ export function useHedwigPayment() {
         return;
       }
 
-      if (!paymentRequest.amount || Number.isNaN(paymentRequest.amount) || paymentRequest.amount <= 0) {
+      const amount = Number(paymentRequest.amount);
+      if (!paymentRequest.amount || Number.isNaN(amount) || amount <= 0) {
         toast.error('Invalid payment amount.');
         return;
       }
@@ -1096,7 +1144,7 @@ export function useHedwigPayment() {
       });
       
       // Check if invoice is already processed
-      const isProcessed = await checkInvoiceProcessed(paymentRequest.invoiceId);
+      const isProcessed = await checkInvoiceProcessed(paymentRequest.invoiceId, paymentRequest.chainId);
       if (isProcessed) {
         toast.error('This invoice has already been processed.');
         return;
@@ -1108,7 +1156,17 @@ export function useHedwigPayment() {
         return;
       }
       
-      if (!isTokenWhitelisted) {
+      // Check if the specific token for this payment is whitelisted
+      const paymentContractAddress = getContractAddress(paymentRequest.chainId);
+      const tokenWhitelisted = await readContract(config, {
+        address: paymentContractAddress,
+        abi: HEDWIG_PAYMENT_ABI,
+        functionName: 'isTokenWhitelisted',
+        args: [paymentRequest.tokenAddress as `0x${string}`],
+        chainId: paymentRequest.chainId,
+      });
+      
+      if (!tokenWhitelisted) {
         toast.error(`${paymentRequest.tokenSymbol} is not whitelisted for payments. Please contact support.`);
         return;
       }

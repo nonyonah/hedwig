@@ -147,7 +147,7 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
       };
     }
 
-    // Validate network
+    // Validate network and get chain info
     const supportedNetworks = ['base', 'ethereum', 'polygon', 'optimism', 'celo'];
     
     if (!supportedNetworks.includes(network.toLowerCase())) {
@@ -156,6 +156,26 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
         error: `Unsupported network. Supported networks: ${supportedNetworks.join(', ')}`
       };
     }
+
+    // Map network to blockchain and chain_id for proper contract selection
+    const getChainInfo = (network: string) => {
+      switch (network.toLowerCase()) {
+        case 'base':
+          return { blockchain: 'base', chain_id: 8453 };
+        case 'celo':
+          return { blockchain: 'celo', chain_id: 42220 };
+        case 'ethereum':
+          return { blockchain: 'ethereum', chain_id: 1 };
+        case 'polygon':
+          return { blockchain: 'polygon', chain_id: 137 };
+        case 'optimism':
+          return { blockchain: 'optimism', chain_id: 10 };
+        default:
+          return { blockchain: 'base', chain_id: 8453 }; // Default to Base
+      }
+    };
+
+    const chainInfo = getChainInfo(network);
 
     // Validate token
     const supportedTokens = ['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'MATIC', 'ARB', 'OP', 'BNB', 'CELO', 'cUSD'];
@@ -188,7 +208,9 @@ export async function createInvoice(params: CreateInvoiceParams): Promise<Create
         status: 'draft',
         due_date: dueDate || null,
         additional_notes: items ? JSON.stringify(items) : null,
-        created_by: userId || null
+        created_by: userId || null,
+        blockchain: chainInfo.blockchain,
+        chain_id: chainInfo.chain_id
       })
       .select('id')
       .single();

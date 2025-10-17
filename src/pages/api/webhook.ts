@@ -1406,8 +1406,10 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
 
       case 'onramp':
         // Use the existing actions.ts handler for these intents
-        console.log('[Webhook] Calling handleAction with:', { intent, params, userId });
-        const actionResult = await handleAction(intent, params, userId);
+        // Add the original user message to params for parameter extraction
+        const enhancedParams = { ...params, text: userMessage };
+        console.log('[Webhook] Calling handleAction with:', { intent, params: enhancedParams, userId });
+        const actionResult = await handleAction(intent, enhancedParams, userId);
         console.log('[Webhook] handleAction result:', actionResult);
 
         // If the result has reply_markup and we have a chatId, send the message directly

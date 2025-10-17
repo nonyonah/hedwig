@@ -386,7 +386,15 @@ export default function InvoicePage() {
   
   // Calculate subtotal from filtered items with validation
   const subtotal = filteredItems.reduce((sum, item) => {
-    let amount = typeof item.amount === 'number' ? item.amount : parseFloat(item.amount || '0');
+    // Ensure amount is treated as a string first, then parse
+    const amountStr = String(item.amount || '0');
+    let amount = parseFloat(amountStr);
+    
+    // Validate the parsed amount
+    if (isNaN(amount) || !isFinite(amount) || amount < 0) {
+      console.warn('Invalid amount in invoice item:', item.amount, 'defaulting to 0');
+      amount = 0;
+    }
     
     // Check if amount is very small (likely in wei format) and convert to USDC
     if (amount > 0 && amount < 0.01) {
@@ -395,7 +403,7 @@ export default function InvoicePage() {
       console.log('Converted small amount from wei to USDC:', item.amount, '->', amount);
     }
     
-    return sum + (isNaN(amount) ? 0 : amount);
+    return sum + amount;
   }, 0);
   // Validate subtotal and ensure it's a valid number
   const validSubtotal = typeof subtotal === 'number' && !isNaN(subtotal) && subtotal > 0 ? subtotal : 0;
