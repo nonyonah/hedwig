@@ -22,7 +22,7 @@ export function useAppKitWallet() {
 
   // Get current chain information
   const currentChain = chainId ? getChainById(chainId) : null
-  const isChainSupported = chainId ? isChainSupported(chainId) : false
+  const isCurrentChainSupported = chainId ? isChainSupported(chainId) : false
 
   // Connect to wallet
   const connectWallet = useCallback(async (connectorId?: string) => {
@@ -101,7 +101,7 @@ export function useAppKitWallet() {
     isConnecting,
     chainId,
     currentChain,
-    isChainSupported,
+    isChainSupported: isCurrentChainSupported,
     connector,
     status,
     

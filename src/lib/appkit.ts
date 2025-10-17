@@ -56,7 +56,7 @@ const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || ''
 export const wagmiConfig = createConfig({
   chains: [base, mainnet, polygon, arbitrum, bsc, celoMainnet, liskMainnet],
   connectors: [
-    walletConnect({ 
+    walletConnect({
       projectId,
       metadata: {
         name: 'Hedwig',
@@ -66,7 +66,7 @@ export const wagmiConfig = createConfig({
       }
     }),
     injected({ shimDisconnect: true }),
-    coinbaseWallet({ 
+    coinbaseWallet({
       appName: 'Hedwig',
       appLogoUrl: ''
     })

@@ -2,28 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   webpack: (config: any) => {
-    config.optimization = {
-      ...config.optimization,
-      splitChunks: {
-        ...config.optimization.splitChunks,
-        cacheGroups: {
-          ...config.optimization.splitChunks.cacheGroups,
-          vendors: {
-            test: /[\/]node_modules[\/]/,
-            name: 'vendors',
-            chunks: 'all',
-          },
-        },
-      },
-    };
-    
-    // Ensure proper module resolution for ES modules
+    // Simplified webpack config to avoid memory issues
     config.resolve = {
       ...config.resolve,
-      extensionAlias: {
-        '.js': ['.js', '.ts', '.tsx'],
-        '.mjs': ['.mjs', '.ts', '.tsx'],
-      },
       fallback: {
         ...config.resolve.fallback,
         // Handle React Native dependencies that don't exist in web environment
@@ -42,19 +23,10 @@ const nextConfig = {
       },
     };
     
-    // Add plugins for polyfills
-    config.plugins = [
-      ...config.plugins,
-      new config.webpack.ProvidePlugin({
-        Buffer: ['buffer', 'Buffer'],
-        process: 'process/browser',
-      }),
-    ];
-    
     return config;
   },
-  // Enable Turbopack for development
-  turbopack: {},
+  // Experimental features
+  experimental: {},
 };
 
 export default nextConfig;
