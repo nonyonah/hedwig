@@ -690,7 +690,7 @@ export function useHedwigPayment() {
           // Wait for transaction receipt
           const transactionReceipt = await waitForTransactionReceipt(config, {
             hash,
-            chainId: BASE_MAINNET_CHAIN_ID,
+            chainId: currentPaymentRequest.chainId,
           });
           
           console.log('Payment transaction confirmed:', transactionReceipt);
