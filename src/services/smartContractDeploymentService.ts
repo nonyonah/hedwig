@@ -164,7 +164,36 @@ class SmartContractDeploymentService {
   }
 
   /**
-   * Get deployed factory address for a specific chain
+   * Deploy a payment contract using Foundry
+   */
+  async deployPaymentContract(config: DeploymentConfig): Promise<DeploymentResult> {
+    try {
+      await this.buildContracts();
+
+      const deployCommand = `forge script script/HedwigPaymentDeploy.s.sol:HedwigPaymentDeploy --rpc-url ${this.getRpcUrl(config.chain)} --private-key ${config.privateKey} --broadcast --verify`;
+      
+      console.log(`Deploying HedwigPayment contract to ${config.chain}...`);
+      const { stdout, stderr } = await execAsync(deployCommand, { 
+        cwd: this.foundryPath,
+        env: { ...process.env, PLATFORM_WALLET: config.platformWallet, PLATFORM_FEE_RATE: config.platformFeeRate?.toString() || '250' }
+      });
+
+      if (stderr && !stderr.includes('Warning')) {
+        throw new Error(`Deployment failed: ${stderr}`);
+      }
+
+      const result = this.parsePaymentDeploymentOutput(stdout, config.chain);
+      await this.storePaymentDeploymentInfo(result, config);
+      
+      return result;
+    } catch (error) {
+      console.error('Payment contract deployment failed:', error);
+      throw new Error(`Failed to deploy payment contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get factory address for a specific chain
    */
   async getFactoryAddress(chain: string): Promise<string | null> {
     try {
@@ -334,6 +363,74 @@ class SmartContractDeploymentService {
     // Implementation would parse the ContractCreated event logs
     // This is a placeholder - actual implementation would decode the logs
     return Math.floor(Math.random() * 1000000); // Temporary
+  }
+
+  /**
+   * Parse payment contract deployment output
+   */
+  private parsePaymentDeploymentOutput(output: string, chain: string): DeploymentResult {
+    // Parse the Foundry deployment output for HedwigPayment contract
+    const lines = output.split('\n');
+    let contractAddress = '';
+    let transactionHash = '';
+    let blockNumber = 0;
+    let gasUsed = '';
+    let deploymentCost = '';
+
+    for (const line of lines) {
+      if (line.includes('Contract Address:')) {
+        contractAddress = line.split(':')[1]?.trim() || '';
+      } else if (line.includes('Transaction Hash:')) {
+        transactionHash = line.split(':')[1]?.trim() || '';
+      } else if (line.includes('Block Number:')) {
+        blockNumber = parseInt(line.split(':')[1]?.trim() || '0');
+      } else if (line.includes('Gas Used:')) {
+        gasUsed = line.split(':')[1]?.trim() || '0';
+      } else if (line.includes('Deployment Cost:')) {
+        deploymentCost = line.split(':')[1]?.trim() || '0';
+      }
+    }
+
+    return {
+      contractAddress,
+      transactionHash,
+      blockNumber,
+      gasUsed,
+      deploymentCost,
+      networkName: chain,
+      chainId: this.getChainId(chain)
+    };
+  }
+
+  /**
+   * Store payment contract deployment information
+   */
+  private async storePaymentDeploymentInfo(result: DeploymentResult, config: DeploymentConfig): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('contract_deployments')
+        .insert({
+          contract_address: result.contractAddress,
+          chain: config.chain,
+          contract_type: 'payment',
+          deployment_tx_hash: result.transactionHash,
+          block_number: result.blockNumber,
+          gas_used: result.gasUsed,
+          deployment_cost: result.deploymentCost,
+          platform_wallet: config.platformWallet,
+          platform_fee_rate: config.platformFeeRate || 250,
+          status: 'deployed',
+          deployed_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('Failed to store payment deployment info:', error);
+        throw new Error('Failed to store deployment information');
+      }
+    } catch (error) {
+      console.error('Database storage error:', error);
+      throw error;
+    }
   }
 
   /**

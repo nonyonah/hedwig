@@ -635,12 +635,12 @@ export class ContractModule {
       if (state.milestones.length > 0) {
         const milestoneInserts = state.milestones.map((milestone, index) => ({
           contract_id: contractId,
+          milestone_id: index + 1,
           title: milestone.title,
           description: milestone.description,
           amount: milestone.amount,
           deadline: milestone.deadline,
-          order_index: index + 1,
-          status: 'pending'
+          status: 'pending' as const
         }));
 
         await supabase.from('contract_milestones').insert(milestoneInserts);
@@ -712,7 +712,7 @@ export class ContractModule {
         .select('*')
         .eq('freelancer_id', userId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(10) as { data: ProjectContract[] | null, error: any };
 
       if (error) throw error;
 
@@ -729,15 +729,15 @@ export class ContractModule {
 
       contracts.forEach((contract, index) => {
         const statusEmoji = this.getContractStatusEmoji(contract.status);
-        const amount = `${contract.amount} ${contract.token_type}`;
+        const amount = `${contract.total_amount} ${contract.token_address}`;
         
-        message += `${statusEmoji} **${contract.title}**\n`;
+        message += `${statusEmoji} **${contract.project_title}**\n`;
         message += `   💰 ${amount} on ${contract.chain.toUpperCase()}\n`;
         message += `   📅 Deadline: ${new Date(contract.deadline).toLocaleDateString()}\n`;
         message += `   🔗 ID: ${contract.id.substring(0, 12)}...\n\n`;
 
         keyboard.push([
-          { text: `View ${contract.title}`, callback_data: `view_contract_${contract.id}` }
+          { text: `View ${contract.project_title}`, callback_data: `view_contract_${contract.id}` }
         ]);
       });
 

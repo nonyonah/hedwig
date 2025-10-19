@@ -76,9 +76,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
         break;
       
+      case 'payment':
+        result = await smartContractDeploymentService.deployPaymentContract({
+          chain,
+          platformWallet: params.platformWallet || process.env.PLATFORM_WALLET || '0x742d35Cc6634C0532925a3b8D4C9db96C4b5Da5e',
+          platformFeeRate: params.platformFeeRate || 250, // 2.5%
+          privateKey: process.env.DEPLOYER_PRIVATE_KEY
+        });
+        break;
+      
       default:
         return res.status(400).json({ 
-          error: 'Invalid contract type. Supported types: factory, project' 
+          error: 'Invalid contract type. Supported types: factory, project, payment' 
         });
     }
 
