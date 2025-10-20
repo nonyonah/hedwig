@@ -1,0 +1,102 @@
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+const querystring = require('querystring');
+
+// Configuration for Celo Mainnet HedwigProjectContract
+const CONTRACT_ADDRESS = '0x8C51Bd453B2b3F5f47417bEa5D75180a766E0aF6';
+const API_KEY = process.env.CELOSCAN_API_KEY || 'KIKD68NXYAGXSKPN9WPN531883PE16BMRV';
+
+// Read contract source code
+const contractPath = path.join(__dirname, '..', 'src', 'HedwigProjectContract.sol');
+const sourceCode = fs.readFileSync(contractPath, 'utf8');
+
+// Constructor arguments: platformWallet (0x29B30cd52d9e8DdF9ffEaFb598715Db78D3B771d), platformFeeRate (100)
+const constructorArgs = '00000000000000000000000029b30cd52d9e8ddf9ffeafb598715db78d3b771d0000000000000000000000000000000000000000000000000000000000000064';
+
+// Verification parameters for Celo
+const verificationData = {
+    apikey: API_KEY,
+    module: 'contract',
+    action: 'verifysourcecode',
+    contractaddress: CONTRACT_ADDRESS,
+    sourceCode: sourceCode,
+    codeformat: 'solidity-single-file',
+    contractname: 'HedwigProjectContract',
+    compilerversion: 'v0.8.28+commit.7893614a',
+    optimizationUsed: '1',
+    runs: '200',
+    constructorArguements: constructorArgs,
+    evmversion: 'paris',
+    licenseType: '3', // MIT License
+    chainId: '42220'
+};
+
+function makeRequest(data) {
+    return new Promise((resolve, reject) => {
+        const postData = querystring.stringify(data);
+        
+        const options = {
+            hostname: 'api.celoscan.io',
+            port: 443,
+            path: '/v2/api?chainid=42220',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let responseData = '';
+            
+            res.on('data', (chunk) => {
+                responseData += chunk;
+            });
+            
+            res.on('end', () => {
+                try {
+                    const jsonResponse = JSON.parse(responseData);
+                    resolve(jsonResponse);
+                } catch (error) {
+                    reject(new Error(`Failed to parse response: ${error.message}`));
+                }
+            });
+        });
+        
+        req.on('error', (error) => {
+            reject(error);
+        });
+        
+        req.write(postData);
+        req.end();
+    });
+}
+
+async function verifyContract() {
+    try {
+        console.log('Starting HedwigProjectContract verification on Celo...');
+        console.log(`Contract Address: ${CONTRACT_ADDRESS}`);
+        console.log(`API Key: ${API_KEY ? 'Set' : 'Not set'}`);
+        console.log(`Constructor Args: ${constructorArgs}`);
+        
+        const response = await makeRequest(verificationData);
+        
+        console.log('Verification response:', response);
+        
+        if (response.status === '1') {
+            console.log('✅ Contract verification submitted successfully!');
+            console.log(`GUID: ${response.result}`);
+            console.log('\nYou can check the verification status at:');
+            console.log(`https://celoscan.io/address/${CONTRACT_ADDRESS}#code`);
+        } else {
+            console.log('❌ Contract verification failed:');
+            console.log(response.result);
+        }
+    } catch (error) {
+        console.error('Error during verification:', error.message);
+    }
+}
+
+// Run verification
+verifyContract();

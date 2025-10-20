@@ -82,6 +82,7 @@ async function setupTelegramMenu() {
       { command: 'payment', description: 'Create payment link' },
       { command: 'invoice', description: 'Create invoice' },
       { command: 'proposal', description: 'Create proposal' },
+      { command: 'contract', description: 'Create smart contract' },
       { command: 'earnings_summary', description: 'View earnings summary' },
       { command: 'business_dashboard', description: 'Business dashboard' },
       { command: 'referral', description: 'Get your referral link and stats' },
@@ -870,6 +871,7 @@ async function handleCommand(msg: any) {
         `• /payment - Create payment links\n` +
         `• /proposal - Create service proposals\n` +
         `• /invoice - Create invoices\n` +
+        `• /contract - Create smart contracts\n` +
         `• /earnings_summary - View earnings summary\n` +
         `• /business_dashboard - Access business dashboard\n` +
 
@@ -1007,6 +1009,39 @@ async function handleCommand(msg: any) {
       } catch (error) {
         console.error('[Webhook] Error in /invoice:', error);
         await bot.sendMessage(chatId, 'Failed to start invoice creation. Please try again later.');
+      }
+      break;
+
+    case '/contract':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+
+          if (user) {
+            // Use bot integration for contract creation
+            const { ContractModule } = await import('../../modules/contracts');
+            const contractModule = new ContractModule(bot);
+            await contractModule.startContractCreation(chatId, user.id);
+          } else {
+            await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
+          }
+        } else {
+          // Fallback to processWithAI but handle empty responses
+          const contractResponse = await processWithAI('create contract', chatId);
+          if (contractResponse && isStringResponse(contractResponse) && contractResponse.trim() !== '' && contractResponse !== '__NO_MESSAGE__') {
+            await bot.sendMessage(chatId, contractResponse);
+          }
+          // If response is empty or __NO_MESSAGE__, don't send anything - the ContractModule handles the interaction
+        }
+      } catch (error) {
+        console.error('[Webhook] Error in /contract:', error);
+        await bot.sendMessage(chatId, 'Failed to start contract creation. Please try again later.');
       }
       break;
 

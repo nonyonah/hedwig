@@ -1,0 +1,7 @@
+{
+  "transactions": [
+    {
+      "rpc": "https://alfajores-forno.celo-testnet.org"
+    }
+  ]
+}

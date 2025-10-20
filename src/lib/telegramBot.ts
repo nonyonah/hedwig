@@ -658,6 +658,14 @@ export class TelegramBotService {
         await this.sendMessage(chatId, '🚧 **Buy Crypto Feature Coming Soon**\n\nThe onramp feature is currently under development. Transaction status checking will be available when the feature launches!', { parse_mode: 'Markdown' });
         break;
       }
+      case '/contract':
+      case '/contracts': {
+        // Handle contract creation and management
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
+        console.log('[TelegramBot] Contract command user resolution:', { resolvedUserId });
+        await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
+        break;
+      }
 
       default:
         await this.sendMessage(
@@ -1253,6 +1261,7 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'business_dashboard', description: '📋 Access business dashboard' },
         { command: 'invoice', description: '📄 Create an invoice' },
         { command: 'proposal', description: '📝 Create a proposal' },
+        { command: 'contract', description: '📝 Create smart contract' },
         { command: 'paymentlink', description: '🔗 Create a payment link' },
         { command: 'referral', description: '🎁 Get your referral link and stats' },
         { command: 'leaderboard', description: '🏆 View referral leaderboard' },

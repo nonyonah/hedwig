@@ -8,6 +8,7 @@ import { InvoiceModule } from './invoices';
 import { ProposalModule } from './proposals';
 import { USDCPaymentModule } from './usdc-payments';
 import { OfframpModule } from './offramp';
+import { ContractModule } from './contracts';
 import { generateEarningsPDF } from './pdf-generator-earnings';
 import { FonbnkService } from '../services/fonbnkService';
 
@@ -22,6 +23,7 @@ export class BotIntegration {
   private proposalModule: ProposalModule;
   private usdcPaymentModule: USDCPaymentModule;
   private offrampModule: OfframpModule;
+  private contractModule: ContractModule;
   private fonbnkService: FonbnkService;
 
   constructor(bot: TelegramBot) {
@@ -30,6 +32,7 @@ export class BotIntegration {
     this.proposalModule = new ProposalModule(bot);
     this.usdcPaymentModule = new USDCPaymentModule(bot);
     this.offrampModule = new OfframpModule(bot);
+    this.contractModule = new ContractModule(bot);
     this.fonbnkService = new FonbnkService();
   }
 
@@ -523,6 +526,9 @@ export class BotIntegration {
           { text: '📋 My Proposals', callback_data: 'business_proposals' }
         ],
         [
+          { text: '📝 My Contracts', callback_data: 'business_contracts' }
+        ],
+        [
           { text: '🔗 Payment Links', callback_data: 'business_payment_links' }
         ],
         [
@@ -699,6 +705,73 @@ export class BotIntegration {
     } catch (error) {
       console.error('Error fetching proposals:', error);
       await this.bot.sendMessage(chatId, '❌ Error fetching proposals. Please try again.');
+    }
+  }
+
+  // Handle contract list
+  async handleContractList(chatId: number, userId: string) {
+    try {
+      const { data: contracts, error } = await supabase
+        .from('project_contracts')
+        .select(`
+          id,
+          project_title,
+          client_email,
+          freelancer_email,
+          amount,
+          token,
+          chain,
+          deadline,
+          status,
+          created_at
+        `)
+        .or(`client_user_id.eq.${userId},freelancer_user_id.eq.${userId}`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('[BotIntegration] Error fetching contracts:', error);
+        await this.bot.sendMessage(chatId, '❌ Failed to fetch contracts. Please try again.');
+        return;
+      }
+
+      if (!contracts || contracts.length === 0) {
+        await this.bot.sendMessage(chatId, '📝 No contracts found.\n\nUse /contract to create your first contract!', {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📝 Create Contract', callback_data: 'create_contract_flow' }]
+            ]
+          }
+        });
+        return;
+      }
+
+      let message = '📝 *Your Contracts*\n\n';
+      
+      for (const contract of contracts) {
+        const statusEmoji = this.getStatusEmoji(contract.status);
+        const deadline = new Date(contract.deadline).toLocaleDateString();
+        
+        message += `${statusEmoji} *${contract.project_title}*\n`;
+        message += `💰 ${contract.amount} ${contract.token.toUpperCase()}\n`;
+        message += `📅 Deadline: ${deadline}\n`;
+        message += `🔗 ${contract.chain}\n`;
+        message += `📧 Client: ${contract.client_email}\n`;
+        message += `👨‍💻 Freelancer: ${contract.freelancer_email}\n\n`;
+      }
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📝 Create New Contract', callback_data: 'create_contract_flow' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error in handleContractList:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to fetch contracts. Please try again.');
     }
   }
 
@@ -2107,6 +2180,21 @@ export class BotIntegration {
         await this.handleProposalList(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
+      } else if (data === 'business_contracts') {
+        // Make buttons disappear
+        if (callbackQuery.message?.message_id) {
+          try {
+            await this.bot.editMessageReplyMarkup({ inline_keyboard: [] }, {
+              chat_id: chatId,
+              message_id: callbackQuery.message.message_id
+            });
+          } catch (editError) {
+            console.warn('[BotIntegration] Could not remove buttons from business contracts message:', editError);
+          }
+        }
+        await this.handleContractList(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
       } else if (data === 'business_payment_links') {
         // Make buttons disappear
         if (callbackQuery.message?.message_id) {
@@ -2162,6 +2250,10 @@ export class BotIntegration {
         return true;
       } else if (data === 'create_payment_link_flow') {
         await this.handlePaymentLink(chatId, userId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      } else if (data === 'create_contract_flow') {
+        await this.contractModule.startContractCreation(chatId, userId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       } else if (data === 'view_earnings') {
@@ -2362,6 +2454,14 @@ export class BotIntegration {
         await this.proposalModule.handleProposalCallback(callbackQuery, userId);
         return true;
       }
+      // Contract module callbacks
+      else if (data.startsWith('contract_') || data.startsWith('view_contract_') ||
+        data.startsWith('edit_contract_') || data.startsWith('cancel_contract_') ||
+        data.startsWith('approve_contract_') || data.startsWith('generate_contract_') ||
+        data.startsWith('continue_contract_') || data === 'cancel_contract_creation') {
+        await this.contractModule.handleContractCallback(callbackQuery, userId);
+        return true;
+      }
       // Payment link deletion callbacks
       else if (data.startsWith('delete_payment_link_')) {
         const linkId = data.replace('delete_payment_link_', '');
@@ -2500,6 +2600,12 @@ export class BotIntegration {
         return true;
       }
 
+      // Check if user is in contract creation flow
+      const contractHandled = await this.contractModule.handleContractInput(chatId, userId, text);
+      if (contractHandled) {
+        return true;
+      }
+
       switch (text) {
         case '📄 Invoice':
           await this.invoiceModule.handleInvoiceCreation(chatId, userId);
@@ -2507,6 +2613,10 @@ export class BotIntegration {
 
         case '📋 Proposal':
           await this.proposalModule.handleProposalCreation(chatId, userId);
+          return true;
+
+        case '📝 Contract':
+          await this.contractModule.startContractCreation(chatId, userId);
           return true;
 
         case '📊 Business Dashboard':
