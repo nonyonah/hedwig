@@ -1,4 +1,4 @@
-import TelegramBot from 'node-telegram-bot-api';
+import * as TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import { NaturalProposalGenerator } from '../lib/naturalProposalGenerator';
 import { trackEvent } from '../lib/posthog';

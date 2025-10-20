@@ -1,4 +1,4 @@
-import TelegramBot from 'node-telegram-bot-api';
+import * as TelegramBot from 'node-telegram-bot-api';
 import { trackEvent } from '../lib/posthog';
 import { handleAction } from '../api/actions';
 import { createClient } from '@supabase/supabase-js';
@@ -34,6 +34,11 @@ export class BotIntegration {
     this.offrampModule = new OfframpModule(bot);
     this.contractModule = new ContractModule(bot);
     this.fonbnkService = new FonbnkService();
+  }
+
+  // Public getter for contractModule to allow access from TelegramBotService
+  public getContractModule(): ContractModule {
+    return this.contractModule;
   }
 
   // Handle earnings summary (deterministic path via earningsService)

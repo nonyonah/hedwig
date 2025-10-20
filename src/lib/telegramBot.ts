@@ -859,8 +859,22 @@ Choose an action below:`;
       // Use Telegram username as identifier for LLM, fallback to user UUID if no username
       const llmUserId = user.telegram_username || user.id;
 
+      // Check if user is in contract creation flow first (use UUID for contract flow tracking)
+      console.log('[TelegramBot] Checking contract flow for user:', user.id);
+      const isInFlow = this.botIntegration?.getContractModule()?.isInContractFlow(user.id);
+      console.log('[TelegramBot] Is user in contract flow?', isInFlow);
+      
+      if (isInFlow) {
+        console.log('[TelegramBot] User is in contract flow, handling contract input directly');
+        const contractHandled = await this.botIntegration.getContractModule().handleContractInput(chatId, user.id, message);
+        console.log('[TelegramBot] Contract input handled:', contractHandled);
+        if (contractHandled) {
+          return 'Contract input processed successfully.';
+        }
+      }
+
       // Import required modules
-      const { parseIntentAndParams } = await import('@/lib/intentParser');
+      const { parseIntentAndParams } = await import('./intentParser');
       const { handleAction } = await import('../api/actions');
 
       // Get LLM response

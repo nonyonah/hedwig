@@ -1,4 +1,4 @@
-import TelegramBot from 'node-telegram-bot-api';
+import * as TelegramBot from 'node-telegram-bot-api';
 import { supabase } from '../lib/supabase';
 import { sendEmail, generateInvoiceEmailTemplate } from '../lib/emailService';
 import { generateInvoicePDF } from './pdf-generator';

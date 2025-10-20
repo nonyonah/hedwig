@@ -1612,6 +1612,10 @@ Your wallets are now ready! Please try your command again.`
           "What would you like to do today?"
       };
 
+    case "create_contract":
+      console.log('[handleAction] create_contract case triggered with params:', params);
+      return await handleCreateContract(params, userId);
+
     default:
       return {
         text: "I didn't understand that command. Type 'help' to see available commands.",
@@ -3109,6 +3113,78 @@ async function handleCreateProposal(params: ActionParams, userId: string) {
     console.error('[handleCreateProposal] Error:', error);
     return {
       text: "Failed to start proposal creation. Please try again later."
+    };
+  }
+}
+
+async function handleCreateContract(params: ActionParams, userId: string) {
+  try {
+    // Determine if userId is a UUID or username and get the actual user UUID
+    let actualUserId: string;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+
+    if (isUUID) {
+      actualUserId = userId;
+    } else {
+      // userId is a username, fetch the actual UUID
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', userId)
+        .single();
+
+      if (userError || !user) {
+        console.error(`[handleCreateContract] Failed to find user with username ${userId}:`, userError);
+        return {
+          text: "❌ User not found. Please make sure you're registered with the bot.",
+        };
+      }
+
+      actualUserId = user.id;
+    }
+
+    // Import and use the contract creation service with bot integration
+    const { ContractModule } = await import('../modules/contracts');
+
+    // Get the user's chat ID for Telegram interaction
+    const { data: user } = await supabase
+      .from('users')
+      .select('telegram_chat_id')
+      .eq('id', actualUserId)
+      .single();
+
+    if (!user?.telegram_chat_id) {
+      return {
+        text: "Telegram chat ID not found. Please make sure you're using the Telegram bot."
+      };
+    }
+
+    // Initialize the bot and start contract creation
+    const TelegramBot = require('node-telegram-bot-api');
+    const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+    const contractModule = new ContractModule(bot);
+
+    // Extract natural language parameters from the LLM response
+    const nlParams = {
+      service_description: params.service_description || params.text,
+      project_description: params.project_description,
+      client_name: params.client_name,
+      payment_amount: params.payment_amount,
+      currency: params.currency,
+      timeline: params.timeline || params.deadline
+    };
+
+    await contractModule.startContractCreation(user.telegram_chat_id, actualUserId, undefined, nlParams);
+
+    // Return empty text to avoid interrupting the flow
+    return {
+      text: ""
+    };
+
+  } catch (error) {
+    console.error('[handleCreateContract] Error:', error);
+    return {
+      text: "Failed to start contract creation. Please try again later."
     };
   }
 }

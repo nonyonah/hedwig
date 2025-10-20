@@ -277,9 +277,10 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "project proposal", "proposal for", "need a proposal"
    - "quote", "estimate", "project quote", "service quote"
    - "proposal for web development", "mobile app proposal", "design proposal"
-   - Any request to create or generate a project proposal
+   - Any request to create or generate a project proposal that explicitly mentions "proposal"
    - NEVER ask for clarification - proceed with creating proposal and prompt for missing details
    - Even simple requests like "create proposal" should use this intent
+   - IMPORTANT: Only use this intent when "proposal", "quote", or "estimate" is explicitly mentioned
 
 9.5. CONTRACT REQUESTS: Always use "create_contract" intent for:
    - "contract", "create contract", "generate contract", "draft contract"
@@ -288,9 +289,11 @@ IMPORTANT INTENT RECOGNITION RULES:
    - "legal agreement", "service agreement", "work agreement", "employment contract"
    - "freelance contract", "consulting contract", "development contract"
    - "contract template", "contract generator", "automated contract"
+   - Bare service requests without "proposal" keyword: "web design", "logo design", "mobile app development", "consulting", "marketing", etc.
    - Any request to create, generate, or draft contracts or legal agreements
    - NEVER ask for clarification - proceed with creating contract and prompt for missing details
    - Even simple requests like "create contract" should use this intent
+   - IMPORTANT: Use "create_contract" for service requests unless they explicitly mention "proposal"
 
 10. SEND PROPOSAL REQUESTS: Always use "send_proposal" intent for:
      - "send proposal", "email proposal", "send proposal to client"

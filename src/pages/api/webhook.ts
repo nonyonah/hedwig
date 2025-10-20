@@ -1,10 +1,7 @@
 // src/pages/api/webhook.ts - Telegram Bot Webhook Handler
 import type { NextApiRequest, NextApiResponse } from 'next';
-const TelegramBot = require('node-telegram-bot-api');
+import TelegramBot from 'node-telegram-bot-api';
 import { handleAction } from '../../api/actions';
-// Dynamic imports to prevent serverEnv loading during build
-// import { processInvoiceInput } from '../../lib/invoiceService';
-// import { processProposalInput } from '../../lib/proposalservice';
 import { BotIntegration } from '../../modules/bot-integration';
 import { processInvoiceInput } from '../../lib/invoiceService';
 import { processProposalInput } from '../../lib/proposalservice';
@@ -1294,6 +1291,20 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
       return "❌ User not found. Please try /start to initialize your account.";
     }
 
+    // Check if user is in contract creation flow first (use UUID for contract flow tracking)
+    console.log('[Webhook] Checking contract flow for user:', user.id);
+    const isInFlow = botIntegration?.getContractModule()?.isInContractFlow(user.id);
+    console.log('[Webhook] Is user in contract flow?', isInFlow);
+    
+    if (isInFlow && botIntegration) {
+      console.log('[Webhook] User is in contract flow, handling contract input directly');
+      const contractHandled = await botIntegration.getContractModule().handleContractInput(chatId, user.id, message);
+      console.log('[Webhook] Contract input handled:', contractHandled);
+      if (contractHandled) {
+        return 'Contract input processed successfully.';
+      }
+    }
+
     // Check if user has pending context (like waiting for name)
     const { data: session } = await supabase
       .from('sessions')
@@ -1347,12 +1358,12 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
     // Use Telegram username for LLM context, but always use UUID for actions
     const llmUserId = user.telegram_username || user.id;
 
-    // Use direct intent parsing for consistent behavior with Telegram bot
-    console.log('[Webhook] About to call runLLM with:', { userId: llmUserId, message, generateNaturalResponse: false });
+    // Use LLM processing for proper intent detection of service requests
+    console.log('[Webhook] About to call runLLM with:', { userId: llmUserId, message, generateNaturalResponse: true });
     const llmResponse = await runLLM({
       userId: llmUserId,
       message,
-      generateNaturalResponse: false
+      generateNaturalResponse: true
     });
     console.log('[Webhook] runLLM returned:', llmResponse);
 
@@ -1479,6 +1490,14 @@ async function formatResponseForUser(parsedResponse: any, userId: string, userMe
         // Use the existing actions.ts handler for invoice functionality
         const invoiceResult = await handleAction(intent, params, userId);
         return invoiceResult.text;
+
+      case 'create_contract':
+        // Use the existing actions.ts handler for contract functionality
+        const contractParams = { ...params, text: userMessage };
+        console.log('[Webhook] Calling handleAction for create_contract with:', { intent, params: contractParams, userId });
+        const contractResult = await handleAction(intent, contractParams, userId);
+        console.log('[Webhook] handleAction result for create_contract:', contractResult);
+        return contractResult.text;
 
       case 'view_proposals':
         try {

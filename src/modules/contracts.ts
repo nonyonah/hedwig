@@ -1,4 +1,4 @@
-import TelegramBot from 'node-telegram-bot-api';
+import * as TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import { legalContractService, ContractGenerationRequest } from '../services/legalContractService';
 import { ProjectContract, ContractMilestone } from '../types/supabase';

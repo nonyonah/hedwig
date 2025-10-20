@@ -1,4 +1,4 @@
-import TelegramBot from 'node-telegram-bot-api';
+import * as TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
 import { ethers } from 'ethers';

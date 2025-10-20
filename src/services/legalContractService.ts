@@ -45,8 +45,8 @@ export class LegalContractService {
    */
   async generateContract(request: ContractGenerationRequest): Promise<ContractGenerationResult> {
     try {
-      // Generate contract text using AI (placeholder implementation)
-      const contractText = this.generateContractText(request);
+      // Generate contract text using Gemini AI
+      const contractText = await this.generateContractTextWithAI(request);
       
       // Generate a hash for the contract
       const contractHash = await this.generateContractHash(contractText);
@@ -133,7 +133,75 @@ export class LegalContractService {
   }
 
   /**
-   * Generate contract text (placeholder implementation)
+   * Generate contract text using Gemini AI
+   */
+  private async generateContractTextWithAI(request: ContractGenerationRequest): Promise<string> {
+    try {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+
+      const prompt = `Generate a professional freelance service agreement contract based on the following details:
+
+PROJECT DETAILS:
+- Title: ${request.projectTitle}
+- Description: ${request.projectDescription}
+- Deadline: ${request.deadline}
+
+PARTIES:
+- Client Name: ${request.clientName}
+- Client Email: ${request.clientEmail || 'Not provided'}
+- Client Wallet: ${request.clientWallet}
+- Freelancer Name: ${request.freelancerName}
+- Freelancer Email: ${request.freelancerEmail || 'Not provided'}
+- Freelancer Wallet: ${request.freelancerWallet}
+
+PAYMENT TERMS:
+- Total Amount: ${request.paymentAmount} ${request.tokenType}
+- Blockchain Network: ${request.chain}
+- Payment Method: Cryptocurrency (${request.tokenType} on ${request.chain} network)
+
+${request.milestones.length > 0 ? `MILESTONES:
+${request.milestones.map((milestone, index) => 
+  `${index + 1}. ${milestone.title}
+     Description: ${milestone.description}
+     Amount: ${milestone.amount} ${request.tokenType}
+     Deadline: ${milestone.deadline}`
+).join('\n\n')}` : ''}
+
+${request.refundPolicy ? `REFUND POLICY:
+${request.refundPolicy}` : ''}
+
+Please generate a comprehensive, legally sound freelance service agreement that includes:
+1. Clear project scope and deliverables
+2. Payment terms and schedule
+3. Intellectual property rights
+4. Termination clauses
+5. Dispute resolution procedures
+6. Cryptocurrency payment specifics
+7. Professional formatting with proper sections
+
+The contract should be professional, legally comprehensive, and suitable for freelance work involving cryptocurrency payments. Include standard legal protections for both parties.`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const contractText = response.text();
+
+      if (!contractText || contractText.trim().length === 0) {
+        throw new Error('AI generated empty contract text');
+      }
+
+      return contractText.trim();
+    } catch (error) {
+      console.error('[LegalContractService] Error generating contract with AI:', error);
+      // Fallback to template-based generation
+      return this.generateContractText(request);
+    }
+  }
+
+  /**
+   * Generate contract text (fallback template implementation)
    */
   private generateContractText(request: ContractGenerationRequest): string {
     return `
