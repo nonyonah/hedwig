@@ -2459,7 +2459,7 @@ export class BotIntegration {
         data.startsWith('edit_contract_') || data.startsWith('cancel_contract_') ||
         data.startsWith('approve_contract_') || data.startsWith('generate_contract_') ||
         data.startsWith('continue_contract_') || data === 'cancel_contract_creation') {
-        await this.contractModule.handleContractCallback(callbackQuery, userId);
+        await this.contractModule.handleContractCallback(chatId, userId, data, callbackQuery.message?.message_id);
         return true;
       }
       // Payment link deletion callbacks
@@ -2840,9 +2840,7 @@ export class BotIntegration {
                 return false;
               } else if (intent === 'create_contract') {
                 // Handle contract creation requests
-                const { ContractModule } = await import('./contract');
-                const contractModule = new ContractModule(this.bot);
-                await contractModule.startContractCreation(message.chat.id, userId, params);
+                await this.contractModule.startContractCreation(message.chat.id, userId, undefined, params);
                 return true;
               }
               else if (intent === 'referral') {

@@ -36,12 +36,12 @@ export class ContractModule {
   }
 
   /**
-   * Start the contract creation flow
+   * Start contract creation flow with optional natural language parameters
    */
-  async startContractCreation(chatId: number, userId: string, fromConversion?: { type: 'invoice' | 'proposal', id: string }) {
+  async startContractCreation(chatId: number, userId: string, fromConversion?: { type: 'invoice' | 'proposal', id: string }, nlParams?: any) {
     try {
       // Track contract creation start
-      trackEvent('contract_creation_started', { chatId, fromConversion: !!fromConversion }, userId);
+      trackEvent('contract_creation_started', { chatId, fromConversion: !!fromConversion, hasNlParams: !!nlParams }, userId);
 
       // Initialize contract state
       const state: ContractCreationState = {
@@ -55,10 +55,15 @@ export class ContractModule {
         await this.prefillFromExisting(state, fromConversion);
       }
 
-      this.contractStates.set(userId, state);
+      // If natural language parameters are provided, pre-fill what we can
+      if (nlParams) {
+        await this.prefillFromNaturalLanguage(state, nlParams, chatId);
+      }
 
-      // Start with project title
-      await this.askForProjectTitle(chatId, fromConversion);
+      this.contractStates.set(userId, state);
+      
+      // Start with the first unfilled field
+      await this.askForNextField(chatId, userId, state, fromConversion);
     } catch (error) {
       console.error('[ContractModule] Error starting contract creation:', error);
       await this.bot.sendMessage(chatId, '❌ Failed to start contract creation. Please try again.');
@@ -66,13 +71,32 @@ export class ContractModule {
   }
 
   /**
-   * Handle user input during contract creation
+   * Handle user input during contract creation with enhanced context awareness
    */
   async handleContractInput(chatId: number, userId: string, message: string): Promise<boolean> {
     const state = this.contractStates.get(userId);
     if (!state) return false;
 
     try {
+      // Provide context-aware help for common user confusion
+      if (message.toLowerCase().includes('cancel') || message.toLowerCase().includes('stop')) {
+        await this.bot.sendMessage(chatId, '❓ **Want to cancel?** Use the ❌ Cancel button below, or type "yes" to confirm cancellation.', {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '❌ Cancel Contract Creation', callback_data: 'contract_cancel_contract' },
+              { text: '↩️ Continue', callback_data: 'contract_continue' }
+            ]]
+          }
+        });
+        return true;
+      }
+
+      if (message.toLowerCase().includes('help') || message.toLowerCase().includes('what')) {
+        await this.showContextualHelp(chatId, state);
+        return true;
+      }
+
       switch (state.step) {
         case 'title':
           return await this.handleTitleInput(chatId, userId, message, state);
@@ -93,7 +117,7 @@ export class ContractModule {
       }
     } catch (error) {
       console.error('[ContractModule] Error handling contract input:', error);
-      await this.bot.sendMessage(chatId, '❌ An error occurred. Please try again.');
+      await this.bot.sendMessage(chatId, '❌ An error occurred. Please try again or use the ❌ Cancel button to start over.');
       return true;
     }
   }
@@ -119,6 +143,8 @@ export class ContractModule {
             return await this.editContract(chatId, userId);
           case 'cancel_contract':
             return await this.cancelContract(chatId, userId);
+          case 'continue':
+            return await this.continueContractFlow(chatId, userId);
           default:
             if (action.startsWith('chain_')) {
               const chain = action.replace('chain_', '');
@@ -499,6 +525,151 @@ export class ContractModule {
   }
 
   /**
+   * Ask for project description
+   */
+  private async askForProjectDescription(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `📝 **Project Description**\n\nPlease provide a detailed description of your project:`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+          ]]
+        }
+      }
+    );
+  }
+
+  /**
+   * Ask for client wallet address
+   */
+  private async askForClientWallet(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `💰 **Client Wallet Address**\n\nPlease enter the client's wallet address for payment:`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+          ]]
+        }
+      }
+    );
+  }
+
+  /**
+   * Ask for payment amount
+   */
+  private async askForPaymentAmount(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `💵 **Payment Amount**\n\nPlease enter the total payment amount (numbers only):`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+          ]]
+        }
+      }
+    );
+  }
+
+  /**
+   * Ask for token selection
+   */
+  private async askForToken(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `🪙 **Select Token**\n\nChoose the token for payment:`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'USDC', callback_data: 'contract_token_USDC' },
+              { text: 'USDT', callback_data: 'contract_token_USDT' }
+            ],
+            [
+              { text: 'ETH', callback_data: 'contract_token_ETH' },
+              { text: 'MATIC', callback_data: 'contract_token_MATIC' }
+            ],
+            [
+              { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+            ]
+          ]
+        }
+      }
+    );
+  }
+
+  /**
+   * Ask for blockchain selection
+   */
+  private async askForChain(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `⛓️ **Select Blockchain**\n\nChoose the blockchain for your contract:`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'Ethereum', callback_data: 'contract_chain_ethereum' },
+              { text: 'Polygon', callback_data: 'contract_chain_polygon' }
+            ],
+            [
+              { text: 'BSC', callback_data: 'contract_chain_bsc' },
+              { text: 'Arbitrum', callback_data: 'contract_chain_arbitrum' }
+            ],
+            [
+              { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+            ]
+          ]
+        }
+      }
+    );
+  }
+
+  /**
+   * Ask for deadline
+   */
+  private async askForDeadline(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `📅 **Project Deadline**\n\nPlease enter the project deadline (e.g., "2024-12-31", "in 30 days", "next month"):`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+          ]]
+        }
+      }
+    );
+  }
+
+  /**
+   * Ask for milestones
+   */
+  private async askForMilestones(chatId: number) {
+    await this.bot.sendMessage(chatId, 
+      `🎯 **Project Milestones**\n\nWould you like to add milestones to break down the project into smaller deliverables?`,
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Add Milestones', callback_data: 'contract_add_milestone' },
+              { text: '⏭️ Skip Milestones', callback_data: 'contract_skip_milestones' }
+            ],
+            [
+              { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+            ]
+          ]
+        }
+      }
+    );
+  }
+
+  /**
    * Ask for refund policy
    */
   private async askForRefundPolicy(chatId: number) {
@@ -814,8 +985,202 @@ export class ContractModule {
   }
 
   /**
+   * Pre-fill contract data from natural language parameters
+   */
+  private async prefillFromNaturalLanguage(state: ContractCreationState, params: any, chatId: number) {
+    try {
+      // Map natural language parameters to contract data
+      if (params.service_description || params.project_description) {
+        state.data.projectDescription = params.service_description || params.project_description;
+      }
+      
+      if (params.client_name) {
+        state.data.clientName = params.client_name;
+      }
+      
+      if (params.payment_amount) {
+        const amount = parseFloat(params.payment_amount);
+        if (!isNaN(amount)) {
+          state.data.paymentAmount = amount;
+        }
+      }
+      
+      if (params.currency) {
+        // Map common currency names to tokens
+        const currencyMap: { [key: string]: string } = {
+          'USD': 'USDC',
+          'USDC': 'USDC',
+          'USDT': 'USDT',
+          'ETH': 'ETH'
+        };
+        state.data.tokenType = currencyMap[params.currency.toUpperCase()] || 'USDC';
+      }
+      
+      if (params.timeline || params.deadline) {
+        // Try to parse timeline into a deadline
+        const timelineText = params.timeline || params.deadline;
+        const deadline = this.parseTimelineToDeadline(timelineText);
+        if (deadline) {
+          state.data.deadline = deadline;
+        }
+      }
+      
+      // Set default chain
+      state.data.chain = 'base';
+      
+      // If we have enough info, show a summary
+      if (state.data.projectDescription || state.data.clientName || state.data.paymentAmount) {
+        await this.showNaturalLanguageSummary(chatId, state, params);
+      }
+    } catch (error) {
+      console.error('[ContractModule] Error prefilling from natural language:', error);
+    }
+  }
+
+  /**
+   * Show summary of extracted natural language parameters
+   */
+  private async showNaturalLanguageSummary(chatId: number, state: ContractCreationState, params: any) {
+    let summary = '🤖 **I understood the following from your request:**\n\n';
+    
+    if (state.data.projectDescription) {
+      summary += `📝 **Service:** ${state.data.projectDescription}\n`;
+    }
+    if (state.data.clientName) {
+      summary += `👤 **Client:** ${state.data.clientName}\n`;
+    }
+    if (state.data.paymentAmount) {
+      summary += `💰 **Amount:** ${state.data.paymentAmount} ${state.data.tokenType || 'USDC'}\n`;
+    }
+    if (state.data.deadline) {
+      summary += `⏰ **Deadline:** ${state.data.deadline}\n`;
+    }
+    
+    summary += '\n📋 **Let\'s complete the remaining details...**';
+    
+    await this.bot.sendMessage(chatId, summary, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * Parse timeline text into a deadline date
+   */
+  private parseTimelineToDeadline(timeline: string): string | null {
+    try {
+      const now = new Date();
+      const timelineText = timeline.toLowerCase();
+      
+      // Handle common patterns
+      if (timelineText.includes('week')) {
+        const weeks = parseInt(timelineText.match(/(\d+)/)?.[1] || '1');
+        const deadline = new Date(now.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
+        return deadline.toISOString().split('T')[0];
+      }
+      
+      if (timelineText.includes('month')) {
+        const months = parseInt(timelineText.match(/(\d+)/)?.[1] || '1');
+        const deadline = new Date(now.getFullYear(), now.getMonth() + months, now.getDate());
+        return deadline.toISOString().split('T')[0];
+      }
+      
+      if (timelineText.includes('day')) {
+        const days = parseInt(timelineText.match(/(\d+)/)?.[1] || '7');
+        const deadline = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+        return deadline.toISOString().split('T')[0];
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[ContractModule] Error parsing timeline:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Ask for the next required field in the contract creation flow
+   */
+  private async askForNextField(chatId: number, userId: string, state: ContractCreationState, fromConversion?: { type: 'invoice' | 'proposal', id: string }) {
+    // Determine which field to ask for next based on what's missing
+    if (!state.data.projectTitle) {
+      state.step = 'title';
+      await this.askForProjectTitle(chatId, fromConversion);
+    } else if (!state.data.projectDescription) {
+      state.step = 'description';
+      await this.askForProjectDescription(chatId);
+    } else if (!state.data.clientWallet) {
+      state.step = 'client_wallet';
+      await this.askForClientWallet(chatId);
+    } else if (!state.data.paymentAmount) {
+      state.step = 'amount';
+      await this.askForPaymentAmount(chatId);
+    } else if (!state.data.tokenType) {
+      state.step = 'token';
+      await this.askForToken(chatId);
+    } else if (!state.data.chain) {
+      state.step = 'chain';
+      await this.askForChain(chatId);
+    } else if (!state.data.deadline) {
+      state.step = 'deadline';
+      await this.askForDeadline(chatId);
+    } else {
+      state.step = 'milestones';
+      await this.askForMilestones(chatId);
+    }
+  }
+
+  /**
+   * Show contextual help based on current step
+   */
+  private async showContextualHelp(chatId: number, state: ContractCreationState) {
+    let helpText = '💡 **Help for current step:**\n\n';
+    
+    switch (state.step) {
+      case 'title':
+        helpText += '📝 **Project Title**: Enter a clear, descriptive title for your project.\n\nExample: "Website Development for E-commerce Store"';
+        break;
+      case 'description':
+        helpText += '📋 **Project Description**: Provide details about what work will be done.\n\nExample: "Design and develop a responsive e-commerce website with payment integration"';
+        break;
+      case 'client_wallet':
+        helpText += '💳 **Client Wallet**: Enter the client\'s cryptocurrency wallet address.\n\nExample: 0x1234...abcd (Ethereum/Base address)';
+        break;
+      case 'amount':
+        helpText += '💰 **Payment Amount**: Enter the total payment amount in numbers.\n\nExample: 5000 (for $5,000)';
+        break;
+      case 'deadline':
+        helpText += '📅 **Deadline**: Enter the project completion date.\n\nExample: 2024-03-15 or "2 weeks" or "1 month"';
+        break;
+      case 'milestones':
+        helpText += '🎯 **Milestones**: Break your project into payment milestones.\n\nExample: "Design mockups - 30% payment"';
+        break;
+      default:
+        helpText += 'Follow the prompts to complete your contract setup.';
+    }
+    
+    await this.bot.sendMessage(chatId, helpText, { 
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '❌ Cancel', callback_data: 'contract_cancel_contract' }
+        ]]
+      }
+    });
+  }
+
+  /**
    * Clear contract state for user
    */
+  private async continueContractFlow(chatId: number, userId: string): Promise<boolean> {
+    const state = this.contractStates.get(userId);
+    if (!state) {
+      await this.bot.sendMessage(chatId, '❌ No active contract creation found. Please start a new contract.');
+      return true;
+    }
+
+    // Continue with the current step
+    await this.askForNextField(chatId, userId, state);
+    return true;
+  }
+
   clearContractState(userId: string) {
     this.contractStates.delete(userId);
   }
