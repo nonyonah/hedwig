@@ -362,7 +362,8 @@ export class AnalyticsMiddleware {
     if (lowerText.includes('send') || lowerText.includes('transfer')) return 'send_intent';
     if (lowerText.includes('balance') || lowerText.includes('wallet')) return 'balance_inquiry';
     if (lowerText.includes('invoice') || lowerText.includes('bill')) return 'invoice_intent';
-    if (lowerText.includes('proposal') || lowerText.includes('quote')) return 'proposal_intent';
+  if (lowerText.includes('proposal') || lowerText.includes('quote')) return 'proposal_intent';
+  if (lowerText.includes('contract') || lowerText.includes('agreement')) return 'contract_intent';
     if (lowerText.includes('withdraw') || lowerText.includes('cash out')) return 'withdrawal_intent';
     if (lowerText.includes('error') || lowerText.includes('problem')) return 'error_report';
     if (lowerText.includes('thank') || lowerText.includes('thanks')) return 'gratitude';

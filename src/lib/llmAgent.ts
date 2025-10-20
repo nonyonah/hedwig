@@ -115,7 +115,7 @@ Valid intents:
 - view_proposals: For viewing existing proposals
 - edit_proposal: For editing existing proposals
 - send_reminder: For sending manual payment reminders to clients
-
+- create_contract: For creating smart contracts, legal agreements, or blockchain contracts
 
 - offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
 - kyc_verification: For KYC status, identity verification, or compliance requirements
@@ -281,6 +281,17 @@ IMPORTANT INTENT RECOGNITION RULES:
    - NEVER ask for clarification - proceed with creating proposal and prompt for missing details
    - Even simple requests like "create proposal" should use this intent
 
+9.5. CONTRACT REQUESTS: Always use "create_contract" intent for:
+   - "contract", "create contract", "generate contract", "draft contract"
+   - "smart contract", "blockchain contract", "legal contract", "agreement"
+   - "contract for", "need a contract", "make a contract", "new contract"
+   - "legal agreement", "service agreement", "work agreement", "employment contract"
+   - "freelance contract", "consulting contract", "development contract"
+   - "contract template", "contract generator", "automated contract"
+   - Any request to create, generate, or draft contracts or legal agreements
+   - NEVER ask for clarification - proceed with creating contract and prompt for missing details
+   - Even simple requests like "create contract" should use this intent
+
 10. SEND PROPOSAL REQUESTS: Always use "send_proposal" intent for:
      - "send proposal", "email proposal", "send proposal to client"
      - "deliver proposal", "share proposal", "forward proposal"
@@ -337,6 +348,21 @@ IMPORTANT INTENT RECOGNITION RULES:
     - features: Extract specific features or requirements
     - project_title: Extract project title if mentioned
     - description: Extract project description
+
+13.5. PARAMETER EXTRACTION for "create_contract" intent:
+    - contract_type: Extract contract type (service agreement, employment, freelance, consulting, development, NDA, etc.)
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - service_description: Extract description of services or work to be performed
+    - payment_amount: Extract payment amount or rate
+    - currency: Extract currency (USD, EUR, GBP, etc.)
+    - payment_terms: Extract payment terms (upfront, milestone-based, hourly, etc.)
+    - timeline: Extract project timeline or contract duration
+    - deliverables: Extract specific deliverables or milestones
+    - contract_title: Extract contract title if mentioned
+    - start_date: Extract start date if mentioned
+    - end_date: Extract end date if mentioned
+    - additional_terms: Extract any additional terms or conditions
 
 14. PARAMETER EXTRACTION for "create_invoice" intent:
     - client_name: Extract client or company name
@@ -527,6 +553,21 @@ Response: {"intent": "create_invoice", "params": {}}
 
 User: "proposal" or "create proposal" or "generate proposal" or "make proposal" or "new proposal"
 Response: {"intent": "create_proposal", "params": {}}
+
+User: "create contract for web development with ABC Corp, $5000, 3 month timeline"
+Response: {"intent": "create_contract", "params": {"contract_type": "development", "client_name": "ABC Corp", "payment_amount": "5000", "currency": "USD", "timeline": "3 months", "service_description": "web development"}}
+
+User: "need a freelance contract for logo design, $800, client XYZ Inc"
+Response: {"intent": "create_contract", "params": {"contract_type": "freelance", "service_description": "logo design", "payment_amount": "800", "currency": "USD", "client_name": "XYZ Inc"}}
+
+User: "draft service agreement for consulting services, $150/hour"
+Response: {"intent": "create_contract", "params": {"contract_type": "service agreement", "service_description": "consulting services", "payment_amount": "150", "currency": "USD", "payment_terms": "hourly"}}
+
+User: "contract" or "create contract" or "generate contract" or "make contract" or "new contract"
+Response: {"intent": "create_contract", "params": {}}
+
+User: "smart contract" or "blockchain contract" or "legal agreement"
+Response: {"intent": "create_contract", "params": {}}
 
 User: "send proposal 123 to client@company.com"
 Response: {"intent": "send_proposal", "params": {"proposal_id": "123", "client_email": "client@company.com"}}

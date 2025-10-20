@@ -2838,6 +2838,12 @@ export class BotIntegration {
               } else if (intent === 'create_payment_link') {
                 // Let this be handled by the main actions.ts handler
                 return false;
+              } else if (intent === 'create_contract') {
+                // Handle contract creation requests
+                const { ContractModule } = await import('./contract');
+                const contractModule = new ContractModule(this.bot);
+                await contractModule.startContractCreation(message.chat.id, userId, params);
+                return true;
               }
               else if (intent === 'referral') {
                 await this.handleReferralCommand(message.chat.id, userId);

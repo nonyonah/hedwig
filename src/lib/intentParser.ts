@@ -520,6 +520,35 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
+    // Contract keywords - comprehensive detection for contract creation
+    if (text.includes('contract') ||
+      text.includes('create contract') ||
+      text.includes('generate contract') ||
+      text.includes('draft contract') ||
+      text.includes('smart contract') ||
+      text.includes('blockchain contract') ||
+      text.includes('legal contract') ||
+      text.includes('agreement') ||
+      text.includes('contract for') ||
+      text.includes('need a contract') ||
+      text.includes('legal agreement') ||
+      text.includes('service agreement') ||
+      text.includes('work agreement') ||
+      text.includes('employment contract') ||
+      text.includes('freelance contract') ||
+      text.includes('consulting contract') ||
+      text.includes('development contract') ||
+      text.includes('contract template') ||
+      text.includes('contract generator') ||
+      text.includes('automated contract') ||
+      (text.includes('create') && text.includes('contract')) ||
+      (text.includes('make') && text.includes('contract')) ||
+      (text.includes('generate') && text.includes('agreement'))) {
+      const result = { intent: 'create_contract', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
     // Enhanced Earnings keywords - comprehensive detection with time period and PDF support
     if (text.includes('earnings') ||
       text.includes('how much have i earned') ||
