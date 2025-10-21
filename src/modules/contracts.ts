@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { legalContractService, ContractGenerationRequest } from '../services/legalContractService';
 import { ProjectContract, ContractMilestone } from '../types/supabase';
 import { trackEvent } from '../lib/posthog';
+import { sendEmail, generateContractEmailTemplate } from '../lib/emailService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -161,6 +162,14 @@ export class ContractModule {
             if (action.startsWith('token_')) {
               const token = action.replace('token_', '');
               return await this.selectToken(chatId, userId, token);
+            }
+            if (action.startsWith('resend_email_')) {
+              const contractId = action.replace('resend_email_', '');
+              return await this.resendContractEmail(chatId, userId, contractId);
+            }
+            if (action.startsWith('view_')) {
+              const contractId = action.replace('view_', '');
+              return await this.viewContract(chatId, userId, contractId);
             }
             return false;
         }
@@ -335,10 +344,6 @@ export class ContractModule {
             [
               { text: '💵 USDC', callback_data: 'contract_token_USDC' },
               { text: '🌍 cUSD', callback_data: 'contract_token_cUSD' }
-            ],
-            [
-              { text: '🔷 USDT', callback_data: 'contract_token_USDT' },
-              { text: '💎 DAI', callback_data: 'contract_token_DAI' }
             ]
           ]
         }
@@ -468,7 +473,17 @@ export class ContractModule {
    * Handle milestones input
    */
   private async handleMilestonesInput(chatId: number, userId: string, message: string, state: ContractCreationState): Promise<boolean> {
-    if (!state.currentMilestone || !state.milestoneStep) return false;
+    // If milestone state is corrupted, reinitialize milestone creation
+    if (!state.currentMilestone || !state.milestoneStep) {
+      console.log('[ContractModule] Milestone state corrupted, reinitializing...');
+      state.currentMilestone = {};
+      state.milestoneStep = 'title';
+      await this.bot.sendMessage(chatId, 
+        `🎯 **Milestone ${state.milestones.length + 1}**\n\n📝 **Milestone Title**\n\nEnter the title for this milestone:`,
+        { parse_mode: 'Markdown' }
+      );
+      return true;
+    }
 
     switch (state.milestoneStep) {
       case 'title':
@@ -809,21 +824,24 @@ Please enter your client's email address for contract notifications and signing:
 
       // Store contract in database
       const contractId = `contract_${Date.now()}_${userId}`;
+      const contractIdNumber = Date.now(); // Generate unique contract ID number
       
       const { error: dbError } = await supabase
         .from('project_contracts')
         .insert({
           id: contractId,
-          title: contractRequest.projectTitle,
-          description: contractRequest.projectDescription,
-          client_wallet: contractRequest.clientWallet,
+          contract_id: contractIdNumber,
+          project_title: contractRequest.projectTitle,
+          project_description: contractRequest.projectDescription,
+          client_id: null, // Will be set when client approves
           freelancer_id: userId,
-          amount: contractRequest.paymentAmount,
-          token_type: contractRequest.tokenType,
+          total_amount: contractRequest.paymentAmount,
+          platform_fee: contractRequest.paymentAmount * 0.05, // 5% platform fee
+          token_address: contractRequest.tokenType, // This should be the actual token address
           chain: contractRequest.chain,
           deadline: contractRequest.deadline,
-          status: 'draft',
-          legal_document_hash: result.contractHash,
+          status: 'created',
+          legal_contract_hash: result.contractHash,
           created_at: new Date().toISOString()
         });
 
@@ -849,15 +867,71 @@ Please enter your client's email address for contract notifications and signing:
       // Store legal document
       await legalContractService.storeContract(contractId, result.contractText!, result.contractHash!, result.metadata);
 
+      // Send email notification to client if email is provided
+      let emailSent = false;
+      if (state.data.clientEmail) {
+        try {
+          const contractData = {
+            id: contractId,
+            contractId: contractId,
+            projectTitle: state.data.projectTitle,
+            project_title: state.data.projectTitle,
+            freelancerName: state.data.freelancerName || 'Freelancer',
+            freelancer_name: state.data.freelancerName || 'Freelancer',
+            clientName: state.data.clientName || 'Client',
+            client_name: state.data.clientName || 'Client',
+            paymentAmount: state.data.paymentAmount,
+            total_amount: state.data.paymentAmount,
+            tokenType: state.data.tokenType,
+            token_type: state.data.tokenType,
+            chain: state.data.chain,
+            deadline: state.data.deadline,
+            contractHash: result.contractHash,
+            legal_contract_hash: result.contractHash
+          };
+
+          const emailTemplate = generateContractEmailTemplate(contractData);
+          
+          await sendEmail({
+            to: state.data.clientEmail,
+            subject: `Contract Draft Ready - ${state.data.projectTitle}`,
+            html: emailTemplate
+          });
+          
+          emailSent = true;
+          console.log(`[ContractModule] Email sent successfully to ${state.data.clientEmail}`);
+        } catch (emailError) {
+          console.error('[ContractModule] Failed to send email:', emailError);
+          // Don't fail the contract generation if email fails
+        }
+      }
+
       // Clean up state
       this.contractStates.delete(userId);
 
       // Track success
-      trackEvent('contract_generated', { contractId, hasMillestones: state.milestones.length > 0 }, userId);
+      trackEvent('contract_generated', { 
+        contractId, 
+        hasMillestones: state.milestones.length > 0,
+        emailSent 
+      }, userId);
+
+      const emailStatus = emailSent ? '\n📧 **Email sent to client!**' : 
+        (state.data.clientEmail ? '\n⚠️ **Email failed to send**' : '');
 
       await this.bot.sendMessage(chatId, 
-        `✅ **Contract Generated Successfully!**\n\n📄 **Contract ID:** ${contractId}\n📊 **Word Count:** ${result.metadata?.wordCount}\n🔐 **Document Hash:** ${result.contractHash?.substring(0, 16)}...\n\n🚀 **Next Steps:**\n1. Review the legal document\n2. Deploy smart contract\n3. Share with client\n\nUse /contracts to manage your contracts.`,
-        { parse_mode: 'Markdown' }
+        `✅ **Contract Generated Successfully!**\n\n📄 **Contract ID:** ${contractId}\n📊 **Word Count:** ${result.metadata?.wordCount}\n🔐 **Document Hash:** ${result.contractHash?.substring(0, 16)}...${emailStatus}\n\n🚀 **Next Steps:**\n1. Review the legal document\n2. Deploy smart contract\n3. Share with client\n\nUse /contracts to manage your contracts.`,
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: emailSent ? {
+            inline_keyboard: [
+              [
+                { text: '📄 View Contract', callback_data: `contract_view_${contractId}` },
+                { text: '📧 Resend Email', callback_data: `contract_resend_email_${contractId}` }
+              ]
+            ]
+          } : undefined
+        }
       );
 
       return true;
@@ -1295,5 +1369,138 @@ Please enter your client's email address for contract notifications and signing:
 
   clearContractState(userId: string) {
     this.contractStates.delete(userId);
+  }
+
+  /**
+   * Resend contract email to client
+   */
+  private async resendContractEmail(chatId: number, userId: string, contractId: string): Promise<boolean> {
+    try {
+      // Fetch contract details from database
+      const { data: contract, error } = await supabase
+        .from('project_contracts')
+        .select('*')
+        .eq('contract_id', contractId)
+        .single();
+
+      if (error || !contract) {
+        await this.bot.sendMessage(chatId, '❌ Contract not found.');
+        return true;
+      }
+
+      // Fetch legal contract details
+      const { data: legalContract, error: legalError } = await supabase
+        .from('legal_contracts')
+        .select('*')
+        .eq('contract_hash', contract.legal_contract_hash)
+        .single();
+
+      if (legalError || !legalContract) {
+        await this.bot.sendMessage(chatId, '❌ Legal contract details not found.');
+        return true;
+      }
+
+      if (!legalContract.client_email) {
+        await this.bot.sendMessage(chatId, '❌ No client email found for this contract.');
+        return true;
+      }
+
+      // Prepare contract data for email
+      const contractData = {
+        id: contractId,
+        contractId: contractId,
+        projectTitle: contract.project_title,
+        project_title: contract.project_title,
+        freelancerName: legalContract.freelancer_name || 'Freelancer',
+        freelancer_name: legalContract.freelancer_name || 'Freelancer',
+        clientName: legalContract.client_name || 'Client',
+        client_name: legalContract.client_name || 'Client',
+        paymentAmount: contract.total_amount,
+        total_amount: contract.total_amount,
+        tokenType: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
+        token_type: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
+        chain: contract.chain,
+        deadline: contract.deadline,
+        contractHash: contract.legal_contract_hash,
+        legal_contract_hash: contract.legal_contract_hash
+      };
+
+      const emailTemplate = generateContractEmailTemplate(contractData);
+      
+      await sendEmail({
+        to: legalContract.client_email,
+        subject: `Contract Draft Ready - ${contract.project_title}`,
+        html: emailTemplate
+      });
+
+      await this.bot.sendMessage(chatId, 
+        `✅ **Email Resent Successfully!**\n\n📧 Sent to: ${legalContract.client_email}\n📄 Contract: ${contract.project_title}`,
+        { parse_mode: 'Markdown' }
+      );
+
+      return true;
+    } catch (error) {
+      console.error('[ContractModule] Error resending email:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to resend email. Please try again.');
+      return true;
+    }
+  }
+
+  /**
+   * View contract details
+   */
+  private async viewContract(chatId: number, userId: string, contractId: string): Promise<boolean> {
+    try {
+      // Fetch contract details from database
+      const { data: contract, error } = await supabase
+        .from('project_contracts')
+        .select('*')
+        .eq('contract_id', contractId)
+        .single();
+
+      if (error || !contract) {
+        await this.bot.sendMessage(chatId, '❌ Contract not found.');
+        return true;
+      }
+
+      // Fetch milestones
+      const { data: milestones } = await supabase
+        .from('contract_milestones')
+        .select('*')
+        .eq('contract_id', contractId)
+        .order('created_at', { ascending: true });
+
+      const milestonesText = milestones && milestones.length > 0 
+        ? milestones.map((m, i) => `${i + 1}. ${m.title} - ${m.amount} tokens`).join('\n')
+        : 'No milestones defined';
+
+      const contractDetails = `📄 **Contract Details**\n\n` +
+        `**ID:** ${contractId}\n` +
+        `**Project:** ${contract.project_title}\n` +
+        `**Description:** ${contract.project_description || 'N/A'}\n` +
+        `**Amount:** ${contract.total_amount} tokens\n` +
+        `**Chain:** ${contract.chain}\n` +
+        `**Status:** ${contract.status}\n` +
+        `**Created:** ${new Date(contract.created_at).toLocaleDateString()}\n\n` +
+        `**Milestones:**\n${milestonesText}`;
+
+      await this.bot.sendMessage(chatId, contractDetails, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📧 Resend Email', callback_data: `contract_resend_email_${contractId}` },
+              { text: '📋 List All', callback_data: 'contracts_list' }
+            ]
+          ]
+        }
+      });
+
+      return true;
+    } catch (error) {
+      console.error('[ContractModule] Error viewing contract:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to load contract details.');
+      return true;
+    }
   }
 }

@@ -90,6 +90,7 @@ export class OfframpSessionService {
       .select('*')
       .eq('user_id', userId)
       .gt('expires_at', now)
+      .not('step', 'in', '(completed,transfer_completed)')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();

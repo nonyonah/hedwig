@@ -247,15 +247,49 @@ function setupBotHandlers() {
         console.log('[Webhook] Skipping answerCallbackQuery for test callback');
       }
 
-      // Check if it's a business feature callback (with timeout)
+      // Check if it's a business feature callback (with improved async handling)
       try {
-        if (botIntegration && await Promise.race([
-          botIntegration.handleCallback(callbackQuery),
-          new Promise<boolean>((_, reject) =>
-            setTimeout(() => reject(new Error('Integration callback timeout')), 15000) // Increased timeout
-          )
-        ])) {
-          return; // BotIntegration handled it
+        if (botIntegration) {
+          // For contract approval callbacks, handle them asynchronously to prevent timeouts
+          if (data === 'contract_approve_contract') {
+            // Answer callback immediately
+            if (!callbackAnswered) {
+              try {
+                await bot?.answerCallbackQuery(callbackQuery.id, { text: 'Generating contract...' });
+                callbackAnswered = true;
+              } catch (error) {
+                console.warn('[Webhook] Failed to answer contract approval callback:', error);
+              }
+            }
+            
+            // Process contract generation asynchronously
+             setImmediate(async () => {
+               try {
+                 await botIntegration!.handleCallback(callbackQuery);
+               } catch (error) {
+                 console.error('[Webhook] Async contract generation error:', error);
+                 // Send error message to user
+                 try {
+                   await bot?.sendMessage(chatId, '❌ Contract generation failed. Please try again.');
+                 } catch (sendError) {
+                   console.error('[Webhook] Failed to send error message:', sendError);
+                 }
+               }
+             });
+            return; // Exit early for async processing
+          }
+          
+          // For other callbacks, use timeout but with better error handling
+          const handled = await Promise.race([
+            botIntegration.handleCallback(callbackQuery),
+            new Promise<boolean>((_, reject) =>
+              setTimeout(() => reject(new Error('Integration callback timeout')), 20000) // Increased timeout to 20s
+            )
+          ]);
+          
+          if (handled) {
+            return; // BotIntegration handled it
+          }
         }
       } catch (integrationError) {
         console.error('[Webhook] BotIntegration callback error:', integrationError);

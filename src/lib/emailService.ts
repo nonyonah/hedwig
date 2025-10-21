@@ -566,3 +566,184 @@ export function generateNaturalProposalEmail(htmlContent: string): string {
     </html>
   `;
 }
+
+// Contract email template
+export function generateContractEmailTemplate(contract: any): string {
+  const appUrl = ensureHttps(process.env.NEXT_PUBLIC_APP_URL || 'https://www.hedwigbot.xyz');
+  const contractId = contract?.id || contract?.contractId || '';
+  const projectTitle = contract?.projectTitle || contract?.project_title || 'Project Contract';
+  const freelancerName = contract?.freelancerName || contract?.freelancer_name || 'Freelancer';
+  const clientName = contract?.clientName || contract?.client_name || 'Client';
+  const amount = Number(contract?.paymentAmount || contract?.total_amount || 0);
+  const tokenType = contract?.tokenType || contract?.token_type || 'USDC';
+  const chain = contract?.chain || 'Base';
+  const deadline = contract?.deadline ? new Date(contract.deadline).toLocaleDateString() : '—';
+  const contractHash = contract?.contractHash || contract?.legal_contract_hash || '';
+  
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Contract Draft - ${projectTitle}</title>
+        <!--[if mso]>
+        <noscript>
+          <xml>
+            <o:OfficeDocumentSettings>
+              <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+          </xml>
+        </noscript>
+        <![endif]-->
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <!-- Main Container -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f9fafb;">
+            <tr>
+                <td style="padding: 32px 20px;">
+                    <!-- Content Container -->
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 600px; margin: 0 auto;">
+                        <!-- Header -->
+                        <tr>
+                            <td style="padding-bottom: 32px;">
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                    <tr>
+                                        <td style="text-align: left;">
+                                            <h1 style="margin: 0; font-size: 18px; font-weight: 500; color: #262624;">hedwig.</h1>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Contract Card -->
+                        <tr>
+                            <td>
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                                    <!-- Card Header -->
+                                    <tr>
+                                        <td style="padding: 32px 32px 24px 32px; text-align: center; border-bottom: 1px solid #f1f5f9;">
+                                            <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #262624;">Contract Draft Ready</h2>
+                                            <p style="margin: 0; color: #64748b; font-size: 16px;">${projectTitle}</p>
+                                        </td>
+                                    </tr>
+                                    
+                                    <!-- Card Content -->
+                                    <tr>
+                                        <td style="padding: 32px;">
+                                            <!-- Greeting -->
+                                            <p style="margin: 0 0 24px 0; color: #262624; font-size: 16px; line-height: 1.5;">Dear ${clientName},</p>
+                                            <p style="margin: 0 0 32px 0; color: #64748b; font-size: 16px; line-height: 1.5;">Your contract draft for <strong>${projectTitle}</strong> has been generated and is ready for review.</p>
+                                            
+                                            <!-- Contract Details -->
+                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc; border-radius: 8px; padding: 24px; margin-bottom: 32px;">
+                                                <tr>
+                                                    <td>
+                                                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">Contract Details</h3>
+                                                        
+                                                        <!-- Project Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Project:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${projectTitle}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Freelancer Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Freelancer:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${freelancerName}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Amount Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Amount:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${amount.toLocaleString()} ${tokenType}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Blockchain Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Blockchain:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${chain}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Deadline Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Deadline:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${deadline}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Contract ID Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Contract ID:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${contractId}</td>
+                                                            </tr>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                            
+                                            <!-- Review Button -->
+                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 32px;">
+                                                <tr>
+                                                    <td style="text-align: center;">
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+                                                            <tr>
+                                                                <td style="background-color: #8e01bb; border-radius: 8px;">
+                                                                    ${contractId ? `<a href="${appUrl}/contracts/approve/${contractId}" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">📄 Review & Approve Contract</a>` : `<span style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Contract Link Unavailable</span>`}
+                                                                </td>
+                                                            </tr>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                            
+                                            <!-- Security Note -->
+                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #e3f2fd; border-left: 4px solid #2196f3; border-radius: 4px; padding: 16px; margin-bottom: 32px;">
+                                                <tr>
+                                                    <td>
+                                                        <p style="margin: 0 0 8px 0; color: #1565c0; font-size: 14px; font-weight: 600;">🔐 Security Note</p>
+                                                        <p style="margin: 0; color: #1976d2; font-size: 12px; line-height: 1.4;">This contract is secured with blockchain technology. Document hash: <code style="background: rgba(255,255,255,0.7); padding: 2px 4px; border-radius: 3px; font-family: monospace;">${contractHash ? contractHash.substring(0, 16) + '...' : 'Generating...'}</code></p>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                            
+                                            <!-- Instructions -->
+                                            <p style="margin: 0 0 16px 0; color: #64748b; font-size: 14px; line-height: 1.5;">Please review the contract carefully and approve it to proceed with the project. Once approved, the smart contract will be deployed and funds can be securely escrowed.</p>
+                                            
+                                            <p style="margin: 0; color: #262624; font-size: 14px; line-height: 1.5;">
+                                                If you have any questions or need modifications, please contact ${freelancerName} directly.
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer -->
+                        <tr>
+                            <td style="padding-top: 32px; text-align: center;">
+                                <p style="margin: 0 0 8px 0; color: #64748b; font-size: 14px;">This contract was generated using Hedwig AI-powered legal contract generation.</p>
+                                <p style="margin: 0; color: #adb5bd; font-size: 12px;">
+                                    Powered by <a href="${appUrl}" style="color: #8e01bb; text-decoration: none;">Hedwig</a>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+  `;
+}

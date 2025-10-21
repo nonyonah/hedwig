@@ -4588,20 +4588,24 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
         // Check for specific error types
         const errorMessage = error instanceof Error ? error.message : String(error);
 
-        // Update the session to reflect the error
+        // Update the session to reflect the error and clear it
         if (session && session.id) {
           await offrampSessionService.updateSession(session.id, 'completed', {
             ...session.data,
             status: 'error',
             error: errorMessage,
           });
+          
+          // Clear the session so user can start fresh after an error
+          await offrampSessionService.clearSession(session.id);
+          console.log(`[handleFinalConfirmationStep] Cleared failed offramp session after order error: ${session.id}`);
         } else {
           console.error('[handleFinalConfirmationStep] Cannot update session with error - invalid session:', session);
         }
 
         return {
           text: `❌ An error occurred while creating your order: ${errorMessage}\n\n` +
-            `Please try again or contact support if the issue persists.`
+            `Please start a new withdrawal by typing 'offramp' or using the /offramp command.`
         };
       }
     }
@@ -4635,6 +4639,10 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
           transactionHash: transferResult.transactionHash,
           status: 'transfer_completed',
         });
+
+        // Clear the session since the offramp is now completed
+        await offrampSessionService.clearSession(session.id);
+        console.log(`[handleFinalConfirmationStep] Cleared completed offramp session: ${session.id}`);
 
         // Start monitoring the order status
         setTimeout(async () => {
@@ -4670,6 +4678,10 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
           error: errorMessage,
         });
 
+        // Clear the session so user can start fresh after an error
+        await offrampSessionService.clearSession(session.id);
+        console.log(`[handleFinalConfirmationStep] Cleared failed offramp session: ${session.id}`);
+
         // Handle insufficient ETH balance error
         if (errorMessage.toLowerCase().includes('insufficient') &&
           (errorMessage.toLowerCase().includes('eth') || errorMessage.toLowerCase().includes('gas'))) {
@@ -4683,8 +4695,7 @@ async function handleFinalConfirmationStep(session: any, params: ActionParams, u
 
         return {
           text: `❌ An error occurred while sending tokens: ${errorMessage}\n\n` +
-            `Your order (${session.data.orderId}) is still active. ` +
-            `Please try the transfer again or contact support.`
+            `Please start a new withdrawal by typing 'offramp' or using the /offramp command.`
         };
       }
     }
