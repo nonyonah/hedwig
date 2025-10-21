@@ -16,6 +16,11 @@ let bot: any | null = null;
 let botInitialized = false;
 let botIntegration: BotIntegration | null = null;
 
+// Export function to get the bot integration instance
+export function getBotIntegration(): BotIntegration | null {
+  return botIntegration;
+}
+
 
 // Initialize bot for webhook mode
 function initializeBot() {

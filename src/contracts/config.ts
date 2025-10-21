@@ -41,18 +41,6 @@ export const SUPPORTED_TOKENS = {
     symbol: 'USDC',
     decimals: 6,
     name: 'USD Coin'
-  },
-  USDT: {
-    address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
-    symbol: 'USDT',
-    decimals: 6,
-    name: 'Tether USD'
-  },
-  USDbC: {
-    address: '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA',
-    symbol: 'USDbC',
-    decimals: 6,
-    name: 'USD Base Coin'
   }
 };
 
@@ -69,12 +57,6 @@ export const CELO_SUPPORTED_TOKENS = {
     symbol: 'USDC',
     decimals: 6,
     name: 'USD Coin'
-  },
-  USDT: {
-    address: '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e',
-    symbol: 'USDT',
-    decimals: 6,
-    name: 'Tether USD'
   }
 };
 

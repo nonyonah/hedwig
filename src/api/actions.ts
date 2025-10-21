@@ -3143,9 +3143,6 @@ async function handleCreateContract(params: ActionParams, userId: string) {
       actualUserId = user.id;
     }
 
-    // Import and use the contract creation service with bot integration
-    const { ContractModule } = await import('../modules/contracts');
-
     // Get the user's chat ID for Telegram interaction
     const { data: user } = await supabase
       .from('users')
@@ -3159,22 +3156,28 @@ async function handleCreateContract(params: ActionParams, userId: string) {
       };
     }
 
-    // Initialize the bot and start contract creation
-    const TelegramBot = require('node-telegram-bot-api');
-    const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
-    const contractModule = new ContractModule(bot);
+    // Use the global bot integration instance from webhook
+    // This ensures we use the same ContractModule instance that tracks state
+    const { getBotIntegration } = await import('../pages/api/webhook');
+    const botIntegration = getBotIntegration();
+    
+    if (!botIntegration) {
+      console.error('[handleCreateContract] Bot integration not available');
+      return {
+        text: "Bot integration not available. Please try again later."
+      };
+    }
 
-    // Extract natural language parameters from the LLM response
-    const nlParams = {
-      service_description: params.service_description || params.text,
-      project_description: params.project_description,
-      client_name: params.client_name,
-      payment_amount: params.payment_amount,
-      currency: params.currency,
-      timeline: params.timeline || params.deadline
-    };
+    const contractModule = botIntegration.getContractModule();
+    if (!contractModule) {
+      console.error('[handleCreateContract] Contract module not available');
+      return {
+        text: "Contract module not available. Please try again later."
+      };
+    }
 
-    await contractModule.startContractCreation(user.telegram_chat_id, actualUserId, undefined, nlParams);
+    console.log('[handleCreateContract] Starting contract creation for user:', actualUserId, 'chatId:', user.telegram_chat_id);
+    await contractModule.startContractCreation(user.telegram_chat_id, actualUserId);
 
     // Return empty text to avoid interrupting the flow
     return {
