@@ -823,18 +823,46 @@ Please enter your client's email address for contract notifications and signing:
       }
 
       // Store contract in database
-      const contractId = `contract_${Date.now()}_${userId}`;
+      const contractStringId = `contract_${Date.now()}_${userId}`;
       const contractIdNumber = Date.now(); // Generate unique contract ID number
       
-      const { error: dbError } = await supabase
+      // Get proper user UUID from Telegram chat ID
+      let actualUserId = userId;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+        // userId is likely a Telegram chat ID, get proper user ID
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+        
+        if (!user?.id) {
+          // Create user if doesn't exist
+          const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
+            p_telegram_chat_id: parseInt(userId),
+            p_telegram_username: null,
+            p_telegram_first_name: null,
+            p_telegram_last_name: null,
+            p_telegram_language_code: null,
+          });
+          if (error) {
+            console.error('Error creating user:', error);
+            throw new Error('Failed to create user for contract');
+          }
+          actualUserId = newUserId;
+        } else {
+          actualUserId = user.id;
+        }
+      }
+      
+      const { data: insertedContract, error: dbError } = await supabase
         .from('project_contracts')
         .insert({
-          id: contractId,
           contract_id: contractIdNumber,
           project_title: contractRequest.projectTitle,
           project_description: contractRequest.projectDescription,
           client_id: null, // Will be set when client approves
-          freelancer_id: userId,
+          freelancer_id: actualUserId,
           total_amount: contractRequest.paymentAmount,
           platform_fee: contractRequest.paymentAmount * 0.05, // 5% platform fee
           token_address: contractRequest.tokenType, // This should be the actual token address
@@ -843,16 +871,21 @@ Please enter your client's email address for contract notifications and signing:
           status: 'created',
           legal_contract_hash: result.contractHash,
           created_at: new Date().toISOString()
-        });
+        })
+        .select('id')
+        .single();
 
-      if (dbError) {
-        throw new Error('Failed to save contract to database');
+      if (dbError || !insertedContract) {
+        console.error('Database error details:', dbError);
+        throw new Error(`Failed to save contract to database: ${dbError?.message || 'No contract returned'}`);
       }
+
+      const contractId = insertedContract.id; // Use the UUID from the database
 
       // Store milestones if any
       if (state.milestones.length > 0) {
         const milestoneInserts = state.milestones.map((milestone, index) => ({
-          contract_id: contractId,
+          contract_id: contractId, // Now using the UUID
           milestone_id: index + 1,
           title: milestone.title,
           description: milestone.description,
@@ -861,19 +894,22 @@ Please enter your client's email address for contract notifications and signing:
           status: 'pending' as const
         }));
 
-        await supabase.from('contract_milestones').insert(milestoneInserts);
+        const { error: milestoneError } = await supabase.from('contract_milestones').insert(milestoneInserts);
+        if (milestoneError) {
+          console.error('Milestone insertion error:', milestoneError);
+          // Don't throw here, contract is already created
+        }
       }
 
-      // Store legal document
-      await legalContractService.storeContract(contractId, result.contractText!, result.contractHash!, result.metadata);
+      // Legal contract is already stored by generateContract() method
 
       // Send email notification to client if email is provided
       let emailSent = false;
       if (state.data.clientEmail) {
         try {
           const contractData = {
-            id: contractId,
-            contractId: contractId,
+            id: contractId, // UUID for database references
+            contractId: contractStringId, // String ID for display/legal purposes
             projectTitle: state.data.projectTitle,
             project_title: state.data.projectTitle,
             freelancerName: state.data.freelancerName || 'Freelancer',
@@ -911,7 +947,7 @@ Please enter your client's email address for contract notifications and signing:
 
       // Track success
       trackEvent('contract_generated', { 
-        contractId, 
+        contractId: contractStringId, 
         hasMillestones: state.milestones.length > 0,
         emailSent 
       }, userId);
@@ -920,7 +956,7 @@ Please enter your client's email address for contract notifications and signing:
         (state.data.clientEmail ? '\n⚠️ **Email failed to send**' : '');
 
       await this.bot.sendMessage(chatId, 
-        `✅ **Contract Generated Successfully!**\n\n📄 **Contract ID:** ${contractId}\n📊 **Word Count:** ${result.metadata?.wordCount}\n🔐 **Document Hash:** ${result.contractHash?.substring(0, 16)}...${emailStatus}\n\n🚀 **Next Steps:**\n1. Review the legal document\n2. Deploy smart contract\n3. Share with client\n\nUse /contracts to manage your contracts.`,
+        `✅ **Contract Generated Successfully!**\n\n📄 **Contract ID:** ${contractStringId}\n📊 **Word Count:** ${result.metadata?.wordCount}\n🔐 **Document Hash:** ${result.contractHash?.substring(0, 16)}...${emailStatus}\n\n🚀 **Next Steps:**\n1. Review the legal document\n2. Deploy smart contract\n3. Share with client\n\nUse /contracts to manage your contracts.`,
         { 
           parse_mode: 'Markdown',
           reply_markup: emailSent ? {
