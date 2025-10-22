@@ -200,6 +200,10 @@ export class ContractModule {
               const contractId = action.replace('send_email_', '');
               return await this.sendContractEmail(chatId, userId, contractId);
             }
+            if (action.startsWith('contract_send_email_')) {
+              const contractId = action.replace('contract_send_email_', '');
+              return await this.sendContractEmail(chatId, userId, contractId);
+            }
             return false;
         }
       }
