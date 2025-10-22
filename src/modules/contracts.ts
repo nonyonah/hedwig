@@ -10,6 +10,26 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Function to get token contract address for a given token type and chain
+function getTokenAddress(tokenType: string, chain: string): string {
+  const tokenAddresses: Record<string, Record<string, string>> = {
+    base: {
+      USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      ETH: '0x0000000000000000000000000000000000000000'
+    },
+    ethereum: {
+      USDC: '0xA0b86a33E6441b8C4505E2c4B8b5b8e8E8E8E8E8',
+      ETH: '0x0000000000000000000000000000000000000000'
+    },
+    celo: {
+      USDC: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
+      cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a'
+    }
+  };
+
+  return tokenAddresses[chain]?.[tokenType] || tokenAddresses.base.USDC;
+}
+
 interface ContractCreationState {
   step: 'title' | 'description' | 'client_wallet' | 'client_email' | 'amount' | 'token' | 'chain' | 'deadline' | 'milestones' | 'refund_policy' | 'review' | 'completed';
   data: Partial<ContractGenerationRequest>;
@@ -865,7 +885,7 @@ Please enter your client's email address for contract notifications and signing:
           freelancer_id: actualUserId,
           total_amount: contractRequest.paymentAmount,
           platform_fee: contractRequest.paymentAmount * 0.05, // 5% platform fee
-          token_address: contractRequest.tokenType, // This should be the actual token address
+          token_address: getTokenAddress(contractRequest.tokenType, contractRequest.chain), // Use actual token contract address
           chain: contractRequest.chain,
           deadline: contractRequest.deadline,
           status: 'created',
