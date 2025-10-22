@@ -331,3 +331,180 @@ export async function generateProposalPDF(proposal: any): Promise<Buffer> {
     }
   });
 }
+
+export interface ContractData {
+  contractId: string;
+  projectTitle: string;
+  projectDescription: string;
+  clientName: string;
+  freelancerName: string;
+  totalAmount: number;
+  tokenType: string;
+  chain: string;
+  deadline: string;
+  status: string;
+  createdAt: string;
+  milestones?: Array<{
+    title: string;
+    description: string;
+    amount: number;
+    deadline: string;
+    status: string;
+  }>;
+}
+
+export async function generateContractPDF(contractData: ContractData): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      console.log('[PDF Generator] Starting contract PDF generation for:', contractData.contractId);
+      
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers: Buffer[] = [];
+
+      // Add error handling for PDF document events
+      doc.on('data', (chunk) => {
+        buffers.push(chunk);
+      });
+      
+      doc.on('end', () => {
+        try {
+          clearTimeout(timeout);
+          const pdfData = Buffer.concat(buffers);
+          console.log('[PDF Generator] Contract PDF generated successfully, size:', pdfData.length, 'bytes');
+          resolve(pdfData);
+        } catch (error) {
+          clearTimeout(timeout);
+          console.error('[PDF Generator] Error concatenating PDF buffers:', error);
+          reject(error);
+        }
+      });
+
+      doc.on('error', (error) => {
+        clearTimeout(timeout);
+        console.error('[PDF Generator] PDF document error:', error);
+        reject(error);
+      });
+
+      // Add timeout to prevent hanging
+      const timeout = setTimeout(() => {
+        console.error('[PDF Generator] PDF generation timeout after 30 seconds');
+        reject(new Error('PDF generation timeout'));
+      }, 30000);
+
+      // Header with Hedwig branding
+      doc.fontSize(24).fillColor('#2563eb').text('HEDWIG', 50, 50);
+      doc.fontSize(20).fillColor('#000000').text('FREELANCE CONTRACT', 50, 80);
+      doc.fontSize(10).text(`Contract ID: ${contractData.contractId}`, 50, 110);
+      doc.text(`Status: ${contractData.status.toUpperCase()}`, 400, 110);
+      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 50, 125);
+
+      // Contract Information Section
+      let yPosition = 160;
+      doc.rect(50, yPosition - 10, 500, 40)
+         .fillAndStroke('#f0f9ff', '#0ea5e9');
+      
+      doc.fontSize(16).fillColor('#0369a1').text('📋 PROJECT DETAILS', 60, yPosition + 5);
+      yPosition += 50;
+
+      doc.fontSize(12).fillColor('#374151');
+      doc.text(`Title: ${contractData.projectTitle}`, 60, yPosition);
+      yPosition += 20;
+      
+      doc.text('Description:', 60, yPosition);
+      yPosition += 15;
+      doc.fontSize(11).fillColor('#6b7280');
+      const descHeight = doc.heightOfString(contractData.projectDescription, { width: 480 });
+      doc.text(contractData.projectDescription, 60, yPosition, { width: 480 });
+      yPosition += descHeight + 30;
+
+      // Parties Section
+      doc.rect(50, yPosition - 10, 500, 40)
+         .fillAndStroke('#f0fdf4', '#22c55e');
+      
+      doc.fontSize(16).fillColor('#15803d').text('👥 PARTIES', 60, yPosition + 5);
+      yPosition += 50;
+
+      doc.fontSize(12).fillColor('#374151');
+      doc.text(`Client: ${contractData.clientName}`, 60, yPosition);
+      doc.text(`Freelancer: ${contractData.freelancerName}`, 300, yPosition);
+      yPosition += 40;
+
+      // Payment Terms Section
+      doc.rect(50, yPosition - 10, 500, 40)
+         .fillAndStroke('#fef3c7', '#f59e0b');
+      
+      doc.fontSize(16).fillColor('#d97706').text('💰 PAYMENT TERMS', 60, yPosition + 5);
+      yPosition += 50;
+
+      doc.fontSize(12).fillColor('#374151');
+      doc.text(`Total Amount: ${contractData.totalAmount} ${contractData.tokenType}`, 60, yPosition);
+      doc.text(`Blockchain: ${contractData.chain}`, 300, yPosition);
+      yPosition += 20;
+      doc.text(`Deadline: ${new Date(contractData.deadline).toLocaleDateString()}`, 60, yPosition);
+      yPosition += 40;
+
+      // Milestones Section
+      if (contractData.milestones && contractData.milestones.length > 0) {
+        doc.rect(50, yPosition - 10, 500, 40)
+           .fillAndStroke('#f3e8ff', '#8b5cf6');
+        
+        doc.fontSize(16).fillColor('#7c3aed').text('🎯 MILESTONES', 60, yPosition + 5);
+        yPosition += 50;
+
+        contractData.milestones.forEach((milestone, index) => {
+          // Check if we need a new page
+          if (yPosition > 650) {
+            doc.addPage();
+            yPosition = 50;
+          }
+
+          doc.rect(50, yPosition - 5, 500, 80)
+             .fillAndStroke(index % 2 === 0 ? '#f9fafb' : '#ffffff', '#e5e7eb');
+
+          doc.fontSize(12).fillColor('#1f2937');
+          doc.text(`${index + 1}. ${milestone.title}`, 60, yPosition + 5);
+          
+          doc.fontSize(10).fillColor('#6b7280');
+          doc.text(`Description: ${milestone.description}`, 60, yPosition + 20, { width: 300 });
+          
+          doc.fontSize(11).fillColor('#059669');
+          doc.text(`Amount: ${milestone.amount} ${contractData.tokenType}`, 380, yPosition + 5);
+          
+          doc.fontSize(10).fillColor('#6b7280');
+          doc.text(`Deadline: ${new Date(milestone.deadline).toLocaleDateString()}`, 380, yPosition + 20);
+          doc.text(`Status: ${milestone.status.toUpperCase()}`, 380, yPosition + 35);
+          
+          yPosition += 85;
+        });
+      }
+
+      // Legal Notice Section
+      yPosition += 20;
+      if (yPosition > 600) {
+        doc.addPage();
+        yPosition = 50;
+      }
+
+      doc.rect(50, yPosition - 10, 500, 100)
+         .fillAndStroke('#fef2f2', '#ef4444');
+      
+      doc.fontSize(14).fillColor('#dc2626').text('⚖️ LEGAL NOTICE', 60, yPosition + 5);
+      yPosition += 25;
+      
+      doc.fontSize(10).fillColor('#7f1d1d');
+      const legalText = 'This contract is secured by blockchain technology and smart contracts. All payments are processed through decentralized protocols. By proceeding with this contract, both parties agree to the terms and conditions outlined above. Disputes will be resolved according to the platform\'s dispute resolution mechanism.';
+      doc.text(legalText, 60, yPosition, { width: 480 });
+
+      // Footer
+      const footerY = doc.page.height - 80;
+      doc.fontSize(10).fillColor('#6b7280');
+      doc.text(`Contract created: ${new Date(contractData.createdAt).toLocaleDateString()}`, 50, footerY);
+      doc.text('Powered by Hedwig - Secure Freelance Payments on Blockchain', 50, footerY + 15);
+      doc.text('🔗 Base & Celo Networks • 🔒 Smart Contract Escrow', 50, footerY + 30);
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}

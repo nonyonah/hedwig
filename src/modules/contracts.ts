@@ -4,6 +4,7 @@ import { legalContractService, ContractGenerationRequest } from '../services/leg
 import { ProjectContract, ContractMilestone } from '../types/supabase';
 import { trackEvent } from '../lib/posthog';
 import { sendEmail, generateContractEmailTemplate } from '../lib/emailService';
+import { generateContractPDF, ContractData } from './pdf-generator';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -187,9 +188,17 @@ export class ContractModule {
               const contractId = action.replace('resend_email_', '');
               return await this.resendContractEmail(chatId, userId, contractId);
             }
-            if (action.startsWith('view_')) {
-              const contractId = action.replace('view_', '');
+            if (action.startsWith('view_contract_')) {
+              const contractId = action.replace('view_contract_', '');
               return await this.viewContract(chatId, userId, contractId);
+            }
+            if (action.startsWith('contract_view_')) {
+              const contractId = action.replace('contract_view_', '');
+              return await this.viewContract(chatId, userId, contractId);
+            }
+            if (action.startsWith('send_email_')) {
+              const contractId = action.replace('send_email_', '');
+              return await this.sendContractEmail(chatId, userId, contractId);
             }
             return false;
         }
@@ -923,44 +932,9 @@ Please enter your client's email address for contract notifications and signing:
 
       // Legal contract is already stored by generateContract() method
 
-      // Send email notification to client if email is provided
+      // Email will be sent manually when freelancer chooses to send it
       let emailSent = false;
-      if (state.data.clientEmail) {
-        try {
-          const contractData = {
-            id: contractId, // UUID for database references
-            contractId: contractStringId, // String ID for display/legal purposes
-            projectTitle: state.data.projectTitle,
-            project_title: state.data.projectTitle,
-            freelancerName: state.data.freelancerName || 'Freelancer',
-            freelancer_name: state.data.freelancerName || 'Freelancer',
-            clientName: state.data.clientName || 'Client',
-            client_name: state.data.clientName || 'Client',
-            paymentAmount: state.data.paymentAmount,
-            total_amount: state.data.paymentAmount,
-            tokenType: state.data.tokenType,
-            token_type: state.data.tokenType,
-            chain: state.data.chain,
-            deadline: state.data.deadline,
-            contractHash: result.contractHash,
-            legal_contract_hash: result.contractHash
-          };
-
-          const emailTemplate = generateContractEmailTemplate(contractData);
-          
-          await sendEmail({
-            to: state.data.clientEmail,
-            subject: `Contract Draft Ready - ${state.data.projectTitle}`,
-            html: emailTemplate
-          });
-          
-          emailSent = true;
-          console.log(`[ContractModule] Email sent successfully to ${state.data.clientEmail}`);
-        } catch (emailError) {
-          console.error('[ContractModule] Failed to send email:', emailError);
-          // Don't fail the contract generation if email fails
-        }
-      }
+      console.log(`[ContractModule] Contract generated successfully. Email will be sent manually by freelancer.`);
 
       // Clean up state
       this.contractStates.delete(userId);
@@ -972,21 +946,18 @@ Please enter your client's email address for contract notifications and signing:
         emailSent 
       }, userId);
 
-      const emailStatus = emailSent ? '\n📧 **Email sent to client!**' : 
-        (state.data.clientEmail ? '\n⚠️ **Email failed to send**' : '');
-
       await this.bot.sendMessage(chatId, 
-        `✅ **Contract Generated Successfully!**\n\n📄 **Contract ID:** ${contractStringId}\n📊 **Word Count:** ${result.metadata?.wordCount}\n🔐 **Document Hash:** ${result.contractHash?.substring(0, 16)}...${emailStatus}\n\n🚀 **Next Steps:**\n1. Review the legal document\n2. Deploy smart contract\n3. Share with client\n\nUse /contracts to manage your contracts.`,
+        `✅ **Contract Generated Successfully!**\n\n📄 **Contract ID:** ${contractStringId}\n📊 **Word Count:** ${result.metadata?.wordCount}\n🔐 **Document Hash:** ${result.contractHash?.substring(0, 16)}...\n\n🚀 **Next Steps:**\n1. Review the contract PDF\n2. Send to client when ready\n3. Deploy smart contract\n\nUse /contracts to manage your contracts.`,
         { 
           parse_mode: 'Markdown',
-          reply_markup: emailSent ? {
+          reply_markup: {
             inline_keyboard: [
               [
-                { text: '📄 View Contract', callback_data: `contract_view_${contractId}` },
-                { text: '📧 Resend Email', callback_data: `contract_resend_email_${contractId}` }
+                { text: '📄 View Contract PDF', callback_data: `contract_view_${contractId}` },
+                { text: '📧 Send to Client', callback_data: `contract_send_email_${contractId}` }
               ]
             ]
-          } : undefined
+          }
         }
       );
 
@@ -1463,8 +1434,8 @@ Please enter your client's email address for contract notifications and signing:
 
       // Prepare contract data for email
       const contractData = {
-        id: contractId,
-        contractId: contractId,
+        id: contract.id, // Use the UUID from the database for the approval link
+        contractId: contract.id, // Use the UUID for the approval link
         projectTitle: contract.project_title,
         project_title: contract.project_title,
         freelancerName: legalContract.freelancer_name || 'Freelancer',
@@ -1502,10 +1473,10 @@ Please enter your client's email address for contract notifications and signing:
     }
   }
 
-  /**
-   * View contract details
+ /**
+   * Send contract email to client manually
    */
-  private async viewContract(chatId: number, userId: string, contractId: string): Promise<boolean> {
+  private async sendContractEmail(chatId: number, userId: string, contractId: string): Promise<boolean> {
     try {
       // Fetch contract details from database
       const { data: contract, error } = await supabase
@@ -1519,43 +1490,196 @@ Please enter your client's email address for contract notifications and signing:
         return true;
       }
 
+      // Fetch legal contract details
+      const { data: legalContract, error: legalError } = await supabase
+        .from('legal_contracts')
+        .select('*')
+        .eq('contract_hash', contract.legal_contract_hash)
+        .single();
+
+      if (legalError || !legalContract) {
+        await this.bot.sendMessage(chatId, '❌ Legal contract details not found.');
+        return true;
+      }
+
+      if (!legalContract.client_email) {
+        await this.bot.sendMessage(chatId, '❌ No client email found for this contract.');
+        return true;
+      }
+
+      // Prepare contract data for email
+      const contractData = {
+        id: contract.id, // Use the UUID from the database for the approval link
+        contractId: contract.id, // Use the UUID for the approval link
+        projectTitle: contract.project_title,
+        project_title: contract.project_title,
+        freelancerName: legalContract.freelancer_name || 'Freelancer',
+        freelancer_name: legalContract.freelancer_name || 'Freelancer',
+        clientName: legalContract.client_name || 'Client',
+        client_name: legalContract.client_name || 'Client',
+        paymentAmount: contract.total_amount,
+        total_amount: contract.total_amount,
+        tokenType: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
+        token_type: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
+        chain: contract.chain,
+        deadline: contract.deadline,
+        contractHash: contract.legal_contract_hash,
+        legal_contract_hash: contract.legal_contract_hash
+      };
+
+      const emailTemplate = generateContractEmailTemplate(contractData);
+      
+      await sendEmail({
+        to: legalContract.client_email,
+        subject: `Contract Draft Ready - ${contract.project_title}`,
+        html: emailTemplate
+      });
+
+      await this.bot.sendMessage(chatId, 
+        `✅ **Email sent successfully!**\n\n` +
+        `📧 **To:** ${legalContract.client_email}\n` +
+        `📄 **Contract:** ${contract.project_title}\n` +
+        `💰 **Amount:** ${contract.total_amount} ${contractData.tokenType}\n\n` +
+        `The client will receive the contract details and can proceed with approval.`,
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📋 List All Contracts', callback_data: 'contracts_list' },
+                { text: '🔄 Resend Email', callback_data: `contract_resend_email_${contractId}` }
+              ]
+            ]
+          }
+        }
+      );
+
+      // Track email sending
+      trackEvent('contract_email_sent_manually', { 
+        contractId: contract.contract_id,
+        clientEmail: legalContract.client_email
+      }, userId);
+
+      return true;
+    } catch (error) {
+      console.error('[ContractModule] Error sending contract email:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to send email. Please try again.');
+      return true;
+    }
+  }
+
+  /**
+   * View contract details and generate PDF
+   */
+  private async viewContract(chatId: number, userId: string, contractId: string): Promise<boolean> {
+    try {
+      console.log('[ContractModule] Starting viewContract for contractId:', contractId, 'userId:', userId);
+      
+      await this.bot.sendMessage(chatId, '📄 **Generating Contract PDF...**\n\nPlease wait while I prepare your contract document.', {
+        parse_mode: 'Markdown'
+      });
+
+      // Fetch contract details from database
+      console.log('[ContractModule] Fetching contract from database...');
+      const { data: contract, error } = await supabase
+        .from('project_contracts')
+        .select('*')
+        .eq('id', contractId)
+        .single();
+
+      if (error || !contract) {
+        console.error('[ContractModule] Contract not found:', error);
+        await this.bot.sendMessage(chatId, '❌ Contract not found.');
+        return true;
+      }
+
+      console.log('[ContractModule] Contract found:', contract.contract_id);
+
       // Fetch milestones
+      console.log('[ContractModule] Fetching milestones...');
       const { data: milestones } = await supabase
         .from('contract_milestones')
         .select('*')
         .eq('contract_id', contractId)
         .order('created_at', { ascending: true });
 
-      const milestonesText = milestones && milestones.length > 0 
-        ? milestones.map((m, i) => `${i + 1}. ${m.title} - ${m.amount} tokens`).join('\n')
-        : 'No milestones defined';
+      console.log('[ContractModule] Found', milestones?.length || 0, 'milestones');
 
-      const contractDetails = `📄 **Contract Details**\n\n` +
-        `**ID:** ${contractId}\n` +
-        `**Project:** ${contract.project_title}\n` +
-        `**Description:** ${contract.project_description || 'N/A'}\n` +
-        `**Amount:** ${contract.total_amount} tokens\n` +
-        `**Chain:** ${contract.chain}\n` +
-        `**Status:** ${contract.status}\n` +
-        `**Created:** ${new Date(contract.created_at).toLocaleDateString()}\n\n` +
-        `**Milestones:**\n${milestonesText}`;
+      // Get freelancer info
+      console.log('[ContractModule] Fetching freelancer info...');
+      const { data: user } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', contract.freelancer_id)
+        .single();
 
-      await this.bot.sendMessage(chatId, contractDetails, {
+      console.log('[ContractModule] Freelancer info:', user?.name);
+
+      // Prepare contract data for PDF generation
+      const contractData: ContractData = {
+        contractId: contract.contract_id?.toString() || contractId,
+        projectTitle: contract.project_title,
+        projectDescription: contract.project_description || 'No description provided',
+        clientName: 'Client', // Will be updated when client info is available
+        freelancerName: user?.name || 'Freelancer',
+        totalAmount: contract.total_amount,
+        tokenType: contract.token_address?.includes('usdc') ? 'USDC' : 'cUSD', // Determine token type from address
+        chain: contract.chain,
+        deadline: contract.deadline,
+        status: contract.status,
+        createdAt: contract.created_at,
+        milestones: milestones?.map(m => ({
+          title: m.title,
+          description: m.description,
+          amount: m.amount,
+          deadline: m.deadline,
+          status: m.status
+        })) || []
+      };
+
+      // Generate PDF
+      console.log('[ContractModule] Generating PDF...');
+      const pdfBuffer = await generateContractPDF(contractData);
+      console.log('[ContractModule] PDF generated successfully, size:', pdfBuffer.length, 'bytes');
+
+      // Send PDF as document
+      console.log('[ContractModule] Sending PDF document...');
+      await this.bot.sendDocument(chatId, pdfBuffer, {
+        caption: `📄 **Contract PDF Generated**\n\n` +
+          `**ID:** ${contractData.contractId}\n` +
+          `**Project:** ${contractData.projectTitle}\n` +
+          `**Amount:** ${contractData.totalAmount} ${contractData.tokenType}\n` +
+          `**Status:** ${contractData.status.toUpperCase()}\n\n` +
+          `✅ **Review your contract and proceed with deployment when ready.**`,
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '📧 Resend Email', callback_data: `contract_resend_email_${contractId}` },
+              { text: '📧 Send to Client', callback_data: `contract_send_email_${contractId}` },
               { text: '📋 List All', callback_data: 'contracts_list' }
             ]
           ]
         }
+      }, {
+        filename: `contract_${contractData.contractId}.pdf`
       });
 
+      console.log('[ContractModule] PDF document sent successfully');
+
+      // Track PDF generation
+      trackEvent('contract_pdf_generated', { 
+        contractId: contractData.contractId,
+        hasMillestones: (contractData.milestones || []).length > 0
+      }, userId);
+
+      console.log('[ContractModule] viewContract completed successfully');
       return true;
     } catch (error) {
       console.error('[ContractModule] Error viewing contract:', error);
-      await this.bot.sendMessage(chatId, '❌ Failed to load contract details.');
+      
+      // Send more specific error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await this.bot.sendMessage(chatId, `❌ Failed to generate contract PDF: ${errorMessage}\n\nPlease try again or contact support if the issue persists.`);
       return true;
     }
   }
