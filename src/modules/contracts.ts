@@ -32,7 +32,7 @@ function getTokenAddress(tokenType: string, chain: string): string {
 }
 
 interface ContractCreationState {
-  step: 'title' | 'description' | 'client_wallet' | 'client_email' | 'amount' | 'token' | 'chain' | 'deadline' | 'milestones' | 'refund_policy' | 'review' | 'completed';
+  step: 'title' | 'description' | 'client_name' | 'client_wallet' | 'client_email' | 'amount' | 'token' | 'chain' | 'deadline' | 'milestones' | 'refund_policy' | 'review' | 'completed';
   data: Partial<ContractGenerationRequest>;
   milestones: Array<{
     title: string;
@@ -83,6 +83,7 @@ export class ContractModule {
       }
 
       this.contractStates.set(userId, state);
+      await this.saveContractState(userId, state);
       
       // Start with the first unfilled field
       await this.askForNextField(chatId, userId, state, fromConversion);
@@ -102,6 +103,7 @@ export class ContractModule {
     // Validate state integrity
     if (!state.step || !state.data) {
       this.contractStates.delete(userId);
+      await this.clearContractStateFromDB(userId);
       return false;
     }
 
@@ -130,6 +132,8 @@ export class ContractModule {
           return await this.handleTitleInput(chatId, userId, message, state);
         case 'description':
           return await this.handleDescriptionInput(chatId, userId, message, state);
+        case 'client_name':
+          return await this.handleClientNameInput(chatId, userId, message, state);
         case 'client_wallet':
           return await this.handleClientWalletInput(chatId, userId, message, state);
         case 'client_email':
@@ -293,6 +297,7 @@ export class ContractModule {
     
     // Ensure state is saved
     this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
 
     await this.bot.sendMessage(chatId, 
       `✅ **Project Title:** ${state.data.projectTitle}\n\n📄 **Project Description**\n\nPlease provide a detailed description of the project:`,
@@ -312,13 +317,38 @@ export class ContractModule {
     }
 
     state.data.projectDescription = message.trim();
+    state.step = 'client_name';
+    
+    // Ensure state is saved
+    this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
+
+    await this.bot.sendMessage(chatId, 
+      `✅ **Description saved**\n\n👤 **Client Name**\n\nPlease enter the client's full name:`,
+      { parse_mode: 'Markdown' }
+    );
+
+    return true;
+  }
+
+  /**
+   * Handle client name input
+   */
+  private async handleClientNameInput(chatId: number, userId: string, message: string, state: ContractCreationState): Promise<boolean> {
+    if (message.trim().length < 2) {
+      await this.bot.sendMessage(chatId, '❌ Client name must be at least 2 characters long. Please try again:');
+      return true;
+    }
+
+    state.data.clientName = message.trim();
     state.step = 'client_wallet';
     
     // Ensure state is saved
     this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
 
     await this.bot.sendMessage(chatId, 
-      `✅ **Description saved**\n\n👤 **Client Wallet Address**\n\nPlease enter the client's wallet address (0x...):`,
+      `✅ **Client Name:** ${state.data.clientName}\n\n💳 **Client Wallet Address**\n\nPlease enter the client's wallet address (0x...):`,
       { parse_mode: 'Markdown' }
     );
 
@@ -333,6 +363,8 @@ export class ContractModule {
     await this.bot.sendMessage(chatId, '✅ Client wallet saved!');
     
     state.step = 'client_email';
+    this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
     await this.askForClientEmail(chatId);
     return true;
   }
@@ -354,6 +386,8 @@ export class ContractModule {
     await this.bot.sendMessage(chatId, '✅ Client email saved!');
     
     state.step = 'amount';
+    this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
     await this.askForPaymentAmount(chatId);
     return true;
   }
@@ -371,6 +405,8 @@ export class ContractModule {
 
     state.data.paymentAmount = amount;
     state.step = 'token';
+    this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
 
     await this.bot.sendMessage(chatId, 
       `✅ **Amount:** $${amount}\n\n🪙 **Token Type**\n\nSelect the payment token:`,
@@ -399,6 +435,8 @@ export class ContractModule {
 
     state.data.tokenType = token;
     state.step = 'chain';
+    this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
 
     await this.bot.sendMessage(chatId, 
       `✅ **Token:** ${token}\n\n⛓️ **Network**\n\nSelect the network:`,
@@ -427,6 +465,8 @@ export class ContractModule {
 
     state.data.chain = chain as 'base' | 'celo' | 'polygon';
     state.step = 'deadline';
+    this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
 
     await this.bot.sendMessage(chatId, 
       `✅ **Network:** ${chain.toUpperCase()}\n\n📅 **Project Deadline**\n\nPlease enter the project deadline (YYYY-MM-DD format):`,
@@ -457,6 +497,8 @@ export class ContractModule {
 
     state.data.deadline = deadline.toISOString();
     state.step = 'milestones';
+    this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
 
     await this.bot.sendMessage(chatId, 
       `✅ **Deadline:** ${deadline.toLocaleDateString()}\n\n🎯 **Milestones (Optional)**\n\nWould you like to add project milestones?`,
@@ -613,6 +655,21 @@ export class ContractModule {
         }
       }
     );
+  }
+
+  /**
+   * Ask for client name
+   */
+  private async askForClientName(chatId: number) {
+    const message = `👤 **Client Name**
+
+Please enter your client's full name:
+
+*Example: John Smith or ABC Company Inc.*
+
+💡 This name will appear on the contract and all related documents.`;
+
+    await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
   }
 
   /**
@@ -780,7 +837,9 @@ Please enter your client's email address for contract notifications and signing:
     let message = `📋 **Contract Review**\n\n`;
     message += `📝 **Title:** ${data.projectTitle}\n`;
     message += `📄 **Description:** ${data.projectDescription}\n`;
-    message += `👤 **Client:** ${data.clientWallet}\n`;
+    message += `👤 **Client:** ${data.clientName}\n`;
+    message += `📧 **Client Email:** ${data.clientEmail}\n`;
+    message += `💳 **Client Wallet:** ${data.clientWallet}\n`;
     message += `💰 **Amount:** ${data.paymentAmount} ${data.tokenType}\n`;
     message += `⛓️ **Network:** ${data.chain?.toUpperCase()}\n`;
     message += `📅 **Deadline:** ${new Date(data.deadline!).toLocaleDateString()}\n`;
@@ -862,6 +921,7 @@ Please enter your client's email address for contract notifications and signing:
 
       // Clear the contract state
       this.contractStates.delete(userId);
+      await this.clearContractStateFromDB(userId);
 
       // Track the event
       await trackEvent('contract_created', {
@@ -928,6 +988,7 @@ Please enter your client's email address for contract notifications and signing:
    */
   private async cancelContract(chatId: number, userId: string): Promise<boolean> {
     this.contractStates.delete(userId);
+    await this.clearContractStateFromDB(userId);
     await this.bot.sendMessage(chatId, '❌ **Contract creation cancelled.**\n\nYou can start a new contract anytime with /contract command.');
     return true;
   }
@@ -1039,9 +1100,55 @@ Please enter your client's email address for contract notifications and signing:
   /**
    * Check if user is in contract creation flow
    */
-  isInContractFlow(userId: string): boolean {
-    return this.contractStates.has(userId);
+  async isInContractFlow(userId: string): Promise<boolean> {
+    // First check memory cache
+    if (this.contractStates.has(userId)) {
+      return true;
+    }
+    
+    // Check database for persistent state
+    try {
+      const { data } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'contract_creation')
+        .single();
+      
+      if (data?.state_data) {
+        // Restore state to memory cache
+        this.contractStates.set(userId, data.state_data);
+        return true;
+      }
+    } catch (error) {
+      console.error('[ContractModule] Error checking contract flow state:', error);
+    }
+    
+    return false;
   }
+
+  /**
+   * Save contract creation state to database
+   */
+  private async saveContractState(userId: string, state: ContractCreationState): Promise<void> {
+    try {
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'contract_creation',
+          state_data: state,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+    } catch (error) {
+      console.error('[ContractModule] Error saving contract state:', error);
+    }
+  }
+
+
 
   /**
    * Pre-fill contract data from natural language parameters
@@ -1160,6 +1267,7 @@ Please enter your client's email address for contract notifications and signing:
   private async askForNextField(chatId: number, userId: string, state: ContractCreationState, fromConversion?: { type: 'invoice' | 'proposal', id: string }) {
     // Ensure state is properly saved after any updates
     this.contractStates.set(userId, state);
+    await this.saveContractState(userId, state);
     
     // If we have a current step, continue from there, otherwise determine based on what's missing
     switch (state.step) {
@@ -1174,6 +1282,14 @@ Please enter your client's email address for contract notifications and signing:
       case 'description':
         if (!state.data.projectDescription) {
           await this.askForProjectDescription(chatId);
+        } else {
+          state.step = 'client_name';
+          await this.askForClientName(chatId);
+        }
+        break;
+      case 'client_name':
+        if (!state.data.clientName) {
+          await this.askForClientName(chatId);
         } else {
           state.step = 'client_wallet';
           await this.askForClientWallet(chatId);
@@ -1241,6 +1357,9 @@ Please enter your client's email address for contract notifications and signing:
         } else if (!state.data.projectDescription) {
           state.step = 'description';
           await this.askForProjectDescription(chatId);
+        } else if (!state.data.clientName) {
+          state.step = 'client_name';
+          await this.askForClientName(chatId);
         } else if (!state.data.clientWallet) {
           state.step = 'client_wallet';
           await this.askForClientWallet(chatId);
@@ -1279,6 +1398,9 @@ Please enter your client's email address for contract notifications and signing:
         break;
       case 'description':
         helpText += '📋 **Project Description**: Provide details about what work will be done.\n\nExample: "Design and develop a responsive e-commerce website with payment integration"';
+        break;
+      case 'client_name':
+        helpText += '👤 **Client Name**: Enter the client\'s full name or company name.\n\nExample: "John Smith" or "ABC Company Inc."';
         break;
       case 'client_wallet':
         helpText += '💳 **Client Wallet**: Enter the client\'s cryptocurrency wallet address.\n\nExample: 0x1234...abcd (Ethereum/Base address)';
@@ -1323,8 +1445,24 @@ Please enter your client's email address for contract notifications and signing:
     return true;
   }
 
-  clearContractState(userId: string) {
+  async clearContractState(userId: string) {
     this.contractStates.delete(userId);
+    await this.clearContractStateFromDB(userId);
+  }
+
+  /**
+   * Clear contract creation state from database (internal method)
+   */
+  private async clearContractStateFromDB(userId: string): Promise<void> {
+    try {
+      await supabase
+        .from('user_states')
+        .delete()
+        .eq('user_id', userId)
+        .eq('state_type', 'contract_creation');
+    } catch (error) {
+      console.error('[ContractModule] Error clearing contract state from DB:', error);
+    }
   }
 
   /**
@@ -1361,12 +1499,21 @@ Please enter your client's email address for contract notifications and signing:
         return true;
       }
 
+      // Fetch milestones for email
+      const { data: milestones } = await supabase
+        .from('contract_milestones')
+        .select('*')
+        .eq('contract_id', contract.id)
+        .order('created_at', { ascending: true });
+
       // Prepare contract data for email
       const contractData = {
         id: contract.id, // Use the UUID from the database for the approval link
         contractId: contract.id, // Use the UUID for the approval link
         projectTitle: contract.project_title,
         project_title: contract.project_title,
+        projectDescription: contract.project_description,
+        project_description: contract.project_description,
         freelancerName: legalContract.freelancer_name || 'Freelancer',
         freelancer_name: legalContract.freelancer_name || 'Freelancer',
         clientName: legalContract.client_name || 'Client',
@@ -1378,7 +1525,10 @@ Please enter your client's email address for contract notifications and signing:
         chain: contract.chain,
         deadline: contract.deadline,
         contractHash: contract.legal_contract_hash,
-        legal_contract_hash: contract.legal_contract_hash
+        legal_contract_hash: contract.legal_contract_hash,
+        createdAt: contract.created_at,
+        created_at: contract.created_at,
+        milestones: milestones || []
       };
 
       const emailTemplate = generateContractEmailTemplate(contractData);
@@ -1436,12 +1586,21 @@ Please enter your client's email address for contract notifications and signing:
         return true;
       }
 
+      // Fetch milestones for email
+      const { data: milestones } = await supabase
+        .from('contract_milestones')
+        .select('*')
+        .eq('contract_id', contract.id)
+        .order('created_at', { ascending: true });
+
       // Prepare contract data for email
       const contractData = {
         id: contract.id, // Use the UUID from the database for the approval link
         contractId: contract.id, // Use the UUID for the approval link
         projectTitle: contract.project_title,
         project_title: contract.project_title,
+        projectDescription: contract.project_description,
+        project_description: contract.project_description,
         freelancerName: legalContract.freelancer_name || 'Freelancer',
         freelancer_name: legalContract.freelancer_name || 'Freelancer',
         clientName: legalContract.client_name || 'Client',
@@ -1453,7 +1612,10 @@ Please enter your client's email address for contract notifications and signing:
         chain: contract.chain,
         deadline: contract.deadline,
         contractHash: contract.legal_contract_hash,
-        legal_contract_hash: contract.legal_contract_hash
+        legal_contract_hash: contract.legal_contract_hash,
+        createdAt: contract.created_at,
+        created_at: contract.created_at,
+        milestones: milestones || []
       };
 
       const emailTemplate = generateContractEmailTemplate(contractData);

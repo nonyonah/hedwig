@@ -572,6 +572,7 @@ export function generateContractEmailTemplate(contract: any): string {
   const appUrl = ensureHttps(process.env.NEXT_PUBLIC_APP_URL || 'https://www.hedwigbot.xyz');
   const contractId = contract?.id || contract?.contractId || '';
   const projectTitle = contract?.projectTitle || contract?.project_title || 'Project Contract';
+  const projectDescription = contract?.projectDescription || contract?.project_description || 'No description provided';
   const freelancerName = contract?.freelancerName || contract?.freelancer_name || 'Freelancer';
   const clientName = contract?.clientName || contract?.client_name || 'Client';
   const amount = Number(contract?.paymentAmount || contract?.total_amount || 0);
@@ -579,6 +580,8 @@ export function generateContractEmailTemplate(contract: any): string {
   const chain = contract?.chain || 'Base';
   const deadline = contract?.deadline ? new Date(contract.deadline).toLocaleDateString() : '—';
   const contractHash = contract?.contractHash || contract?.legal_contract_hash || '';
+  const milestones = contract?.milestones || [];
+  const createdAt = contract?.createdAt || contract?.created_at ? new Date(contract.createdAt || contract.created_at).toLocaleDateString() : new Date().toLocaleDateString();
   
   return `
     <!DOCTYPE html>
@@ -640,9 +643,9 @@ export function generateContractEmailTemplate(contract: any): string {
                                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc; border-radius: 8px; padding: 24px; margin-bottom: 32px;">
                                                 <tr>
                                                     <td>
-                                                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">Contract Details</h3>
+                                                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">📋 Project Details</h3>
                                                         
-                                                        <!-- Project Row -->
+                                                        <!-- Project Title Row -->
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Project:</td>
@@ -650,19 +653,69 @@ export function generateContractEmailTemplate(contract: any): string {
                                                             </tr>
                                                         </table>
                                                         
-                                                        <!-- Freelancer Row -->
+                                                        <!-- Description Row -->
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%; vertical-align: top;">Description:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500; line-height: 1.5;">${projectDescription}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Contract ID Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Contract ID:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500; font-family: monospace;">${contractId}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Created Date Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Created:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${createdAt}</td>
+                                                            </tr>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                            </table>
+
+                                            <!-- Parties Section -->
+                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f0fdf4; border-radius: 8px; padding: 24px; margin-bottom: 32px;">
+                                                <tr>
+                                                    <td>
+                                                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">👥 Parties</h3>
+                                                        
+                                                        <!-- Client Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                                            <tr>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Client:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${clientName}</td>
+                                                            </tr>
+                                                        </table>
+                                                        
+                                                        <!-- Freelancer Row -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Freelancer:</td>
                                                                 <td style="color: #262624; font-size: 14px; font-weight: 500;">${freelancerName}</td>
                                                             </tr>
                                                         </table>
+                                                    </td>
+                                                </tr>
+                                            </table>
+
+                                            <!-- Payment Terms Section -->
+                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #fef3c7; border-radius: 8px; padding: 24px; margin-bottom: 32px;">
+                                                <tr>
+                                                    <td>
+                                                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">💰 Payment Terms</h3>
                                                         
-                                                        <!-- Amount Row -->
+                                                        <!-- Total Amount Row -->
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
                                                             <tr>
-                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Amount:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${amount.toLocaleString()} ${tokenType}</td>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Total Amount:</td>
+                                                                <td style="color: #d97706; font-size: 18px; font-weight: 700;">${amount.toLocaleString()} ${tokenType}</td>
                                                             </tr>
                                                         </table>
                                                         
@@ -670,37 +723,72 @@ export function generateContractEmailTemplate(contract: any): string {
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
                                                             <tr>
                                                                 <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Blockchain:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${chain}</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${chain.toUpperCase()} Network</td>
                                                             </tr>
                                                         </table>
                                                         
                                                         <!-- Deadline Row -->
-                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
-                                                            <tr>
-                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Deadline:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${deadline}</td>
-                                                            </tr>
-                                                        </table>
-                                                        
-                                                        <!-- Contract ID Row -->
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                             <tr>
-                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Contract ID:</td>
-                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${contractId}</td>
+                                                                <td style="color: #64748b; font-size: 14px; padding-right: 16px; width: 30%;">Project Deadline:</td>
+                                                                <td style="color: #262624; font-size: 14px; font-weight: 500;">${deadline}</td>
                                                             </tr>
                                                         </table>
                                                     </td>
                                                 </tr>
                                             </table>
+
+                                            ${milestones && milestones.length > 0 ? `
+                                            <!-- Milestones Section -->
+                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f3e8ff; border-radius: 8px; padding: 24px; margin-bottom: 32px;">
+                                                <tr>
+                                                    <td>
+                                                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">🎯 Project Milestones</h3>
+                                                        
+                                                        ${milestones.map((milestone: any, index: number) => `
+                                                        <!-- Milestone ${index + 1} -->
+                                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${index % 2 === 0 ? '#ffffff' : '#faf5ff'}; border-radius: 6px; padding: 16px; margin-bottom: 12px; border: 1px solid #e9d5ff;">
+                                                            <tr>
+                                                                <td>
+                                                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 8px;">
+                                                                        <tr>
+                                                                            <td style="color: #7c3aed; font-size: 14px; font-weight: 600;">Milestone ${index + 1}: ${milestone.title || 'Untitled'}</td>
+                                                                            <td style="color: #059669; font-size: 14px; font-weight: 600; text-align: right;">${milestone.amount || 0} ${tokenType}</td>
+                                                                        </tr>
+                                                                    </table>
+                                                                    
+                                                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 8px;">
+                                                                        <tr>
+                                                                            <td style="color: #64748b; font-size: 13px; line-height: 1.4;">${milestone.description || 'No description provided'}</td>
+                                                                        </tr>
+                                                                    </table>
+                                                                    
+                                                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                                                        <tr>
+                                                                            <td style="color: #64748b; font-size: 12px;">Deadline: ${milestone.deadline ? new Date(milestone.deadline).toLocaleDateString() : 'Not specified'}</td>
+                                                                            <td style="color: #64748b; font-size: 12px; text-align: right;">Status: ${(milestone.status || 'pending').toUpperCase()}</td>
+                                                                        </tr>
+                                                                    </table>
+                                                                </td>
+                                                            </tr>
+                                                        </table>
+                                                        `).join('')}
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                            ` : ''}
                                             
-                                            <!-- Review Button -->
+                                            <!-- Action Buttons -->
                                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 32px;">
                                                 <tr>
                                                     <td style="text-align: center;">
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
                                                             <tr>
-                                                                <td style="background-color: #8e01bb; border-radius: 8px;">
-                                                                    ${contractId ? `<a href="${appUrl}/contracts/approve/${contractId}" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">📄 Review & Approve Contract</a>` : `<span style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Contract Link Unavailable</span>`}
+                                                                <td style="background-color: #8e01bb; border-radius: 8px; margin-right: 12px;">
+                                                                    ${contractId ? `<a href="${appUrl}/contracts/${contractId}" style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">📄 View Contract</a>` : `<span style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Contract Link Unavailable</span>`}
+                                                                </td>
+                                                                <td style="background-color: #059669; border-radius: 8px;">
+                                                                    ${contractId ? `<a href="${appUrl}/contracts/approve/${contractId}" style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">✅ Approve & Deploy</a>` : `<span style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Approval Link Unavailable</span>`}
                                                                 </td>
                                                             </tr>
                                                         </table>
@@ -719,10 +807,28 @@ export function generateContractEmailTemplate(contract: any): string {
                                             </table>
                                             
                                             <!-- Instructions -->
-                                            <p style="margin: 0 0 16px 0; color: #64748b; font-size: 14px; line-height: 1.5;">Please review the contract carefully and approve it to proceed with the project. Once approved, the smart contract will be deployed and funds can be securely escrowed.</p>
+                                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #e0f2fe; border-left: 4px solid #0288d1; border-radius: 4px; padding: 20px; margin-bottom: 24px;">
+                                                <tr>
+                                                    <td>
+                                                        <h4 style="margin: 0 0 12px 0; color: #01579b; font-size: 16px; font-weight: 600;">📋 Next Steps</h4>
+                                                        <ol style="margin: 0; padding-left: 20px; color: #0277bd; font-size: 14px; line-height: 1.6;">
+                                                            <li style="margin-bottom: 8px;"><strong>Review</strong> the contract details above carefully</li>
+                                                            <li style="margin-bottom: 8px;"><strong>Click "View Contract"</strong> to see the full contract with PDF download option</li>
+                                                            <li style="margin-bottom: 8px;"><strong>Click "Approve & Deploy"</strong> when ready to proceed</li>
+                                                            <li style="margin-bottom: 8px;"><strong>Smart contract deployment</strong> will begin automatically</li>
+                                                            <li><strong>Start collaborating</strong> with ${freelancerName} on your project!</li>
+                                                        </ol>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                            
+                                            <p style="margin: 0 0 16px 0; color: #64748b; font-size: 14px; line-height: 1.5;">
+                                                <strong>🔒 Security:</strong> Once approved, your funds will be securely held in a smart contract escrow. 
+                                                Payments are automatically released to ${freelancerName} as milestones are completed and approved by you.
+                                            </p>
                                             
                                             <p style="margin: 0; color: #262624; font-size: 14px; line-height: 1.5;">
-                                                If you have any questions or need modifications, please contact ${freelancerName} directly.
+                                                <strong>❓ Questions?</strong> Contact ${freelancerName} directly or reach out to our support team if you need any assistance.
                                             </p>
                                         </td>
                                     </tr>

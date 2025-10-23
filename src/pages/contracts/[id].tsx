@@ -52,6 +52,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const { isConnected, address, connectWallet, switchToChain, chainId } = useAppKitWallet();
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentMilestone, setCurrentMilestone] = useState<Milestone | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const { writeContract, data: hash, isPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -219,6 +220,35 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const isFreelancer = address?.toLowerCase() === contract.legal_contract?.freelancer_email?.toLowerCase();
   const isClient = address?.toLowerCase() === contract.legal_contract?.client_email?.toLowerCase();
 
+  const handleDownloadPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      const response = await fetch(`/api/contracts/${contract.id}/pdf`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `contract_${contract.contract_id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      alert('Failed to download PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container max-w-4xl mx-auto py-8 px-4">
@@ -230,6 +260,22 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               <p className="text-gray-600">Contract ID: {contract.contract_id}</p>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                onClick={handleDownloadPDF}
+                disabled={isGeneratingPDF}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                {isGeneratingPDF ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    📄 Download PDF
+                  </>
+                )}
+              </button>
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(contract.status)}`}>
                 {contract.status.replace('_', ' ').toUpperCase()}
               </span>
@@ -257,94 +303,122 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
         {/* Project Details */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Project Details</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">📋</span>
+            <h3 className="font-semibold text-gray-900">Project Details</h3>
+          </div>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-700">Description</label>
-              <p className="text-gray-600 mt-1">{contract.project_description}</p>
+              <label className="text-sm font-medium text-gray-700">Project Title</label>
+              <p className="text-lg font-semibold text-gray-900 mt-1">{contract.project_title}</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Description</label>
+              <p className="text-gray-600 mt-1 leading-relaxed">{contract.project_description || 'No description provided'}</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
               <div>
-                <label className="text-sm font-medium text-gray-700">Total Amount</label>
-                <p className="text-lg font-semibold text-gray-900">
-                  {contract.total_amount.toLocaleString()} {getTokenSymbol(contract.token_address)}
-                </p>
+                <label className="text-sm font-medium text-gray-700">Contract ID</label>
+                <p className="text-sm font-mono text-gray-600 mt-1">{contract.contract_id}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700">Deadline</label>
-                <p className="text-gray-600">{formatDate(contract.deadline)}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Chain</label>
-                <p className="text-gray-600 capitalize">{contract.chain}</p>
+                <label className="text-sm font-medium text-gray-700">Created</label>
+                <p className="text-gray-600 mt-1">{formatDate(contract.created_at)}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Milestones */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Milestones</h3>
-          <div className="space-y-4">
-            {contract.milestones.map((milestone, index) => (
-              <div key={milestone.id} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h4 className="font-medium text-gray-900">
-                      Milestone {index + 1}: {milestone.title}
-                    </h4>
-                    <p className="text-sm text-gray-600 mt-1">{milestone.description}</p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getMilestoneStatusColor(milestone.status)}`}>
-                    {milestone.status.replace('_', ' ').toUpperCase()}
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-700">Amount</label>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {milestone.amount.toLocaleString()} {getTokenSymbol(contract.token_address)}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-700">Deadline</label>
-                    <p className="text-sm text-gray-600">{formatDate(milestone.deadline)}</p>
-                  </div>
-                  <div className="flex items-end">
-                    {isFreelancer && milestone.status === 'pending' && (
-                      <button
-                        onClick={() => handleMilestoneAction(milestone, 'start')}
-                        disabled={isProcessing}
-                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Start Work
-                      </button>
-                    )}
-                    {isFreelancer && milestone.status === 'in_progress' && (
-                      <button
-                        onClick={() => handleMilestoneAction(milestone, 'submit')}
-                        disabled={isProcessing}
-                        className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
-                      >
-                        Submit for Review
-                      </button>
-                    )}
-                    {isClient && milestone.status === 'completed' && (
-                      <button
-                        onClick={() => handleMilestoneAction(milestone, 'approve')}
-                        disabled={isProcessing || isPending || isConfirming}
-                        className="px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 disabled:opacity-50"
-                      >
-                        {isPending || isConfirming ? 'Processing...' : 'Approve & Pay'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+        {/* Payment Terms */}
+        <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">💰</span>
+            <h3 className="font-semibold text-gray-900">Payment Terms</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Total Amount</label>
+              <p className="text-2xl font-bold text-orange-600 mt-1">
+                {contract.total_amount.toLocaleString()} {getTokenSymbol(contract.token_address)}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Blockchain Network</label>
+              <p className="text-gray-900 font-medium mt-1 capitalize">{contract.chain} Network</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Project Deadline</label>
+              <p className="text-gray-900 font-medium mt-1">{formatDate(contract.deadline)}</p>
+            </div>
           </div>
         </div>
+
+        {/* Milestones */}
+        {contract.milestones && contract.milestones.length > 0 && (
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg shadow-sm p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xl">🎯</span>
+              <h3 className="font-semibold text-gray-900">Project Milestones</h3>
+            </div>
+            <div className="space-y-4">
+              {contract.milestones.map((milestone, index) => (
+                <div key={milestone.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-purple-25'} border border-purple-200 rounded-lg p-4`}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-purple-700 mb-2">
+                        Milestone {index + 1}: {milestone.title}
+                      </h4>
+                      <p className="text-sm text-gray-600 leading-relaxed mb-3">{milestone.description}</p>
+                    </div>
+                    <div className="ml-4 text-right">
+                      <p className="text-lg font-bold text-green-600">
+                        {milestone.amount.toLocaleString()} {getTokenSymbol(contract.token_address)}
+                      </p>
+                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getMilestoneStatusColor(milestone.status)} mt-1`}>
+                        {milestone.status.replace('_', ' ').toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center pt-3 border-t border-gray-200">
+                    <div className="text-sm text-gray-500">
+                      <span className="font-medium">Deadline:</span> {formatDate(milestone.deadline)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isFreelancer && milestone.status === 'pending' && (
+                        <button
+                          onClick={() => handleMilestoneAction(milestone, 'start')}
+                          disabled={isProcessing}
+                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        >
+                          Start Work
+                        </button>
+                      )}
+                      {isFreelancer && milestone.status === 'in_progress' && (
+                        <button
+                          onClick={() => handleMilestoneAction(milestone, 'submit')}
+                          disabled={isProcessing}
+                          className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                        >
+                          Submit for Review
+                        </button>
+                      )}
+                      {isClient && milestone.status === 'completed' && (
+                        <button
+                          onClick={() => handleMilestoneAction(milestone, 'approve')}
+                          disabled={isProcessing || isPending || isConfirming}
+                          className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                        >
+                          {isPending || isConfirming ? 'Processing...' : 'Approve & Pay'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Smart Contract Info */}
         {contract.smart_contract_address && (

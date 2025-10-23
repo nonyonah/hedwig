@@ -774,6 +774,18 @@ Response: {"intent": "send_payment_link_email", "params": {}}
 User: "I want to share my payment link by email"
 Response: {"intent": "send_payment_link_email", "params": {}}
 
+User: "2025-10-24" (when user appears to be providing a date)
+Response: {"intent": "conversation", "params": {"message": "2025-10-24"}}
+
+User: "January 15, 2025" (when user appears to be providing a date)
+Response: {"intent": "conversation", "params": {"message": "January 15, 2025"}}
+
+User: "in 30 days" (when user appears to be providing a timeline)
+Response: {"intent": "conversation", "params": {"message": "in 30 days"}}
+
+User: "next Friday" (when user appears to be providing a deadline)
+Response: {"intent": "conversation", "params": {"message": "next Friday"}}
+
 User: "withdraw 100 USDT to my bank account"
 Response: {"intent": "offramp", "params": {"amount": "100", "token": "USDT"}}
 
@@ -805,6 +817,18 @@ User: "nudge client about overdue payment"
 Response: {"intent": "send_reminder", "params": {"reminderType": "due_date"}}
 
 
+
+CONTEXT AWARENESS FOR ACTIVE FLOWS:
+- If the user provides what appears to be data input (dates, numbers, names, addresses, etc.) without clear intent, consider they might be in an active flow
+- Date formats like "2025-10-24", "October 24, 2025", "24/10/2025" should be treated as date input, not conversation
+- For date-like inputs, use "conversation" intent with the date as the message parameter
+- For simple data inputs during flows, avoid defaulting to "welcome" or "clarification"
+
+DATE INPUT RECOGNITION: Always use "conversation" intent for:
+- Date formats: "2025-10-24", "2024-12-31", "01/15/2025", "15-01-2025"
+- Natural dates: "January 15", "Dec 31", "tomorrow", "next week", "in 30 days"
+- Time periods: "2 weeks", "1 month", "3 days", "by Friday"
+- When user provides what appears to be a date or deadline
 
 AVOID CLARIFICATION: Only use "clarification" intent if you absolutely cannot determine the user's intent and need specific information that cannot be inferred from context.
 For blockchain-related queries, try to match to the closest intent rather than asking for clarification.

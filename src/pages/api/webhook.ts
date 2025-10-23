@@ -1332,7 +1332,7 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
 
     // Check if user is in contract creation flow first (use UUID for contract flow tracking)
     console.log('[Webhook] Checking contract flow for user:', user.id);
-    const isInFlow = botIntegration?.getContractModule()?.isInContractFlow(user.id);
+    const isInFlow = await botIntegration?.getContractModule()?.isInContractFlow(user.id);
     console.log('[Webhook] Is user in contract flow?', isInFlow);
     
     if (isInFlow && botIntegration) {
@@ -1394,8 +1394,8 @@ async function processWithAI(message: string, chatId: number): Promise<string | 
     }
 
     const { runLLM } = await import('../../lib/llmAgent');
-    // Use Telegram username for LLM context, but always use UUID for actions
-    const llmUserId = user.telegram_username || user.id;
+    // Always use UUID for consistent state management across all flows
+    const llmUserId = user.id;
 
     // Use LLM processing for proper intent detection of service requests
     console.log('[Webhook] About to call runLLM with:', { userId: llmUserId, message, generateNaturalResponse: true });

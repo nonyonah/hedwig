@@ -620,6 +620,27 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
+    // Date input recognition - for users providing dates during flows
+    const datePatterns = [
+      /^\d{4}-\d{2}-\d{2}$/, // 2025-10-24
+      /^\d{2}\/\d{2}\/\d{4}$/, // 10/24/2025
+      /^\d{2}-\d{2}-\d{4}$/, // 24-10-2025
+      /^\d{1,2}\/\d{1,2}\/\d{4}$/, // 1/5/2025
+      /^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+\d{4}$/i, // January 15, 2025
+      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+\d{4}$/i, // Jan 15, 2025
+      /^\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}$/i, // 15 January 2025
+      /^(tomorrow|next week|next month|in \d+ days?|in \d+ weeks?|in \d+ months?)$/i, // tomorrow, next week, in 30 days
+      /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i, // day names
+      /^next (monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i, // next Friday
+      /^\d{1,2}(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december)$/i // 15th January
+    ];
+
+    if (datePatterns.some(pattern => pattern.test(text.trim()))) {
+      const result = { intent: 'conversation', params: { message: text.trim() } };
+      console.log('[intentParser] Detected date input:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
     // Enhanced Earnings keywords - comprehensive detection with time period and PDF support
     if (text.includes('earnings') ||
       text.includes('how much have i earned') ||
