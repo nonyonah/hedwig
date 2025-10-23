@@ -204,6 +204,10 @@ export class ContractModule {
               const contractId = action.replace('contract_send_email_', '');
               return await this.sendContractEmail(chatId, userId, contractId);
             }
+            if (action.startsWith('contract_resend_email_')) {
+              const contractId = action.replace('contract_resend_email_', '');
+              return await this.resendContractEmail(chatId, userId, contractId);
+            }
             return false;
         }
       }
@@ -831,134 +835,55 @@ Please enter your client's email address for contract notifications and signing:
         .eq('id', userId)
         .single();
 
-      // Prepare contract generation request
+      // Generate legal contract using the service
       const contractRequest: ContractGenerationRequest = {
-        projectTitle: state.data.projectTitle!,
-        projectDescription: state.data.projectDescription!,
-        clientName: state.data.clientName || 'Client',
-        clientWallet: state.data.clientWallet!,
         freelancerName: user?.name || 'Freelancer',
-        freelancerEmail: user?.email,
-        freelancerWallet: '', // Will be filled from user's wallet
-        paymentAmount: state.data.paymentAmount!,
-        tokenType: state.data.tokenType!,
-        chain: state.data.chain!,
-        deadline: state.data.deadline!,
-        milestones: state.milestones,
-        refundPolicy: state.data.refundPolicy
+        freelancerEmail: user?.email || '',
+        freelancerWallet: '', // This should be provided from state if available
+        clientName: state.data.clientName || 'Client',
+        clientEmail: state.data.clientEmail || '',
+        clientWallet: state.data.clientWallet || '',
+        projectTitle: state.data.projectTitle || '',
+        projectDescription: state.data.projectDescription || '',
+        paymentAmount: state.data.paymentAmount || 0,
+        tokenType: state.data.tokenType || 'USDC',
+        chain: state.data.chain || 'base',
+        deadline: state.data.deadline || '',
+        milestones: state.milestones || [],
+        refundPolicy: state.data.refundPolicy || ''
       };
 
-      // Generate contract with AI
       const result = await legalContractService.generateContract(contractRequest);
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to generate contract');
+        await this.bot.sendMessage(chatId, `❌ Failed to generate contract: ${result.error}`);
+        return true;
       }
 
-      // Store contract in database
-      const contractStringId = `contract_${Date.now()}_${userId}`;
-      const contractIdNumber = Date.now(); // Generate unique contract ID number
-      
-      // Get proper user UUID from Telegram chat ID
-      let actualUserId = userId;
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-        // userId is likely a Telegram chat ID, get proper user ID
-        const { data: user } = await supabase
-          .from('users')
-          .select('id')
-          .eq('telegram_chat_id', parseInt(userId))
-          .single();
-        
-        if (!user?.id) {
-          // Create user if doesn't exist
-          const { data: newUserId, error } = await supabase.rpc('get_or_create_telegram_user', {
-            p_telegram_chat_id: parseInt(userId),
-            p_telegram_username: null,
-            p_telegram_first_name: null,
-            p_telegram_last_name: null,
-            p_telegram_language_code: null,
-          });
-          if (error) {
-            console.error('Error creating user:', error);
-            throw new Error('Failed to create user for contract');
-          }
-          actualUserId = newUserId;
-        } else {
-          actualUserId = user.id;
-        }
-      }
-      
-      const { data: insertedContract, error: dbError } = await supabase
-        .from('project_contracts')
-        .insert({
-          contract_id: contractIdNumber,
-          project_title: contractRequest.projectTitle,
-          project_description: contractRequest.projectDescription,
-          client_id: null, // Will be set when client approves
-          freelancer_id: actualUserId,
-          total_amount: contractRequest.paymentAmount,
-          platform_fee: contractRequest.paymentAmount * 0.05, // 5% platform fee
-          token_address: getTokenAddress(contractRequest.tokenType, contractRequest.chain), // Use actual token contract address
-          chain: contractRequest.chain,
-          deadline: contractRequest.deadline,
-          status: 'created',
-          legal_contract_hash: result.contractHash,
-          created_at: new Date().toISOString()
-        })
-        .select('id')
-        .single();
-
-      if (dbError || !insertedContract) {
-        console.error('Database error details:', dbError);
-        throw new Error(`Failed to save contract to database: ${dbError?.message || 'No contract returned'}`);
-      }
-
-      const contractId = insertedContract.id; // Use the UUID from the database
-
-      // Store milestones if any
-      if (state.milestones.length > 0) {
-        const milestoneInserts = state.milestones.map((milestone, index) => ({
-          contract_id: contractId, // Now using the UUID
-          milestone_id: index + 1,
-          title: milestone.title,
-          description: milestone.description,
-          amount: milestone.amount,
-          deadline: milestone.deadline,
-          status: 'pending' as const
-        }));
-
-        const { error: milestoneError } = await supabase.from('contract_milestones').insert(milestoneInserts);
-        if (milestoneError) {
-          console.error('Milestone insertion error:', milestoneError);
-          // Don't throw here, contract is already created
-        }
-      }
-
-      // Legal contract is already stored by generateContract() method
-
-      // Email will be sent manually when freelancer chooses to send it
-      let emailSent = false;
-      console.log(`[ContractModule] Contract generated successfully. Email will be sent manually by freelancer.`);
-
-      // Clean up state
+      // Clear the contract state
       this.contractStates.delete(userId);
 
-      // Track success
-      trackEvent('contract_generated', { 
-        contractId: contractStringId, 
-        hasMillestones: state.milestones.length > 0,
-        emailSent 
+      // Track the event
+      await trackEvent('contract_created', {
+        project_title: contractRequest.projectTitle,
+        total_amount: contractRequest.paymentAmount,
+        token_type: contractRequest.tokenType,
+        chain: contractRequest.chain,
+        milestones_count: contractRequest.milestones.length
       }, userId);
 
       await this.bot.sendMessage(chatId, 
-        `✅ **Contract Generated Successfully!**\n\n📄 **Contract ID:** ${contractStringId}\n📊 **Word Count:** ${result.metadata?.wordCount}\n🔐 **Document Hash:** ${result.contractHash?.substring(0, 16)}...\n\n🚀 **Next Steps:**\n1. Review the contract PDF\n2. Send to client when ready\n3. Deploy smart contract\n\nUse /contracts to manage your contracts.`,
+        `✅ **Contract Generated Successfully!**\n\n📄 Contract ID: \`${result.contractId}\`\n📧 Email sent to: ${contractRequest.clientEmail}\n\nThe client will receive an email with the contract details and approval link.`,
         { 
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '📄 View Contract PDF', callback_data: `contract_view_${contractId}` },
-                { text: '📧 Send to Client', callback_data: `contract_send_email_${contractId}` }
+                { text: '📄 View Contract PDF', callback_data: `contract_view_${result.contractId}` },
+                { text: '📧 Send to Client', callback_data: `contract_send_email_${result.contractId}` }
+              ],
+              [
+                { text: '📋 List All Contracts', callback_data: 'business_contracts' }
               ]
             ]
           }
@@ -1411,7 +1336,7 @@ Please enter your client's email address for contract notifications and signing:
       const { data: contract, error } = await supabase
         .from('project_contracts')
         .select('*')
-        .eq('contract_id', contractId)
+        .eq('id', contractId)
         .single();
 
       if (error || !contract) {
@@ -1423,7 +1348,7 @@ Please enter your client's email address for contract notifications and signing:
       const { data: legalContract, error: legalError } = await supabase
         .from('legal_contracts')
         .select('*')
-        .eq('contract_hash', contract.legal_contract_hash)
+        .eq('id', contract.legal_contract_hash)
         .single();
 
       if (legalError || !legalContract) {
@@ -1448,8 +1373,8 @@ Please enter your client's email address for contract notifications and signing:
         client_name: legalContract.client_name || 'Client',
         paymentAmount: contract.total_amount,
         total_amount: contract.total_amount,
-        tokenType: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
-        token_type: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
+        tokenType: this.getTokenTypeFromAddress(contract.token_address, contract.chain),
+        token_type: this.getTokenTypeFromAddress(contract.token_address, contract.chain),
         chain: contract.chain,
         deadline: contract.deadline,
         contractHash: contract.legal_contract_hash,
@@ -1486,7 +1411,7 @@ Please enter your client's email address for contract notifications and signing:
       const { data: contract, error } = await supabase
         .from('project_contracts')
         .select('*')
-        .eq('contract_id', contractId)
+        .eq('id', contractId)
         .single();
 
       if (error || !contract) {
@@ -1498,7 +1423,7 @@ Please enter your client's email address for contract notifications and signing:
       const { data: legalContract, error: legalError } = await supabase
         .from('legal_contracts')
         .select('*')
-        .eq('contract_hash', contract.legal_contract_hash)
+        .eq('id', contract.legal_contract_hash)
         .single();
 
       if (legalError || !legalContract) {
@@ -1523,8 +1448,8 @@ Please enter your client's email address for contract notifications and signing:
         client_name: legalContract.client_name || 'Client',
         paymentAmount: contract.total_amount,
         total_amount: contract.total_amount,
-        tokenType: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
-        token_type: contract.token_address?.includes('USDC') ? 'USDC' : 'ETH',
+        tokenType: this.getTokenTypeFromAddress(contract.token_address, contract.chain),
+        token_type: this.getTokenTypeFromAddress(contract.token_address, contract.chain),
         chain: contract.chain,
         deadline: contract.deadline,
         contractHash: contract.legal_contract_hash,
@@ -1550,7 +1475,7 @@ Please enter your client's email address for contract notifications and signing:
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '📋 List All Contracts', callback_data: 'contracts_list' },
+                { text: '📋 List All Contracts', callback_data: 'business_contracts' },
                 { text: '🔄 Resend Email', callback_data: `contract_resend_email_${contractId}` }
               ]
             ]
@@ -1619,15 +1544,49 @@ Please enter your client's email address for contract notifications and signing:
 
       console.log('[ContractModule] Freelancer info:', user?.name);
 
+      // Get client information if available
+      let clientName = 'Client';
+      if (contract.client_email) {
+        const { data: clientUser } = await supabase
+          .from('users')
+          .select('name')
+          .eq('email', contract.client_email)
+          .single();
+        clientName = clientUser?.name || contract.client_email || 'Client';
+      }
+
+      // Determine token type more reliably
+      const getTokenType = (tokenAddress: string | null, chain: string): string => {
+        if (!tokenAddress) return 'USDC'; // Default fallback
+        
+        const address = tokenAddress.toLowerCase();
+        
+        // Base network USDC addresses
+        if (chain === 'base') {
+          if (address.includes('833589fcd6edb6e08f4c7c32d4f71b54bda02913')) return 'USDC';
+        }
+        
+        // Celo network cUSD addresses  
+        if (chain === 'celo') {
+          if (address.includes('765de816845861e75a25fca122bb6898b8b1282a')) return 'cUSD';
+        }
+        
+        // Fallback based on common patterns
+        if (address.includes('usdc')) return 'USDC';
+        if (address.includes('cusd')) return 'cUSD';
+        
+        return 'USDC'; // Default fallback
+      };
+
       // Prepare contract data for PDF generation
       const contractData: ContractData = {
         contractId: contract.contract_id?.toString() || contractId,
         projectTitle: contract.project_title,
         projectDescription: contract.project_description || 'No description provided',
-        clientName: 'Client', // Will be updated when client info is available
+        clientName: clientName,
         freelancerName: user?.name || 'Freelancer',
         totalAmount: contract.total_amount,
-        tokenType: contract.token_address?.includes('usdc') ? 'USDC' : 'cUSD', // Determine token type from address
+        tokenType: getTokenType(contract.token_address, contract.chain),
         chain: contract.chain,
         deadline: contract.deadline,
         status: contract.status,
@@ -1660,7 +1619,7 @@ Please enter your client's email address for contract notifications and signing:
           inline_keyboard: [
             [
               { text: '📧 Send to Client', callback_data: `contract_send_email_${contractId}` },
-              { text: '📋 List All', callback_data: 'contracts_list' }
+              { text: '📋 List All', callback_data: 'business_contracts' }
             ]
           ]
         }
@@ -1686,5 +1645,38 @@ Please enter your client's email address for contract notifications and signing:
       await this.bot.sendMessage(chatId, `❌ Failed to generate contract PDF: ${errorMessage}\n\nPlease try again or contact support if the issue persists.`);
       return true;
     }
+  }
+
+  /**
+   * Get token type from address and chain
+   */
+  private getTokenTypeFromAddress(tokenAddress: string | null, chain: string): string {
+    if (!tokenAddress) return 'USDC'; // Default fallback
+    
+    const address = tokenAddress.toLowerCase();
+    
+    // Base network tokens
+    if (chain === 'base') {
+      if (address === '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913') return 'USDC';
+      if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
+    }
+    
+    // Celo network tokens  
+    if (chain === 'celo') {
+      if (address === '0x765de816845861e75a25fca122bb6898b8b1282a') return 'cUSD';
+      if (address === '0x0000000000000000000000000000000000000000') return 'CELO';
+    }
+    
+    // Ethereum network tokens
+    if (chain === 'ethereum') {
+      if (address === '0xa0b86a33e6441b8c4505e2c4b8b5b8e8e8e8e8e8') return 'USDC';
+      if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
+    }
+    
+    // Fallback based on common patterns
+    if (address.includes('833589fcd6edb6e08f4c7c32d4f71b54bda02913')) return 'USDC';
+    if (address.includes('765de816845861e75a25fca122bb6898b8b1282a')) return 'cUSD';
+    
+    return 'USDC'; // Default fallback
   }
 }

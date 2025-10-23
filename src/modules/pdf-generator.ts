@@ -358,6 +358,27 @@ export async function generateContractPDF(contractData: ContractData): Promise<B
     try {
       console.log('[PDF Generator] Starting contract PDF generation for:', contractData.contractId);
       
+      // Validate required data
+      if (!contractData.contractId || !contractData.projectTitle || !contractData.totalAmount) {
+        throw new Error('Missing required contract data: contractId, projectTitle, or totalAmount');
+      }
+
+      // Sanitize and provide defaults for data
+      const sanitizedData = {
+        contractId: contractData.contractId || 'N/A',
+        projectTitle: contractData.projectTitle || 'Untitled Project',
+        projectDescription: contractData.projectDescription || 'No description provided',
+        clientName: contractData.clientName || 'Client',
+        freelancerName: contractData.freelancerName || 'Freelancer',
+        totalAmount: contractData.totalAmount || 0,
+        tokenType: contractData.tokenType || 'USDC',
+        chain: contractData.chain || 'base',
+        deadline: contractData.deadline || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        status: contractData.status || 'created',
+        createdAt: contractData.createdAt || new Date().toISOString(),
+        milestones: contractData.milestones || []
+      };
+      
       const doc = new PDFDocument({ margin: 50 });
       const buffers: Buffer[] = [];
 
@@ -394,8 +415,8 @@ export async function generateContractPDF(contractData: ContractData): Promise<B
       // Header with Hedwig branding
       doc.fontSize(24).fillColor('#2563eb').text('HEDWIG', 50, 50);
       doc.fontSize(20).fillColor('#000000').text('FREELANCE CONTRACT', 50, 80);
-      doc.fontSize(10).text(`Contract ID: ${contractData.contractId}`, 50, 110);
-      doc.text(`Status: ${contractData.status.toUpperCase()}`, 400, 110);
+      doc.fontSize(10).text(`Contract ID: ${sanitizedData.contractId}`, 50, 110);
+      doc.text(`Status: ${sanitizedData.status.toUpperCase()}`, 400, 110);
       doc.text(`Generated: ${new Date().toLocaleDateString()}`, 50, 125);
 
       // Contract Information Section
@@ -407,14 +428,14 @@ export async function generateContractPDF(contractData: ContractData): Promise<B
       yPosition += 50;
 
       doc.fontSize(12).fillColor('#374151');
-      doc.text(`Title: ${contractData.projectTitle}`, 60, yPosition);
+      doc.text(`Title: ${sanitizedData.projectTitle}`, 60, yPosition);
       yPosition += 20;
       
       doc.text('Description:', 60, yPosition);
       yPosition += 15;
       doc.fontSize(11).fillColor('#6b7280');
-      const descHeight = doc.heightOfString(contractData.projectDescription, { width: 480 });
-      doc.text(contractData.projectDescription, 60, yPosition, { width: 480 });
+      const descHeight = doc.heightOfString(sanitizedData.projectDescription, { width: 480 });
+      doc.text(sanitizedData.projectDescription, 60, yPosition, { width: 480 });
       yPosition += descHeight + 30;
 
       // Parties Section
@@ -425,8 +446,8 @@ export async function generateContractPDF(contractData: ContractData): Promise<B
       yPosition += 50;
 
       doc.fontSize(12).fillColor('#374151');
-      doc.text(`Client: ${contractData.clientName}`, 60, yPosition);
-      doc.text(`Freelancer: ${contractData.freelancerName}`, 300, yPosition);
+      doc.text(`Client: ${sanitizedData.clientName}`, 60, yPosition);
+      doc.text(`Freelancer: ${sanitizedData.freelancerName}`, 300, yPosition);
       yPosition += 40;
 
       // Payment Terms Section
@@ -437,21 +458,33 @@ export async function generateContractPDF(contractData: ContractData): Promise<B
       yPosition += 50;
 
       doc.fontSize(12).fillColor('#374151');
-      doc.text(`Total Amount: ${contractData.totalAmount} ${contractData.tokenType}`, 60, yPosition);
-      doc.text(`Blockchain: ${contractData.chain}`, 300, yPosition);
+      doc.text(`Total Amount: ${sanitizedData.totalAmount} ${sanitizedData.tokenType}`, 60, yPosition);
+      doc.text(`Blockchain: ${sanitizedData.chain.toUpperCase()}`, 300, yPosition);
       yPosition += 20;
-      doc.text(`Deadline: ${new Date(contractData.deadline).toLocaleDateString()}`, 60, yPosition);
+      
+      // Safe date parsing
+      let deadlineText = 'Not specified';
+      try {
+        const deadlineDate = new Date(sanitizedData.deadline);
+        if (!isNaN(deadlineDate.getTime())) {
+          deadlineText = deadlineDate.toLocaleDateString();
+        }
+      } catch (error) {
+        console.warn('[PDF Generator] Invalid deadline date:', sanitizedData.deadline);
+      }
+      
+      doc.text(`Deadline: ${deadlineText}`, 60, yPosition);
       yPosition += 40;
 
       // Milestones Section
-      if (contractData.milestones && contractData.milestones.length > 0) {
+      if (sanitizedData.milestones && sanitizedData.milestones.length > 0) {
         doc.rect(50, yPosition - 10, 500, 40)
            .fillAndStroke('#f3e8ff', '#8b5cf6');
         
         doc.fontSize(16).fillColor('#7c3aed').text('🎯 MILESTONES', 60, yPosition + 5);
         yPosition += 50;
 
-        contractData.milestones.forEach((milestone, index) => {
+        sanitizedData.milestones.forEach((milestone, index) => {
           // Check if we need a new page
           if (yPosition > 650) {
             doc.addPage();
@@ -462,17 +495,29 @@ export async function generateContractPDF(contractData: ContractData): Promise<B
              .fillAndStroke(index % 2 === 0 ? '#f9fafb' : '#ffffff', '#e5e7eb');
 
           doc.fontSize(12).fillColor('#1f2937');
-          doc.text(`${index + 1}. ${milestone.title}`, 60, yPosition + 5);
+          doc.text(`${index + 1}. ${milestone.title || 'Untitled Milestone'}`, 60, yPosition + 5);
           
           doc.fontSize(10).fillColor('#6b7280');
-          doc.text(`Description: ${milestone.description}`, 60, yPosition + 20, { width: 300 });
+          doc.text(`Description: ${milestone.description || 'No description'}`, 60, yPosition + 20, { width: 300 });
           
           doc.fontSize(11).fillColor('#059669');
-          doc.text(`Amount: ${milestone.amount} ${contractData.tokenType}`, 380, yPosition + 5);
+          doc.text(`Amount: ${milestone.amount || 0} ${sanitizedData.tokenType}`, 380, yPosition + 5);
           
           doc.fontSize(10).fillColor('#6b7280');
-          doc.text(`Deadline: ${new Date(milestone.deadline).toLocaleDateString()}`, 380, yPosition + 20);
-          doc.text(`Status: ${milestone.status.toUpperCase()}`, 380, yPosition + 35);
+          
+          // Safe milestone deadline parsing
+          let milestoneDeadlineText = 'Not specified';
+          try {
+            const milestoneDeadline = new Date(milestone.deadline);
+            if (!isNaN(milestoneDeadline.getTime())) {
+              milestoneDeadlineText = milestoneDeadline.toLocaleDateString();
+            }
+          } catch (error) {
+            console.warn('[PDF Generator] Invalid milestone deadline:', milestone.deadline);
+          }
+          
+          doc.text(`Deadline: ${milestoneDeadlineText}`, 380, yPosition + 20);
+          doc.text(`Status: ${(milestone.status || 'pending').toUpperCase()}`, 380, yPosition + 35);
           
           yPosition += 85;
         });
@@ -498,12 +543,25 @@ export async function generateContractPDF(contractData: ContractData): Promise<B
       // Footer
       const footerY = doc.page.height - 80;
       doc.fontSize(10).fillColor('#6b7280');
-      doc.text(`Contract created: ${new Date(contractData.createdAt).toLocaleDateString()}`, 50, footerY);
+      
+      // Safe created date parsing
+      let createdDateText = 'Unknown';
+      try {
+        const createdDate = new Date(sanitizedData.createdAt);
+        if (!isNaN(createdDate.getTime())) {
+          createdDateText = createdDate.toLocaleDateString();
+        }
+      } catch (error) {
+        console.warn('[PDF Generator] Invalid created date:', sanitizedData.createdAt);
+      }
+      
+      doc.text(`Contract created: ${createdDateText}`, 50, footerY);
       doc.text('Powered by Hedwig - Secure Freelance Payments on Blockchain', 50, footerY + 15);
       doc.text('🔗 Base & Celo Networks • 🔒 Smart Contract Escrow', 50, footerY + 30);
 
       doc.end();
     } catch (error) {
+      console.error('[PDF Generator] Error in generateContractPDF:', error);
       reject(error);
     }
   });

@@ -94,12 +94,30 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   };
 
   const getTokenSymbol = (tokenAddress: string) => {
-    // Map token addresses to symbols
-    const tokenMap: { [key: string]: string } = {
-      '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913': 'USDC', // Base USDC
-      '0xA0b86a33E6441b8C4c7C4b4c4c4c4c4c4c4c4c4c': 'ETH',  // Placeholder
-    };
-    return tokenMap[tokenAddress] || contract.legal_contract?.token_type || 'USDC';
+    if (!tokenAddress) return 'USDC';
+    
+    const address = tokenAddress.toLowerCase();
+    
+    // Base network tokens
+    if (contract.chain === 'base') {
+      if (address === '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913') return 'USDC';
+      if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
+    }
+    
+    // Celo network tokens
+    if (contract.chain === 'celo') {
+      if (address === '0x765de816845861e75a25fca122bb6898b8b1282a') return 'cUSD';
+      if (address === '0x0000000000000000000000000000000000000000') return 'CELO';
+    }
+    
+    // Ethereum network tokens
+    if (contract.chain === 'ethereum') {
+      if (address === '0xa0b86a33e6441b8c4505e2c4b8b5b8e8e8e8e8e8') return 'USDC';
+      if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
+    }
+    
+    // Fallback to legal contract token type or default
+    return contract.legal_contract?.token_type || 'USDC';
   };
 
   const getStatusColor = (status: string) => {
@@ -407,13 +425,12 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Fetch contract with milestones and legal contract
+    // Fetch contract with milestones
     const { data: contract, error: contractError } = await supabaseServer
       .from('project_contracts')
       .select(`
         *,
-        milestones:contract_milestones(*),
-        legal_contract:legal_contracts(*)
+        milestones:contract_milestones(*)
       `)
       .eq('id', id)
       .single();
@@ -427,11 +444,23 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       };
     }
 
+    // Fetch legal contract separately using the legal_contract_hash
+    let legalContract = null;
+    if (contract.legal_contract_hash) {
+      const { data: legalData } = await supabaseServer
+        .from('legal_contracts')
+        .select('*')
+        .eq('id', contract.legal_contract_hash)
+        .single();
+      
+      legalContract = legalData;
+    }
+
     return {
       props: {
         contract: {
           ...contract,
-          legal_contract: contract.legal_contract?.[0] || null
+          legal_contract: legalContract
         }
       }
     };

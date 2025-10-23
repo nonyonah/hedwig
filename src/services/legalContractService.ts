@@ -91,9 +91,63 @@ export class LegalContractService {
         };
       }
 
+      // Generate a unique contract ID (BIGINT)
+      const contractId = Date.now();
+
+      // Create project contract entry
+      const { data: projectContract, error: contractError } = await supabase
+        .from('project_contracts')
+        .insert({
+          contract_id: contractId,
+          project_title: request.projectTitle,
+          project_description: request.projectDescription,
+          total_amount: request.paymentAmount,
+          token_address: this.getTokenAddress(request.tokenType, request.chain),
+          chain: request.chain,
+          deadline: request.deadline,
+          status: 'created',
+          legal_contract_hash: contract.id,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (contractError) {
+        console.error('Failed to create project contract:', contractError);
+        return {
+          success: false,
+          error: 'Failed to create project contract'
+        };
+      }
+
+      // Create milestones
+      if (request.milestones && request.milestones.length > 0) {
+        const milestoneInserts = request.milestones.map((milestone, index) => ({
+          milestone_id: Date.now() + index, // Generate unique milestone ID
+          contract_id: projectContract.id,
+          title: milestone.title,
+          description: milestone.description,
+          amount: milestone.amount,
+          deadline: milestone.deadline,
+          status: 'pending'
+        }));
+
+        const { error: milestonesError } = await supabase
+          .from('contract_milestones')
+          .insert(milestoneInserts);
+
+        if (milestonesError) {
+          console.error('Failed to create milestones:', milestonesError);
+          return {
+            success: false,
+            error: 'Failed to create milestones'
+          };
+        }
+      }
+
       return {
         success: true,
-        contractId: contract.id,
+        contractId: projectContract.id, // Return the project contract ID instead of legal contract ID
         contractText,
         contractHash,
         metadata
@@ -262,6 +316,29 @@ Generated on: ${new Date().toISOString()}
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Get token address for a given token type and chain
+   */
+  private getTokenAddress(tokenType: string, chain: string): string {
+    // Token addresses for different chains
+    const tokenAddresses: Record<string, Record<string, string>> = {
+      base: {
+        USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        ETH: '0x0000000000000000000000000000000000000000'
+      },
+      celo: {
+        cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+        CELO: '0x0000000000000000000000000000000000000000'
+      },
+      ethereum: {
+        USDC: '0xA0b86a33E6441b8C4505E2c4B8b5b8e8E8E8E8E8',
+        ETH: '0x0000000000000000000000000000000000000000'
+      }
+    };
+
+    return tokenAddresses[chain]?.[tokenType] || tokenAddresses.base.USDC;
   }
 }
 

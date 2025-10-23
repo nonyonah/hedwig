@@ -716,21 +716,35 @@ export class BotIntegration {
   // Handle contract list
   async handleContractList(chatId: number, userId: string) {
     try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
       const { data: contracts, error } = await supabase
         .from('project_contracts')
         .select(`
           id,
           project_title,
-          client_email,
-          freelancer_email,
-          amount,
-          token,
+          total_amount,
+          token_address,
           chain,
           deadline,
           status,
-          created_at
+          created_at,
+          client_id,
+          freelancer_id
         `)
-        .or(`client_user_id.eq.${userId},freelancer_user_id.eq.${userId}`)
+        .or(`client_id.eq.${actualUserId},freelancer_id.eq.${actualUserId}`)
         .order('created_at', { ascending: false })
         .limit(10);
 
@@ -757,12 +771,14 @@ export class BotIntegration {
         const statusEmoji = this.getStatusEmoji(contract.status);
         const deadline = new Date(contract.deadline).toLocaleDateString();
         
+        // Determine token type from address
+        const tokenType = this.getTokenTypeFromAddress(contract.token_address, contract.chain);
+        
         message += `${statusEmoji} *${contract.project_title}*\n`;
-        message += `💰 ${contract.amount} ${contract.token.toUpperCase()}\n`;
+        message += `💰 ${contract.total_amount} ${tokenType}\n`;
         message += `📅 Deadline: ${deadline}\n`;
-        message += `🔗 ${contract.chain}\n`;
-        message += `📧 Client: ${contract.client_email}\n`;
-        message += `👨‍💻 Freelancer: ${contract.freelancer_email}\n\n`;
+        message += `🔗 ${contract.chain.toUpperCase()}\n`;
+        message += `📄 ID: ${contract.id}\n\n`;
       }
 
       await this.bot.sendMessage(chatId, message, {
@@ -1112,6 +1128,34 @@ export class BotIntegration {
       default:
         return '📄';
     }
+  }
+
+  // Get token type from address
+  private getTokenTypeFromAddress(tokenAddress: string | null, chain: string): string {
+    if (!tokenAddress) return 'USDC';
+    
+    const address = tokenAddress.toLowerCase();
+    
+    // Base network tokens
+    if (chain === 'base') {
+      if (address === '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913') return 'USDC';
+      if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
+    }
+    
+    // Celo network tokens
+    if (chain === 'celo') {
+      if (address === '0x765de816845861e75a25fca122bb6898b8b1282a') return 'cUSD';
+      if (address === '0x0000000000000000000000000000000000000000') return 'CELO';
+    }
+    
+    // Ethereum network tokens
+    if (chain === 'ethereum') {
+      if (address === '0xa0b86a33e6441b8c4505e2c4b8b5b8e8e8e8e8e8') return 'USDC';
+      if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
+    }
+    
+    // Fallback
+    return 'USDC';
   }
 
   // Handle Offramp command
@@ -2464,6 +2508,9 @@ export class BotIntegration {
         data.startsWith('edit_contract_') || data.startsWith('cancel_contract_') ||
         data.startsWith('approve_contract_') || data.startsWith('generate_contract_') ||
         data.startsWith('continue_contract_') || data === 'cancel_contract_creation') {
+        // Answer callback query immediately to prevent timeout
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        // Then handle the callback
         await this.contractModule.handleContractCallback(chatId, userId, data, callbackQuery.message?.message_id);
         return true;
       }
