@@ -861,7 +861,7 @@ Choose an action below:`;
 
       // Check if user is in contract creation flow first (use UUID for contract flow tracking)
       console.log('[TelegramBot] Checking contract flow for user:', user.id);
-      const isInFlow = this.botIntegration?.getContractModule()?.isInContractFlow(user.id);
+      const isInFlow = await this.botIntegration?.getContractModule()?.isInContractFlow(user.id);
       console.log('[TelegramBot] Is user in contract flow?', isInFlow);
       
       if (isInFlow) {
