@@ -2894,6 +2894,28 @@ export class BotIntegration {
                 // Handle contract creation requests
                 await this.contractModule.startContractCreation(message.chat.id, userId, undefined, params);
                 return true;
+              } else if (intent === 'create_content' || intent === 'create_design' || 
+                         intent === 'create_development' || intent === 'create_marketing' || 
+                         intent === 'create_consulting') {
+                // Handle content creation service requests - redirect to contract creation
+                const serviceTypeMap = {
+                  'create_content': 'Content Writing',
+                  'create_design': 'Design Services', 
+                  'create_development': 'Development Services',
+                  'create_marketing': 'Marketing Services',
+                  'create_consulting': 'Consulting Services'
+                };
+                
+                const serviceType = serviceTypeMap[intent as keyof typeof serviceTypeMap];
+                const enhancedParams = {
+                  ...params,
+                  service_category: intent.replace('create_', ''),
+                  suggested_title: serviceType,
+                  suggested_description: `${serviceType} project`
+                };
+                
+                await this.contractModule.startContractCreation(message.chat.id, userId, undefined, enhancedParams);
+                return true;
               }
               else if (intent === 'referral') {
                 await this.handleReferralCommand(message.chat.id, userId);

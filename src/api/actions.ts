@@ -1616,6 +1616,26 @@ Your wallets are now ready! Please try your command again.`
       console.log('[handleAction] create_contract case triggered with params:', params);
       return await handleCreateContract(params, userId);
 
+    case "create_content":
+      console.log('[handleAction] create_content case triggered with params:', params);
+      return await handleCreateContent(params, userId);
+
+    case "create_design":
+      console.log('[handleAction] create_design case triggered with params:', params);
+      return await handleCreateDesign(params, userId);
+
+    case "create_development":
+      console.log('[handleAction] create_development case triggered with params:', params);
+      return await handleCreateDevelopment(params, userId);
+
+    case "create_marketing":
+      console.log('[handleAction] create_marketing case triggered with params:', params);
+      return await handleCreateMarketing(params, userId);
+
+    case "create_consulting":
+      console.log('[handleAction] create_consulting case triggered with params:', params);
+      return await handleCreateConsulting(params, userId);
+
     default:
       return {
         text: "I didn't understand that command. Type 'help' to see available commands.",
@@ -5523,6 +5543,167 @@ async function monitorOrderStatus(orderId: string, userId: string, sessionId: st
     } else {
       await handleMonitoringError(userId, orderId, error);
     }
+  }
+}
+
+// Content Creation Handlers
+async function handleCreateContent(params: ActionParams, userId: string) {
+  try {
+    console.log('[handleCreateContent] Starting content creation for user:', userId, 'params:', params);
+    
+    return {
+      text: "📝 **Content Creation Service**\n\n" +
+        "I'll help you create a contract for content writing services. This includes:\n\n" +
+        "• Blog posts and articles\n" +
+        "• Website copy and marketing content\n" +
+        "• Social media content\n" +
+        "• Technical writing and documentation\n" +
+        "• SEO-optimized content\n\n" +
+        "💡 **Note**: A 1% platform fee will be deducted from payments.\n\n" +
+        "Let me start the contract creation process for your content writing project...",
+      action: {
+        type: "redirect_to_contract_creation",
+        serviceType: "content_writing",
+        params: {
+          ...params,
+          service_category: "content_creation",
+          service_type: params.content_type || "content writing"
+        }
+      }
+    };
+  } catch (error) {
+    console.error('[handleCreateContent] Error:', error);
+    return {
+      text: "Failed to start content creation service. Please try again later."
+    };
+  }
+}
+
+async function handleCreateDesign(params: ActionParams, userId: string) {
+  try {
+    console.log('[handleCreateDesign] Starting design service for user:', userId, 'params:', params);
+    
+    return {
+      text: "🎨 **Design Service**\n\n" +
+        "I'll help you create a contract for design services. This includes:\n\n" +
+        "• Logo and brand design\n" +
+        "• Web and UI/UX design\n" +
+        "• Graphic design and illustrations\n" +
+        "• Marketing materials and visuals\n" +
+        "• Brand identity and guidelines\n\n" +
+        "💡 **Note**: A 1% platform fee will be deducted from payments.\n\n" +
+        "Let me start the contract creation process for your design project...",
+      action: {
+        type: "redirect_to_contract_creation",
+        serviceType: "design",
+        params: {
+          ...params,
+          service_category: "design",
+          service_type: params.design_type || "design services"
+        }
+      }
+    };
+  } catch (error) {
+    console.error('[handleCreateDesign] Error:', error);
+    return {
+      text: "Failed to start design service. Please try again later."
+    };
+  }
+}
+
+async function handleCreateDevelopment(params: ActionParams, userId: string) {
+  try {
+    console.log('[handleCreateDevelopment] Starting development service for user:', userId, 'params:', params);
+    
+    return {
+      text: "💻 **Development Service**\n\n" +
+        "I'll help you create a contract for development services. This includes:\n\n" +
+        "• Web development and websites\n" +
+        "• Mobile app development\n" +
+        "• Software and API development\n" +
+        "• E-commerce platforms\n" +
+        "• Custom applications and systems\n\n" +
+        "💡 **Note**: A 1% platform fee will be deducted from payments.\n\n" +
+        "Let me start the contract creation process for your development project...",
+      action: {
+        type: "redirect_to_contract_creation",
+        serviceType: "development",
+        params: {
+          ...params,
+          service_category: "development",
+          service_type: params.project_type || "development services"
+        }
+      }
+    };
+  } catch (error) {
+    console.error('[handleCreateDevelopment] Error:', error);
+    return {
+      text: "Failed to start development service. Please try again later."
+    };
+  }
+}
+
+async function handleCreateMarketing(params: ActionParams, userId: string) {
+  try {
+    console.log('[handleCreateMarketing] Starting marketing service for user:', userId, 'params:', params);
+    
+    return {
+      text: "📈 **Marketing Service**\n\n" +
+        "I'll help you create a contract for marketing services. This includes:\n\n" +
+        "• SEO and search optimization\n" +
+        "• Social media marketing\n" +
+        "• Digital advertising campaigns\n" +
+        "• Content and email marketing\n" +
+        "• Marketing strategy and analytics\n\n" +
+        "💡 **Note**: A 1% platform fee will be deducted from payments.\n\n" +
+        "Let me start the contract creation process for your marketing project...",
+      action: {
+        type: "redirect_to_contract_creation",
+        serviceType: "marketing",
+        params: {
+          ...params,
+          service_category: "marketing",
+          service_type: params.service_type || "marketing services"
+        }
+      }
+    };
+  } catch (error) {
+    console.error('[handleCreateMarketing] Error:', error);
+    return {
+      text: "Failed to start marketing service. Please try again later."
+    };
+  }
+}
+
+async function handleCreateConsulting(params: ActionParams, userId: string) {
+  try {
+    console.log('[handleCreateConsulting] Starting consulting service for user:', userId, 'params:', params);
+    
+    return {
+      text: "🤝 **Consulting Service**\n\n" +
+        "I'll help you create a contract for consulting services. This includes:\n\n" +
+        "• Business and strategy consulting\n" +
+        "• Technical and IT consulting\n" +
+        "• Process improvement and optimization\n" +
+        "• Digital transformation advisory\n" +
+        "• Specialized expertise and guidance\n\n" +
+        "💡 **Note**: A 1% platform fee will be deducted from payments.\n\n" +
+        "Let me start the contract creation process for your consulting project...",
+      action: {
+        type: "redirect_to_contract_creation",
+        serviceType: "consulting",
+        params: {
+          ...params,
+          service_category: "consulting",
+          service_type: params.consulting_type || "consulting services"
+        }
+      }
+    };
+  } catch (error) {
+    console.error('[handleCreateConsulting] Error:', error);
+    return {
+      text: "Failed to start consulting service. Please try again later."
+    };
   }
 }
 

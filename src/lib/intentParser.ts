@@ -549,6 +549,77 @@ export function parseIntentAndParams(llmResponse: string): { intent: string, par
       return result;
     }
 
+    // Content Creation keywords - comprehensive detection for writing services
+    if (text.includes('blog post') || text.includes('write blog') || text.includes('create blog') ||
+      text.includes('content writing') || text.includes('copywriting') || text.includes('write content') ||
+      text.includes('create content') || text.includes('article writing') || text.includes('write article') ||
+      text.includes('social media content') || text.includes('social media posts') ||
+      text.includes('website content') || text.includes('web copy') || text.includes('marketing copy') ||
+      text.includes('technical writing') || text.includes('documentation') ||
+      text.includes('seo content') || text.includes('seo articles') ||
+      (text.includes('write') && (text.includes('blog') || text.includes('article') || text.includes('content'))) ||
+      (text.includes('create') && (text.includes('blog') || text.includes('article') || text.includes('content')))) {
+      const result = { intent: 'create_content', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
+    // Design Service keywords - comprehensive detection for design services
+    if (text.includes('logo design') || text.includes('graphic design') || text.includes('web design') ||
+      text.includes('ui design') || text.includes('ux design') || text.includes('branding') ||
+      text.includes('visual design') || text.includes('design logo') || text.includes('create logo') ||
+      text.includes('design website') || text.includes('design graphics') ||
+      text.includes('brand design') || text.includes('visual identity') ||
+      text.includes('illustrations') || text.includes('digital art') ||
+      (text.includes('design') && (text.includes('logo') || text.includes('website') || text.includes('brand'))) ||
+      (text.includes('create') && (text.includes('logo') || text.includes('graphics') || text.includes('design')))) {
+      const result = { intent: 'create_design', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
+    // Development Service keywords - comprehensive detection for development services
+    if (text.includes('web development') || text.includes('website development') || text.includes('mobile app') ||
+      text.includes('app development') || text.includes('software development') ||
+      text.includes('build website') || text.includes('create website') || text.includes('develop website') ||
+      text.includes('build app') || text.includes('create app') || text.includes('develop app') ||
+      text.includes('e-commerce site') || text.includes('online store') ||
+      text.includes('api development') || text.includes('backend development') || text.includes('frontend development') ||
+      (text.includes('build') && (text.includes('website') || text.includes('app') || text.includes('software'))) ||
+      (text.includes('develop') && (text.includes('website') || text.includes('app') || text.includes('software'))) ||
+      (text.includes('create') && (text.includes('website') || text.includes('app') || text.includes('software')))) {
+      const result = { intent: 'create_development', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
+    // Marketing Service keywords - comprehensive detection for marketing services
+    if (text.includes('seo services') || text.includes('seo') || text.includes('search engine optimization') ||
+      text.includes('social media marketing') || text.includes('digital marketing') ||
+      text.includes('marketing campaign') || text.includes('content marketing') ||
+      text.includes('email marketing') || text.includes('ppc') || text.includes('google ads') ||
+      text.includes('facebook ads') || text.includes('marketing strategy') ||
+      text.includes('lead generation') || text.includes('brand promotion') ||
+      (text.includes('marketing') && (text.includes('social') || text.includes('digital') || text.includes('campaign'))) ||
+      (text.includes('promote') && (text.includes('business') || text.includes('brand') || text.includes('website')))) {
+      const result = { intent: 'create_marketing', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
+    // Consulting Service keywords - comprehensive detection for consulting services
+    if (text.includes('business consulting') || text.includes('consulting services') ||
+      text.includes('strategy consulting') || text.includes('technical consulting') ||
+      text.includes('management consulting') || text.includes('business advisory') ||
+      text.includes('startup consulting') || text.includes('it consulting') ||
+      text.includes('digital transformation') || text.includes('process improvement') ||
+      (text.includes('consulting') && (text.includes('business') || text.includes('technical') || text.includes('strategy'))) ||
+      (text.includes('advisory') && (text.includes('business') || text.includes('technical') || text.includes('strategy')))) {
+      const result = { intent: 'create_consulting', params: {} };
+      console.log('[intentParser] Detected intent:', result.intent, 'Params:', result.params);
+      return result;
+    }
+
     // Enhanced Earnings keywords - comprehensive detection with time period and PDF support
     if (text.includes('earnings') ||
       text.includes('how much have i earned') ||

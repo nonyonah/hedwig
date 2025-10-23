@@ -117,6 +117,13 @@ Valid intents:
 - send_reminder: For sending manual payment reminders to clients
 - create_contract: For creating smart contracts, legal agreements, or blockchain contracts
 
+CONTENT CREATION & WRITING SERVICES:
+- create_content: For content creation services including blog posts, articles, copywriting, social media content, website content, marketing materials, technical writing, creative writing, and any writing-related services
+- create_design: For design services including logo design, graphic design, web design, UI/UX design, branding, illustrations, and visual content creation
+- create_development: For development services including web development, mobile app development, software development, API development, and technical implementation
+- create_marketing: For marketing services including SEO, social media marketing, content marketing, digital marketing campaigns, and promotional services
+- create_consulting: For consulting services including business consulting, technical consulting, strategy consulting, and advisory services
+
 - offramp: For withdrawing crypto to a bank account (withdraw/cash out to fiat)
 - kyc_verification: For KYC status, identity verification, or compliance requirements
 - welcome: For greetings and help
@@ -282,18 +289,68 @@ IMPORTANT INTENT RECOGNITION RULES:
    - Even simple requests like "create proposal" should use this intent
    - IMPORTANT: Only use this intent when "proposal", "quote", or "estimate" is explicitly mentioned
 
-9.5. CONTRACT REQUESTS: Always use "create_contract" intent for:
+9.5. CONTENT CREATION REQUESTS: Always use "create_content" intent for:
+   - "blog post", "write blog post", "create blog post", "blog article", "article"
+   - "content writing", "copywriting", "write content", "create content"
+   - "social media content", "social media posts", "Instagram captions", "Twitter posts"
+   - "website content", "web copy", "landing page copy", "product descriptions"
+   - "marketing copy", "sales copy", "email marketing", "newsletter content"
+   - "technical writing", "documentation", "user guides", "tutorials"
+   - "creative writing", "storytelling", "script writing", "content creation"
+   - "SEO content", "SEO articles", "optimized content", "keyword content"
+   - "press releases", "news articles", "case studies", "white papers"
+   - "product reviews", "testimonials", "content strategy", "editorial content"
+   - Any request for written content, articles, or text-based materials
+
+9.6. DESIGN REQUESTS: Always use "create_design" intent for:
+   - "logo design", "graphic design", "visual design", "brand design"
+   - "web design", "website design", "UI design", "UX design", "interface design"
+   - "branding", "brand identity", "visual identity", "corporate identity"
+   - "illustrations", "digital art", "artwork", "visual content"
+   - "banner design", "poster design", "flyer design", "brochure design"
+   - "social media graphics", "Instagram graphics", "Facebook covers"
+   - "infographics", "data visualization", "charts", "diagrams"
+   - Any request for visual design, graphics, or creative visual work
+
+9.7. DEVELOPMENT REQUESTS: Always use "create_development" intent for:
+   - "web development", "website development", "web app", "webapp"
+   - "mobile app", "mobile development", "iOS app", "Android app"
+   - "software development", "application development", "custom software"
+   - "API development", "backend development", "frontend development"
+   - "e-commerce site", "online store", "shopping website"
+   - "database design", "system integration", "technical implementation"
+   - "WordPress site", "Shopify store", "custom CMS", "web platform"
+   - Any request for software, web, or mobile development services
+
+9.8. MARKETING REQUESTS: Always use "create_marketing" intent for:
+   - "SEO", "search engine optimization", "SEO services", "SEO strategy"
+   - "social media marketing", "social media management", "social media strategy"
+   - "digital marketing", "online marketing", "marketing campaign"
+   - "content marketing", "email marketing", "influencer marketing"
+   - "PPC", "Google Ads", "Facebook Ads", "advertising campaign"
+   - "marketing strategy", "brand promotion", "lead generation"
+   - "market research", "competitor analysis", "marketing analytics"
+   - Any request for marketing, promotion, or advertising services
+
+9.9. CONSULTING REQUESTS: Always use "create_consulting" intent for:
+   - "business consulting", "strategy consulting", "management consulting"
+   - "technical consulting", "IT consulting", "technology advisory"
+   - "financial consulting", "business advisory", "startup consulting"
+   - "process improvement", "operational consulting", "efficiency consulting"
+   - "digital transformation", "business analysis", "strategic planning"
+   - Any request for advisory, consulting, or strategic guidance services
+
+9.10. CONTRACT REQUESTS: Always use "create_contract" intent for:
    - "contract", "create contract", "generate contract", "draft contract"
    - "smart contract", "blockchain contract", "legal contract", "agreement"
    - "contract for", "need a contract", "make a contract", "new contract"
    - "legal agreement", "service agreement", "work agreement", "employment contract"
    - "freelance contract", "consulting contract", "development contract"
    - "contract template", "contract generator", "automated contract"
-   - Bare service requests without "proposal" keyword: "web design", "logo design", "mobile app development", "consulting", "marketing", etc.
    - Any request to create, generate, or draft contracts or legal agreements
    - NEVER ask for clarification - proceed with creating contract and prompt for missing details
    - Even simple requests like "create contract" should use this intent
-   - IMPORTANT: Use "create_contract" for service requests unless they explicitly mention "proposal"
+   - IMPORTANT: Use "create_contract" only for legal contracts and agreements
 
 10. SEND PROPOSAL REQUESTS: Always use "send_proposal" intent for:
      - "send proposal", "email proposal", "send proposal to client"
@@ -352,7 +409,62 @@ IMPORTANT INTENT RECOGNITION RULES:
     - project_title: Extract project title if mentioned
     - description: Extract project description
 
-13.5. PARAMETER EXTRACTION for "create_contract" intent:
+13.1. PARAMETER EXTRACTION for "create_content" intent:
+    - content_type: Extract content type (blog post, article, social media, website copy, marketing copy, etc.)
+    - topic: Extract main topic or subject matter
+    - target_audience: Extract intended audience or demographic
+    - word_count: Extract desired word count or length
+    - tone: Extract desired tone (professional, casual, friendly, technical, etc.)
+    - keywords: Extract SEO keywords or key phrases to include
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - deadline: Extract deadline or timeline
+    - budget: Extract budget or rate information
+    - additional_requirements: Extract any specific requirements or guidelines
+
+13.2. PARAMETER EXTRACTION for "create_design" intent:
+    - design_type: Extract design type (logo, website, branding, graphics, etc.)
+    - style: Extract desired style (modern, minimalist, corporate, creative, etc.)
+    - colors: Extract color preferences or brand colors
+    - dimensions: Extract size or format requirements
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - deadline: Extract deadline or timeline
+    - budget: Extract budget or rate information
+    - brand_guidelines: Extract existing brand guidelines or requirements
+
+13.3. PARAMETER EXTRACTION for "create_development" intent:
+    - project_type: Extract development type (website, mobile app, web app, API, etc.)
+    - technology: Extract preferred technologies or platforms
+    - features: Extract required features or functionality
+    - platform: Extract target platforms (iOS, Android, web, etc.)
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - deadline: Extract deadline or timeline
+    - budget: Extract budget or rate information
+    - technical_requirements: Extract specific technical requirements
+
+13.4. PARAMETER EXTRACTION for "create_marketing" intent:
+    - service_type: Extract marketing service type (SEO, social media, PPC, content marketing, etc.)
+    - target_market: Extract target market or audience
+    - goals: Extract marketing goals or objectives
+    - budget: Extract marketing budget
+    - timeline: Extract campaign duration or timeline
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - platforms: Extract preferred marketing platforms or channels
+
+13.5. PARAMETER EXTRACTION for "create_consulting" intent:
+    - consulting_type: Extract consulting type (business, technical, strategy, etc.)
+    - industry: Extract client industry or sector
+    - challenge: Extract business challenge or problem to solve
+    - scope: Extract project scope or areas of focus
+    - client_name: Extract client or company name
+    - client_email: Extract email address if provided
+    - timeline: Extract project timeline
+    - budget: Extract budget or hourly rate
+
+13.6. PARAMETER EXTRACTION for "create_contract" intent:
     - contract_type: Extract contract type (service agreement, employment, freelance, consulting, development, NDA, etc.)
     - client_name: Extract client or company name
     - client_email: Extract email address if provided
@@ -556,6 +668,54 @@ Response: {"intent": "create_invoice", "params": {}}
 
 User: "proposal" or "create proposal" or "generate proposal" or "make proposal" or "new proposal"
 Response: {"intent": "create_proposal", "params": {}}
+
+User: "write a blog post about AI technology for tech startup"
+Response: {"intent": "create_content", "params": {"content_type": "blog post", "topic": "AI technology", "client_name": "tech startup"}}
+
+User: "need content writing for website, 500 words, professional tone"
+Response: {"intent": "create_content", "params": {"content_type": "website content", "word_count": "500", "tone": "professional"}}
+
+User: "create social media posts for Instagram, fashion brand"
+Response: {"intent": "create_content", "params": {"content_type": "social media", "target_audience": "fashion brand", "platform": "Instagram"}}
+
+User: "blog post" or "write blog post" or "content writing" or "copywriting"
+Response: {"intent": "create_content", "params": {}}
+
+User: "design a logo for ABC Company, modern style, blue colors"
+Response: {"intent": "create_design", "params": {"design_type": "logo", "client_name": "ABC Company", "style": "modern", "colors": "blue"}}
+
+User: "need website design for e-commerce store, minimalist style"
+Response: {"intent": "create_design", "params": {"design_type": "website", "project_type": "e-commerce store", "style": "minimalist"}}
+
+User: "logo design" or "graphic design" or "web design" or "branding"
+Response: {"intent": "create_design", "params": {}}
+
+User: "build a mobile app for iOS and Android, social networking features"
+Response: {"intent": "create_development", "params": {"project_type": "mobile app", "platform": "iOS and Android", "features": "social networking"}}
+
+User: "need web development for e-commerce site, React and Node.js"
+Response: {"intent": "create_development", "params": {"project_type": "website", "features": "e-commerce", "technology": "React and Node.js"}}
+
+User: "web development" or "mobile app" or "software development" or "website"
+Response: {"intent": "create_development", "params": {}}
+
+User: "SEO services for small business, improve Google rankings"
+Response: {"intent": "create_marketing", "params": {"service_type": "SEO", "client_name": "small business", "goals": "improve Google rankings"}}
+
+User: "social media marketing campaign for fashion brand, Instagram and TikTok"
+Response: {"intent": "create_marketing", "params": {"service_type": "social media marketing", "target_market": "fashion brand", "platforms": "Instagram and TikTok"}}
+
+User: "SEO" or "digital marketing" or "social media marketing" or "marketing campaign"
+Response: {"intent": "create_marketing", "params": {}}
+
+User: "business consulting for startup, growth strategy, $200/hour"
+Response: {"intent": "create_consulting", "params": {"consulting_type": "business", "client_name": "startup", "scope": "growth strategy", "budget": "200", "currency": "USD"}}
+
+User: "technical consulting for software architecture, fintech industry"
+Response: {"intent": "create_consulting", "params": {"consulting_type": "technical", "industry": "fintech", "scope": "software architecture"}}
+
+User: "business consulting" or "technical consulting" or "strategy consulting" or "consulting services"
+Response: {"intent": "create_consulting", "params": {}}
 
 User: "create contract for web development with ABC Corp, $5000, 3 month timeline"
 Response: {"intent": "create_contract", "params": {"contract_type": "development", "client_name": "ABC Corp", "payment_amount": "5000", "currency": "USD", "timeline": "3 months", "service_description": "web development"}}
