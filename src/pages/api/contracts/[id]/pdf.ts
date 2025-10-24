@@ -74,6 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       projectTitle: contract.project_title,
       projectDescription: contract.project_description || 'No description provided',
       clientName: legalContract?.client_name || 'Client',
+      clientEmail: legalContract?.client_email,
       freelancerName: user?.name || legalContract?.freelancer_name || 'Freelancer',
       totalAmount: contract.total_amount,
       tokenType: getTokenType(contract.token_address, contract.chain),

@@ -855,7 +855,7 @@ Please enter your client's email address for contract notifications and signing:
       message += `\n🔄 **Refund Policy:** ${data.refundPolicy}\n`;
     }
 
-    message += `\n⚡ **Next Steps:**\n1. Generate legal contract with AI\n2. Deploy smart contract\n3. Share with client for approval`;
+    message += `\n⚡ **Next Steps:**\n1. I'll generate a legal contract \n2. Deploy smart contract for it\n3. Share with client for approval`;
 
     await this.bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
@@ -939,7 +939,7 @@ Please enter your client's email address for contract notifications and signing:
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '📄 View Contract PDF', callback_data: `contract_view_${result.contractId}` },
+                { text: '📄 View Contract PDF', callback_data: `view_contract_${result.contractId}` },
                 { text: '📧 Send to Client', callback_data: `contract_send_email_${result.contractId}` }
               ],
               [

@@ -778,17 +778,14 @@ export function generateContractEmailTemplate(contract: any): string {
                                             </table>
                                             ` : ''}
                                             
-                                            <!-- Action Buttons -->
+                                            <!-- Action Button -->
                                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 32px;">
                                                 <tr>
                                                     <td style="text-align: center;">
                                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
                                                             <tr>
-                                                                <td style="background-color: #8e01bb; border-radius: 8px; margin-right: 12px;">
-                                                                    ${contractId ? `<a href="${appUrl}/contracts/${contractId}" style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">📄 View Contract</a>` : `<span style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Contract Link Unavailable</span>`}
-                                                                </td>
-                                                                <td style="background-color: #059669; border-radius: 8px;">
-                                                                    ${contractId ? `<a href="${appUrl}/contracts/approve/${contractId}" style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">✅ Approve & Deploy</a>` : `<span style="display: inline-block; padding: 16px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Approval Link Unavailable</span>`}
+                                                                <td style="background-color: #8e01bb; border-radius: 8px;">
+                                                                    ${contractId ? `<a href="${appUrl}/contracts/${contractId}" style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">📄 View & Sign Contract</a>` : `<span style="display: inline-block; padding: 16px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; line-height: 1.2; white-space: nowrap;">Contract Link Unavailable</span>`}
                                                                 </td>
                                                             </tr>
                                                         </table>
@@ -813,9 +810,9 @@ export function generateContractEmailTemplate(contract: any): string {
                                                         <h4 style="margin: 0 0 12px 0; color: #01579b; font-size: 16px; font-weight: 600;">📋 Next Steps</h4>
                                                         <ol style="margin: 0; padding-left: 20px; color: #0277bd; font-size: 14px; line-height: 1.6;">
                                                             <li style="margin-bottom: 8px;"><strong>Review</strong> the contract details above carefully</li>
-                                                            <li style="margin-bottom: 8px;"><strong>Click "View Contract"</strong> to see the full contract with PDF download option</li>
-                                                            <li style="margin-bottom: 8px;"><strong>Click "Approve & Deploy"</strong> when ready to proceed</li>
-                                                            <li style="margin-bottom: 8px;"><strong>Smart contract deployment</strong> will begin automatically</li>
+                                                            <li style="margin-bottom: 8px;"><strong>Click "View & Sign Contract"</strong> to see the full contract</li>
+                                                            <li style="margin-bottom: 8px;"><strong>Connect your wallet</strong> on the contract page</li>
+                                                            <li style="margin-bottom: 8px;"><strong>Sign the contract</strong> to deploy the smart contract escrow</li>
                                                             <li><strong>Start collaborating</strong> with ${freelancerName} on your project!</li>
                                                         </ol>
                                                     </td>

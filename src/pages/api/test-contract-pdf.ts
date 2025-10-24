@@ -13,6 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       projectTitle: 'Sample Website Development Project',
       projectDescription: 'Development of a modern e-commerce website with payment integration, user authentication, and admin dashboard. The project includes responsive design, SEO optimization, and performance enhancements.',
       clientName: 'John Smith',
+      clientEmail: 'john.smith@company.com',
       freelancerName: 'Jane Developer',
       totalAmount: 5000,
       tokenType: 'USDC',

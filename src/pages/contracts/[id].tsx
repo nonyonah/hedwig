@@ -53,6 +53,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentMilestone, setCurrentMilestone] = useState<Milestone | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isSigningContract, setIsSigningContract] = useState(false);
 
   const { writeContract, data: hash, isPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -249,6 +250,51 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     }
   };
 
+  const handleSignContract = async () => {
+    if (!isConnected) {
+      await connectWallet();
+      return;
+    }
+
+    // Ensure we're on the correct chain
+    const targetChainId = contract.chain === 'base' ? 8453 : contract.chain === 'celo' ? 42220 : 1;
+    if (chainId !== targetChainId) {
+      await switchToChain(targetChainId);
+      return;
+    }
+
+    setIsSigningContract(true);
+
+    try {
+      // Call the contract approval API to deploy the smart contract
+      const response = await fetch('/api/contracts/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: contract.id,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to sign contract');
+      }
+
+      // Show success message and reload to show updated status
+      alert('✅ Contract signed successfully! Smart contract has been deployed.');
+      router.reload();
+
+    } catch (error) {
+      console.error('Contract signing error:', error);
+      alert(`❌ Failed to sign contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSigningContract(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container max-w-4xl mx-auto py-8 px-4">
@@ -420,24 +466,96 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           </div>
         )}
 
+        {/* Contract Signing Section */}
+        {contract.status === 'created' || contract.status === 'pending_approval' ? (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-sm p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xl">✍️</span>
+              <h3 className="font-semibold text-gray-900">Contract Signature Required</h3>
+            </div>
+            
+            <div className="bg-white rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <span className="text-blue-500 text-xl">ℹ️</span>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Ready to Sign</h4>
+                  <p className="text-sm text-gray-600 mb-3">
+                    By signing this contract, you agree to the terms and authorize the deployment of a smart contract escrow 
+                    that will securely hold <strong>{contract.total_amount.toLocaleString()} {getTokenSymbol(contract.token_address)}</strong> 
+                    until project milestones are completed.
+                  </p>
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li>• Funds will be held in a secure smart contract</li>
+                    <li>• Payments are released automatically upon milestone approval</li>
+                    <li>• Both parties are protected by blockchain technology</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                <span className="font-medium">Network:</span> {contract.chain.toUpperCase()}
+              </div>
+              <div className="flex items-center gap-3">
+                {!isConnected ? (
+                  <AppKitButton />
+                ) : (
+                  <button
+                    onClick={handleSignContract}
+                    disabled={isSigningContract}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                  >
+                    {isSigningContract ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Signing Contract...
+                      </>
+                    ) : (
+                      <>
+                        ✍️ Sign Contract & Deploy Escrow
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {/* Smart Contract Info */}
         {contract.smart_contract_address && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">Smart Contract</h3>
-            <div className="space-y-2">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Contract Address</label>
-                <p className="text-sm text-gray-600 font-mono break-all">{contract.smart_contract_address}</p>
-              </div>
-              <div>
-                <a
-                  href={`https://${contract.chain === 'base' ? 'basescan.org' : 'etherscan.io'}/address/${contract.smart_contract_address}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
-                >
-                  View on {contract.chain === 'base' ? 'BaseScan' : 'Etherscan'} ↗
-                </a>
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xl">🔗</span>
+              <h3 className="font-semibold text-gray-900">Smart Contract Deployed</h3>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <span className="text-green-500 text-xl">✅</span>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-green-800 mb-2">Contract Active</h4>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-sm font-medium text-green-700">Contract Address</label>
+                      <p className="text-sm text-green-600 font-mono break-all">{contract.smart_contract_address}</p>
+                    </div>
+                    <div>
+                      <a
+                        href={`https://${contract.chain === 'base' ? 'basescan.org' : contract.chain === 'celo' ? 'celoscan.io' : 'etherscan.io'}/address/${contract.smart_contract_address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-sm text-green-600 hover:text-green-800 font-medium"
+                      >
+                        View on {contract.chain === 'base' ? 'BaseScan' : contract.chain === 'celo' ? 'CeloScan' : 'Etherscan'} ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

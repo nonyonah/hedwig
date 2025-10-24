@@ -84,7 +84,7 @@ async function setupTelegramMenu() {
       { command: 'payment', description: 'Create payment link' },
       { command: 'invoice', description: 'Create invoice' },
       { command: 'proposal', description: 'Create proposal' },
-      { command: 'contract', description: 'Create smart contract' },
+      { command: 'contract', description: 'Create binding contracts' },
       { command: 'earnings_summary', description: 'View earnings summary' },
       { command: 'business_dashboard', description: 'Business dashboard' },
       { command: 'referral', description: 'Get your referral link and stats' },
