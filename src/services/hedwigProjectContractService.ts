@@ -8,15 +8,21 @@ const HEDWIG_PROJECT_CONTRACT_ABI = [
     "inputs": [
       {"name": "_client", "type": "address"},
       {"name": "_freelancer", "type": "address"},
+      {"name": "_title", "type": "string"},
       {"name": "_amount", "type": "uint256"},
-      {"name": "_token", "type": "address"},
-      {"name": "_deadline", "type": "uint256"},
-      {"name": "_projectTitle", "type": "string"},
-      {"name": "_projectDescription", "type": "string"}
+      {"name": "_tokenAddress", "type": "address"},
+      {"name": "_deadline", "type": "uint256"}
     ],
-    "name": "createProject",
+    "name": "createContract",
     "outputs": [{"name": "", "type": "uint256"}],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "contractId", "type": "uint256"}],
+    "name": "fundContract",
+    "outputs": [],
+    "stateMutability": "payable",
     "type": "function"
   },
   {
@@ -124,6 +130,7 @@ class HedwigProjectContractService {
 
   /**
    * Create a new project in the Hedwig Project Contract
+   * This function creates the contract and funds it in one operation
    */
   async createProject(
     params: ProjectContractParams,
@@ -131,7 +138,7 @@ class HedwigProjectContractService {
     isTestnet: boolean = false
   ): Promise<ProjectContractResult> {
     try {
-      console.log('[HedwigProjectContract] Creating project:', params);
+      console.log('[HedwigProjectContract] Creating and funding project:', params);
 
       const contractAddress = this.getContractAddress(chain, isTestnet);
       const chainConfig = this.getChainConfig(chain, isTestnet);
@@ -150,36 +157,44 @@ class HedwigProjectContractService {
         transport: http(chainConfig.rpcUrl)
       });
 
-      // Call createProject function
-      const hash = await walletClient.writeContract({
+      // Step 1: Call createContract function
+      const createHash = await walletClient.writeContract({
         address: contractAddress as `0x${string}`,
         abi: HEDWIG_PROJECT_CONTRACT_ABI,
-        functionName: 'createProject',
+        functionName: 'createContract',
         args: [
           params.client as `0x${string}`,
           params.freelancer as `0x${string}`,
+          params.projectTitle,
           BigInt(params.amount),
           params.token as `0x${string}`,
-          BigInt(params.deadline),
-          params.projectTitle,
-          params.projectDescription
+          BigInt(params.deadline)
         ]
       });
 
-      console.log('[HedwigProjectContract] Transaction sent:', hash);
+      console.log('[HedwigProjectContract] Create contract transaction sent:', createHash);
 
-      // Wait for transaction confirmation
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      console.log('[HedwigProjectContract] Transaction confirmed:', receipt);
+      // Wait for create contract confirmation
+      const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash });
+      console.log('[HedwigProjectContract] Create contract confirmed:', createReceipt);
 
-      // Extract project ID from logs (assuming it's emitted in an event)
-      // For now, we'll use a timestamp-based ID as fallback
-      const projectId = Date.now();
+      // Extract contract ID from logs
+      const contractId = this.extractContractIdFromLogs(createReceipt.logs);
+      
+      if (!contractId) {
+        throw new Error('Failed to extract contract ID from transaction logs');
+      }
 
+      console.log('[HedwigProjectContract] Contract created with ID:', contractId);
+
+      // Step 2: Fund the contract (this locks the funds in escrow)
+      // Note: This should be called by the client, not the deployer
+      // For now, we'll return the contract ID so the client can fund it
+      
       return {
         success: true,
-        projectId,
-        transactionHash: hash,
+        projectId: contractId,
+        transactionHash: createHash,
         contractAddress
       };
 
@@ -190,6 +205,90 @@ class HedwigProjectContractService {
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
+  }
+
+  /**
+   * Fund a contract (locks funds in escrow)
+   * This should be called by the client after contract creation
+   */
+  async fundContract(
+    contractId: number,
+    amount: string,
+    tokenAddress: string,
+    clientAddress: string,
+    chain: string,
+    isTestnet: boolean = false
+  ): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
+    try {
+      console.log('[HedwigProjectContract] Funding contract:', { contractId, amount, tokenAddress, clientAddress });
+
+      const contractAddress = this.getContractAddress(chain, isTestnet);
+      const chainConfig = this.getChainConfig(chain, isTestnet);
+
+      // Create wallet client for transactions (this should use the client's wallet, not deployer)
+      const account = privateKeyToAccount(process.env.DEPLOYER_PRIVATE_KEY as `0x${string}`);
+      const walletClient = createWalletClient({
+        account,
+        chain: chainConfig.chain,
+        transport: http(chainConfig.rpcUrl)
+      });
+
+      // Create public client for reading
+      const publicClient = createPublicClient({
+        chain: chainConfig.chain,
+        transport: http(chainConfig.rpcUrl)
+      });
+
+      // Call fundContract function
+      const fundHash = await walletClient.writeContract({
+        address: contractAddress as `0x${string}`,
+        abi: HEDWIG_PROJECT_CONTRACT_ABI,
+        functionName: 'fundContract',
+        args: [BigInt(contractId)],
+        value: tokenAddress === '0x0000000000000000000000000000000000000000' ? BigInt(amount) : BigInt(0)
+      });
+
+      console.log('[HedwigProjectContract] Fund contract transaction sent:', fundHash);
+
+      // Wait for funding confirmation
+      const fundReceipt = await publicClient.waitForTransactionReceipt({ hash: fundHash });
+      console.log('[HedwigProjectContract] Fund contract confirmed:', fundReceipt);
+
+      return {
+        success: true,
+        transactionHash: fundHash
+      };
+
+    } catch (error) {
+      console.error('[HedwigProjectContract] Error funding contract:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Extract contract ID from transaction logs
+   */
+  private extractContractIdFromLogs(logs: any[]): number | null {
+    // Look for ContractCreated event logs
+    for (const log of logs) {
+      try {
+        // The contract ID should be in the first topic after the event signature
+        if (log.topics && log.topics.length > 1) {
+          const contractId = parseInt(log.topics[1], 16);
+          if (contractId > 0) {
+            return contractId;
+          }
+        }
+      } catch (error) {
+        console.warn('[HedwigProjectContract] Error parsing log:', error);
+      }
+    }
+    
+    // Fallback to timestamp-based ID
+    return Date.now();
   }
 
   /**

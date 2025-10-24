@@ -894,11 +894,25 @@ Please enter your client's email address for contract notifications and signing:
         .eq('id', userId)
         .single();
 
+      // Get freelancer's wallet address
+      const { data: wallets } = await supabase
+        .from('wallets')
+        .select('address, chain')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+
+      // Find the best wallet address (prefer EVM/Base, fallback to any wallet)
+      let freelancerWallet = '';
+      if (wallets && wallets.length > 0) {
+        const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
+        freelancerWallet = evmWallet?.address || wallets[0]?.address || '';
+      }
+
       // Generate legal contract using the service
       const contractRequest: ContractGenerationRequest = {
         freelancerName: user?.name || 'Freelancer',
         freelancerEmail: user?.email || '',
-        freelancerWallet: '', // This should be provided from state if available
+        freelancerWallet: freelancerWallet,
         clientName: state.data.clientName || 'Client',
         clientEmail: state.data.clientEmail || '',
         clientWallet: state.data.clientWallet || '',

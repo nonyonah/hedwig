@@ -1,5 +1,5 @@
 import { defineChain } from 'viem'
-import { base, mainnet, polygon, arbitrum, bsc } from 'viem/chains'
+import { base, mainnet, polygon, arbitrum, bsc, baseSepolia } from 'viem/chains'
 
 // Celo Mainnet configuration
 export const celoMainnet = defineChain({
@@ -62,6 +62,7 @@ export const liskMainnet = defineChain({
 // All supported chains
 export const supportedChains = [
   base,
+  baseSepolia,
   mainnet,
   polygon,
   arbitrum,
@@ -79,6 +80,14 @@ export const chainConfig = {
     color: '#0052FF',
     nativeToken: 'ETH',
     primaryTokens: ['ETH', 'USDC', 'USDT'],
+  },
+  [baseSepolia.id]: {
+    name: 'Base Sepolia',
+    shortName: 'base-sepolia',
+    icon: '/chains/base.svg',
+    color: '#0052FF',
+    nativeToken: 'ETH',
+    primaryTokens: ['ETH', 'USDC'],
   },
   [mainnet.id]: {
     name: 'Ethereum',

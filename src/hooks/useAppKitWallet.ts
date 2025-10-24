@@ -58,11 +58,16 @@ export function useAppKitWallet() {
   // Switch to a different chain
   const switchToChain = useCallback(async (targetChainId: number) => {
     try {
-      if (!isChainSupported(targetChainId)) {
-        throw new Error(`Chain ${targetChainId} is not supported`)
+      // Coerce to number in case a string slips through from callers
+      const id = Number(targetChainId)
+
+      // If we know the chain, great; if not, still attempt switch
+      const targetChain = getChainById(id)
+      if (!targetChain) {
+        console.warn(`Unknown chain ${id}; attempting switch anyway`)
       }
       
-      switchChain({ chainId: targetChainId })
+      await switchChain({ chainId: id })
     } catch (error) {
       console.error('Failed to switch chain:', error)
       throw error

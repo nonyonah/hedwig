@@ -11,6 +11,8 @@ const supabase = createClient(
 interface ContractApprovalRequest extends NextApiRequest {
   body: {
     contractId: string;
+    transactionHash?: string;
+    smartContractAddress?: string;
   };
 }
 
@@ -30,7 +32,7 @@ export default async function handler(req: ContractApprovalRequest, res: NextApi
   }
 
   try {
-    const { contractId } = req.body;
+    const { contractId, transactionHash, smartContractAddress } = req.body;
     console.log('[Contract Approve] Processing approval for contract:', contractId);
 
     if (!contractId) {
@@ -85,108 +87,130 @@ export default async function handler(req: ContractApprovalRequest, res: NextApi
       return res.status(500).json({ error: 'Failed to approve contract' });
     }
 
-    // Create project in Hedwig Project Contract
+    // Handle contract approval - either from frontend transaction or backend creation
     try {
-      console.log('[Contract Approve] Creating project in Hedwig contract:', {
-        client: legalContract?.client_wallet,
-        freelancer: legalContract?.freelancer_wallet,
-        chain: contract.chain
-      });
-
-      // Check if we have the required wallet addresses
-      if (!legalContract?.client_wallet || !legalContract?.freelancer_wallet) {
-        console.error('[Contract Approve] Missing wallet addresses:', {
-          hasClientWallet: !!legalContract?.client_wallet,
-          hasFreelancerWallet: !!legalContract?.freelancer_wallet
+      if (transactionHash && smartContractAddress) {
+        // Frontend transaction case - user already sent transaction
+        console.log('[Contract Approve] Frontend transaction received:', {
+          transactionHash,
+          smartContractAddress,
+          chain: contract.chain
         });
 
-        // Update contract status to indicate missing wallet info
+        // Update contract with transaction details and active status
         await supabase
           .from('project_contracts')
           .update({
-            status: 'deployment_pending',
-            deployment_error: 'Missing wallet addresses'
-          })
-          .eq('id', contractId);
-
-        console.log('[Contract Approve] Contract approved but missing wallet addresses - marked as deployment_pending');
-
-        // Skip deployment but continue with approval
-        res.status(200).json({
-          success: true,
-          message: 'Contract approved successfully (deployment pending - missing wallet addresses)',
-          contractId: contractId
-        });
-        return;
-      }
-
-      // Determine if we should use testnet (Base Sepolia for testing)
-      const isTestnet = contract.chain === 'base'; // Use testnet for Base as requested
-
-      // Get token address
-      const getTokenAddress = (tokenType: string, chain: string): string => {
-        const tokenAddresses: Record<string, Record<string, string>> = {
-          base: {
-            USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-            ETH: '0x0000000000000000000000000000000000000000'
-          },
-          celo: {
-            cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
-            CELO: '0x0000000000000000000000000000000000000000'
-          }
-        };
-        return tokenAddresses[chain]?.[tokenType] || tokenAddresses.base.USDC;
-      };
-
-      // Convert amount to wei (assuming it's in token units)
-      const amountInWei = (contract.total_amount * Math.pow(10, 6)).toString(); // USDC has 6 decimals
-
-      // Create project in Hedwig contract
-      const projectResult = await hedwigProjectContractService.createProject(
-        {
-          client: legalContract.client_wallet,
-          freelancer: legalContract.freelancer_wallet,
-          amount: amountInWei,
-          token: getTokenAddress(legalContract.token_type || 'USDC', contract.chain),
-          deadline: Math.floor(new Date(contract.deadline).getTime() / 1000), // Convert to unix timestamp
-          projectTitle: contract.project_title,
-          projectDescription: contract.project_description || ''
-        },
-        contract.chain,
-        isTestnet
-      );
-
-      if (!projectResult.success) {
-        console.error('Hedwig project creation failed:', projectResult.error);
-
-        // Update contract status to indicate deployment is pending
-        await supabase
-          .from('project_contracts')
-          .update({
-            status: 'deployment_pending',
-            deployment_error: projectResult.error || 'Project creation failed'
-          })
-          .eq('id', contractId);
-
-        console.log('[Contract Approve] Contract approved but project creation failed - marked as deployment_pending');
-      } else {
-        console.log('Hedwig project created successfully:', projectResult);
-
-        // Update contract with project details and active status
-        await supabase
-          .from('project_contracts')
-          .update({
-            smart_contract_address: projectResult.contractAddress,
-            blockchain_project_id: projectResult.projectId,
-            transaction_hash: projectResult.transactionHash,
+            smart_contract_address: smartContractAddress,
+            transaction_hash: transactionHash,
             status: 'active'
           })
           .eq('id', contractId);
 
-        console.log('[Contract Approve] Contract activated with project ID:', projectResult.projectId);
+        console.log('[Contract Approve] Contract activated with frontend transaction');
+      } else {
+        // Backend creation case - create project via service (fallback)
+        console.log('[Contract Approve] Creating project via backend service:', {
+          client: legalContract?.client_wallet,
+          freelancer: legalContract?.freelancer_wallet,
+          chain: contract.chain
+        });
+
+        // Check if we have the required wallet addresses
+        if (!legalContract?.client_wallet || !legalContract?.freelancer_wallet) {
+          console.error('[Contract Approve] Missing wallet addresses:', {
+            hasClientWallet: !!legalContract?.client_wallet,
+            hasFreelancerWallet: !!legalContract?.freelancer_wallet
+          });
+
+          // Update contract status to indicate missing wallet info
+          await supabase
+            .from('project_contracts')
+            .update({
+              status: 'deployment_pending',
+              deployment_error: 'Missing wallet addresses'
+            })
+            .eq('id', contractId);
+
+          console.log('[Contract Approve] Contract approved but missing wallet addresses - marked as deployment_pending');
+
+          // Skip deployment but continue with approval
+          res.status(200).json({
+            success: true,
+            message: 'Contract approved successfully (deployment pending - missing wallet addresses)',
+            contractId: contractId
+          });
+          return;
+        }
+
+        // Determine if we should use testnet (Base Sepolia for testing)
+        const isTestnet = contract.chain === 'base'; // Use testnet for Base as requested
+
+        // Get token address
+        const getTokenAddress = (tokenType: string, chain: string): string => {
+          const tokenAddresses: Record<string, Record<string, string>> = {
+            base: {
+              USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+              ETH: '0x0000000000000000000000000000000000000000'
+            },
+            celo: {
+              cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+              CELO: '0x0000000000000000000000000000000000000000'
+            }
+          };
+          return tokenAddresses[chain]?.[tokenType] || tokenAddresses.base.USDC;
+        };
+
+        // Convert amount to wei (assuming it's in token units)
+        const amountInWei = (contract.total_amount * Math.pow(10, 6)).toString(); // USDC has 6 decimals
+
+        // Create project in Hedwig contract
+        const projectResult = await hedwigProjectContractService.createProject(
+          {
+            client: legalContract.client_wallet,
+            freelancer: legalContract.freelancer_wallet,
+            amount: amountInWei,
+            token: getTokenAddress(legalContract.token_type || 'USDC', contract.chain),
+            deadline: Math.floor(new Date(contract.deadline).getTime() / 1000), // Convert to unix timestamp
+            projectTitle: contract.project_title,
+            projectDescription: contract.project_description || ''
+          },
+          contract.chain,
+          isTestnet
+        );
+
+        if (!projectResult.success) {
+          console.error('Hedwig project creation failed:', projectResult.error);
+
+          // Update contract status to indicate deployment is pending
+          await supabase
+            .from('project_contracts')
+            .update({
+              status: 'deployment_pending',
+              deployment_error: projectResult.error || 'Project creation failed'
+            })
+            .eq('id', contractId);
+
+          console.log('[Contract Approve] Contract approved but project creation failed - marked as deployment_pending');
+        } else {
+          console.log('Hedwig project created successfully:', projectResult);
+
+          // Update contract with project details and active status
+          await supabase
+            .from('project_contracts')
+            .update({
+              smart_contract_address: projectResult.contractAddress,
+              blockchain_project_id: projectResult.projectId,
+              transaction_hash: projectResult.transactionHash,
+              status: 'active'
+            })
+            .eq('id', contractId);
+
+          console.log('[Contract Approve] Contract activated with project ID:', projectResult.projectId);
+        }
       }
     } catch (deployError) {
-      console.error('Hedwig project creation error:', deployError);
+      console.error('Contract approval error:', deployError);
 
       // Update contract status to indicate deployment is pending
       await supabase

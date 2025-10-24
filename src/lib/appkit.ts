@@ -1,6 +1,6 @@
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { base, mainnet, polygon, arbitrum, bsc, celo } from '@reown/appkit/networks'
+import { base, mainnet, polygon, arbitrum, bsc, celo, baseSepolia } from '@reown/appkit/networks'
 
 // Get project ID from environment
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
@@ -13,7 +13,7 @@ if (!projectId) {
 
 // Create Wagmi adapter
 const wagmiAdapter = new WagmiAdapter({
-  networks: [base, mainnet, polygon, arbitrum, bsc, celo],
+  networks: [base, baseSepolia, mainnet, polygon, arbitrum, bsc, celo],
   projectId,
   ssr: true
 })
@@ -29,7 +29,7 @@ const metadata = {
 // Create AppKit instance
 export const appKit = createAppKit({
   adapters: [wagmiAdapter],
-  networks: [base, mainnet, polygon, arbitrum, bsc, celo],
+  networks: [base, baseSepolia, mainnet, polygon, arbitrum, bsc, celo],
   projectId,
   metadata,
   features: {
