@@ -35,7 +35,7 @@ const verificationData = {
 function makeRequest(data) {
     return new Promise((resolve, reject) => {
         const postData = querystring.stringify(data);
-        
+
         const options = {
             hostname: 'api.etherscan.io',
             port: 443,
@@ -46,14 +46,14 @@ function makeRequest(data) {
                 'Content-Length': Buffer.byteLength(postData)
             }
         };
-        
+
         const req = https.request(options, (res) => {
             let responseData = '';
-            
+
             res.on('data', (chunk) => {
                 responseData += chunk;
             });
-            
+
             res.on('end', () => {
                 try {
                     const jsonResponse = JSON.parse(responseData);
@@ -63,11 +63,11 @@ function makeRequest(data) {
                 }
             });
         });
-        
+
         req.on('error', (error) => {
             reject(error);
         });
-        
+
         req.write(postData);
         req.end();
     });
@@ -79,11 +79,11 @@ async function verifyContract() {
         console.log(`Contract Address: ${CONTRACT_ADDRESS}`);
         console.log(`API Key: ${API_KEY ? 'Set' : 'Not set'}`);
         console.log(`Constructor Args: ${constructorArgs}`);
-        
+
         const response = await makeRequest(verificationData);
-        
+
         console.log('Verification response:', response);
-        
+
         if (response.status === '1') {
             console.log('✅ Contract verification submitted successfully!');
             console.log(`GUID: ${response.result}`);

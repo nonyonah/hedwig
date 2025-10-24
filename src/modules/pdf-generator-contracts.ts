@@ -179,42 +179,9 @@ export async function generateContractPDF(contractData: ContractPDFData): Promis
       doc.fontSize(12).fillColor('#374151').text(`${sanitizedData.tokenType} $${Math.round(avgMilestone).toLocaleString()}`, 300, yPosition + 15);
       yPosition += 70;
 
-      // Contract Compliance Section
-      doc.fontSize(16).fillColor('#374151').text('Contract Compliance', 50, yPosition);
-      yPosition += 30;
 
-      // Compliance checkboxes
-      doc.rect(50, yPosition, 12, 12).fillAndStroke('#3b82f6', '#2563eb');
-      doc.fontSize(10).fillColor('#ffffff').text('✓', 53, yPosition + 2);
-      doc.fontSize(12).fillColor('#374151').text('Use ProDeal Contract', 70, yPosition + 2);
-      yPosition += 25;
 
-      doc.rect(50, yPosition, 12, 12).fillAndStroke('#f3f4f6', '#d1d5db');
-      doc.fontSize(12).fillColor('#9ca3af').text('Use Customer Contract', 70, yPosition + 2);
-      yPosition += 35;
 
-      // Compliance Documents
-      doc.rect(50, yPosition, 12, 12).fillAndStroke('#3b82f6', '#2563eb');
-      doc.fontSize(10).fillColor('#ffffff').text('✓', 53, yPosition + 2);
-      doc.fontSize(12).fillColor('#374151').text('Compliance Documents', 70, yPosition + 2);
-      yPosition += 20;
-
-      doc.fontSize(11).fillColor('#6b7280').text('Contract with that will be paid on the set. Contract with that will be', 50, yPosition, { width: 480 });
-      yPosition += 60;
-
-      // Action Buttons Section
-      if (yPosition > 650) {
-        doc.addPage();
-        yPosition = 50;
-      }
-
-      // Make Payment Button
-      doc.rect(50, yPosition, 200, 40).fillAndStroke('#3b82f6', '#2563eb');
-      doc.fontSize(14).fillColor('#ffffff').text('Make Payment', 120, yPosition + 15);
-
-      // Terminate Contract Button  
-      doc.rect(270, yPosition, 200, 40).fillAndStroke('#ffffff', '#d1d5db');
-      doc.fontSize(14).fillColor('#374151').text('Terminate Contract', 330, yPosition + 15);
 
       // Footer with contract info
       const footerY = doc.page.height - 60;

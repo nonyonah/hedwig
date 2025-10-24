@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { sendSimpleEmail } from '../../../lib/emailService';
+import { hedwigProjectContractService } from '../../../services/hedwigProjectContractService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,6 +14,16 @@ interface ContractApprovalRequest extends NextApiRequest {
   };
 }
 
+interface LegalContract {
+  id: string;
+  freelancer_name?: string;
+  freelancer_email?: string;
+  freelancer_wallet?: string;
+  client_name?: string;
+  client_wallet?: string;
+  token_type?: string;
+}
+
 export default async function handler(req: ContractApprovalRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -20,6 +31,7 @@ export default async function handler(req: ContractApprovalRequest, res: NextApi
 
   try {
     const { contractId } = req.body;
+    console.log('[Contract Approve] Processing approval for contract:', contractId);
 
     if (!contractId) {
       return res.status(400).json({ error: 'Contract ID is required' });
@@ -30,18 +42,33 @@ export default async function handler(req: ContractApprovalRequest, res: NextApi
       .from('project_contracts')
       .select(`
         *,
-        milestones:contract_milestones(*),
-        legal_contract:legal_contracts(*)
+        milestones:contract_milestones(*)
       `)
       .eq('id', contractId)
       .single();
 
     if (contractError || !contract) {
+      console.error('Contract fetch error:', contractError);
       return res.status(404).json({ error: 'Contract not found' });
     }
 
-    if (contract.status !== 'pending_approval') {
-      return res.status(400).json({ error: 'Contract is not pending approval' });
+    // Fetch legal contract separately if needed
+    let legalContract: LegalContract | null = null;
+    if (contract.legal_contract_hash) {
+      const { data: legalData } = await supabase
+        .from('legal_contracts')
+        .select('*')
+        .eq('id', contract.legal_contract_hash)
+        .single();
+
+      legalContract = legalData;
+    }
+
+    console.log('[Contract Approve] Contract found with status:', contract.status);
+
+    if (contract.status !== 'pending_approval' && contract.status !== 'created') {
+      console.log('[Contract Approve] Contract status not valid for approval:', contract.status);
+      return res.status(400).json({ error: 'Contract is not available for approval' });
     }
 
     // Update contract status to approved
@@ -58,42 +85,125 @@ export default async function handler(req: ContractApprovalRequest, res: NextApi
       return res.status(500).json({ error: 'Failed to approve contract' });
     }
 
-    // Deploy smart contract (call existing deployment service)
+    // Create project in Hedwig Project Contract
     try {
-      const deploymentResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/contracts/deploy`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.HEDWIG_API_KEY}`
-        },
-        body: JSON.stringify({
-          type: 'project',
-          contractId: contractId,
-          clientWallet: contract.client_wallet || '',
-          freelancerWallet: contract.freelancer_wallet || '',
-          totalAmount: contract.total_amount,
-          tokenAddress: contract.token_address,
-          chain: contract.chain,
-          milestones: contract.milestones
-        })
+      console.log('[Contract Approve] Creating project in Hedwig contract:', {
+        client: legalContract?.client_wallet,
+        freelancer: legalContract?.freelancer_wallet,
+        chain: contract.chain
       });
 
-      if (!deploymentResponse.ok) {
-        console.error('Smart contract deployment failed');
-        // Don't fail the approval, but log the error
+      // Check if we have the required wallet addresses
+      if (!legalContract?.client_wallet || !legalContract?.freelancer_wallet) {
+        console.error('[Contract Approve] Missing wallet addresses:', {
+          hasClientWallet: !!legalContract?.client_wallet,
+          hasFreelancerWallet: !!legalContract?.freelancer_wallet
+        });
+
+        // Update contract status to indicate missing wallet info
+        await supabase
+          .from('project_contracts')
+          .update({
+            status: 'deployment_pending',
+            deployment_error: 'Missing wallet addresses'
+          })
+          .eq('id', contractId);
+
+        console.log('[Contract Approve] Contract approved but missing wallet addresses - marked as deployment_pending');
+
+        // Skip deployment but continue with approval
+        res.status(200).json({
+          success: true,
+          message: 'Contract approved successfully (deployment pending - missing wallet addresses)',
+          contractId: contractId
+        });
+        return;
+      }
+
+      // Determine if we should use testnet (Base Sepolia for testing)
+      const isTestnet = contract.chain === 'base'; // Use testnet for Base as requested
+
+      // Get token address
+      const getTokenAddress = (tokenType: string, chain: string): string => {
+        const tokenAddresses: Record<string, Record<string, string>> = {
+          base: {
+            USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+            ETH: '0x0000000000000000000000000000000000000000'
+          },
+          celo: {
+            cUSD: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+            CELO: '0x0000000000000000000000000000000000000000'
+          }
+        };
+        return tokenAddresses[chain]?.[tokenType] || tokenAddresses.base.USDC;
+      };
+
+      // Convert amount to wei (assuming it's in token units)
+      const amountInWei = (contract.total_amount * Math.pow(10, 6)).toString(); // USDC has 6 decimals
+
+      // Create project in Hedwig contract
+      const projectResult = await hedwigProjectContractService.createProject(
+        {
+          client: legalContract.client_wallet,
+          freelancer: legalContract.freelancer_wallet,
+          amount: amountInWei,
+          token: getTokenAddress(legalContract.token_type || 'USDC', contract.chain),
+          deadline: Math.floor(new Date(contract.deadline).getTime() / 1000), // Convert to unix timestamp
+          projectTitle: contract.project_title,
+          projectDescription: contract.project_description || ''
+        },
+        contract.chain,
+        isTestnet
+      );
+
+      if (!projectResult.success) {
+        console.error('Hedwig project creation failed:', projectResult.error);
+
+        // Update contract status to indicate deployment is pending
+        await supabase
+          .from('project_contracts')
+          .update({
+            status: 'deployment_pending',
+            deployment_error: projectResult.error || 'Project creation failed'
+          })
+          .eq('id', contractId);
+
+        console.log('[Contract Approve] Contract approved but project creation failed - marked as deployment_pending');
+      } else {
+        console.log('Hedwig project created successfully:', projectResult);
+
+        // Update contract with project details and active status
+        await supabase
+          .from('project_contracts')
+          .update({
+            smart_contract_address: projectResult.contractAddress,
+            blockchain_project_id: projectResult.projectId,
+            transaction_hash: projectResult.transactionHash,
+            status: 'active'
+          })
+          .eq('id', contractId);
+
+        console.log('[Contract Approve] Contract activated with project ID:', projectResult.projectId);
       }
     } catch (deployError) {
-      console.error('Smart contract deployment error:', deployError);
-      // Don't fail the approval, but log the error
+      console.error('Hedwig project creation error:', deployError);
+
+      // Update contract status to indicate deployment is pending
+      await supabase
+        .from('project_contracts')
+        .update({
+          status: 'deployment_pending',
+          deployment_error: deployError instanceof Error ? deployError.message : 'Unknown error'
+        })
+        .eq('id', contractId);
     }
 
     // Send notification to freelancer
-    const legalContract = contract.legal_contract?.[0];
     if (legalContract?.freelancer_email) {
       try {
         const emailHtml = generateFreelancerNotificationEmailTemplate({
-          freelancerName: legalContract.freelancer_name,
-          clientName: legalContract.client_name,
+          freelancerName: legalContract.freelancer_name || 'Freelancer',
+          clientName: legalContract.client_name || 'Client',
           projectTitle: contract.project_title,
           totalAmount: contract.total_amount,
           tokenType: legalContract.token_type || 'USDC',
@@ -134,8 +244,8 @@ export default async function handler(req: ContractApprovalRequest, res: NextApi
 
   } catch (error) {
     console.error('Contract approval error:', error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Internal server error' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Internal server error'
     });
   }
 }
@@ -198,7 +308,7 @@ function generateFreelancerNotificationEmailTemplate(data: {
   contractLink: string;
 }): string {
   const { freelancerName, clientName, projectTitle, totalAmount, tokenType, milestones, contractLink } = data;
-  
+
   return `
     <!DOCTYPE html>
     <html>

@@ -38,6 +38,8 @@ interface ContractData {
   created_at: string;
   approved_at?: string;
   smart_contract_address?: string;
+  blockchain_project_id?: number;
+  transaction_hash?: string;
   milestones: Milestone[];
   legal_contract: LegalContract;
 }
@@ -125,9 +127,12 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
+      case 'active':
         return 'bg-green-100 text-green-800';
       case 'pending_approval':
         return 'bg-yellow-100 text-yellow-800';
+      case 'deployment_pending':
+        return 'bg-orange-100 text-orange-800';
       case 'completed':
         return 'bg-blue-100 text-blue-800';
       case 'cancelled':
@@ -266,6 +271,8 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     setIsSigningContract(true);
 
     try {
+      console.log('[Contract Page] Signing contract with ID:', contract.id);
+      
       // Call the contract approval API to deploy the smart contract
       const response = await fetch('/api/contracts/approve', {
         method: 'POST',
@@ -300,16 +307,21 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       <div className="container max-w-4xl mx-auto py-8 px-4">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{contract.project_title}</h1>
-              <p className="text-gray-600">Contract ID: {contract.contract_id}</p>
+          <div className="flex justify-between items-start mb-6">
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => router.back()}
+                className="text-gray-400 hover:text-gray-600 text-xl"
+              >
+                ✕
+              </button>
+              <h1 className="text-xl font-semibold text-gray-900">Contract Details</h1>
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={handleDownloadPDF}
                 disabled={isGeneratingPDF}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
               >
                 {isGeneratingPDF ? (
                   <>
@@ -322,244 +334,151 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                   </>
                 )}
               </button>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(contract.status)}`}>
-                {contract.status.replace('_', ' ').toUpperCase()}
-              </span>
-              {!isConnected && <AppKitButton />}
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch(`/api/contracts/debug/${contract.id}`);
+                    const result = await response.json();
+                    console.log('Debug result:', result);
+                    alert(`Contract Status: ${result.contract?.status || 'Unknown'}`);
+                  } catch (error) {
+                    console.error('Debug error:', error);
+                    alert('Debug failed - check console');
+                  }
+                }}
+                className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
+              >
+                🔍 Debug
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">📧</span>
+                <span className="text-gray-500">⋯</span>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Client</h3>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p className="font-medium text-gray-900">{contract.legal_contract?.client_name}</p>
-                <p>{contract.legal_contract?.client_email}</p>
+          {/* General Information Section */}
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">General Information</h2>
+            
+            {/* Client Profile */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                <span className="text-gray-500 text-lg">👤</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">{contract.legal_contract?.client_name}</h3>
+                <p className="text-gray-600 text-sm">{contract.legal_contract?.client_email}</p>
               </div>
             </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Freelancer</h3>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p className="font-medium text-gray-900">{contract.legal_contract?.freelancer_name}</p>
-                <p>{contract.legal_contract?.freelancer_email}</p>
+
+            {/* Contract Details Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-sm font-medium text-gray-500">Contract Name</label>
+                <p className="text-gray-900 font-medium">{contract.project_title}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Team</label>
+                <p className="text-gray-900 font-medium">Hedwig Team</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Job Title</label>
+                <p className="text-gray-900 font-medium">Freelancer</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Start Date</label>
+                <p className="text-gray-900 font-medium">{formatDate(contract.created_at)}</p>
+              </div>
+            </div>
+
+            {/* Area of Work */}
+            <div className="mt-6">
+              <label className="text-sm font-medium text-gray-500">Area of Work</label>
+              <div className="mt-2 space-y-2">
+                <p className="text-gray-900">1. Research: {contract.project_description}</p>
+                <p className="text-gray-900">2. Concept development: Delivering milestones according to agreed timeline and specifications.</p>
+                <button className="text-blue-600 text-sm font-medium">See More</button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Project Details */}
+        {/* Payment Information Section */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">📋</span>
-            <h3 className="font-semibold text-gray-900">Project Details</h3>
-          </div>
-          <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Payment Information</h2>
+          
+          {/* Payment Details Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label className="text-sm font-medium text-gray-700">Project Title</label>
-              <p className="text-lg font-semibold text-gray-900 mt-1">{contract.project_title}</p>
+              <label className="text-sm font-medium text-gray-500">Type</label>
+              <p className="text-gray-900 font-medium">Milestone</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">Description</label>
-              <p className="text-gray-600 mt-1 leading-relaxed">{contract.project_description || 'No description provided'}</p>
+              <label className="text-sm font-medium text-gray-500">No of Milestone</label>
+              <p className="text-gray-900 font-medium">{contract.milestones?.length || 0}</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Contract ID</label>
-                <p className="text-sm font-mono text-gray-600 mt-1">{contract.contract_id}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Created</label>
-                <p className="text-gray-600 mt-1">{formatDate(contract.created_at)}</p>
+            <div>
+              <label className="text-sm font-medium text-gray-500">Payment Status</label>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+                <span className="text-blue-600 font-medium">Processing</span>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Payment Terms */}
-        <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">💰</span>
-            <h3 className="font-semibold text-gray-900">Payment Terms</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-700">Total Amount</label>
-              <p className="text-2xl font-bold text-orange-600 mt-1">
-                {contract.total_amount.toLocaleString()} {getTokenSymbol(contract.token_address)}
+              <label className="text-sm font-medium text-gray-500">Last Payment</label>
+              <p className="text-gray-900 font-medium">{formatDate(contract.deadline)}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-500">Total Amount</label>
+              <p className="text-xl font-bold text-gray-900">{getTokenSymbol(contract.token_address)} ${contract.total_amount.toLocaleString()}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-500">Each Milestone</label>
+              <p className="text-gray-900 font-medium">
+                {getTokenSymbol(contract.token_address)} ${contract.milestones?.length > 0 ? 
+                  Math.round(contract.total_amount / contract.milestones.length).toLocaleString() : 
+                  contract.total_amount.toLocaleString()}
               </p>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Blockchain Network</label>
-              <p className="text-gray-900 font-medium mt-1 capitalize">{contract.chain} Network</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Project Deadline</label>
-              <p className="text-gray-900 font-medium mt-1">{formatDate(contract.deadline)}</p>
-            </div>
           </div>
         </div>
 
-        {/* Milestones */}
-        {contract.milestones && contract.milestones.length > 0 && (
-          <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg shadow-sm p-6 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-xl">🎯</span>
-              <h3 className="font-semibold text-gray-900">Project Milestones</h3>
+        {/* Action Buttons */}
+        <div className="flex gap-4 mb-6">
+          {contract.status === 'created' || contract.status === 'pending_approval' ? (
+            <>
+              {!isConnected ? (
+                <AppKitButton />
+              ) : (
+                <button
+                  onClick={handleSignContract}
+                  disabled={isSigningContract}
+                  className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                >
+                  {isSigningContract ? 'Signing Contract...' : 'Make Payment'}
+                </button>
+              )}
+              <button className="flex-1 bg-white border border-gray-300 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-50 transition-colors font-medium">
+                Terminate Contract
+              </button>
+            </>
+          ) : contract.status === 'deployment_pending' ? (
+            <div className="flex-1 bg-orange-50 border border-orange-200 text-orange-800 py-3 px-6 rounded-lg text-center font-medium">
+              ⏳ Contract Approved - Smart Contract Deployment Pending
             </div>
-            <div className="space-y-4">
-              {contract.milestones.map((milestone, index) => (
-                <div key={milestone.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-purple-25'} border border-purple-200 rounded-lg p-4`}>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-purple-700 mb-2">
-                        Milestone {index + 1}: {milestone.title}
-                      </h4>
-                      <p className="text-sm text-gray-600 leading-relaxed mb-3">{milestone.description}</p>
-                    </div>
-                    <div className="ml-4 text-right">
-                      <p className="text-lg font-bold text-green-600">
-                        {milestone.amount.toLocaleString()} {getTokenSymbol(contract.token_address)}
-                      </p>
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getMilestoneStatusColor(milestone.status)} mt-1`}>
-                        {milestone.status.replace('_', ' ').toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-between items-center pt-3 border-t border-gray-200">
-                    <div className="text-sm text-gray-500">
-                      <span className="font-medium">Deadline:</span> {formatDate(milestone.deadline)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isFreelancer && milestone.status === 'pending' && (
-                        <button
-                          onClick={() => handleMilestoneAction(milestone, 'start')}
-                          disabled={isProcessing}
-                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                        >
-                          Start Work
-                        </button>
-                      )}
-                      {isFreelancer && milestone.status === 'in_progress' && (
-                        <button
-                          onClick={() => handleMilestoneAction(milestone, 'submit')}
-                          disabled={isProcessing}
-                          className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                        >
-                          Submit for Review
-                        </button>
-                      )}
-                      {isClient && milestone.status === 'completed' && (
-                        <button
-                          onClick={() => handleMilestoneAction(milestone, 'approve')}
-                          disabled={isProcessing || isPending || isConfirming}
-                          className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-                        >
-                          {isPending || isConfirming ? 'Processing...' : 'Approve & Pay'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+          ) : contract.status === 'approved' || contract.status === 'active' ? (
+            <div className="flex-1 bg-green-50 border border-green-200 text-green-800 py-3 px-6 rounded-lg text-center font-medium">
+              ✅ Contract Active - Smart Contract Deployed
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex-1 bg-gray-50 border border-gray-200 text-gray-800 py-3 px-6 rounded-lg text-center font-medium">
+              📄 Contract Status: {contract.status.replace('_', ' ').toUpperCase()}
+            </div>
+          )}
+        </div>
 
-        {/* Contract Signing Section */}
-        {contract.status === 'created' || contract.status === 'pending_approval' ? (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-sm p-6 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-xl">✍️</span>
-              <h3 className="font-semibold text-gray-900">Contract Signature Required</h3>
-            </div>
-            
-            <div className="bg-white rounded-lg p-4 mb-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0">
-                  <span className="text-blue-500 text-xl">ℹ️</span>
-                </div>
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Ready to Sign</h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    By signing this contract, you agree to the terms and authorize the deployment of a smart contract escrow 
-                    that will securely hold <strong>{contract.total_amount.toLocaleString()} {getTokenSymbol(contract.token_address)}</strong> 
-                    until project milestones are completed.
-                  </p>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>• Funds will be held in a secure smart contract</li>
-                    <li>• Payments are released automatically upon milestone approval</li>
-                    <li>• Both parties are protected by blockchain technology</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                <span className="font-medium">Network:</span> {contract.chain.toUpperCase()}
-              </div>
-              <div className="flex items-center gap-3">
-                {!isConnected ? (
-                  <AppKitButton />
-                ) : (
-                  <button
-                    onClick={handleSignContract}
-                    disabled={isSigningContract}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-                  >
-                    {isSigningContract ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Signing Contract...
-                      </>
-                    ) : (
-                      <>
-                        ✍️ Sign Contract & Deploy Escrow
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Smart Contract Info */}
-        {contract.smart_contract_address && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-xl">🔗</span>
-              <h3 className="font-semibold text-gray-900">Smart Contract Deployed</h3>
-            </div>
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0">
-                  <span className="text-green-500 text-xl">✅</span>
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium text-green-800 mb-2">Contract Active</h4>
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-sm font-medium text-green-700">Contract Address</label>
-                      <p className="text-sm text-green-600 font-mono break-all">{contract.smart_contract_address}</p>
-                    </div>
-                    <div>
-                      <a
-                        href={`https://${contract.chain === 'base' ? 'basescan.org' : contract.chain === 'celo' ? 'celoscan.io' : 'etherscan.io'}/address/${contract.smart_contract_address}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-sm text-green-600 hover:text-green-800 font-medium"
-                      >
-                        View on {contract.chain === 'base' ? 'BaseScan' : contract.chain === 'celo' ? 'CeloScan' : 'Etherscan'} ↗
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Transaction Status */}
         {isConfirmed && (
