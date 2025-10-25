@@ -123,11 +123,11 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const handleContractCreated = async (transactionHash: string) => {
     try {
       console.log('[Contract Page] Contract created successfully:', transactionHash);
-      
+
       // Extract contract ID from transaction logs (simplified - using timestamp for now)
       const contractId = Date.now();
       setCreatedContractId(contractId);
-      
+
       // Move to USDC approval step
       setContractStep('approving');
       await approveUSDC();
@@ -141,7 +141,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const approveUSDC = async () => {
     try {
       console.log('[Contract Page] Approving USDC for Hedwig contract');
-      
+
       const hedwigContractAddress = getHedwigContractAddress();
       const amountInWei = BigInt((contract?.total_amount || 0) * Math.pow(10, 6)); // USDC has 6 decimals
       const tokenAddress = getTokenAddress();
@@ -152,11 +152,11 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
         abi: [
           {
             "inputs": [
-              {"name": "spender", "type": "address"},
-              {"name": "amount", "type": "uint256"}
+              { "name": "spender", "type": "address" },
+              { "name": "amount", "type": "uint256" }
             ],
             "name": "approve",
-            "outputs": [{"name": "", "type": "bool"}],
+            "outputs": [{ "name": "", "type": "bool" }],
             "stateMutability": "nonpayable",
             "type": "function"
           }
@@ -176,7 +176,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const handleUSDCApproved = async () => {
     try {
       console.log('[Contract Page] USDC approved, now funding contract');
-      
+
       // Move to funding step
       setContractStep('funding');
       await fundContract();
@@ -190,7 +190,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const fundContract = async () => {
     try {
       console.log('[Contract Page] Funding contract with ID:', createdContractId);
-      
+
       const hedwigContractAddress = getHedwigContractAddress();
 
       if (!createdContractId) {
@@ -203,7 +203,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
         abi: [
           {
             "inputs": [
-              {"name": "contractId", "type": "uint256"}
+              { "name": "contractId", "type": "uint256" }
             ],
             "name": "fundContract",
             "outputs": [],
@@ -226,12 +226,12 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const handleContractFunded = async (transactionHash: string) => {
     try {
       console.log('[Contract Page] Contract funded successfully:', transactionHash);
-      
+
       if (!contract) {
         console.error('Contract is null');
         return;
       }
-      
+
       // Update contract status in database
       const response = await fetch('/api/contracts/approve', {
         method: 'POST',
@@ -249,7 +249,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       if (response.ok) {
         setContractStep('completed');
         console.log('[Contract Page] Contract funded and status updated successfully');
-        
+
         // Show success message and reload page
         setTimeout(() => {
           router.reload();
@@ -503,6 +503,15 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       return;
     }
 
+    if (!address) {
+      console.error('[Contract Page] No wallet address found');
+      alert('❌ Wallet address not found. Please reconnect your wallet.');
+      setIsSigningContract(false);
+      // Try to reconnect the wallet
+      await connectWallet();
+      return;
+    }
+
     // Ensure we're on the correct chain (Base Sepolia for testing)
     const targetChainId = contract.chain === 'base' ? 84532 : contract.chain === 'celo' ? 42220 : 1; // 84532 is Base Sepolia
     if (chainId !== targetChainId) {
@@ -514,6 +523,8 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
     try {
       console.log('[Contract Page] Creating project in Hedwig contract with ID:', contract.id);
+      console.log('[Contract Page] Connected wallet address:', address);
+      console.log('[Contract Page] Chain ID:', chainId);
 
       // Get the Hedwig project contract address based on chain
       const getHedwigContractAddress = () => {
@@ -564,8 +575,40 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
 
 
+      // Get token address for the transaction
+      const tokenAddress = contract.chain === 'base' 
+        ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' // USDC on Base Sepolia testnet
+        : '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // cUSD on Celo
+
+      console.log('[Contract Page] Transaction details:', {
+        client: address,
+        freelancer: freelancerWallet,
+        title: contract.project_title,
+        amount: amountInWei.toString(),
+        token: tokenAddress,
+        deadline: BigInt(Math.floor(new Date(contract.deadline).getTime() / 1000)).toString()
+      });
+
       // Step 1: Create the contract (no funds transferred yet)
       setContractStep('creating');
+
+      // Validate wallet connection
+      if (!address) {
+        throw new Error('Wallet not connected properly');
+      }
+
+      // Validate address format
+      if (!address.startsWith('0x') || address.length !== 42) {
+        throw new Error('Invalid wallet address format');
+      }
+
+      // Double-check wallet connection before proceeding
+      console.log('[Contract Page] About to call writeContract with address:', address);
+      console.log('[Contract Page] isConnected:', isConnected);
+      console.log('[Contract Page] chainId:', chainId);
+      
+      // Wait a moment to ensure wallet is fully connected
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       writeContract({
         address: hedwigContractAddress as `0x${string}`,
@@ -591,7 +634,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           freelancerWallet as `0x${string}`, // freelancer
           contract.project_title, // title
           amountInWei, // amount in wei
-          getTokenAddress() as `0x${string}`, // token address
+          tokenAddress as `0x${string}`, // token address
           BigInt(Math.floor(new Date(contract.deadline).getTime() / 1000)) // deadline as unix timestamp
         ]
       });
@@ -851,9 +894,9 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                 </h3>
                 <div className="mt-2 text-sm text-green-700">
                   <p>
-                    {contractStep === 'completed' 
+                    {contractStep === 'completed'
                       ? 'Your project has been created and funded in the Hedwig smart contract escrow. Funds are now securely held until milestones are completed.'
-                      : contractStep === 'creating' 
+                      : contractStep === 'creating'
                         ? 'Contract structure created. Next: USDC approval...'
                         : contractStep === 'approving'
                           ? 'USDC spending approved. Next: funding contract...'
