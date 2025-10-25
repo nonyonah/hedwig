@@ -62,6 +62,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const [isSigningContract, setIsSigningContract] = useState(false);
   const [contractStep, setContractStep] = useState<'idle' | 'creating' | 'approving' | 'funding' | 'completed'>('idle');
   const [createdContractId, setCreatedContractId] = useState<number | null>(null);
+  const [transactionTimeout, setTransactionTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const { writeContract, data: hash, isPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -97,6 +98,61 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       }
     }
   }, [isConfirmed, hash, router, contract, contractStep]);
+
+  // Handle transaction errors
+  useEffect(() => {
+    if (contractError) {
+      console.error('[Contract Page] Transaction error:', contractError);
+      alert(`❌ Transaction failed: ${contractError.message}`);
+      
+      // Clear timeout if exists
+      if (transactionTimeout) {
+        clearTimeout(transactionTimeout);
+        setTransactionTimeout(null);
+      }
+      
+      // Reset states
+      setIsSigningContract(false);
+      setContractStep('idle');
+    }
+  }, [contractError, transactionTimeout]);
+
+  // Set timeout when transaction starts
+  useEffect(() => {
+    if (isPending && contractStep !== 'idle') {
+      // Clear any existing timeout
+      if (transactionTimeout) {
+        clearTimeout(transactionTimeout);
+      }
+      
+      // Set new timeout (2 minutes)
+      const timeout = setTimeout(() => {
+        console.warn('[Contract Page] Transaction timeout - resetting state');
+        setIsSigningContract(false);
+        setContractStep('idle');
+        alert('⏰ Transaction is taking longer than expected. Please try again.');
+      }, 120000); // 2 minutes
+      
+      setTransactionTimeout(timeout);
+    }
+  }, [isPending, contractStep, transactionTimeout]);
+
+  // Clear timeout when transaction completes
+  useEffect(() => {
+    if ((isConfirmed || contractError) && transactionTimeout) {
+      clearTimeout(transactionTimeout);
+      setTransactionTimeout(null);
+    }
+  }, [isConfirmed, contractError, transactionTimeout]);
+
+  // Cleanup timeout on component unmount
+  useEffect(() => {
+    return () => {
+      if (transactionTimeout) {
+        clearTimeout(transactionTimeout);
+      }
+    };
+  }, [transactionTimeout]);
 
 
 
@@ -576,7 +632,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
 
       // Get token address for the transaction
-      const tokenAddress = contract.chain === 'base' 
+      const tokenAddress = contract.chain === 'base'
         ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' // USDC on Base Sepolia testnet
         : '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // cUSD on Celo
 
@@ -606,7 +662,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       console.log('[Contract Page] About to call writeContract with address:', address);
       console.log('[Contract Page] isConnected:', isConnected);
       console.log('[Contract Page] chainId:', chainId);
-      
+
       // Wait a moment to ensure wallet is fully connected
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -640,6 +696,13 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       });
 
       console.log('[Contract Page] Step 1: Contract creation transaction initiated');
+      console.log('[Contract Page] Current state:', {
+        isSigningContract,
+        contractStep,
+        isPending,
+        isConfirming,
+        hash
+      });
 
     } catch (error) {
       console.error('Contract signing error:', error);
@@ -826,6 +889,20 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           </div>
         </div>
 
+        {/* Debug Info - only show when transaction is in progress */}
+        {(contractStep !== 'idle' || isPending || isConfirming) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <h3 className="text-sm font-medium text-blue-800 mb-2">Transaction Status</h3>
+            <div className="text-xs text-blue-700 space-y-1">
+              <p>Step: {contractStep}</p>
+              <p>Signing: {isSigningContract ? 'Yes' : 'No'}</p>
+              <p>Pending: {isPending ? 'Yes' : 'No'}</p>
+              <p>Confirming: {isConfirming ? 'Yes' : 'No'}</p>
+              {hash && <p>Hash: {hash.slice(0, 10)}...{hash.slice(-8)}</p>}
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex gap-4 mb-6">
           {contract.status === 'created' || contract.status === 'pending_approval' ? (
@@ -845,20 +922,41 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                   </p>
                 </div>
               ) : (
-                <button
-                  onClick={handleSignContract}
-                  disabled={isSigningContract || isPending || isConfirming || contractStep !== 'idle'}
-                  className="bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium w-[500px] h-[44px] flex items-center justify-center text-sm"
-                >
-                  {contractStep === 'creating' ? 'Creating Contract...' :
-                    contractStep === 'approving' ? 'Approving USDC...' :
-                      contractStep === 'funding' ? 'Funding Contract...' :
-                        contractStep === 'completed' ? 'Contract Funded!' :
-                          isSigningContract ? 'Connecting Wallet...' :
-                            isPending ? 'Confirm in Wallet...' :
-                              isConfirming ? 'Confirming Transaction...' :
-                                'Make Payment'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSignContract}
+                    disabled={isSigningContract || isPending || isConfirming || contractStep !== 'idle'}
+                    className="bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium w-[400px] h-[44px] flex items-center justify-center text-sm"
+                  >
+                    {contractStep === 'creating' ? 'Creating Contract...' :
+                      contractStep === 'approving' ? 'Approving USDC...' :
+                        contractStep === 'funding' ? 'Funding Contract...' :
+                          contractStep === 'completed' ? 'Contract Funded!' :
+                            isSigningContract ? 'Connecting Wallet...' :
+                              isPending ? 'Confirm in Wallet...' :
+                                isConfirming ? 'Confirming Transaction...' :
+                                  'Make Payment'}
+                  </button>
+                  
+                  {/* Reset button - only show when transaction is in progress */}
+                  {(contractStep !== 'idle' && contractStep !== 'completed') && (
+                    <button
+                      onClick={() => {
+                        console.log('[Contract Page] Manual reset triggered');
+                        if (transactionTimeout) {
+                          clearTimeout(transactionTimeout);
+                          setTransactionTimeout(null);
+                        }
+                        setIsSigningContract(false);
+                        setContractStep('idle');
+                      }}
+                      className="bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors font-medium w-[100px] h-[44px] flex items-center justify-center text-sm"
+                      title="Reset transaction state"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               )}
               <button className="bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm w-[500px] h-[44px] flex items-center justify-center">
                 Terminate Contract
