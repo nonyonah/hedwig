@@ -484,8 +484,11 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       
       // Get freelancer wallet from legal contract - must be a real address, no placeholders
       const freelancerWallet = contract.legal_contract?.freelancer_wallet;
-      if (!freelancerWallet || freelancerWallet.length !== 42 || !/^0x[a-fA-F0-9]{40}$/.test(freelancerWallet)) {
-        throw new Error('Freelancer wallet address is required but not found in the contract. Please ensure the freelancer has provided their wallet address.');
+      if (!freelancerWallet) {
+        throw new Error('Freelancer wallet address is required. Please ask the freelancer to provide their wallet address in the contract details.');
+      }
+      if (freelancerWallet.length !== 42 || !/^0x[a-fA-F0-9]{40}$/.test(freelancerWallet)) {
+        throw new Error('Invalid freelancer wallet address format. Please ensure the freelancer provides a valid Ethereum wallet address.');
       }
 
       // Hedwig Project Contract ABI for createContract function
@@ -673,6 +676,34 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               </p>
             </div>
           </div>
+
+          {/* Wallet Addresses Section */}
+          <div className="border-t pt-6">
+            <h3 className="text-md font-semibold text-gray-900 mb-4">Wallet Addresses</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-sm font-medium text-gray-500">Client Wallet</label>
+                <p className="text-gray-900 font-mono text-sm break-all">
+                  {address || 'Not connected'}
+                </p>
+                {address && (
+                  <p className="text-xs text-gray-500 mt-1">Currently connected wallet</p>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Freelancer Wallet</label>
+                <p className="text-gray-900 font-mono text-sm break-all">
+                  {contract.legal_contract?.freelancer_wallet || 'Not provided'}
+                </p>
+                {!contract.legal_contract?.freelancer_wallet && (
+                  <p className="text-xs text-red-500 mt-1">⚠️ Freelancer needs to provide wallet address</p>
+                )}
+                {contract.legal_contract?.freelancer_wallet && (
+                  <p className="text-xs text-green-600 mt-1">✅ Wallet address provided</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -681,6 +712,18 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
             <>
               {!isConnected ? (
                 <AppKitButton />
+              ) : !contract.legal_contract?.freelancer_wallet ? (
+                <div className="flex-1">
+                  <button
+                    disabled={true}
+                    className="w-full bg-gray-400 text-white py-3 px-6 rounded-lg cursor-not-allowed transition-colors font-medium"
+                  >
+                    ⚠️ Freelancer Wallet Required
+                  </button>
+                  <p className="text-sm text-red-600 mt-2 text-center">
+                    The freelancer must provide their wallet address before the contract can be created.
+                  </p>
+                </div>
               ) : (
                 <button
                   onClick={handleSignContract}
