@@ -60,7 +60,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const [currentMilestone, setCurrentMilestone] = useState<Milestone | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSigningContract, setIsSigningContract] = useState(false);
-  const [contractStep, setContractStep] = useState<'idle' | 'creating' | 'funding' | 'completed'>('idle');
+  const [contractStep, setContractStep] = useState<'idle' | 'creating' | 'approving' | 'funding' | 'completed'>('idle');
   const [createdContractId, setCreatedContractId] = useState<number | null>(null);
 
   const { writeContract, data: hash, isPending, error: contractError } = useWriteContract();
@@ -82,13 +82,21 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     }
   }, [hash, isConfirming]);
 
-  // Handle transaction confirmation
+  // Handle transaction confirmation for three-step process
   useEffect(() => {
     if (isConfirmed && hash && contract) {
-      // Contract created successfully, update database
-      handleContractCreated(hash);
+      if (contractStep === 'creating') {
+        // Step 1 completed: Contract created, now approve USDC
+        handleContractCreated(hash);
+      } else if (contractStep === 'approving') {
+        // Step 2 completed: USDC approved, now fund contract
+        handleUSDCApproved();
+      } else if (contractStep === 'funding') {
+        // Step 3 completed: Contract funded, update database
+        handleContractFunded(hash);
+      }
     }
-  }, [isConfirmed, hash, router, contract]);
+  }, [isConfirmed, hash, router, contract, contractStep]);
 
 
 
@@ -102,9 +110,161 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     throw new Error(`Unsupported chain: ${contract!.chain}`);
   };
 
+  const getTokenAddress = () => {
+    if (contract?.chain === 'base') {
+      return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // USDC on Base Sepolia testnet
+    } else if (contract?.chain === 'celo') {
+      return '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // cUSD on Celo
+    }
+    return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Default to USDC Base Sepolia
+  };
 
+  // Three-step contract creation handlers
+  const handleContractCreated = async (transactionHash: string) => {
+    try {
+      console.log('[Contract Page] Contract created successfully:', transactionHash);
+      
+      // Extract contract ID from transaction logs (simplified - using timestamp for now)
+      const contractId = Date.now();
+      setCreatedContractId(contractId);
+      
+      // Move to USDC approval step
+      setContractStep('approving');
+      await approveUSDC();
+    } catch (error) {
+      console.error('Error handling contract creation:', error);
+      setContractStep('idle');
+      setIsSigningContract(false);
+    }
+  };
 
+  const approveUSDC = async () => {
+    try {
+      console.log('[Contract Page] Approving USDC for Hedwig contract');
+      
+      const hedwigContractAddress = getHedwigContractAddress();
+      const amountInWei = BigInt((contract?.total_amount || 0) * Math.pow(10, 6)); // USDC has 6 decimals
+      const tokenAddress = getTokenAddress();
 
+      // Approve USDC spending by Hedwig contract
+      writeContract({
+        address: tokenAddress as `0x${string}`,
+        abi: [
+          {
+            "inputs": [
+              {"name": "spender", "type": "address"},
+              {"name": "amount", "type": "uint256"}
+            ],
+            "name": "approve",
+            "outputs": [{"name": "", "type": "bool"}],
+            "stateMutability": "nonpayable",
+            "type": "function"
+          }
+        ],
+        functionName: 'approve',
+        args: [hedwigContractAddress as `0x${string}`, amountInWei]
+      });
+
+      console.log('[Contract Page] USDC approval transaction initiated');
+    } catch (error) {
+      console.error('Error approving USDC:', error);
+      setContractStep('idle');
+      setIsSigningContract(false);
+    }
+  };
+
+  const handleUSDCApproved = async () => {
+    try {
+      console.log('[Contract Page] USDC approved, now funding contract');
+      
+      // Move to funding step
+      setContractStep('funding');
+      await fundContract();
+    } catch (error) {
+      console.error('Error handling USDC approval:', error);
+      setContractStep('idle');
+      setIsSigningContract(false);
+    }
+  };
+
+  const fundContract = async () => {
+    try {
+      console.log('[Contract Page] Funding contract with ID:', createdContractId);
+      
+      const hedwigContractAddress = getHedwigContractAddress();
+
+      if (!createdContractId) {
+        throw new Error('Contract ID not found');
+      }
+
+      // Call fundContract to transfer the approved USDC
+      writeContract({
+        address: hedwigContractAddress as `0x${string}`,
+        abi: [
+          {
+            "inputs": [
+              {"name": "contractId", "type": "uint256"}
+            ],
+            "name": "fundContract",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+          }
+        ],
+        functionName: 'fundContract',
+        args: [BigInt(createdContractId)]
+      });
+
+      console.log('[Contract Page] Funding transaction initiated');
+    } catch (error) {
+      console.error('Error funding contract:', error);
+      setContractStep('idle');
+      setIsSigningContract(false);
+    }
+  };
+
+  const handleContractFunded = async (transactionHash: string) => {
+    try {
+      console.log('[Contract Page] Contract funded successfully:', transactionHash);
+      
+      if (!contract) {
+        console.error('Contract is null');
+        return;
+      }
+      
+      // Update contract status in database
+      const response = await fetch('/api/contracts/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: contract?.id,
+          transactionHash: transactionHash,
+          smartContractAddress: getHedwigContractAddress(),
+          blockchainProjectId: createdContractId
+        }),
+      });
+
+      if (response.ok) {
+        setContractStep('completed');
+        console.log('[Contract Page] Contract funded and status updated successfully');
+        
+        // Show success message and reload page
+        setTimeout(() => {
+          router.reload();
+        }, 3000); // Wait 3 seconds to show success message
+      } else {
+        console.error('Failed to update contract status');
+        setContractStep('idle');
+        setIsSigningContract(false);
+      }
+    } catch (error) {
+      console.error('Error handling contract funding:', error);
+      setContractStep('idle');
+      setIsSigningContract(false);
+    }
+  };
 
   const handleMilestoneCompleted = async (milestone: Milestone) => {
     try {
@@ -213,53 +373,9 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     }
   };
 
-  const handleContractCreated = async (transactionHash: string) => {
-    try {
-      console.log('[Contract Page] Contract created successfully:', transactionHash);
-
-      // Update contract status in database
-      const response = await fetch('/api/contracts/approve', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contractId: contract.id,
-          transactionHash: transactionHash,
-          smartContractAddress: process.env.NEXT_PUBLIC_HEDWIG_PROJECT_CONTRACT_ADDRESS_BASE_SEPOLIA
-        }),
-      });
-
-      if (response.ok) {
-        setContractStep('completed');
-        console.log('[Contract Page] Contract status updated successfully');
-
-        // Show success message and reload page
-        setTimeout(() => {
-          router.reload();
-        }, 2000);
-      } else {
-        console.error('Failed to update contract status');
-        setContractStep('idle');
-        setIsSigningContract(false);
-      }
-    } catch (error) {
-      console.error('Error handling contract creation:', error);
-      setContractStep('idle');
-      setIsSigningContract(false);
-    }
-  };
 
 
 
-  const getTokenAddress = () => {
-    if (contract.chain === 'base') {
-      return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // USDC on Base Sepolia testnet
-    } else if (contract.chain === 'celo') {
-      return '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // cUSD on Celo
-    }
-    return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Default to USDC Base Sepolia
-  };
 
   const handleMilestoneAction = async (milestone: Milestone, action: 'start' | 'submit' | 'approve') => {
     if (!isConnected) {
@@ -446,15 +562,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
         }
       ];
 
-      // Get token address for Base Sepolia testnet
-      const getTokenAddress = () => {
-        if (contract.chain === 'base') {
-          return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // USDC on Base Sepolia testnet
-        } else if (contract.chain === 'celo') {
-          return '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // cUSD on Celo
-        }
-        return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Default to USDC Base Sepolia
-      };
+
 
       // Step 1: Create the contract (no funds transferred yet)
       setContractStep('creating');
@@ -700,12 +808,13 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                   className="bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium w-[500px] h-[44px] flex items-center justify-center text-sm"
                 >
                   {contractStep === 'creating' ? 'Creating Contract...' :
-                    contractStep === 'funding' ? 'Funding Contract...' :
-                      contractStep === 'completed' ? 'Contract Created!' :
-                        isSigningContract ? 'Connecting Wallet...' :
-                          isPending ? 'Confirm in Wallet...' :
-                            isConfirming ? 'Confirming Transaction...' :
-                              'Make Payment'}
+                    contractStep === 'approving' ? 'Approving USDC...' :
+                      contractStep === 'funding' ? 'Funding Contract...' :
+                        contractStep === 'completed' ? 'Contract Funded!' :
+                          isSigningContract ? 'Connecting Wallet...' :
+                            isPending ? 'Confirm in Wallet...' :
+                              isConfirming ? 'Confirming Transaction...' :
+                                'Make Payment'}
                 </button>
               )}
               <button className="bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm w-[500px] h-[44px] flex items-center justify-center">
@@ -737,9 +846,20 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                 <span className="text-green-400 text-xl">✅</span>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">Contract Created Successfully!</h3>
+                <h3 className="text-sm font-medium text-green-800">
+                  {contractStep === 'completed' ? 'Contract Funded Successfully!' : 'Transaction Confirmed!'}
+                </h3>
                 <div className="mt-2 text-sm text-green-700">
-                  <p>Your project has been created in the Hedwig smart contract escrow. Funds are now securely held until milestones are completed.</p>
+                  <p>
+                    {contractStep === 'completed' 
+                      ? 'Your project has been created and funded in the Hedwig smart contract escrow. Funds are now securely held until milestones are completed.'
+                      : contractStep === 'creating' 
+                        ? 'Contract structure created. Next: USDC approval...'
+                        : contractStep === 'approving'
+                          ? 'USDC spending approved. Next: funding contract...'
+                          : 'Transaction confirmed on the blockchain.'
+                    }
+                  </p>
                   {hash && (
                     <a
                       href={`https://${contract.chain === 'base' ? 'sepolia.basescan.org' : contract.chain === 'celo' ? 'celoscan.io' : 'etherscan.io'}/tx/${hash}`}
