@@ -43,6 +43,7 @@ interface ContractData {
   transaction_hash?: string;
   freelancer_id?: string;
   freelancer_wallet?: string;
+  client_id?: string;
   milestones: Milestone[];
   legal_contract: LegalContract;
 }
@@ -59,10 +60,6 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const [currentMilestone, setCurrentMilestone] = useState<Milestone | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSigningContract, setIsSigningContract] = useState(false);
-  const [contractCreationStep, setContractCreationStep] = useState<'idle' | 'creating' | 'funding' | 'completed'>('idle');
-  const [createdContractId, setCreatedContractId] = useState<number | null>(null);
-  const [milestoneTransactionType, setMilestoneTransactionType] = useState<'complete' | 'approve' | null>(null);
-  const [processingMilestone, setProcessingMilestone] = useState<Milestone | null>(null);
 
   const { writeContract, data: hash, isPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -86,38 +83,36 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   // Handle transaction confirmation and update contract status
   useEffect(() => {
     if (isConfirmed && hash && contract) {
-      if (contractCreationStep === 'creating') {
-        // Contract creation confirmed, now extract contract ID and proceed to funding
-        handleContractCreated(hash);
-      } else if (contractCreationStep === 'funding') {
-        // Funding confirmed, update contract status in database
-        updateContractStatus(hash);
-      } else if (milestoneTransactionType === 'complete' && processingMilestone) {
-        // Milestone completion confirmed, update database
-        handleMilestoneCompleted(processingMilestone);
-      } else if (milestoneTransactionType === 'approve' && processingMilestone) {
-        // Milestone approval confirmed, update database
-        handleMilestoneApproved(processingMilestone);
-      }
-    }
-  }, [isConfirmed, hash, contract, contractCreationStep, milestoneTransactionType, processingMilestone]);
+      // Update contract status in database when transaction is confirmed
+      const updateContractStatus = async () => {
+        try {
+          const response = await fetch('/api/contracts/approve', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contractId: contract.id,
+              transactionHash: hash,
+              smartContractAddress: process.env.NEXT_PUBLIC_HEDWIG_PROJECT_CONTRACT_ADDRESS_BASE_SEPOLIA
+            }),
+          });
 
-  const handleContractCreated = async (transactionHash: string) => {
-    try {
-      // Extract contract ID from transaction logs
-      // For now, we'll use a placeholder - in production, you'd parse the transaction receipt
-      const contractId = Date.now(); // This should be extracted from transaction logs
-      setCreatedContractId(contractId);
-      setContractCreationStep('funding');
-      
-      // Now proceed to fund the contract
-      await fundContract(contractId);
-    } catch (error) {
-      console.error('Error handling contract creation:', error);
-      setContractCreationStep('idle');
-      setIsSigningContract(false);
+          if (response.ok) {
+            setTimeout(() => {
+              router.reload();
+            }, 2000); // Wait 2 seconds to show success message, then reload
+          }
+        } catch (error) {
+          console.error('Failed to update contract status:', error);
+        }
+      };
+
+      updateContractStatus();
     }
-  };
+  }, [isConfirmed, hash, router, contract]);
+
+
 
   // Helper functions
   const getHedwigContractAddress = () => {
@@ -138,67 +133,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Default to USDC Base Sepolia
   };
 
-  const fundContract = async (contractId: number) => {
-    try {
-      // Get contract details for funding
-      const hedwigContractAddress = getHedwigContractAddress();
-      const amountInWei = BigInt(contract!.total_amount * Math.pow(10, 6));
 
-      const hedwigProjectABI = [
-        {
-          "inputs": [
-            {"name": "_contractId", "type": "uint256"}
-          ],
-          "name": "fundContract",
-          "outputs": [],
-          "stateMutability": "payable",
-          "type": "function"
-        }
-      ];
-
-      // Call fundContract function
-      writeContract({
-        address: hedwigContractAddress as `0x${string}`,
-        abi: hedwigProjectABI,
-        functionName: 'fundContract',
-        args: [BigInt(contractId)],
-        value: contract!.token_address === '0x0000000000000000000000000000000000000000' ? amountInWei : BigInt(0)
-      });
-
-    } catch (error) {
-      console.error('Error funding contract:', error);
-      setContractCreationStep('idle');
-      setIsSigningContract(false);
-    }
-  };
-
-  const updateContractStatus = async (transactionHash: string) => {
-    try {
-      const response = await fetch('/api/contracts/approve', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contractId: contract!.id,
-          transactionHash: transactionHash,
-          smartContractAddress: getHedwigContractAddress(),
-          blockchainProjectId: createdContractId
-        }),
-      });
-
-      if (response.ok) {
-        setContractCreationStep('completed');
-        setTimeout(() => {
-          router.reload();
-        }, 2000); // Wait 2 seconds to show success message, then reload
-      }
-    } catch (error) {
-      console.error('Failed to update contract status:', error);
-      setContractCreationStep('idle');
-      setIsSigningContract(false);
-    }
-  };
 
   const handleMilestoneCompleted = async (milestone: Milestone) => {
     try {
@@ -212,31 +147,11 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       });
 
       if (response.ok) {
-        setMilestoneTransactionType(null);
-        setProcessingMilestone(null);
-        setIsProcessing(false);
         router.reload();
       }
     } catch (error) {
       console.error('Failed to update milestone status:', error);
-      setMilestoneTransactionType(null);
-      setProcessingMilestone(null);
-      setIsProcessing(false);
-    }
-  };
-
-  const handleMilestoneApproved = async (milestone: Milestone) => {
-    try {
-      // For milestone approval, we might need a different API endpoint
-      // For now, we'll just reload to show the updated status
-      setMilestoneTransactionType(null);
-      setProcessingMilestone(null);
-      setIsProcessing(false);
-      router.reload();
-    } catch (error) {
-      console.error('Failed to handle milestone approval:', error);
-      setMilestoneTransactionType(null);
-      setProcessingMilestone(null);
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -271,27 +186,27 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
   const getTokenSymbol = (tokenAddress: string) => {
     if (!tokenAddress) return 'USDC';
-    
+
     const address = tokenAddress.toLowerCase();
-    
+
     // Base network tokens
     if (contract.chain === 'base') {
       if (address === '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913') return 'USDC';
       if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
     }
-    
+
     // Celo network tokens
     if (contract.chain === 'celo') {
       if (address === '0x765de816845861e75a25fca122bb6898b8b1282a') return 'cUSD';
       if (address === '0x0000000000000000000000000000000000000000') return 'CELO';
     }
-    
+
     // Ethereum network tokens
     if (contract.chain === 'ethereum') {
       if (address === '0xa0b86a33e6441b8c4505e2c4b8b5b8e8e8e8e8e8') return 'USDC';
       if (address === '0x0000000000000000000000000000000000000000') return 'ETH';
     }
-    
+
     // Fallback to legal contract token type or default
     return contract.legal_contract?.token_type || 'USDC';
   };
@@ -360,10 +275,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       } else if (action === 'submit') {
         // Submit milestone for approval - first call smart contract, then update database
         if (contract.smart_contract_address && contract.blockchain_project_id) {
-          // Set transaction type and milestone for confirmation handling
-          setMilestoneTransactionType('complete');
-          setProcessingMilestone(milestone);
-          
+
           // Call smart contract to mark as completed
           writeContract({
             address: contract.smart_contract_address as `0x${string}`,
@@ -395,10 +307,6 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           }
         }
       } else if (action === 'approve' && contract.smart_contract_address && contract.blockchain_project_id) {
-        // Set transaction type and milestone for confirmation handling
-        setMilestoneTransactionType('approve');
-        setProcessingMilestone(milestone);
-        
         // Approve contract and release payment via smart contract
         writeContract({
           address: contract.smart_contract_address as `0x${string}`,
@@ -470,66 +378,98 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     setIsSigningContract(true);
 
     try {
-      console.log('[Contract Page] Starting contract creation process with ID:', contract.id);
-      
-      // Set the creation step to 'creating'
-      setContractCreationStep('creating');
-      
+      console.log('[Contract Page] Creating project in Hedwig contract with ID:', contract.id);
+
+      // Get the Hedwig project contract address based on chain
+      const getHedwigContractAddress = () => {
+        if (contract.chain === 'base') {
+          // Use testnet for Base as requested
+          return process.env.NEXT_PUBLIC_HEDWIG_PROJECT_CONTRACT_ADDRESS_BASE_SEPOLIA;
+        } else if (contract.chain === 'celo') {
+          return process.env.NEXT_PUBLIC_HEDWIG_PROJECT_CONTRACT_ADDRESS_CELO_MAINNET;
+        }
+        throw new Error(`Unsupported chain: ${contract.chain}`);
+      };
+
       const hedwigContractAddress = getHedwigContractAddress();
-      
+
       if (!hedwigContractAddress) {
         throw new Error('Hedwig contract address not found for this chain');
       }
 
       // Convert amount to wei (USDC has 6 decimals)
       const amountInWei = BigInt(contract.total_amount * Math.pow(10, 6));
-      
+
       // Get freelancer wallet from contract - must be a real address, no placeholders
       const freelancerWallet = contract.freelancer_wallet;
       if (!freelancerWallet) {
-        throw new Error('Freelancer wallet address is required. The freelancer needs to sign up and have a wallet assigned.');
+        throw new Error(`Freelancer wallet address is required. Freelancer ID: ${contract.freelancer_id || 'Not found'}. The freelancer needs to sign up and connect their wallet.`);
       }
       if (freelancerWallet.length !== 42 || !/^0x[a-fA-F0-9]{40}$/.test(freelancerWallet)) {
-        throw new Error('Invalid freelancer wallet address format. Please ensure the freelancer provides a valid Ethereum wallet address.');
+        throw new Error(`Invalid freelancer wallet address format: ${freelancerWallet}. Please ensure the freelancer provides a valid Ethereum wallet address.`);
       }
 
       // Hedwig Project Contract ABI for createContract function
       const hedwigProjectABI = [
         {
           "inputs": [
-            {"name": "_client", "type": "address"},
-            {"name": "_freelancer", "type": "address"},
-            {"name": "_projectTitle", "type": "string"},
-            {"name": "_amount", "type": "uint256"},
-            {"name": "_token", "type": "address"},
-            {"name": "_deadline", "type": "uint256"}
+            { "name": "_client", "type": "address" },
+            { "name": "_freelancer", "type": "address" },
+            { "name": "_projectTitle", "type": "string" },
+            { "name": "_amount", "type": "uint256" },
+            { "name": "_token", "type": "address" },
+            { "name": "_deadline", "type": "uint256" }
           ],
           "name": "createContract",
-          "outputs": [{"name": "", "type": "uint256"}],
+          "outputs": [{ "name": "", "type": "uint256" }],
           "stateMutability": "nonpayable",
           "type": "function"
         }
       ];
 
-      // Step 1: Call createContract function on the Hedwig contract
+      // Get token address for Base Sepolia testnet
+      const getTokenAddress = () => {
+        if (contract.chain === 'base') {
+          return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // USDC on Base Sepolia testnet
+        } else if (contract.chain === 'celo') {
+          return '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // cUSD on Celo
+        }
+        return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Default to USDC Base Sepolia
+      };
+
+      // Call createProject function on the Hedwig contract
       writeContract({
         address: hedwigContractAddress as `0x${string}`,
-        abi: hedwigProjectABI,
-        functionName: 'createContract',
+        abi: [
+          {
+            "inputs": [
+              { "name": "_client", "type": "address" },
+              { "name": "_freelancer", "type": "address" },
+              { "name": "_amount", "type": "uint256" },
+              { "name": "_token", "type": "address" },
+              { "name": "_deadline", "type": "uint256" },
+              { "name": "_projectTitle", "type": "string" },
+              { "name": "_projectDescription", "type": "string" }
+            ],
+            "name": "createProject",
+            "outputs": [{ "name": "", "type": "uint256" }],
+            "stateMutability": "nonpayable",
+            "type": "function"
+          }
+        ],
+        functionName: 'createProject',
         args: [
           address as `0x${string}`, // client (current user)
           freelancerWallet as `0x${string}`, // freelancer
-          contract.project_title, // project title
           amountInWei, // amount in wei
           getTokenAddress() as `0x${string}`, // token address
-          BigInt(Math.floor(new Date(contract.deadline).getTime() / 1000)) // deadline as unix timestamp
+          BigInt(Math.floor(new Date(contract.deadline).getTime() / 1000)), // deadline as unix timestamp
+          contract.project_title, // project title
+          contract.project_description || '' // project description
         ]
       });
 
-      console.log('[Contract Page] Contract creation transaction initiated');
-      
-      // The useWaitForTransactionReceipt hook will handle the confirmation
-      // and trigger the funding step automatically
+      console.log('[Contract Page] Transaction initiated via writeContract');
 
     } catch (error) {
       console.error('Contract signing error:', error);
@@ -545,7 +485,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex justify-between items-start mb-6">
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={() => router.back()}
                 className="text-gray-400 hover:text-gray-600 text-xl"
               >
@@ -596,7 +536,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           {/* General Information Section */}
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">General Information</h2>
-            
+
             {/* Client Profile */}
             <div className="flex items-center gap-4 mb-6">
               <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
@@ -615,26 +555,24 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                 <p className="text-gray-900 font-medium">{contract.project_title}</p>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">Team</label>
-                <p className="text-gray-900 font-medium">Hedwig Team</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Job Title</label>
-                <p className="text-gray-900 font-medium">Freelancer</p>
+                <label className="text-sm font-medium text-gray-500">Freelancer Name</label>
+                <p className="text-gray-900 font-medium">{contract.legal_contract?.freelancer_name || 'Not provided'}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Start Date</label>
                 <p className="text-gray-900 font-medium">{formatDate(contract.created_at)}</p>
               </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Deadline</label>
+                <p className="text-gray-900 font-medium">{formatDate(contract.deadline)}</p>
+              </div>
             </div>
 
-            {/* Area of Work */}
+            {/* Project Description */}
             <div className="mt-6">
-              <label className="text-sm font-medium text-gray-500">Area of Work</label>
-              <div className="mt-2 space-y-2">
-                <p className="text-gray-900">1. Research: {contract.project_description}</p>
-                <p className="text-gray-900">2. Concept development: Delivering milestones according to agreed timeline and specifications.</p>
-                <button className="text-blue-600 text-sm font-medium">See More</button>
+              <label className="text-sm font-medium text-gray-500">Project Description</label>
+              <div className="mt-2">
+                <p className="text-gray-900">{contract.project_description || 'No description provided'}</p>
               </div>
             </div>
           </div>
@@ -643,7 +581,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
         {/* Payment Information Section */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-6">Payment Information</h2>
-          
+
           {/* Payment Details Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
@@ -657,8 +595,8 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
             <div>
               <label className="text-sm font-medium text-gray-500">Payment Status</label>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
-                <span className="text-blue-600 font-medium">Processing</span>
+                <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                <span className="text-green-600 font-medium">Live</span>
               </div>
             </div>
             <div>
@@ -672,8 +610,8 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
             <div>
               <label className="text-sm font-medium text-gray-500">Each Milestone</label>
               <p className="text-gray-900 font-medium">
-                {getTokenSymbol(contract.token_address)} ${contract.milestones?.length > 0 ? 
-                  Math.round(contract.total_amount / contract.milestones.length).toLocaleString() : 
+                {getTokenSymbol(contract.token_address)} ${contract.milestones?.length > 0 ?
+                  Math.round(contract.total_amount / contract.milestones.length).toLocaleString() :
                   contract.total_amount.toLocaleString()}
               </p>
             </div>
@@ -693,16 +631,25 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                 )}
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-500">Freelancer Wallet</label>
-                <p className="text-gray-900 font-mono text-sm break-all">
-                  {contract.freelancer_wallet || 'Not provided'}
-                </p>
-                {!contract.freelancer_wallet && (
-                  <p className="text-xs text-red-500 mt-1">⚠️ Freelancer needs to provide wallet address</p>
-                )}
-                {contract.freelancer_wallet && (
-                  <p className="text-xs text-green-600 mt-1">✅ Wallet address provided</p>
-                )}
+                <label className="text-sm font-medium text-gray-500">Freelancer Info</label>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-xs text-gray-500">Freelancer ID:</p>
+                    <p className="text-gray-900 font-mono text-sm">{contract.freelancer_id || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Wallet Address:</p>
+                    <p className="text-gray-900 font-mono text-sm break-all">
+                      {contract.freelancer_wallet || 'Not provided'}
+                    </p>
+                  </div>
+                  {!contract.freelancer_wallet && (
+                    <p className="text-xs text-red-500 mt-1">⚠️ Freelancer needs to provide wallet address</p>
+                  )}
+                  {contract.freelancer_wallet && (
+                    <p className="text-xs text-green-600 mt-1">✅ Wallet address provided</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -729,16 +676,13 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               ) : (
                 <button
                   onClick={handleSignContract}
-                  disabled={isSigningContract || isPending || isConfirming || contractCreationStep !== 'idle'}
+                  disabled={isSigningContract || isPending || isConfirming}
                   className="bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium w-[500px] h-[44px] flex items-center justify-center text-sm"
                 >
-                  {contractCreationStep === 'creating' ? 'Creating Contract...' :
-                   contractCreationStep === 'funding' ? 'Funding Contract...' :
-                   contractCreationStep === 'completed' ? 'Contract Created!' :
-                   isSigningContract ? 'Connecting Wallet...' : 
-                   isPending ? 'Confirm in Wallet...' :
-                   isConfirming ? 'Confirming Transaction...' :
-                   'Create & Fund Contract'}
+                  {isSigningContract ? 'Connecting Wallet...' :
+                    isPending ? 'Confirm in Wallet...' :
+                      isConfirming ? 'Confirming Transaction...' :
+                        'Make Payment'}
                 </button>
               )}
               <button className="bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm w-[500px] h-[44px] flex items-center justify-center">
@@ -845,15 +789,64 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         .select('*')
         .eq('id', contract.legal_contract_hash)
         .single();
-      
+
       legalContract = legalData as LegalContract | null;
     }
 
-    // Fetch freelancer wallet from legal contract
+    // Fetch freelancer wallet from wallets table using freelancer_id
     let freelancerWallet: string | null = null;
+
+    // First try to get from legal contract (legacy)
     if (legalContract?.freelancer_wallet) {
       freelancerWallet = legalContract.freelancer_wallet;
     }
+
+    // If not found in legal contract and we have freelancer_id, fetch from wallets table
+    if (!freelancerWallet && contract.freelancer_id) {
+      const { data: wallets } = await supabaseServer
+        .from('wallets')
+        .select('address, chain')
+        .eq('user_id', contract.freelancer_id)
+        .order('created_at', { ascending: true });
+
+      if (wallets && wallets.length > 0) {
+        // Prefer EVM/Base wallet, fallback to any wallet
+        const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
+        freelancerWallet = evmWallet?.address || wallets[0]?.address || null;
+      }
+    }
+
+    // If still no wallet and we have freelancer email, try to find user by email and get their wallet
+    if (!freelancerWallet && legalContract?.freelancer_email) {
+      const { data: user } = await supabaseServer
+        .from('users')
+        .select('id')
+        .eq('email', legalContract.freelancer_email)
+        .single();
+
+      if (user) {
+        const { data: wallets } = await supabaseServer
+          .from('wallets')
+          .select('address, chain')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true });
+
+        if (wallets && wallets.length > 0) {
+          // Prefer EVM/Base wallet, fallback to any wallet
+          const evmWallet = wallets.find((w: any) => (w.chain || '').toLowerCase() === 'evm' || (w.chain || '').toLowerCase() === 'base');
+          freelancerWallet = evmWallet?.address || wallets[0]?.address || null;
+        }
+      }
+    }
+
+    // Debug logging
+    console.log('[Contract Page] Freelancer wallet resolution:', {
+      contractId: contract.id,
+      freelancerId: contract.freelancer_id,
+      freelancerEmail: legalContract?.freelancer_email,
+      legalContractWallet: legalContract?.freelancer_wallet,
+      resolvedWallet: freelancerWallet
+    });
 
     return {
       props: {

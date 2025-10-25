@@ -91,63 +91,12 @@ export class LegalContractService {
         };
       }
 
-      // Generate a unique contract ID (BIGINT)
-      const contractId = Date.now();
-
-      // Create project contract entry
-      const { data: projectContract, error: contractError } = await supabase
-        .from('project_contracts')
-        .insert({
-          contract_id: contractId,
-          project_title: request.projectTitle,
-          project_description: request.projectDescription,
-          total_amount: request.paymentAmount,
-          token_address: this.getTokenAddress(request.tokenType, request.chain),
-          chain: request.chain,
-          deadline: request.deadline,
-          status: 'created',
-          legal_contract_hash: contract.id,
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (contractError) {
-        console.error('Failed to create project contract:', contractError);
-        return {
-          success: false,
-          error: 'Failed to create project contract'
-        };
-      }
-
-      // Create milestones
-      if (request.milestones && request.milestones.length > 0) {
-        const milestoneInserts = request.milestones.map((milestone, index) => ({
-          milestone_id: Date.now() + index, // Generate unique milestone ID
-          contract_id: projectContract.id,
-          title: milestone.title,
-          description: milestone.description,
-          amount: milestone.amount,
-          deadline: milestone.deadline,
-          status: 'pending'
-        }));
-
-        const { error: milestonesError } = await supabase
-          .from('contract_milestones')
-          .insert(milestoneInserts);
-
-        if (milestonesError) {
-          console.error('Failed to create milestones:', milestonesError);
-          return {
-            success: false,
-            error: 'Failed to create milestones'
-          };
-        }
-      }
+      // Note: Project contract and milestone creation is handled by the API endpoint
+      // which has access to user IDs (client_id and freelancer_id)
 
       return {
         success: true,
-        contractId: projectContract.id, // Return the project contract ID instead of legal contract ID
+        contractId: contract.id, // Return the legal contract ID
         contractText,
         contractHash,
         metadata
