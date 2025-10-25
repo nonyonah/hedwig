@@ -41,6 +41,8 @@ interface ContractData {
   smart_contract_address?: string;
   blockchain_project_id?: number;
   transaction_hash?: string;
+  freelancer_id?: string;
+  freelancer_wallet?: string;
   milestones: Milestone[];
   legal_contract: LegalContract;
 }
@@ -482,10 +484,10 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       // Convert amount to wei (USDC has 6 decimals)
       const amountInWei = BigInt(contract.total_amount * Math.pow(10, 6));
       
-      // Get freelancer wallet from legal contract - must be a real address, no placeholders
-      const freelancerWallet = contract.legal_contract?.freelancer_wallet;
+      // Get freelancer wallet from contract - must be a real address, no placeholders
+      const freelancerWallet = contract.freelancer_wallet;
       if (!freelancerWallet) {
-        throw new Error('Freelancer wallet address is required. Please ask the freelancer to provide their wallet address in the contract details.');
+        throw new Error('Freelancer wallet address is required. The freelancer needs to sign up and have a wallet assigned.');
       }
       if (freelancerWallet.length !== 42 || !/^0x[a-fA-F0-9]{40}$/.test(freelancerWallet)) {
         throw new Error('Invalid freelancer wallet address format. Please ensure the freelancer provides a valid Ethereum wallet address.');
@@ -693,12 +695,12 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               <div>
                 <label className="text-sm font-medium text-gray-500">Freelancer Wallet</label>
                 <p className="text-gray-900 font-mono text-sm break-all">
-                  {contract.legal_contract?.freelancer_wallet || 'Not provided'}
+                  {contract.freelancer_wallet || 'Not provided'}
                 </p>
-                {!contract.legal_contract?.freelancer_wallet && (
+                {!contract.freelancer_wallet && (
                   <p className="text-xs text-red-500 mt-1">⚠️ Freelancer needs to provide wallet address</p>
                 )}
-                {contract.legal_contract?.freelancer_wallet && (
+                {contract.freelancer_wallet && (
                   <p className="text-xs text-green-600 mt-1">✅ Wallet address provided</p>
                 )}
               </div>
@@ -712,11 +714,11 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
             <>
               {!isConnected ? (
                 <AppKitButton />
-              ) : !contract.legal_contract?.freelancer_wallet ? (
+              ) : !contract.freelancer_wallet ? (
                 <div className="flex-1">
                   <button
                     disabled={true}
-                    className="w-full bg-gray-400 text-white py-3 px-6 rounded-lg cursor-not-allowed transition-colors font-medium"
+                    className="bg-gray-400 text-white rounded-lg cursor-not-allowed transition-colors font-medium w-[500px] h-[44px] flex items-center justify-center text-sm"
                   >
                     ⚠️ Freelancer Wallet Required
                   </button>
@@ -728,7 +730,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                 <button
                   onClick={handleSignContract}
                   disabled={isSigningContract || isPending || isConfirming || contractCreationStep !== 'idle'}
-                  className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                  className="bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium w-[500px] h-[44px] flex items-center justify-center text-sm"
                 >
                   {contractCreationStep === 'creating' ? 'Creating Contract...' :
                    contractCreationStep === 'funding' ? 'Funding Contract...' :
@@ -739,7 +741,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                    'Create & Fund Contract'}
                 </button>
               )}
-              <button className="flex-1 bg-white border border-gray-300 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-50 transition-colors font-medium">
+              <button className="bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm w-[500px] h-[44px] flex items-center justify-center">
                 Terminate Contract
               </button>
             </>
@@ -836,7 +838,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
 
     // Fetch legal contract separately using the legal_contract_hash
-    let legalContract = null;
+    let legalContract: LegalContract | null = null;
     if (contract.legal_contract_hash) {
       const { data: legalData } = await supabaseServer
         .from('legal_contracts')
@@ -844,14 +846,21 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         .eq('id', contract.legal_contract_hash)
         .single();
       
-      legalContract = legalData;
+      legalContract = legalData as LegalContract | null;
+    }
+
+    // Fetch freelancer wallet from legal contract
+    let freelancerWallet: string | null = null;
+    if (legalContract?.freelancer_wallet) {
+      freelancerWallet = legalContract.freelancer_wallet;
     }
 
     return {
       props: {
         contract: {
           ...contract,
-          legal_contract: legalContract
+          legal_contract: legalContract,
+          freelancer_wallet: freelancerWallet
         }
       }
     };
