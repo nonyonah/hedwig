@@ -104,13 +104,13 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     if (contractError) {
       console.error('[Contract Page] Transaction error:', contractError);
       alert(`❌ Transaction failed: ${contractError.message}`);
-      
+
       // Clear timeout if exists
       if (transactionTimeout) {
         clearTimeout(transactionTimeout);
         setTransactionTimeout(null);
       }
-      
+
       // Reset states
       setIsSigningContract(false);
       setContractStep('idle');
@@ -124,7 +124,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
       if (transactionTimeout) {
         clearTimeout(transactionTimeout);
       }
-      
+
       // Set new timeout (2 minutes)
       const timeout = setTimeout(() => {
         console.warn('[Contract Page] Transaction timeout - resetting state');
@@ -132,7 +132,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
         setContractStep('idle');
         alert('⏰ Transaction is taking longer than expected. Please try again.');
       }, 120000); // 2 minutes
-      
+
       setTransactionTimeout(timeout);
     }
   }, [isPending, contractStep, transactionTimeout]);
@@ -937,7 +937,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                                 isConfirming ? 'Confirming Transaction...' :
                                   'Make Payment'}
                   </button>
-                  
+
                   {/* Reset button - only show when transaction is in progress */}
                   {(contractStep !== 'idle' && contractStep !== 'completed') && (
                     <button
