@@ -935,6 +935,8 @@ Please enter your client's email address for contract notifications and signing:
 
       // Create project contract entry
       const tokenAddress = getTokenAddress(contractRequest.tokenType, contractRequest.chain);
+      console.log('[ContractModule] Creating project contract with freelancer_id:', userId);
+      
       const { data: projectContract, error: projectContractError } = await supabase
         .from('project_contracts')
         .insert({
@@ -944,6 +946,7 @@ Please enter your client's email address for contract notifications and signing:
           project_description: contractRequest.projectDescription,
           total_amount: contractRequest.paymentAmount,
           currency: contractRequest.tokenType,
+          token_type: contractRequest.tokenType,
           chain: contractRequest.chain,
           token_address: tokenAddress,
           deadline: contractRequest.deadline,

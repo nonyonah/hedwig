@@ -14,6 +14,7 @@ interface ApprovalResponse {
   message?: string;
   contract?: any;
   error?: string;
+  invoiceId?: string | null;
 }
 
 interface LegalContract {
@@ -27,13 +28,13 @@ interface LegalContract {
 }
 
 export default async function handler(
-  req: NextApiRequest, 
+  req: NextApiRequest,
   res: NextApiResponse<ApprovalResponse>
 ) {
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ 
-      success: false, 
-      error: 'Method not allowed' 
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed'
     });
   }
 
@@ -48,26 +49,26 @@ export default async function handler(
 
   } catch (error) {
     console.error('Error in contract approval:', error);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Internal server error' 
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error'
     });
   }
 }
 
 // Handle Contracts 2.0 token-based approval
 async function handleTokenApproval(
-  req: NextApiRequest, 
+  req: NextApiRequest,
   res: NextApiResponse<ApprovalResponse>
 ) {
-  const approval_token = req.method === 'GET' 
-    ? req.query.token as string 
+  const approval_token = req.method === 'GET'
+    ? req.query.token as string
     : req.body.approval_token;
 
   if (!approval_token) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Approval token is required' 
+    return res.status(400).json({
+      success: false,
+      error: 'Approval token is required'
     });
   }
 
@@ -87,40 +88,40 @@ async function handleTokenApproval(
     .single();
 
   if (contractError || !contract) {
-    return res.status(404).json({ 
-      success: false, 
-      error: 'Invalid or expired approval token' 
+    return res.status(404).json({
+      success: false,
+      error: 'Invalid or expired approval token'
     });
   }
 
   // Check if token is expired
   if (contract.approval_expires_at && new Date() > new Date(contract.approval_expires_at)) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Approval token has expired' 
+    return res.status(400).json({
+      success: false,
+      error: 'Approval token has expired'
     });
   }
 
   // Check if already approved
   if (contract.status === 'approved') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract is already approved' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract is already approved'
     });
   }
 
   // Check if declined
   if (contract.status === 'rejected') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract has been declined' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract has been declined'
     });
   }
 
   // Update contract status to approved
   const { data: updatedContract, error: updateError } = await supabase
     .from('contracts')
-    .update({ 
+    .update({
       status: 'approved',
       approved_at: new Date().toISOString(),
       approval_token: null, // Clear token after use
@@ -132,9 +133,9 @@ async function handleTokenApproval(
 
   if (updateError) {
     console.error('Error updating contract status:', updateError);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Failed to approve contract' 
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to approve contract'
     });
   }
 
@@ -165,8 +166,8 @@ async function handleTokenApproval(
     return res.redirect(302, successUrl);
   }
 
-  return res.status(200).json({ 
-    success: true, 
+  return res.status(200).json({
+    success: true,
     message: 'Contract approved successfully',
     contract: updatedContract
   });
@@ -174,66 +175,128 @@ async function handleTokenApproval(
 
 // Handle legacy contract approval (existing system)
 async function handleLegacyApproval(
-  req: NextApiRequest, 
+  req: NextApiRequest,
   res: NextApiResponse<ApprovalResponse>
 ) {
-  const { contractId } = req.body;
+  const { contractId, signature, message, clientAddress } = req.body;
 
   if (!contractId) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract ID is required' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract ID is required'
     });
   }
 
-  // Fetch contract details from legacy table
-  const { data: contract, error: contractError } = await supabase
+  console.log('[Contract Approval] Looking for contract ID:', contractId);
+
+  // Try to fetch contract from project_contracts table first
+  let { data: contract, error: contractError } = await supabase
     .from('project_contracts')
     .select('*')
     .eq('id', contractId)
     .single();
 
+  console.log('[Contract Approval] Project contracts query result:', { contract, contractError });
+
+  // If not found in project_contracts, try the contracts table (Contracts 2.0)
+  if (contractError || !contract) {
+    console.log('[Contract Approval] Trying contracts table...');
+    const { data: contract2, error: contractError2 } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', contractId)
+      .single();
+
+    console.log('[Contract Approval] Contracts table query result:', { contract2, contractError2 });
+
+    if (contract2) {
+      contract = contract2;
+      contractError = contractError2;
+    }
+  }
+
   // Fetch freelancer details separately
   let freelancerInfo: any = null;
   if (contract?.freelancer_id) {
+    console.log('[Contract Approval] Fetching freelancer info for ID:', contract.freelancer_id);
     const { data: freelancer } = await supabase
       .from('auth.users')
       .select('id, email, raw_user_meta_data')
       .eq('id', contract.freelancer_id)
       .single();
-    
+
     freelancerInfo = freelancer;
+    console.log('[Contract Approval] Freelancer info from auth.users:', freelancerInfo);
+  }
+
+  // If freelancer not found in auth.users, try to get info from legal contract
+  if (!freelancerInfo && contract?.legal_contract_id) {
+    console.log('[Contract Approval] Fetching freelancer info from legal contract:', contract.legal_contract_id);
+    const { data: legalContract } = await supabase
+      .from('legal_contracts')
+      .select('freelancer_name, freelancer_email')
+      .eq('id', contract.legal_contract_id)
+      .single();
+
+    if (legalContract) {
+      freelancerInfo = {
+        email: legalContract.freelancer_email,
+        raw_user_meta_data: { name: legalContract.freelancer_name }
+      };
+      console.log('[Contract Approval] Freelancer info from legal contract:', freelancerInfo);
+    }
   }
 
   if (contractError || !contract) {
-    return res.status(404).json({ 
-      success: false, 
-      error: 'Contract not found' 
+    console.error('[Contract Approval] Contract not found:', { contractId, contractError });
+    return res.status(404).json({
+      success: false,
+      error: `Contract not found: ${contractError?.message || 'Unknown error'}`
     });
   }
 
   if (contract.status === 'approved') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract is already approved' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract is already approved'
     });
   }
 
-  // Update contract status to approved
+  // Update contract status to approved and try to store signature info
+  const updateData: any = {
+    status: 'approved',
+    approved_at: new Date().toISOString()
+  };
+
+  // Try to add signature fields (will be ignored if columns don't exist yet)
+  try {
+    if (signature) updateData.approval_signature = signature;
+    if (message) updateData.approval_message = message;
+    if (clientAddress) updateData.client_wallet = clientAddress;
+  } catch (e) {
+    console.log('[Contract Approval] Signature columns not available yet, skipping signature storage');
+  }
+
   const { error: updateError } = await supabase
     .from('project_contracts')
-    .update({ 
-      status: 'approved',
-      approved_at: new Date().toISOString()
-    })
+    .update(updateData)
     .eq('id', contractId);
 
   if (updateError) {
     console.error('Error updating legacy contract:', updateError);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Failed to approve contract' 
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to approve contract'
     });
+  }
+
+  // Generate invoice for the contract
+  let invoiceId = null;
+  try {
+    invoiceId = await generateContractInvoice(contract, freelancerInfo);
+  } catch (invoiceError) {
+    console.error('Error generating invoice:', invoiceError);
+    // Don't fail the approval if invoice generation fails
   }
 
   // Send notification email to freelancer
@@ -250,15 +313,84 @@ async function handleLegacyApproval(
     }
   }
 
-  return res.status(200).json({ 
-    success: true, 
+  return res.status(200).json({
+    success: true,
     message: 'Contract approved successfully',
+    invoiceId: invoiceId || undefined,
     contract: {
       id: contract.id,
       status: 'approved',
       approved_at: new Date().toISOString()
     }
   });
+}
+
+// Generate invoice for approved contract
+async function generateContractInvoice(contract: any, freelancerInfo: any) {
+  try {
+    // Create invoice data based on contract
+    const invoiceData = {
+      freelancer_id: contract.freelancer_id,
+      client_email: contract.client_email,
+      client_name: contract.client_name || 'Client',
+      project_title: contract.project_title,
+      project_description: contract.project_description,
+      total_amount: contract.total_amount,
+      currency: contract.token_type || contract.currency || 'USDC',
+      chain: contract.chain || 'base',
+      due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+      status: 'sent',
+      contract_id: contract.id,
+      items: [
+        {
+          description: contract.project_title,
+          quantity: 1,
+          rate: contract.total_amount,
+          amount: contract.total_amount
+        }
+      ]
+    };
+
+    // Use the existing invoice creation API which handles the schema correctly
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/create-invoice`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        freelancer_id: invoiceData.freelancer_id,
+        client_email: invoiceData.client_email,
+        client_name: invoiceData.client_name,
+        project_title: invoiceData.project_title,
+        project_description: invoiceData.project_description,
+        total_amount: invoiceData.total_amount,
+        currency: invoiceData.currency,
+        blockchain: invoiceData.chain,
+        due_date: invoiceData.due_date,
+        status: invoiceData.status,
+        items: invoiceData.items,
+        project_contract_id: invoiceData.contract_id
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Failed to create invoice via API: ${errorData.error || response.statusText}`);
+    }
+
+    const result = await response.json();
+    const invoice = { id: result.invoiceId };
+
+    if (!invoice?.id) {
+      throw new Error('Invoice creation succeeded but no invoice ID returned');
+    }
+
+    console.log('Invoice generated successfully:', invoice.id);
+    return invoice.id;
+  } catch (error) {
+    console.error('Error in generateContractInvoice:', error);
+    throw error;
+  }
 }
 
 // Generate invoices for all milestones when contract is approved

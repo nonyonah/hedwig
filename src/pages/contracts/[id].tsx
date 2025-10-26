@@ -4,8 +4,7 @@ import { GetServerSideProps } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { useAppKitWallet } from '../../hooks/useAppKitWallet';
 import { AppKitButton } from '../../components/AppKitButton';
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseEther } from 'viem';
+
 
 interface Milestone {
   id: string;
@@ -60,14 +59,9 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
   const [currentMilestone, setCurrentMilestone] = useState<Milestone | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isSigningContract, setIsSigningContract] = useState(false);
-  const [contractStep, setContractStep] = useState<'idle' | 'creating' | 'approving' | 'funding' | 'completed'>('idle');
-  const [createdContractId, setCreatedContractId] = useState<number | null>(null);
-  const [transactionTimeout, setTransactionTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [contractStep, setContractStep] = useState<'idle' | 'signing' | 'approved'>('idle');
 
-  const { writeContract, data: hash, isPending, error: contractError } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash,
-  });
+
 
   useEffect(() => {
     if (contract?.milestones) {
@@ -76,83 +70,18 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     }
   }, [contract]);
 
-  // Reset signing state when transaction is sent
+
+
+  // No longer needed - we handle approval directly in handleSignContract
+
+  // No longer needed - we handle errors directly in handleSignContract
+
+  // Reset signing state when approval is complete
   useEffect(() => {
-    if (hash && !isConfirming) {
+    if (contractStep === 'approved') {
       setIsSigningContract(false);
     }
-  }, [hash, isConfirming]);
-
-  // Handle transaction confirmation for three-step process
-  useEffect(() => {
-    if (isConfirmed && hash && contract) {
-      if (contractStep === 'creating') {
-        // Step 1 completed: Contract created, now approve USDC
-        handleContractCreated(hash);
-      } else if (contractStep === 'approving') {
-        // Step 2 completed: USDC approved, now fund contract
-        handleUSDCApproved();
-      } else if (contractStep === 'funding') {
-        // Step 3 completed: Contract funded, update database
-        handleContractFunded(hash);
-      }
-    }
-  }, [isConfirmed, hash, router, contract, contractStep]);
-
-  // Handle transaction errors
-  useEffect(() => {
-    if (contractError) {
-      console.error('[Contract Page] Transaction error:', contractError);
-      alert(`❌ Transaction failed: ${contractError.message}`);
-
-      // Clear timeout if exists
-      if (transactionTimeout) {
-        clearTimeout(transactionTimeout);
-        setTransactionTimeout(null);
-      }
-
-      // Reset states
-      setIsSigningContract(false);
-      setContractStep('idle');
-    }
-  }, [contractError, transactionTimeout]);
-
-  // Set timeout when transaction starts
-  useEffect(() => {
-    if (isPending && contractStep !== 'idle') {
-      // Clear any existing timeout
-      if (transactionTimeout) {
-        clearTimeout(transactionTimeout);
-      }
-
-      // Set new timeout (2 minutes)
-      const timeout = setTimeout(() => {
-        console.warn('[Contract Page] Transaction timeout - resetting state');
-        setIsSigningContract(false);
-        setContractStep('idle');
-        alert('⏰ Transaction is taking longer than expected. Please try again.');
-      }, 120000); // 2 minutes
-
-      setTransactionTimeout(timeout);
-    }
-  }, [isPending, contractStep, transactionTimeout]);
-
-  // Clear timeout when transaction completes
-  useEffect(() => {
-    if ((isConfirmed || contractError) && transactionTimeout) {
-      clearTimeout(transactionTimeout);
-      setTransactionTimeout(null);
-    }
-  }, [isConfirmed, contractError, transactionTimeout]);
-
-  // Cleanup timeout on component unmount
-  useEffect(() => {
-    return () => {
-      if (transactionTimeout) {
-        clearTimeout(transactionTimeout);
-      }
-    };
-  }, [transactionTimeout]);
+  }, [contractStep]);
 
 
 
@@ -175,152 +104,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     return '0x036CbD53842c5426634e7929541eC2318f3dCF7e'; // Default to USDC Base Sepolia
   };
 
-  // Three-step contract creation handlers
-  const handleContractCreated = async (transactionHash: string) => {
-    try {
-      console.log('[Contract Page] Contract created successfully:', transactionHash);
 
-      // Extract contract ID from transaction logs (simplified - using timestamp for now)
-      const contractId = Date.now();
-      setCreatedContractId(contractId);
-
-      // Move to USDC approval step
-      setContractStep('approving');
-      await approveUSDC();
-    } catch (error) {
-      console.error('Error handling contract creation:', error);
-      setContractStep('idle');
-      setIsSigningContract(false);
-    }
-  };
-
-  const approveUSDC = async () => {
-    try {
-      console.log('[Contract Page] Approving USDC for Hedwig contract');
-
-      const hedwigContractAddress = getHedwigContractAddress();
-      const amountInWei = BigInt((contract?.total_amount || 0) * Math.pow(10, 6)); // USDC has 6 decimals
-      const tokenAddress = getTokenAddress();
-
-      // Approve USDC spending by Hedwig contract
-      writeContract({
-        address: tokenAddress as `0x${string}`,
-        abi: [
-          {
-            "inputs": [
-              { "name": "spender", "type": "address" },
-              { "name": "amount", "type": "uint256" }
-            ],
-            "name": "approve",
-            "outputs": [{ "name": "", "type": "bool" }],
-            "stateMutability": "nonpayable",
-            "type": "function"
-          }
-        ],
-        functionName: 'approve',
-        args: [hedwigContractAddress as `0x${string}`, amountInWei]
-      });
-
-      console.log('[Contract Page] USDC approval transaction initiated');
-    } catch (error) {
-      console.error('Error approving USDC:', error);
-      setContractStep('idle');
-      setIsSigningContract(false);
-    }
-  };
-
-  const handleUSDCApproved = async () => {
-    try {
-      console.log('[Contract Page] USDC approved, now funding contract');
-
-      // Move to funding step
-      setContractStep('funding');
-      await fundContract();
-    } catch (error) {
-      console.error('Error handling USDC approval:', error);
-      setContractStep('idle');
-      setIsSigningContract(false);
-    }
-  };
-
-  const fundContract = async () => {
-    try {
-      console.log('[Contract Page] Funding contract with ID:', createdContractId);
-
-      const hedwigContractAddress = getHedwigContractAddress();
-
-      if (!createdContractId) {
-        throw new Error('Contract ID not found');
-      }
-
-      // Call fundContract to transfer the approved USDC
-      writeContract({
-        address: hedwigContractAddress as `0x${string}`,
-        abi: [
-          {
-            "inputs": [
-              { "name": "contractId", "type": "uint256" }
-            ],
-            "name": "fundContract",
-            "outputs": [],
-            "stateMutability": "nonpayable",
-            "type": "function"
-          }
-        ],
-        functionName: 'fundContract',
-        args: [BigInt(createdContractId)]
-      });
-
-      console.log('[Contract Page] Funding transaction initiated');
-    } catch (error) {
-      console.error('Error funding contract:', error);
-      setContractStep('idle');
-      setIsSigningContract(false);
-    }
-  };
-
-  const handleContractFunded = async (transactionHash: string) => {
-    try {
-      console.log('[Contract Page] Contract funded successfully:', transactionHash);
-
-      if (!contract) {
-        console.error('Contract is null');
-        return;
-      }
-
-      // Update contract status in database
-      const response = await fetch('/api/contracts/approve', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contractId: contract?.id,
-          transactionHash: transactionHash,
-          smartContractAddress: getHedwigContractAddress(),
-          blockchainProjectId: createdContractId
-        }),
-      });
-
-      if (response.ok) {
-        setContractStep('completed');
-        console.log('[Contract Page] Contract funded and status updated successfully');
-
-        // Show success message and reload page
-        setTimeout(() => {
-          router.reload();
-        }, 3000); // Wait 3 seconds to show success message
-      } else {
-        console.error('Failed to update contract status');
-        setContractStep('idle');
-        setIsSigningContract(false);
-      }
-    } catch (error) {
-      console.error('Error handling contract funding:', error);
-      setContractStep('idle');
-      setIsSigningContract(false);
-    }
-  };
 
   const handleMilestoneCompleted = async (milestone: Milestone) => {
     try {
@@ -433,93 +217,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
 
 
-  const handleMilestoneAction = async (milestone: Milestone, action: 'start' | 'submit' | 'approve') => {
-    if (!isConnected) {
-      await connectWallet();
-      return;
-    }
 
-    // Ensure we're on the correct chain (Base Sepolia for testing)
-    const targetChainId = contract.chain === 'base' ? 84532 : contract.chain === 'celo' ? 42220 : 1; // 84532 is Base Sepolia
-    if (chainId !== targetChainId) {
-      await switchToChain(targetChainId);
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      if (action === 'start') {
-        // Update milestone status to in_progress
-        const response = await fetch('/api/contracts/milestone/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contractId: contract.id,
-            milestoneId: milestone.id,
-          }),
-        });
-
-        if (response.ok) {
-          router.reload();
-        }
-      } else if (action === 'submit') {
-        // Submit milestone for approval - first call smart contract, then update database
-        if (contract.smart_contract_address && contract.blockchain_project_id) {
-
-          // Call smart contract to mark as completed
-          writeContract({
-            address: contract.smart_contract_address as `0x${string}`,
-            abi: [
-              {
-                name: 'completeContract',
-                type: 'function',
-                inputs: [{ name: 'contractId', type: 'uint256' }],
-                outputs: [],
-                stateMutability: 'nonpayable',
-              },
-            ],
-            functionName: 'completeContract',
-            args: [BigInt(contract.blockchain_project_id)],
-          });
-        } else {
-          // Fallback to database-only update if smart contract not available
-          const response = await fetch('/api/contracts/milestone/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contractId: contract.id,
-              milestoneId: milestone.id,
-            }),
-          });
-
-          if (response.ok) {
-            router.reload();
-          }
-        }
-      } else if (action === 'approve' && contract.smart_contract_address && contract.blockchain_project_id) {
-        // Approve contract and release payment via smart contract
-        writeContract({
-          address: contract.smart_contract_address as `0x${string}`,
-          abi: [
-            {
-              name: 'approveContract',
-              type: 'function',
-              inputs: [{ name: 'contractId', type: 'uint256' }],
-              outputs: [],
-              stateMutability: 'nonpayable',
-            },
-          ],
-          functionName: 'approveContract',
-          args: [BigInt(contract.blockchain_project_id)],
-        });
-      }
-    } catch (error) {
-      console.error('Milestone action error:', error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const isFreelancer = address?.toLowerCase() === contract.legal_contract?.freelancer_email?.toLowerCase();
   const isClient = address?.toLowerCase() === contract.legal_contract?.client_email?.toLowerCase();
@@ -562,151 +260,63 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     if (!address) {
       console.error('[Contract Page] No wallet address found');
       alert('❌ Wallet address not found. Please reconnect your wallet.');
-      setIsSigningContract(false);
-      // Try to reconnect the wallet
-      await connectWallet();
-      return;
-    }
-
-    // Ensure we're on the correct chain (Base Sepolia for testing)
-    const targetChainId = contract.chain === 'base' ? 84532 : contract.chain === 'celo' ? 42220 : 1; // 84532 is Base Sepolia
-    if (chainId !== targetChainId) {
-      await switchToChain(targetChainId);
       return;
     }
 
     setIsSigningContract(true);
+    setContractStep('signing');
 
     try {
-      console.log('[Contract Page] Creating project in Hedwig contract with ID:', contract.id);
+      console.log('[Contract Page] Signing contract approval with ID:', contract.id);
       console.log('[Contract Page] Connected wallet address:', address);
-      console.log('[Contract Page] Chain ID:', chainId);
+      console.log('[Contract Page] Full contract object:', contract);
 
-      // Get the Hedwig project contract address based on chain
-      const getHedwigContractAddress = () => {
-        if (contract.chain === 'base') {
-          // Use testnet for Base as requested
-          return process.env.NEXT_PUBLIC_HEDWIG_PROJECT_CONTRACT_ADDRESS_BASE_SEPOLIA;
-        } else if (contract.chain === 'celo') {
-          return process.env.NEXT_PUBLIC_HEDWIG_PROJECT_CONTRACT_ADDRESS_CELO_MAINNET;
-        }
-        throw new Error(`Unsupported chain: ${contract.chain}`);
-      };
+      // Create a message to sign for contract approval
+      const message = `I approve the contract "${contract.project_title}" for $${contract.total_amount} ${getTokenSymbol(contract.token_address)} with deadline ${formatDate(contract.deadline)}. Contract ID: ${contract.id}`;
 
-      const hedwigContractAddress = getHedwigContractAddress();
-
-      if (!hedwigContractAddress) {
-        throw new Error('Hedwig contract address not found for this chain');
-      }
-
-      // Convert amount to wei (USDC has 6 decimals)
-      const amountInWei = BigInt(contract.total_amount * Math.pow(10, 6));
-
-      // Get freelancer wallet from contract - must be a real address, no placeholders
-      const freelancerWallet = contract.freelancer_wallet;
-      if (!freelancerWallet) {
-        throw new Error(`Freelancer wallet address is required. Freelancer ID: ${contract.freelancer_id || 'Not found'}. The freelancer needs to sign up and connect their wallet.`);
-      }
-      if (freelancerWallet.length !== 42 || !/^0x[a-fA-F0-9]{40}$/.test(freelancerWallet)) {
-        throw new Error(`Invalid freelancer wallet address format: ${freelancerWallet}. Please ensure the freelancer provides a valid Ethereum wallet address.`);
-      }
-
-      // Hedwig Project Contract ABI for createContract function
-      const hedwigProjectABI = [
-        {
-          "inputs": [
-            { "name": "_client", "type": "address" },
-            { "name": "_freelancer", "type": "address" },
-            { "name": "_projectTitle", "type": "string" },
-            { "name": "_amount", "type": "uint256" },
-            { "name": "_token", "type": "address" },
-            { "name": "_deadline", "type": "uint256" }
-          ],
-          "name": "createContract",
-          "outputs": [{ "name": "", "type": "uint256" }],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        }
-      ];
-
-
-
-      // Get token address for the transaction
-      const tokenAddress = contract.chain === 'base'
-        ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' // USDC on Base Sepolia testnet
-        : '0x765DE816845861e75A25fCA122bb6898B8B1282a'; // cUSD on Celo
-
-      console.log('[Contract Page] Transaction details:', {
-        client: address,
-        freelancer: freelancerWallet,
-        title: contract.project_title,
-        amount: amountInWei.toString(),
-        token: tokenAddress,
-        deadline: BigInt(Math.floor(new Date(contract.deadline).getTime() / 1000)).toString()
+      // Sign the message using personal_sign
+      const signature = await (window as any).ethereum.request({
+        method: 'personal_sign',
+        params: [message, address],
       });
 
-      // Step 1: Create the contract (no funds transferred yet)
-      setContractStep('creating');
+      console.log('[Contract Page] Contract approval signed:', signature);
 
-      // Validate wallet connection
-      if (!address) {
-        throw new Error('Wallet not connected properly');
-      }
-
-      // Validate address format
-      if (!address.startsWith('0x') || address.length !== 42) {
-        throw new Error('Invalid wallet address format');
-      }
-
-      // Double-check wallet connection before proceeding
-      console.log('[Contract Page] About to call writeContract with address:', address);
-      console.log('[Contract Page] isConnected:', isConnected);
-      console.log('[Contract Page] chainId:', chainId);
-
-      // Wait a moment to ensure wallet is fully connected
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      writeContract({
-        address: hedwigContractAddress as `0x${string}`,
-        abi: [
-          {
-            "inputs": [
-              { "name": "_client", "type": "address" },
-              { "name": "_freelancer", "type": "address" },
-              { "name": "_title", "type": "string" },
-              { "name": "_amount", "type": "uint256" },
-              { "name": "_tokenAddress", "type": "address" },
-              { "name": "_deadline", "type": "uint256" }
-            ],
-            "name": "createContract",
-            "outputs": [{ "name": "", "type": "uint256" }],
-            "stateMutability": "nonpayable",
-            "type": "function"
-          }
-        ],
-        functionName: 'createContract',
-        args: [
-          address as `0x${string}`, // client (current user)
-          freelancerWallet as `0x${string}`, // freelancer
-          contract.project_title, // title
-          amountInWei, // amount in wei
-          tokenAddress as `0x${string}`, // token address
-          BigInt(Math.floor(new Date(contract.deadline).getTime() / 1000)) // deadline as unix timestamp
-        ]
+      // Call the approval API with the signature
+      const response = await fetch('/api/contracts/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contractId: contract.id,
+          signature: signature,
+          message: message,
+          clientAddress: address
+        }),
       });
 
-      console.log('[Contract Page] Step 1: Contract creation transaction initiated');
-      console.log('[Contract Page] Current state:', {
-        isSigningContract,
-        contractStep,
-        isPending,
-        isConfirming,
-        hash
-      });
+      if (response.ok) {
+        const result = await response.json();
+        setContractStep('approved');
+        console.log('[Contract Page] Contract approved and invoice generated:', result.invoiceId);
+
+        // Show success message
+        alert(`✅ Contract approved successfully! An invoice has been generated and the freelancer has been notified.`);
+
+        // Reload page to show updated status
+        setTimeout(() => {
+          router.reload();
+        }, 2000);
+      } else {
+        const errorData = await response.json();
+        console.error('[Contract Page] Approval API error:', errorData);
+        throw new Error(errorData.error || 'Failed to approve contract');
+      }
 
     } catch (error) {
-      console.error('Contract signing error:', error);
-      alert(`❌ Failed to create project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Contract approval error:', error);
+      alert(`❌ Failed to approve contract: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsSigningContract(false);
       setContractStep('idle');
     }
@@ -744,22 +354,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                   </>
                 )}
               </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const response = await fetch(`/api/contracts/debug/${contract.id}`);
-                    const result = await response.json();
-                    console.log('Debug result:', result);
-                    alert(`Contract Status: ${result.contract?.status || 'Unknown'}`);
-                  } catch (error) {
-                    console.error('Debug error:', error);
-                    alert('Debug failed - check console');
-                  }
-                }}
-                className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
-              >
-                🔍 Debug
-              </button>
+
               <div className="flex items-center gap-2">
                 <span className="text-gray-500">📧</span>
                 <span className="text-gray-500">⋯</span>
@@ -889,19 +484,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           </div>
         </div>
 
-        {/* Debug Info - only show when transaction is in progress */}
-        {(contractStep !== 'idle' || isPending || isConfirming) && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-medium text-blue-800 mb-2">Transaction Status</h3>
-            <div className="text-xs text-blue-700 space-y-1">
-              <p>Step: {contractStep}</p>
-              <p>Signing: {isSigningContract ? 'Yes' : 'No'}</p>
-              <p>Pending: {isPending ? 'Yes' : 'No'}</p>
-              <p>Confirming: {isConfirming ? 'Yes' : 'No'}</p>
-              {hash && <p>Hash: {hash.slice(0, 10)}...{hash.slice(-8)}</p>}
-            </div>
-          </div>
-        )}
+
 
         {/* Action Buttons */}
         <div className="flex gap-4 mb-6">
@@ -925,33 +508,25 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
                 <div className="flex gap-2">
                   <button
                     onClick={handleSignContract}
-                    disabled={isSigningContract || isPending || isConfirming || contractStep !== 'idle'}
+                    disabled={isSigningContract || contractStep !== 'idle'}
                     className="bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium w-[400px] h-[44px] flex items-center justify-center text-sm"
                   >
-                    {contractStep === 'creating' ? 'Creating Contract...' :
-                      contractStep === 'approving' ? 'Approving USDC...' :
-                        contractStep === 'funding' ? 'Funding Contract...' :
-                          contractStep === 'completed' ? 'Contract Funded!' :
-                            isSigningContract ? 'Connecting Wallet...' :
-                              isPending ? 'Confirm in Wallet...' :
-                                isConfirming ? 'Confirming Transaction...' :
-                                  'Make Payment'}
+                    {contractStep === 'signing' ? 'Signing Contract...' :
+                      contractStep === 'approved' ? 'Contract Approved!' :
+                        isSigningContract ? 'Please Sign in Wallet...' :
+                          'Approve Contract'}
                   </button>
 
-                  {/* Reset button - only show when transaction is in progress */}
-                  {(contractStep !== 'idle' && contractStep !== 'completed') && (
+                  {/* Reset button - only show when signing is in progress */}
+                  {(contractStep === 'signing') && (
                     <button
                       onClick={() => {
                         console.log('[Contract Page] Manual reset triggered');
-                        if (transactionTimeout) {
-                          clearTimeout(transactionTimeout);
-                          setTransactionTimeout(null);
-                        }
                         setIsSigningContract(false);
                         setContractStep('idle');
                       }}
                       className="bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors font-medium w-[100px] h-[44px] flex items-center justify-center text-sm"
-                      title="Reset transaction state"
+                      title="Reset signing state"
                     >
                       Reset
                     </button>
@@ -979,8 +554,8 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
 
 
-        {/* Transaction Status */}
-        {isConfirmed && (
+        {/* Contract Approval Status */}
+        {contractStep === 'approved' && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-6">
             <div className="flex">
               <div className="flex-shrink-0">
@@ -988,50 +563,20 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               </div>
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-green-800">
-                  {contractStep === 'completed' ? 'Contract Funded Successfully!' : 'Transaction Confirmed!'}
+                  Contract Approved Successfully!
                 </h3>
                 <div className="mt-2 text-sm text-green-700">
                   <p>
-                    {contractStep === 'completed'
-                      ? 'Your project has been created and funded in the Hedwig smart contract escrow. Funds are now securely held until milestones are completed.'
-                      : contractStep === 'creating'
-                        ? 'Contract structure created. Next: USDC approval...'
-                        : contractStep === 'approving'
-                          ? 'USDC spending approved. Next: funding contract...'
-                          : 'Transaction confirmed on the blockchain.'
-                    }
+                    Your contract has been approved and an invoice has been automatically generated. 
+                    The freelancer has been notified and can now begin work on the project.
                   </p>
-                  {hash && (
-                    <a
-                      href={`https://${contract.chain === 'base' ? 'sepolia.basescan.org' : contract.chain === 'celo' ? 'celoscan.io' : 'etherscan.io'}/tx/${hash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-green-600 hover:text-green-800 underline"
-                    >
-                      View transaction ↗
-                    </a>
-                  )}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {contractError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-6">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <span className="text-red-400 text-xl">❌</span>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Transaction Failed</h3>
-                <div className="mt-2 text-sm text-red-700">
-                  <p>{contractError.message}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+
       </div>
     </div>
   );
