@@ -539,11 +539,11 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
             </>
           ) : contract.status === 'deployment_pending' ? (
             <div className="flex-1 bg-orange-50 border border-orange-200 text-orange-800 py-3 px-6 rounded-lg text-center font-medium">
-              ⏳ Contract Approved - Smart Contract Deployment Pending
+              ⏳ Contract Approved - Invoice Generation Pending
             </div>
           ) : contract.status === 'approved' || contract.status === 'active' ? (
             <div className="flex-1 bg-green-50 border border-green-200 text-green-800 py-3 px-6 rounded-lg text-center font-medium">
-              ✅ Contract Active - Smart Contract Deployed
+              ✅ Contract Approved - Ready for Work
             </div>
           ) : (
             <div className="flex-1 bg-gray-50 border border-gray-200 text-gray-800 py-3 px-6 rounded-lg text-center font-medium">

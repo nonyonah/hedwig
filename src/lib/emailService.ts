@@ -812,7 +812,7 @@ export function generateContractEmailTemplate(contract: any): string {
                                                             <li style="margin-bottom: 8px;"><strong>Review</strong> the contract details above carefully</li>
                                                             <li style="margin-bottom: 8px;"><strong>Click "View & Sign Contract"</strong> to see the full contract</li>
                                                             <li style="margin-bottom: 8px;"><strong>Connect your wallet</strong> on the contract page</li>
-                                                            <li style="margin-bottom: 8px;"><strong>Sign the contract</strong> to deploy the smart contract escrow</li>
+                                                            <li style="margin-bottom: 8px;"><strong>Sign the contract</strong> to approve the project</li>
                                                             <li><strong>Start collaborating</strong> with ${freelancerName} on your project!</li>
                                                         </ol>
                                                     </td>
@@ -820,8 +820,8 @@ export function generateContractEmailTemplate(contract: any): string {
                                             </table>
                                             
                                             <p style="margin: 0 0 16px 0; color: #64748b; font-size: 14px; line-height: 1.5;">
-                                                <strong>🔒 Security:</strong> Once approved, your funds will be securely held in a smart contract escrow. 
-                                                Payments are automatically released to ${freelancerName} as milestones are completed and approved by you.
+                                                <strong>💰 Payment Process:</strong> Once approved, an invoice will be automatically generated and sent to you. 
+                                                You can pay the invoice using cryptocurrency, and ${freelancerName} will be notified to begin work on your project.
                                             </p>
                                             
                                             <p style="margin: 0; color: #262624; font-size: 14px; line-height: 1.5;">

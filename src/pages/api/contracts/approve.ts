@@ -313,6 +313,56 @@ async function handleLegacyApproval(
     }
   }
 
+  // Send Telegram notification to freelancer
+  if (contract.freelancer_id) {
+    try {
+      // Get freelancer's Telegram chat ID
+      const { data: freelancerUser } = await supabase
+        .from('users')
+        .select('telegram_chat_id, first_name, last_name')
+        .eq('id', contract.freelancer_id)
+        .single();
+
+      if (freelancerUser?.telegram_chat_id) {
+        const telegramMessage = `🎉 *Contract Approved!*
+
+Hello ${freelancerUser.first_name || 'there'}! Great news!
+
+📋 *Contract:* "${contract.project_title || contract.title}"
+💰 *Value:* ${contract.total_amount} ${contract.token_type || 'USDC'}
+✅ *Status:* Approved by client
+
+*What's next:*
+• An invoice has been generated and sent to the client
+• You'll get payment notifications when they pay
+• Focus on delivering great work!
+
+Keep up the excellent work! 🚀`;
+
+        const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            chat_id: freelancerUser.telegram_chat_id,
+            text: telegramMessage,
+            parse_mode: 'Markdown'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Telegram API error: ${response.statusText}`);
+        }
+
+        console.log('Telegram notification sent successfully to freelancer');
+      }
+    } catch (telegramError) {
+      console.error('Failed to send Telegram notification:', telegramError);
+      // Don't fail the approval if Telegram notification fails
+    }
+  }
+
   return res.status(200).json({
     success: true,
     message: 'Contract approved successfully',
@@ -485,7 +535,7 @@ function generateFreelancerNotificationEmailTemplate(contract: any, freelancer: 
         <div class="content">
           <p>Hello <strong>${freelancer.raw_user_meta_data?.name || freelancer.email}</strong>,</p>
           
-          <p>Great news! Your contract for "<strong>${contract.project_title || contract.title}</strong>" has been approved by the client. Invoices have been automatically generated for each milestone.</p>
+          <p>Great news! Your contract for "<strong>${contract.project_title || contract.title}</strong>" has been approved by the client. An invoice has been automatically generated and sent to the client for payment.</p>
           
           <h3>💰 Contract Details</h3>
           <ul>
@@ -502,12 +552,12 @@ function generateFreelancerNotificationEmailTemplate(contract: any, freelancer: 
           <h3>🚀 Next Steps</h3>
           <ol>
             <li>Review the contract details and milestones</li>
-            <li>Start working on the first milestone</li>
+            <li>Start working on your project</li>
             <li>Submit your work when ready for review</li>
-            <li>Client will pay invoices as milestones are completed</li>
+            <li>Client will pay the invoice once you complete the work</li>
           </ol>
           
-          <p><strong>Important:</strong> Invoices have been automatically generated for each milestone. The client will receive payment links and can pay as you complete each milestone.</p>
+          <p><strong>Important:</strong> An invoice has been automatically generated and sent to the client. They can pay using cryptocurrency once you deliver the completed work. You'll be notified when payment is received.</p>
           
           <p>Good luck with your project! 🍀</p>
         </div>
@@ -553,7 +603,7 @@ function generateLegacyFreelancerNotificationEmailTemplate(contract: any, freela
         <div class="content">
           <p>Hello <strong>${freelancer.raw_user_meta_data?.name || freelancer.email}</strong>,</p>
           
-          <p>Great news! Your contract for "<strong>${contract.project_title || contract.title}</strong>" has been approved and the smart contract is being deployed.</p>
+          <p>Great news! Your contract for "<strong>${contract.project_title || contract.title}</strong>" has been approved by the client. An invoice has been automatically generated and sent to the client.</p>
           
           <h3>💰 Contract Details</h3>
           <ul>
@@ -570,11 +620,11 @@ function generateLegacyFreelancerNotificationEmailTemplate(contract: any, freela
           <ol>
             <li>Review the contract details and milestones</li>
             <li>Start working on your project</li>
-            <li>Submit milestones for review</li>
-            <li>Receive payments automatically from the smart contract</li>
+            <li>Submit your work when ready for review</li>
+            <li>Client will pay the invoice once you complete the work</li>
           </ol>
           
-          <p><strong>Important:</strong> Payments will be released automatically from the smart contract escrow as you complete each milestone. Make sure to deliver quality work on time!</p>
+          <p><strong>Important:</strong> An invoice has been automatically generated and sent to the client. They can pay using cryptocurrency once you deliver the completed work. You'll be notified when payment is received.</p>
           
           <p>Good luck with your project! 🍀</p>
         </div>
