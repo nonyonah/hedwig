@@ -9,6 +9,9 @@
 -- 4. Contract completion detection
 -- =====================================================
 
+-- Create sequence for invoice numbers
+CREATE SEQUENCE IF NOT EXISTS invoice_seq START 1;
+
 -- Function to update contract amount_paid when milestones are paid
 CREATE OR REPLACE FUNCTION update_contract_amount_paid()
 RETURNS TRIGGER AS $$
@@ -91,38 +94,32 @@ BEGIN
       WHERE contract_id = NEW.id 
       ORDER BY created_at ASC
     LOOP
-      -- Generate invoice number
-      invoice_number := generate_invoice_number();
+      -- Generate invoice number (simple format)
+      invoice_number := 'INV-' || EXTRACT(YEAR FROM NOW()) || '-' || LPAD(EXTRACT(DOY FROM NOW())::TEXT, 3, '0') || '-' || LPAD(nextval('invoice_seq')::TEXT, 4, '0');
       
       -- Create invoice record
       INSERT INTO contract_invoices (
-        id,
         contract_id,
         milestone_id,
         invoice_number,
-        client_email,
-        freelancer_id,
-        title,
-        description,
         amount,
-        currency,
-        due_date,
+        token_type,
+        chain,
+        token_address,
         status,
+        due_date,
         created_at,
         updated_at
       ) VALUES (
-        gen_random_uuid(),
         NEW.id,
         milestone_record.id,
         invoice_number,
-        NEW.client_email,
-        NEW.freelancer_id,
-        milestone_record.title,
-        'Invoice for milestone: ' || milestone_record.title || ' - Contract: ' || NEW.title,
         milestone_record.amount,
-        NEW.currency,
-        milestone_record.due_date,
+        NEW.token_type,
+        NEW.chain,
+        get_token_address(NEW.token_type, NEW.chain),
         'pending',
+        milestone_record.due_date,
         NOW(),
         NOW()
       ) RETURNING id INTO invoice_id;
@@ -151,7 +148,7 @@ BEGIN
     UPDATE contract_invoices 
     SET 
       status = 'paid',
-      paid_at = NOW(),
+      payment_confirmed_at = NOW(),
       updated_at = NOW()
     WHERE milestone_id = NEW.id;
   END IF;
@@ -161,7 +158,7 @@ BEGIN
     UPDATE contract_invoices 
     SET 
       status = 'pending',
-      paid_at = NULL,
+      payment_confirmed_at = NULL,
       updated_at = NOW()
     WHERE milestone_id = NEW.id;
   END IF;
@@ -380,7 +377,7 @@ BEGIN
   UPDATE contract_milestones 
   SET 
     status = 'paid',
-    paid_at = NOW(),
+    completed_at = NOW(),
     updated_at = NOW()
   WHERE id = milestone_uuid AND status != 'paid';
   
@@ -399,8 +396,8 @@ RETURNS TABLE (
   contract_title TEXT,
   milestone_title TEXT,
   amount NUMERIC,
-  currency TEXT,
-  due_date DATE,
+  token_type TEXT,
+  due_date TIMESTAMPTZ,
   days_overdue INTEGER,
   freelancer_id UUID,
   client_email TEXT
@@ -413,16 +410,16 @@ BEGIN
     c.title as contract_title,
     cm.title as milestone_title,
     cm.amount,
-    c.currency,
+    c.token_type,
     cm.due_date,
-    (CURRENT_DATE - cm.due_date)::INTEGER as days_overdue,
+    (CURRENT_DATE - cm.due_date::DATE)::INTEGER as days_overdue,
     c.freelancer_id,
     c.client_email
   FROM contract_milestones cm
   JOIN contracts c ON c.id = cm.contract_id
   WHERE cm.status = 'pending' 
     AND cm.due_date < CURRENT_DATE
-    AND c.status IN ('approved', 'in_progress')
+    AND c.status IN ('approved', 'active')
   ORDER BY cm.due_date ASC;
 END;
 $$ LANGUAGE plpgsql;
@@ -448,7 +445,7 @@ CREATE INDEX IF NOT EXISTS idx_contract_milestones_invoice_id ON contract_milest
 CREATE INDEX IF NOT EXISTS idx_contract_invoices_contract_id ON contract_invoices(contract_id);
 CREATE INDEX IF NOT EXISTS idx_contract_invoices_milestone_id ON contract_invoices(milestone_id);
 CREATE INDEX IF NOT EXISTS idx_contract_invoices_status ON contract_invoices(status);
-CREATE INDEX IF NOT EXISTS idx_contract_invoices_freelancer_id ON contract_invoices(freelancer_id);
+CREATE INDEX IF NOT EXISTS idx_contract_invoices_token_type ON contract_invoices(token_type);
 
 -- Indexes for notification queries
 CREATE INDEX IF NOT EXISTS idx_contract_notifications_contract_id ON contract_notifications(contract_id);
