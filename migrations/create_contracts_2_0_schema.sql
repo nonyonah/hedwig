@@ -337,23 +337,6 @@ CREATE TRIGGER trigger_contract_invoices_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION set_updated_at();
 
--- Create view for contract summary with milestone information
-CREATE OR REPLACE VIEW contract_summary AS
-SELECT 
-    c.*,
-    u.username as freelancer_username,
-    u.email as freelancer_email,
-    COUNT(cm.id) as total_milestones,
-    COUNT(CASE WHEN cm.status = 'paid' THEN 1 END) as paid_milestones,
-    COUNT(CASE WHEN cm.status = 'overdue' THEN 1 END) as overdue_milestones,
-    COALESCE(SUM(CASE WHEN cm.status = 'paid' THEN cm.amount END), 0) as total_paid,
-    COALESCE(SUM(cm.amount), 0) as total_milestone_amount,
-    MIN(CASE WHEN cm.status = 'pending' THEN cm.due_date END) as next_due_date
-FROM contracts c
-LEFT JOIN users u ON c.freelancer_id = u.id
-LEFT JOIN contract_milestones cm ON c.id = cm.contract_id
-GROUP BY c.id, u.username, u.email;
-
 -- Add foreign key constraint to project_contracts if the table exists
 DO $$
 BEGIN
@@ -371,4 +354,23 @@ GRANT ALL ON contracts TO authenticated;
 GRANT ALL ON contract_milestones TO authenticated;
 GRANT ALL ON contract_notifications TO authenticated;
 GRANT ALL ON contract_invoices TO authenticated;
+
+-- Create view for contract summary with milestone information (after all tables are created)
+CREATE OR REPLACE VIEW contract_summary AS
+SELECT 
+    c.*,
+    u.username as freelancer_username,
+    u.email as freelancer_email,
+    COUNT(cm.id) as total_milestones,
+    COUNT(CASE WHEN cm.status = 'paid' THEN 1 END) as paid_milestones,
+    COUNT(CASE WHEN cm.status = 'overdue' THEN 1 END) as overdue_milestones,
+    COALESCE(SUM(CASE WHEN cm.status = 'paid' THEN cm.amount END), 0) as total_paid,
+    COALESCE(SUM(cm.amount), 0) as total_milestone_amount,
+    MIN(CASE WHEN cm.status = 'pending' THEN cm.due_date END) as next_due_date
+FROM contracts c
+LEFT JOIN users u ON c.freelancer_id = u.id
+LEFT JOIN contract_milestones cm ON c.id = cm.contract_id
+GROUP BY c.id, u.username, u.email;
+
+-- Grant permissions for the view
 GRANT SELECT ON contract_summary TO authenticated;
