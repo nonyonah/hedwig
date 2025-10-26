@@ -41,13 +41,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: legalContract } = await supabase
       .from('legal_contracts')
       .select('*')
-      .eq('id', contract.legal_contract_hash)
+      .eq('id', contract.legal_contract_id)
       .single();
 
     // Get freelancer info
     const { data: user } = await supabase
-      .from('users')
-      .select('name, email')
+      .from('auth.users')
+      .select('raw_user_meta_data, email')
       .eq('id', contract.freelancer_id)
       .single();
 
@@ -70,12 +70,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Prepare contract data for PDF generation
     const contractData: ContractPDFData = {
-      contractId: contract.contract_id?.toString() || id,
+      contractId: id,
       projectTitle: contract.project_title,
       projectDescription: contract.project_description || 'No description provided',
       clientName: legalContract?.client_name || 'Client',
-      clientEmail: legalContract?.client_email,
-      freelancerName: user?.name || legalContract?.freelancer_name || 'Freelancer',
+      clientEmail: legalContract?.client_email || contract.client_email,
+      freelancerName: user?.raw_user_meta_data?.name || legalContract?.freelancer_name || 'Freelancer',
       totalAmount: contract.total_amount,
       tokenType: getTokenType(contract.token_address, contract.chain),
       chain: contract.chain,
@@ -86,7 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         title: m.title,
         description: m.description,
         amount: m.amount,
-        deadline: m.deadline,
+        deadline: m.due_date,
         status: m.status
       })) || []
     };

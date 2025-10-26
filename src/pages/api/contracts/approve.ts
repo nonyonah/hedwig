@@ -189,17 +189,21 @@ async function handleLegacyApproval(
   // Fetch contract details from legacy table
   const { data: contract, error: contractError } = await supabase
     .from('project_contracts')
-    .select(`
-      *,
-      users!project_contracts_freelancer_id_fkey (
-        id,
-        username,
-        email,
-        telegram_user_id
-      )
-    `)
+    .select('*')
     .eq('id', contractId)
     .single();
+
+  // Fetch freelancer details separately
+  let freelancerInfo: any = null;
+  if (contract?.freelancer_id) {
+    const { data: freelancer } = await supabase
+      .from('auth.users')
+      .select('id, email, raw_user_meta_data')
+      .eq('id', contract.freelancer_id)
+      .single();
+    
+    freelancerInfo = freelancer;
+  }
 
   if (contractError || !contract) {
     return res.status(404).json({ 
@@ -233,13 +237,12 @@ async function handleLegacyApproval(
   }
 
   // Send notification email to freelancer
-  const freelancer = contract.users;
-  if (freelancer?.email) {
+  if (freelancerInfo?.email) {
     try {
-      const emailTemplate = generateLegacyFreelancerNotificationEmailTemplate(contract, freelancer);
+      const emailTemplate = generateLegacyFreelancerNotificationEmailTemplate(contract, freelancerInfo);
       await sendSimpleEmail(
-        freelancer.email,
-        `Contract Approved: ${contract.title}`,
+        freelancerInfo.email,
+        `Contract Approved: ${contract.project_title || contract.title}`,
         emailTemplate
       );
     } catch (emailError) {
@@ -348,15 +351,15 @@ function generateFreelancerNotificationEmailTemplate(contract: any, freelancer: 
         </div>
         
         <div class="content">
-          <p>Hello <strong>${freelancer.username || freelancer.email}</strong>,</p>
+          <p>Hello <strong>${freelancer.raw_user_meta_data?.name || freelancer.email}</strong>,</p>
           
-          <p>Great news! Your contract for "<strong>${contract.title}</strong>" has been approved by the client. Invoices have been automatically generated for each milestone.</p>
+          <p>Great news! Your contract for "<strong>${contract.project_title || contract.title}</strong>" has been approved by the client. Invoices have been automatically generated for each milestone.</p>
           
           <h3>💰 Contract Details</h3>
           <ul>
-            <li><strong>Total Amount:</strong> <span class="amount">${contract.total_amount} ${contract.currency}</span></li>
+            <li><strong>Total Amount:</strong> <span class="amount">${contract.total_amount} ${contract.token_type || contract.currency || 'USDC'}</span></li>
             <li><strong>Client:</strong> ${contract.client_name || contract.client_email}</li>
-            <li><strong>Project:</strong> ${contract.title}</li>
+            <li><strong>Project:</strong> ${contract.project_title || contract.title}</li>
             <li><strong>Deadline:</strong> ${new Date(contract.deadline).toLocaleDateString()}</li>
           </ul>
           
@@ -416,7 +419,7 @@ function generateLegacyFreelancerNotificationEmailTemplate(contract: any, freela
         </div>
         
         <div class="content">
-          <p>Hello <strong>${freelancer.username || freelancer.email}</strong>,</p>
+          <p>Hello <strong>${freelancer.raw_user_meta_data?.name || freelancer.email}</strong>,</p>
           
           <p>Great news! Your contract for "<strong>${contract.project_title || contract.title}</strong>" has been approved and the smart contract is being deployed.</p>
           

@@ -166,6 +166,30 @@ CREATE TABLE contract_notifications (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Legacy project_contracts table for backward compatibility
+CREATE TABLE project_contracts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  freelancer_id UUID REFERENCES auth.users(id),
+  client_email TEXT NOT NULL,
+  project_title TEXT NOT NULL,
+  project_description TEXT,
+  total_amount NUMERIC NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USDC',
+  chain TEXT NOT NULL DEFAULT 'base',
+  deadline TIMESTAMPTZ,
+  milestones JSONB,
+  status TEXT NOT NULL DEFAULT 'pending',
+  approval_token TEXT UNIQUE,
+  decline_reason TEXT,
+  contract_text TEXT,
+  contract_hash TEXT,
+  legal_contract_id UUID REFERENCES legal_contracts(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  approved_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ
+);
+
 -- =====================================================
 -- FUNCTIONS
 -- =====================================================
@@ -236,6 +260,13 @@ CREATE INDEX idx_contract_notifications_contract_id ON contract_notifications(co
 CREATE INDEX idx_contract_notifications_recipient ON contract_notifications(recipient);
 CREATE INDEX idx_contract_notifications_sent_at ON contract_notifications(sent_at);
 
+-- Project contracts indexes (legacy compatibility)
+CREATE INDEX idx_project_contracts_freelancer_id ON project_contracts(freelancer_id);
+CREATE INDEX idx_project_contracts_client_email ON project_contracts(client_email);
+CREATE INDEX idx_project_contracts_status ON project_contracts(status);
+CREATE INDEX idx_project_contracts_approval_token ON project_contracts(approval_token);
+CREATE INDEX idx_project_contracts_created_at ON project_contracts(created_at);
+
 -- =====================================================
 -- TRIGGERS
 -- =====================================================
@@ -267,6 +298,7 @@ ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contract_milestones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contract_invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contract_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_contracts ENABLE ROW LEVEL SECURITY;
 
 -- Legal contracts policies
 CREATE POLICY "Users can view legal contracts they're involved in" ON legal_contracts
@@ -332,6 +364,16 @@ CREATE POLICY "Users can view their contract notifications" ON contract_notifica
     )
   );
 
+-- Project contracts policies (legacy compatibility)
+CREATE POLICY "Users can view their own project contracts" ON project_contracts
+  FOR SELECT USING (freelancer_id = auth.uid());
+
+CREATE POLICY "Users can update their own project contracts" ON project_contracts
+  FOR UPDATE USING (freelancer_id = auth.uid());
+
+CREATE POLICY "Service can manage all project contracts" ON project_contracts
+  FOR ALL USING (true);
+
 -- =====================================================
 -- PERMISSIONS
 -- =====================================================
@@ -342,6 +384,7 @@ GRANT SELECT, INSERT, UPDATE ON contracts TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON contract_milestones TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON contract_invoices TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON contract_notifications TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON project_contracts TO authenticated;
 
 -- Grant usage on sequences
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated;

@@ -2,18 +2,25 @@
 CREATE TABLE IF NOT EXISTS project_contracts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     contract_id BIGINT UNIQUE NOT NULL, -- Smart contract ID
-    client_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    freelancer_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    client_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    freelancer_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     
     -- Contract Details
     project_title TEXT NOT NULL,
+    title TEXT, -- Alias for project_title for code compatibility
     project_description TEXT,
     legal_contract_hash TEXT, -- IPFS hash of legal contract
+    legal_contract_id UUID, -- Reference to legal_contracts table
+    client_email TEXT, -- Client email for notifications
+    contract_text TEXT, -- Full contract text
+    contract_hash TEXT, -- Contract hash
     
     -- Financial Details
     total_amount DECIMAL(20, 6) NOT NULL,
     platform_fee DECIMAL(20, 6) NOT NULL DEFAULT 0,
     token_address TEXT NOT NULL,
+    token_type TEXT DEFAULT 'USDC', -- Token type for compatibility
+    currency TEXT DEFAULT 'USDC', -- Currency alias for token_type
     chain TEXT NOT NULL, -- 'base', 'celo', 'polygon'
     
     -- Smart Contract Details
@@ -33,8 +40,11 @@ CREATE TABLE IF NOT EXISTS project_contracts (
     -- Status and Metadata
     status TEXT NOT NULL DEFAULT 'created' CHECK (status IN (
         'created',      -- Contract created, waiting for funding
+        'pending',      -- Alias for created (code compatibility)
+        'generated',    -- Contract generated but not yet created (code compatibility)
         'funded',       -- Client has funded the contract
         'in_progress',  -- Work has started
+        'active',       -- Alias for in_progress (code compatibility)
         'completed',    -- Freelancer marked as completed
         'approved',     -- Client approved completion
         'disputed',     -- In dispute resolution
@@ -46,6 +56,8 @@ CREATE TABLE IF NOT EXISTS project_contracts (
     client_approval_required BOOLEAN DEFAULT true,
     dispute_reason TEXT,
     resolution_notes TEXT,
+    approval_token TEXT UNIQUE, -- Token for client approval
+    decline_reason TEXT, -- Reason for contract decline
     
     -- Tracking
     created_from TEXT, -- 'manual', 'invoice', 'proposal'
@@ -65,6 +77,7 @@ CREATE TABLE IF NOT EXISTS contract_milestones (
     description TEXT,
     amount DECIMAL(20, 6) NOT NULL,
     deadline TIMESTAMPTZ,
+    due_date TIMESTAMPTZ, -- Alias for deadline for code compatibility
     
     -- Status and Timeline
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
@@ -133,7 +146,7 @@ CREATE TABLE IF NOT EXISTS contract_activities (
         'contract_cancelled'
     )),
     
-    actor_id UUID REFERENCES users(id), -- Who performed the action
+    actor_id UUID REFERENCES auth.users(id), -- Who performed the action
     actor_type TEXT NOT NULL CHECK (actor_type IN ('client', 'freelancer', 'admin', 'system')),
     
     -- Activity Data
@@ -153,7 +166,7 @@ CREATE TABLE IF NOT EXISTS contract_activities (
 CREATE TABLE IF NOT EXISTS contract_notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     contract_id UUID REFERENCES project_contracts(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     
     -- Notification Details
     notification_type TEXT NOT NULL CHECK (notification_type IN (
@@ -193,10 +206,16 @@ CREATE INDEX IF NOT EXISTS idx_project_contracts_chain ON project_contracts(chai
 CREATE INDEX IF NOT EXISTS idx_project_contracts_deadline ON project_contracts(deadline);
 CREATE INDEX IF NOT EXISTS idx_project_contracts_created_at ON project_contracts(created_at);
 CREATE INDEX IF NOT EXISTS idx_project_contracts_contract_id ON project_contracts(contract_id);
+CREATE INDEX IF NOT EXISTS idx_project_contracts_client_email ON project_contracts(client_email);
+CREATE INDEX IF NOT EXISTS idx_project_contracts_title ON project_contracts(title);
+CREATE INDEX IF NOT EXISTS idx_project_contracts_legal_contract_id ON project_contracts(legal_contract_id);
+CREATE INDEX IF NOT EXISTS idx_project_contracts_approval_token ON project_contracts(approval_token);
+CREATE INDEX IF NOT EXISTS idx_project_contracts_token_type ON project_contracts(token_type);
 
 CREATE INDEX IF NOT EXISTS idx_contract_milestones_contract_id ON contract_milestones(contract_id);
 CREATE INDEX IF NOT EXISTS idx_contract_milestones_status ON contract_milestones(status);
 CREATE INDEX IF NOT EXISTS idx_contract_milestones_deadline ON contract_milestones(deadline);
+CREATE INDEX IF NOT EXISTS idx_contract_milestones_due_date ON contract_milestones(due_date);
 
 CREATE INDEX IF NOT EXISTS idx_contract_extension_requests_contract_id ON contract_extension_requests(contract_id);
 CREATE INDEX IF NOT EXISTS idx_contract_extension_requests_approved ON contract_extension_requests(approved);
@@ -218,7 +237,7 @@ BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_project_contracts_updated_at 
     BEFORE UPDATE ON project_contracts 
@@ -231,6 +250,52 @@ CREATE TRIGGER update_contract_milestones_updated_at
 CREATE TRIGGER update_contract_extension_requests_updated_at 
     BEFORE UPDATE ON contract_extension_requests 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Create function to sync milestone dates and project titles
+CREATE OR REPLACE FUNCTION sync_contract_fields()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Sync title with project_title
+    IF NEW.project_title IS DISTINCT FROM OLD.project_title THEN
+        NEW.title = NEW.project_title;
+    END IF;
+    
+    -- Sync token_type with currency
+    IF NEW.token_type IS DISTINCT FROM OLD.token_type THEN
+        NEW.currency = NEW.token_type;
+    ELSIF NEW.currency IS DISTINCT FROM OLD.currency THEN
+        NEW.token_type = NEW.currency;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER sync_project_contract_fields
+    BEFORE INSERT OR UPDATE ON project_contracts
+    FOR EACH ROW EXECUTE FUNCTION sync_contract_fields();
+
+-- Create function to sync milestone dates
+CREATE OR REPLACE FUNCTION sync_milestone_dates()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- If deadline is updated, update due_date
+    IF NEW.deadline IS DISTINCT FROM OLD.deadline THEN
+        NEW.due_date = NEW.deadline;
+    END IF;
+    
+    -- If due_date is updated, update deadline
+    IF NEW.due_date IS DISTINCT FROM OLD.due_date THEN
+        NEW.deadline = NEW.due_date;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER sync_milestone_dates_trigger
+    BEFORE INSERT OR UPDATE ON contract_milestones
+    FOR EACH ROW EXECUTE FUNCTION sync_milestone_dates();
 
 -- Add RLS (Row Level Security) policies
 ALTER TABLE project_contracts ENABLE ROW LEVEL SECURITY;
@@ -326,22 +391,20 @@ CREATE POLICY "Users can update their own notifications" ON contract_notificatio
 CREATE OR REPLACE VIEW contract_summary AS
 SELECT 
     pc.*,
-    c.username as client_username,
-    cw.address as client_wallet,
-    f.username as freelancer_username,
-    fw.address as freelancer_wallet,
+    c.email as client_email,
+    c.raw_user_meta_data->>'name' as client_username,
+    f.email as freelancer_email,
+    f.raw_user_meta_data->>'name' as freelancer_username,
     COUNT(cm.id) as milestone_count,
     COUNT(CASE WHEN cm.status = 'completed' THEN 1 END) as completed_milestones,
     COUNT(cer.id) as total_extension_requests,
     COUNT(CASE WHEN cer.approved = true THEN 1 END) as approved_extensions
 FROM project_contracts pc
-LEFT JOIN users c ON pc.client_id = c.id
-LEFT JOIN users f ON pc.freelancer_id = f.id
-LEFT JOIN wallets cw ON pc.client_id = cw.user_id AND cw.chain = pc.chain
-LEFT JOIN wallets fw ON pc.freelancer_id = fw.user_id AND fw.chain = pc.chain
+LEFT JOIN auth.users c ON pc.client_id = c.id
+LEFT JOIN auth.users f ON pc.freelancer_id = f.id
 LEFT JOIN contract_milestones cm ON pc.id = cm.contract_id
 LEFT JOIN contract_extension_requests cer ON pc.id = cer.contract_id
-GROUP BY pc.id, c.username, cw.address, f.username, fw.address;
+GROUP BY pc.id, c.email, c.raw_user_meta_data, f.email, f.raw_user_meta_data;
 
 -- Create function to get user contract stats
 CREATE OR REPLACE FUNCTION get_user_contract_stats(user_uuid UUID)
