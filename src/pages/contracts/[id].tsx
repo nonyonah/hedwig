@@ -393,7 +393,22 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Deadline</label>
-                <p className="text-gray-900 font-medium">{formatDate(contract.deadline)}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-gray-900 font-medium">{formatDate(contract.deadline)}</p>
+                  {(() => {
+                    const deadlineDate = new Date(contract.deadline);
+                    const today = new Date();
+                    const daysUntilDeadline = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                    
+                    if (daysUntilDeadline < 0) {
+                      return <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">Overdue</span>;
+                    } else if (daysUntilDeadline <= 3) {
+                      return <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">Due Soon</span>;
+                    } else {
+                      return <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">On Track</span>;
+                    }
+                  })()}
+                </div>
               </div>
             </div>
 
@@ -424,8 +439,22 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
             <div>
               <label className="text-sm font-medium text-gray-500">Payment Status</label>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="text-green-600 font-medium">Live</span>
+                {contract.status === 'approved' || contract.status === 'active' ? (
+                  <>
+                    <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <span className="text-green-600 font-medium">Active</span>
+                  </>
+                ) : contract.status === 'completed' ? (
+                  <>
+                    <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+                    <span className="text-blue-600 font-medium">Completed</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full"></span>
+                    <span className="text-yellow-600 font-medium">Pending</span>
+                  </>
+                )}
               </div>
             </div>
             <div>
