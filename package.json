@@ -6,7 +6,8 @@
   "packageManager": "npm@10.0.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "NODE_OPTIONS='--max-old-space-size=8192' next build",
+    "build:memory": "NODE_OPTIONS='--max-old-space-size=16384' next build",
     "start": "next start",
     "lint": "next lint",
     "setup-posthog": "tsx src/scripts/setup-posthog-dashboard.ts"
@@ -54,14 +55,14 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.525.0",
     "micro": "^10.0.1",
-    "next": "^15.3.3",
+    "next": "16.0.0",
     "node-telegram-bot-api": "^0.66.0",
     "nodemailer": "^7.0.5",
     "pdfkit": "^0.17.1",
     "posthog-node": "^5.6.0",
     "process": "^0.11.10",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "resend": "^4.7.0",
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
@@ -79,14 +80,14 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.19.0",
     "@types/node-telegram-bot-api": "^0.64.9",
-    "@types/react": "^18.3.23",
-    "@types/react-dom": "^18.3.7",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
     "assert": "^2.1.0",
     "autoprefixer": "^10.4.17",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "eslint": "^8.56.0",
-    "eslint-config-next": "14.1.0",
+    "eslint-config-next": "16.0.0",
     "https-browserify": "^1.0.0",
     "os-browserify": "^0.3.0",
     "path-browserify": "^1.0.1",
@@ -112,5 +113,9 @@
     "querystring-es3": "^0.2.1",
     "url": "^0.11.3",
     "whatwg-url": "^12.0.1"
+  },
+  "overrides": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2"
   }
 }

@@ -25,13 +25,13 @@ interface LegalContract {
 }
 
 export default async function handler(
-  req: NextApiRequest, 
+  req: NextApiRequest,
   res: NextApiResponse<ApprovalResponse>
 ) {
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ 
-      success: false, 
-      error: 'Method not allowed' 
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed'
     });
   }
 
@@ -46,26 +46,26 @@ export default async function handler(
 
   } catch (error) {
     console.error('Error in contract approval:', error);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Internal server error' 
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error'
     });
   }
 }
 
 // Handle Contracts 2.0 token-based approval
 async function handleTokenApproval(
-  req: NextApiRequest, 
+  req: NextApiRequest,
   res: NextApiResponse<ApprovalResponse>
 ) {
-  const approval_token = req.method === 'GET' 
-    ? req.query.token as string 
+  const approval_token = req.method === 'GET'
+    ? req.query.token as string
     : req.body.approval_token;
 
   if (!approval_token) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Approval token is required' 
+    return res.status(400).json({
+      success: false,
+      error: 'Approval token is required'
     });
   }
 
@@ -85,40 +85,40 @@ async function handleTokenApproval(
     .single();
 
   if (contractError || !contract) {
-    return res.status(404).json({ 
-      success: false, 
-      error: 'Invalid or expired approval token' 
+    return res.status(404).json({
+      success: false,
+      error: 'Invalid or expired approval token'
     });
   }
 
   // Check if token is expired
   if (contract.approval_expires_at && new Date() > new Date(contract.approval_expires_at)) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Approval token has expired' 
+    return res.status(400).json({
+      success: false,
+      error: 'Approval token has expired'
     });
   }
 
   // Check if already approved
   if (contract.status === 'approved') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract is already approved' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract is already approved'
     });
   }
 
   // Check if declined
   if (contract.status === 'rejected') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract has been declined' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract has been declined'
     });
   }
 
   // Update contract status to approved
   const { data: updatedContract, error: updateError } = await supabase
     .from('contracts')
-    .update({ 
+    .update({
       status: 'approved',
       approved_at: new Date().toISOString(),
       approval_token: null, // Clear token after use
@@ -130,9 +130,9 @@ async function handleTokenApproval(
 
   if (updateError) {
     console.error('Error updating contract status:', updateError);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Failed to approve contract' 
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to approve contract'
     });
   }
 
@@ -180,8 +180,8 @@ async function handleTokenApproval(
     return res.redirect(302, successUrl);
   }
 
-  return res.status(200).json({ 
-    success: true, 
+  return res.status(200).json({
+    success: true,
     message: 'Contract approved successfully',
     contract: updatedContract
   });
@@ -189,15 +189,15 @@ async function handleTokenApproval(
 
 // Handle legacy contract approval (existing system)
 async function handleLegacyApproval(
-  req: NextApiRequest, 
+  req: NextApiRequest,
   res: NextApiResponse<ApprovalResponse>
 ) {
   const { contractId } = req.body;
 
   if (!contractId) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract ID is required' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract ID is required'
     });
   }
 
@@ -217,23 +217,23 @@ async function handleLegacyApproval(
     .single();
 
   if (contractError || !contract) {
-    return res.status(404).json({ 
-      success: false, 
-      error: 'Contract not found' 
+    return res.status(404).json({
+      success: false,
+      error: 'Contract not found'
     });
   }
 
   if (contract.status === 'approved') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Contract is already approved' 
+    return res.status(400).json({
+      success: false,
+      error: 'Contract is already approved'
     });
   }
 
   // Update contract status to approved
   const { error: updateError } = await supabase
     .from('project_contracts')
-    .update({ 
+    .update({
       status: 'approved',
       approved_at: new Date().toISOString()
     })
@@ -241,9 +241,9 @@ async function handleLegacyApproval(
 
   if (updateError) {
     console.error('Error updating legacy contract:', updateError);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Failed to approve contract' 
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to approve contract'
     });
   }
 
@@ -262,8 +262,8 @@ async function handleLegacyApproval(
     }
   }
 
-  return res.status(200).json({ 
-    success: true, 
+  return res.status(200).json({
+    success: true,
     message: 'Contract approved successfully',
     contract: {
       id: contract.id,

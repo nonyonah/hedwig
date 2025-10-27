@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Turbopack configuration for Next.js 16+
+  // Empty config to silence the warning - most apps work fine with default Turbopack settings
+  turbopack: {},
+  // Keep webpack config for backward compatibility when not using Turbopack
   webpack: (config: any) => {
     // Simplified webpack config to avoid memory issues
     config.resolve = {
