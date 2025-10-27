@@ -56,13 +56,14 @@ export class ProjectMonitoringService {
         );
 
         if (!alreadySent) {
+          const legalContract = Array.isArray(contract.legal_contracts) ? contract.legal_contracts[0] : contract.legal_contracts;
           const notificationData: NotificationData = {
             contractId: contract.id,
             projectTitle: contract.project_title,
             freelancerId: contract.freelancer_id,
-            freelancerName: contract.legal_contracts?.freelancer_name,
-            freelancerEmail: contract.legal_contracts?.freelancer_email,
-            clientName: contract.legal_contracts?.client_name,
+            freelancerName: legalContract?.freelancer_name,
+            freelancerEmail: legalContract?.freelancer_email,
+            clientName: legalContract?.client_name,
             clientEmail: contract.client_email,
             amount: contract.total_amount,
             currency: contract.token_type || 'USDC',
@@ -104,12 +105,13 @@ export class ProjectMonitoringService {
           );
 
           if (!alreadySent) {
+            const user = Array.isArray(contract.users) ? contract.users[0] : contract.users;
             const notificationData: NotificationData = {
               contractId: contract.id,
               projectTitle: contract.title,
               freelancerId: contract.freelancer_id,
-              freelancerName: `${contract.users?.first_name || ''} ${contract.users?.last_name || ''}`.trim(),
-              freelancerEmail: contract.users?.email,
+              freelancerName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+              freelancerEmail: user?.email,
               clientName: contract.client_name,
               clientEmail: contract.client_email,
               amount: contract.total_amount,
@@ -173,13 +175,14 @@ export class ProjectMonitoringService {
           const deadlineDate = new Date(contract.deadline);
           const daysOverdue = Math.floor((today.getTime() - deadlineDate.getTime()) / (1000 * 60 * 60 * 24));
 
+          const legalContract = Array.isArray(contract.legal_contracts) ? contract.legal_contracts[0] : contract.legal_contracts;
           const notificationData: NotificationData = {
             contractId: contract.id,
             projectTitle: contract.project_title,
             freelancerId: contract.freelancer_id,
-            freelancerName: contract.legal_contracts?.freelancer_name,
-            freelancerEmail: contract.legal_contracts?.freelancer_email,
-            clientName: contract.legal_contracts?.client_name,
+            freelancerName: legalContract?.freelancer_name,
+            freelancerEmail: legalContract?.freelancer_email,
+            clientName: legalContract?.client_name,
             clientEmail: contract.client_email,
             amount: contract.total_amount,
             currency: contract.token_type || 'USDC',
@@ -224,12 +227,13 @@ export class ProjectMonitoringService {
             const deadlineDate = new Date(contract.deadline);
             const daysOverdue = Math.floor((today.getTime() - deadlineDate.getTime()) / (1000 * 60 * 60 * 24));
 
+            const user = Array.isArray(contract.users) ? contract.users[0] : contract.users;
             const notificationData: NotificationData = {
               contractId: contract.id,
               projectTitle: contract.title,
               freelancerId: contract.freelancer_id,
-              freelancerName: `${contract.users?.first_name || ''} ${contract.users?.last_name || ''}`.trim(),
-              freelancerEmail: contract.users?.email,
+              freelancerName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+              freelancerEmail: user?.email,
               clientName: contract.client_name,
               clientEmail: contract.client_email,
               amount: contract.total_amount,
@@ -299,17 +303,19 @@ export class ProjectMonitoringService {
         );
 
         if (!alreadySent) {
-          const contract = milestone.contracts;
+          const contract = Array.isArray(milestone.contracts) ? milestone.contracts[0] : milestone.contracts;
+          const users = contract?.users;
+          const user = Array.isArray(users) ? users[0] : users;
           const notificationData: NotificationData = {
             contractId: milestone.contract_id,
-            projectTitle: contract.title,
-            freelancerId: contract.freelancer_id,
-            freelancerName: `${contract.users?.first_name || ''} ${contract.users?.last_name || ''}`.trim(),
-            freelancerEmail: contract.users?.email,
-            clientName: contract.client_name,
-            clientEmail: contract.client_email,
+            projectTitle: contract?.title || 'Unknown Project',
+            freelancerId: contract?.freelancer_id,
+            freelancerName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+            freelancerEmail: user?.email,
+            clientName: contract?.client_name,
+            clientEmail: contract?.client_email,
             amount: milestone.amount,
-            currency: contract.currency || 'USD',
+            currency: contract?.currency || 'USD',
             milestoneTitle: milestone.title
           };
 
@@ -373,13 +379,15 @@ export class ProjectMonitoringService {
         );
 
         if (!alreadySent) {
-          const contract = invoice.contracts;
+          const contract = Array.isArray(invoice.contracts) ? invoice.contracts[0] : invoice.contracts;
+          const users = contract?.users;
+          const user = Array.isArray(users) ? users[0] : users;
           const notificationData: NotificationData = {
             contractId: invoice.contract_id,
             projectTitle: contract?.title || invoice.title,
             freelancerId: invoice.freelancer_id,
-            freelancerName: `${contract?.users?.first_name || ''} ${contract?.users?.last_name || ''}`.trim(),
-            freelancerEmail: contract?.users?.email,
+            freelancerName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+            freelancerEmail: user?.email,
             clientName: invoice.client_name,
             clientEmail: invoice.client_email,
             amount: invoice.amount,
@@ -423,6 +431,11 @@ export class ProjectMonitoringService {
 
       if (error) {
         console.error('[ProjectMonitoring] Error checking notification history:', error);
+        // If table doesn't exist yet, assume no notifications have been sent
+        if (error.code === '42P01') {
+          console.warn('[ProjectMonitoring] project_notifications table does not exist yet - assuming no notifications sent');
+          return false;
+        }
         return false; // If we can't check, send the notification to be safe
       }
 

@@ -948,20 +948,26 @@ Please enter your client's email address for contract notifications and signing:
 
       // Automatically send email to client
       try {
-        await this.sendContractEmailInternal(result.contractId, contractRequest.clientEmail);
+        if (result.contractId && contractRequest.clientEmail) {
+          await this.sendContractEmailInternal(result.contractId, contractRequest.clientEmail);
+        } else if (!result.contractId) {
+          throw new Error('Contract ID not available');
+        } else {
+          throw new Error('Client email not available');
+        }
         
         await this.bot.sendMessage(chatId,
-          `✅ **Contract Generated Successfully!**\n\n📄 Contract ID: \`${result.contractId}\`\n📧 Email automatically sent to: ${contractRequest.clientEmail}\n\nThe client will receive an email with the contract details and approval link.`,
+          `✅ **Contract Generated Successfully!**\n\n📄 Contract ID: \`${result.contractId || 'N/A'}\`\n📧 Email automatically sent to: ${contractRequest.clientEmail}\n\nThe client will receive an email with the contract details and approval link.`,
           {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
                 [
-                  { text: '📄 View Contract PDF', callback_data: `view_contract_${result.contractId}` }
+                  { text: '📄 View Contract PDF', callback_data: `view_contract_${result.contractId || 'unknown'}` }
                 ],
                 [
                   { text: '📋 List All Contracts', callback_data: 'business_contracts' },
-                  { text: '🔄 Resend Email', callback_data: `contract_resend_email_${result.contractId}` }
+                  { text: '🔄 Resend Email', callback_data: `contract_resend_email_${result.contractId || 'unknown'}` }
                 ]
               ]
             }
@@ -971,14 +977,14 @@ Please enter your client's email address for contract notifications and signing:
         console.error('[ContractModule] Error sending automatic email:', emailError);
         
         await this.bot.sendMessage(chatId,
-          `✅ **Contract Generated Successfully!**\n\n📄 Contract ID: \`${result.contractId}\`\n⚠️ Email sending failed - please send manually\n\nUse the button below to send the contract to your client.`,
+          `✅ **Contract Generated Successfully!**\n\n📄 Contract ID: \`${result.contractId || 'N/A'}\`\n⚠️ Email sending failed - please send manually\n\nUse the button below to send the contract to your client.`,
           {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
                 [
-                  { text: '📄 View Contract PDF', callback_data: `view_contract_${result.contractId}` },
-                  { text: '📧 Send to Client', callback_data: `contract_send_email_${result.contractId}` }
+                  { text: '📄 View Contract PDF', callback_data: `view_contract_${result.contractId || 'unknown'}` },
+                  { text: '📧 Send to Client', callback_data: `contract_send_email_${result.contractId || 'unknown'}` }
                 ],
                 [
                   { text: '📋 List All Contracts', callback_data: 'business_contracts' }

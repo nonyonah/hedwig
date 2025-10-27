@@ -9,7 +9,7 @@ const supabase = createClient(
 
 interface InvoiceResponse {
   success: boolean;
-  message: string;
+  message?: string;
   invoice?: any;
   error?: string;
 }
@@ -27,7 +27,7 @@ export default async function handler(
 
   const { id } = req.query;
   const { transactionHash, paymentAmount } = req.body;
-  
+
   if (!id || typeof id !== 'string') {
     return res.status(400).json({
       success: false,
@@ -106,13 +106,15 @@ export default async function handler(
 
     // Send notifications
     try {
-      const contract = invoice.contracts;
+      const contract = Array.isArray(invoice.contracts) ? invoice.contracts[0] : invoice.contracts;
+      const users = contract?.users;
+      const user = Array.isArray(users) ? users[0] : users;
       const notificationData: NotificationData = {
         contractId: invoice.contract_id,
         projectTitle: contract?.title || invoice.title,
         freelancerId: invoice.freelancer_id,
-        freelancerName: `${contract?.users?.first_name || ''} ${contract?.users?.last_name || ''}`.trim(),
-        freelancerEmail: contract?.users?.email,
+        freelancerName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        freelancerEmail: user?.email,
         clientName: invoice.client_name,
         clientEmail: invoice.client_email,
         amount: paymentAmount || invoice.amount,

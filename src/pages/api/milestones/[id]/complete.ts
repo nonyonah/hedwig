@@ -9,7 +9,7 @@ const supabase = createClient(
 
 interface MilestoneResponse {
   success: boolean;
-  message: string;
+  message?: string;
   milestone?: any;
   error?: string;
 }
@@ -26,7 +26,7 @@ export default async function handler(
   }
 
   const { id } = req.query;
-  
+
   if (!id || typeof id !== 'string') {
     return res.status(400).json({
       success: false,
@@ -95,17 +95,19 @@ export default async function handler(
 
     // Send notifications
     try {
-      const contract = milestone.contracts;
+      const contract = Array.isArray(milestone.contracts) ? milestone.contracts[0] : milestone.contracts;
+      const users = contract?.users;
+      const user = Array.isArray(users) ? users[0] : users;
       const notificationData: NotificationData = {
         contractId: milestone.contract_id,
-        projectTitle: contract.title,
-        freelancerId: contract.freelancer_id,
-        freelancerName: `${contract.users?.first_name || ''} ${contract.users?.last_name || ''}`.trim(),
-        freelancerEmail: contract.users?.email,
-        clientName: contract.client_name,
-        clientEmail: contract.client_email,
+        projectTitle: contract?.title || 'Unknown Project',
+        freelancerId: contract?.freelancer_id,
+        freelancerName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
+        freelancerEmail: user?.email,
+        clientName: contract?.client_name,
+        clientEmail: contract?.client_email,
         amount: milestone.amount,
-        currency: contract.currency || 'USD',
+        currency: contract?.currency || 'USD',
         milestoneTitle: milestone.title
       };
 

@@ -395,9 +395,14 @@ Thank you for your payment! 🙏`;
 
       if (error) {
         console.error('[ProjectNotification] Error logging notification:', error);
+        // Don't throw error if table doesn't exist yet - just log and continue
+        if (error.code === '42P01') {
+          console.warn('[ProjectNotification] project_notifications table does not exist yet - skipping log');
+        }
       }
     } catch (error) {
       console.error('[ProjectNotification] Error in logNotification:', error);
+      // Don't throw error - notification logging is not critical
     }
   }
 

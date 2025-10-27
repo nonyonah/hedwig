@@ -27,16 +27,28 @@ CREATE POLICY "Service role can manage project notifications" ON project_notific
 -- Policy for authenticated users to view their own notifications
 CREATE POLICY "Users can view their project notifications" ON project_notifications
   FOR SELECT USING (
+    -- Allow service role to see all notifications
+    auth.role() = 'service_role'
+    OR
+    -- Allow users to see notifications for their contracts
     EXISTS (
       SELECT 1 FROM project_contracts pc 
       WHERE pc.id = contract_id 
-      AND (pc.freelancer_id = auth.uid() OR pc.client_email = auth.email())
+      AND (
+        (pc.freelancer_id IS NOT NULL AND pc.freelancer_id = auth.uid()) 
+        OR 
+        (pc.client_email IS NOT NULL AND pc.client_email = auth.email())
+      )
     )
     OR
     EXISTS (
       SELECT 1 FROM contracts c 
       WHERE c.id = contract_id 
-      AND (c.freelancer_id = auth.uid() OR c.client_email = auth.email())
+      AND (
+        (c.freelancer_id IS NOT NULL AND c.freelancer_id = auth.uid()) 
+        OR 
+        (c.client_email IS NOT NULL AND c.client_email = auth.email())
+      )
     )
   );
 
