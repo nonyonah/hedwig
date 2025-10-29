@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { proposalGenerator } from './proposalGenerator';
 import { getEnvVar } from './envUtils';
+import { rateLimitService } from './rateLimitService';
 
 interface EmailAttachment {
   filename: string;
@@ -33,48 +34,94 @@ function ensureHttps(url: string): string {
   }
 }
 
-export async function sendEmailWithAttachment(options: EmailOptions): Promise<boolean> {
-  try {
-    // Validate recipient email to prevent mis-sends
-    const recipient = (options.to || '').trim();
-    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient);
-    if (!recipient || !isValidEmail) {
-      console.warn('Skipping email send: invalid or empty recipient', { to: options.to });
-      return false;
-    }
+export async function sendEmailWithAttachment(options: EmailOptions, retries: number = 3): Promise<boolean> {
+  let lastError: any = null;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // Validate recipient email to prevent mis-sends
+      const recipient = (options.to || '').trim();
+      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient);
+      if (!recipient || !isValidEmail) {
+        console.warn('Skipping email send: invalid or empty recipient', { to: options.to });
+        return false;
+      }
 
-    const emailData: any = {
-      from: process.env.EMAIL_FROM || 'noreply@hedwigbot.xyz',
-      to: recipient,
-      subject: options.subject,
-      html: options.html,
-    };
+      // Check rate limits to prevent spam
+      if (!rateLimitService.canSendEmail(recipient)) {
+        const status = rateLimitService.getRateLimitStatus(recipient);
+        console.warn(`Rate limit exceeded for ${recipient}. Hourly: ${status.hourly.count}/${status.hourly.limit}, Daily: ${status.daily.count}/${status.daily.limit}`);
+        return false;
+      }
 
-    if (options.replyTo) {
-      emailData.reply_to = options.replyTo;
-    }
+      // Check if RESEND_API_KEY is configured
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY is not configured');
+        return false;
+      }
 
-    // Add attachments if provided
-    if (options.attachments && options.attachments.length > 0) {
-      emailData.attachments = options.attachments.map(att => ({
-        filename: att.filename,
-        content: att.content,
-      }));
-    }
+      const emailData: any = {
+        from: process.env.EMAIL_FROM || 'noreply@hedwigbot.xyz',
+        to: recipient,
+        subject: options.subject,
+        html: options.html,
+      };
 
-    const result = await resend.emails.send(emailData);
-    
-    if (result.error) {
-      console.error('Error sending email:', result.error);
-      return false;
+      if (options.replyTo) {
+        emailData.reply_to = options.replyTo;
+      }
+
+      // Add attachments if provided
+      if (options.attachments && options.attachments.length > 0) {
+        emailData.attachments = options.attachments.map(att => ({
+          filename: att.filename,
+          content: att.content,
+        }));
+      }
+
+      const result = await resend.emails.send(emailData);
+      
+      if (result.error) {
+        lastError = result.error;
+        console.error(`Email send attempt ${attempt}/${retries} failed:`, result.error);
+        
+        // Don't retry for certain errors
+        if (result.error.name === 'validation_error' || result.error.name === 'invalid_parameter') {
+          console.error('Non-retryable email error:', result.error);
+          return false;
+        }
+        
+        // Wait before retrying (exponential backoff)
+        if (attempt < retries) {
+          const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        return false;
+      }
+      
+      console.log(`Email sent successfully on attempt ${attempt}:`, result.data?.id);
+      
+      // Record the successful email send for rate limiting
+      rateLimitService.recordEmailSent(recipient);
+      
+      return true;
+    } catch (error) {
+      lastError = error;
+      console.error(`Email send attempt ${attempt}/${retries} failed with exception:`, error);
+      
+      // Wait before retrying
+      if (attempt < retries) {
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
     }
-    
-    console.log('Email sent successfully:', result.data?.id);
-    return true;
-  } catch (error) {
-    console.error('Error sending email:', error);
-    return false;
   }
+  
+  console.error(`All ${retries} email send attempts failed. Last error:`, lastError);
+  return false;
 }
 
 export async function sendSimpleEmail(to: string, subject: string, html: string): Promise<boolean> {
