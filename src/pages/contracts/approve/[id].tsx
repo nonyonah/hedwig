@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { createClient } from '@supabase/supabase-js';
 import { GetServerSideProps } from 'next';
+import { MilestoneProgress } from '../../../components/ui/ProgressBar';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,7 +28,7 @@ interface ContractData {
     description: string;
     amount: number;
     deadline: string;
-    status: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'approved';
   }>;
   legal_contract?: {
     contract_text: string;
@@ -192,25 +193,11 @@ export default function ContractApprovalPage({ contract, error }: ContractApprov
 
             {/* Milestones */}
             <div className="mb-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Project Milestones</h2>
-              <div className="space-y-4">
-                {contract.milestones.map((milestone, index) => (
-                  <div key={milestone.id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-gray-900">
-                        Milestone {index + 1}: {milestone.title}
-                      </h3>
-                      <span className="text-lg font-bold text-blue-600">
-                        {milestone.amount} {getTokenSymbol(contract.token_address)}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 mb-2">{milestone.description}</p>
-                    <p className="text-sm text-gray-500">
-                      Due: {formatDate(milestone.deadline)}
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <MilestoneProgress 
+                milestones={contract.milestones}
+                totalAmount={contract.total_amount}
+                currency={getTokenSymbol(contract.token_address)}
+              />
             </div>
 
             {/* Contract Text */}

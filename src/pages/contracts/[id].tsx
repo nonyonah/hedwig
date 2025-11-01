@@ -4,6 +4,7 @@ import { GetServerSideProps } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { useAppKitWallet } from '../../hooks/useAppKitWallet';
 import { AppKitButton } from '../../components/AppKitButton';
+import { MilestoneProgress } from '../../components/ui/ProgressBar';
 
 
 interface Milestone {
@@ -513,7 +514,16 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           </div>
         </div>
 
-
+        {/* Milestones Section */}
+        {contract.milestones && contract.milestones.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <MilestoneProgress 
+              milestones={contract.milestones}
+              totalAmount={contract.total_amount}
+              currency={getTokenSymbol(contract.token_address)}
+            />
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex gap-4 mb-6">
