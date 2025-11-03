@@ -521,6 +521,9 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               milestones={contract.milestones}
               totalAmount={contract.total_amount}
               currency={getTokenSymbol(contract.token_address)}
+              contractId={contract.id}
+              isFreelancer={isFreelancer}
+              isClient={isClient}
             />
           </div>
         )}
