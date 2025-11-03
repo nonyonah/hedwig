@@ -32,7 +32,7 @@ function getTokenAddress(tokenType: string, chain: string): string {
 }
 
 interface ContractCreationState {
-  step: 'title' | 'description' | 'client_name' | 'client_wallet' | 'client_email' | 'amount' | 'token' | 'chain' | 'deadline' | 'milestones' | 'refund_policy' | 'review' | 'completed';
+  step: 'title' | 'description' | 'client_name' | 'client_email' | 'amount' | 'token' | 'chain' | 'deadline' | 'milestones' | 'review' | 'completed';
   data: Partial<ContractGenerationRequest>;
   milestones: Array<{
     title: string;
@@ -134,8 +134,6 @@ export class ContractModule {
           return await this.handleDescriptionInput(chatId, userId, message, state);
         case 'client_name':
           return await this.handleClientNameInput(chatId, userId, message, state);
-        case 'client_wallet':
-          return await this.handleClientWalletInput(chatId, userId, message, state);
         case 'client_email':
           return await this.handleClientEmailInput(chatId, userId, message, state);
         case 'amount':
@@ -144,8 +142,6 @@ export class ContractModule {
           return await this.handleDeadlineInput(chatId, userId, message, state);
         case 'milestones':
           return await this.handleMilestonesInput(chatId, userId, message, state);
-        case 'refund_policy':
-          return await this.handleRefundPolicyInput(chatId, userId, message, state);
         default:
           return false;
       }
@@ -341,33 +337,21 @@ export class ContractModule {
     }
 
     state.data.clientName = message.trim();
-    state.step = 'client_wallet';
+    state.step = 'client_email';
 
     // Ensure state is saved
     this.contractStates.set(userId, state);
     await this.saveContractState(userId, state);
 
     await this.bot.sendMessage(chatId,
-      `✅ **Client Name:** ${state.data.clientName}\n\n💳 **Client Wallet Address**\n\nPlease enter the client's wallet address (0x...):`,
+      `✅ **Client Name:** ${state.data.clientName}\n\n📧 **Client Email Address**\n\nPlease enter the client's email address:`,
       { parse_mode: 'Markdown' }
     );
 
     return true;
   }
 
-  /**
-   * Handle client wallet input
-   */
-  private async handleClientWalletInput(chatId: number, userId: string, message: string, state: ContractCreationState): Promise<boolean> {
-    state.data.clientWallet = message.trim();
-    await this.bot.sendMessage(chatId, '✅ Client wallet saved!');
 
-    state.step = 'client_email';
-    this.contractStates.set(userId, state);
-    await this.saveContractState(userId, state);
-    await this.askForClientEmail(chatId);
-    return true;
-  }
 
   /**
    * Handle client email input
@@ -519,14 +503,14 @@ export class ContractModule {
   }
 
   /**
-   * Skip milestones and proceed to refund policy
+   * Skip milestones and proceed to review
    */
   private async skipMilestones(chatId: number, userId: string): Promise<boolean> {
     const state = this.contractStates.get(userId);
     if (!state) return false;
 
-    state.step = 'refund_policy';
-    await this.askForRefundPolicy(chatId);
+    state.step = 'review';
+    await this.showContractReview(chatId, userId, state);
     return true;
   }
 
@@ -629,14 +613,14 @@ export class ContractModule {
   }
 
   /**
-   * Finish milestones and proceed to refund policy
+   * Finish milestones and proceed to review
    */
   private async finishMilestones(chatId: number, userId: string): Promise<boolean> {
     const state = this.contractStates.get(userId);
     if (!state) return false;
 
-    state.step = 'refund_policy';
-    await this.askForRefundPolicy(chatId);
+    state.step = 'review';
+    await this.showContractReview(chatId, userId, state);
     return true;
   }
 
@@ -672,20 +656,7 @@ Please enter your client's full name:
     await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
   }
 
-  /**
-   * Ask for client wallet address
-   */
-  private async askForClientWallet(chatId: number) {
-    const message = `💳 **Client Wallet Address**
 
-Please enter your client's cryptocurrency wallet address where they will receive payments:
-
-*Example: 0x1234567890abcdef1234567890abcdef12345678*
-
-💡 This should be a valid wallet address on the blockchain you'll select later.`;
-
-    await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-  }
 
   /**
    * Ask for client email address
@@ -805,28 +776,9 @@ Please enter your client's email address for contract notifications and signing:
     );
   }
 
-  /**
-   * Ask for refund policy
-   */
-  private async askForRefundPolicy(chatId: number) {
-    await this.bot.sendMessage(chatId,
-      `🔄 **Refund Policy (Optional)**\n\nEnter custom refund terms, or type "skip" to use default policy:`,
-      { parse_mode: 'Markdown' }
-    );
-  }
 
-  /**
-   * Handle refund policy input
-   */
-  private async handleRefundPolicyInput(chatId: number, userId: string, message: string, state: ContractCreationState): Promise<boolean> {
-    if (message.trim().toLowerCase() !== 'skip') {
-      state.data.refundPolicy = message.trim();
-    }
 
-    state.step = 'review';
-    await this.showContractReview(chatId, userId, state);
-    return true;
-  }
+
 
   /**
    * Show contract review
@@ -839,8 +791,7 @@ Please enter your client's email address for contract notifications and signing:
     message += `📄 **Description:** ${data.projectDescription}\n`;
     message += `👤 **Client:** ${data.clientName}\n`;
     message += `📧 **Client Email:** ${data.clientEmail}\n`;
-    message += `💳 **Client Wallet:** ${data.clientWallet}\n`;
-    message += `💰 **Amount:** ${data.paymentAmount} ${data.tokenType}\n`;
+    message += `� **Almount:** ${data.paymentAmount} ${data.tokenType}\n`;
     message += `⛓️ **Network:** ${data.chain?.toUpperCase()}\n`;
     message += `📅 **Deadline:** ${new Date(data.deadline!).toLocaleDateString()}\n`;
 
@@ -851,11 +802,7 @@ Please enter your client's email address for contract notifications and signing:
       });
     }
 
-    if (data.refundPolicy) {
-      message += `\n🔄 **Refund Policy:** ${data.refundPolicy}\n`;
-    }
-
-    message += `\n⚡ **Next Steps:**\n1. I'll generate a legal contract \n2. Deploy smart contract for it\n3. Share with client for approval`;
+    message += `\n⚡ **Next Steps:**\n1. I'll generate a legal contract\n2. Share with client for approval\n3. Client can pay using cryptocurrency invoices`;
 
     await this.bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
@@ -915,7 +862,7 @@ Please enter your client's email address for contract notifications and signing:
         freelancerWallet: freelancerWallet,
         clientName: state.data.clientName || 'Client',
         clientEmail: state.data.clientEmail || '',
-        clientWallet: state.data.clientWallet || '',
+        clientWallet: '', // Not needed since we're not using smart contracts
         projectTitle: state.data.projectTitle || '',
         projectDescription: state.data.projectDescription || '',
         paymentAmount: state.data.paymentAmount || 0,
@@ -923,7 +870,7 @@ Please enter your client's email address for contract notifications and signing:
         chain: state.data.chain || 'base',
         deadline: state.data.deadline || '',
         milestones: state.milestones || [],
-        refundPolicy: state.data.refundPolicy || ''
+        refundPolicy: '' // Not needed since we're not using smart contracts
       };
 
       const result = await legalContractService.generateContract(contractRequest);
@@ -1393,14 +1340,6 @@ Please enter your client's email address for contract notifications and signing:
         if (!state.data.clientName) {
           await this.askForClientName(chatId);
         } else {
-          state.step = 'client_wallet';
-          await this.askForClientWallet(chatId);
-        }
-        break;
-      case 'client_wallet':
-        if (!state.data.clientWallet) {
-          await this.askForClientWallet(chatId);
-        } else {
           state.step = 'client_email';
           await this.askForClientEmail(chatId);
         }
@@ -1448,9 +1387,6 @@ Please enter your client's email address for contract notifications and signing:
       case 'milestones':
         await this.askForMilestones(chatId);
         break;
-      case 'refund_policy':
-        await this.askForRefundPolicy(chatId);
-        break;
       default:
         // Fallback to the original logic for initial setup
         if (!state.data.projectTitle) {
@@ -1462,9 +1398,6 @@ Please enter your client's email address for contract notifications and signing:
         } else if (!state.data.clientName) {
           state.step = 'client_name';
           await this.askForClientName(chatId);
-        } else if (!state.data.clientWallet) {
-          state.step = 'client_wallet';
-          await this.askForClientWallet(chatId);
         } else if (!state.data.clientEmail) {
           state.step = 'client_email';
           await this.askForClientEmail(chatId);
@@ -1504,9 +1437,7 @@ Please enter your client's email address for contract notifications and signing:
       case 'client_name':
         helpText += '👤 **Client Name**: Enter the client\'s full name or company name.\n\nExample: "John Smith" or "ABC Company Inc."';
         break;
-      case 'client_wallet':
-        helpText += '💳 **Client Wallet**: Enter the client\'s cryptocurrency wallet address.\n\nExample: 0x1234...abcd (Ethereum/Base address)';
-        break;
+
       case 'client_email':
         helpText += '📧 **Client Email**: Enter the client\'s email address for contract notifications.\n\nExample: client@company.com';
         break;

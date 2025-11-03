@@ -67,7 +67,13 @@ export default async function handler(
       });
     }
 
-    const notifications = [];
+    const notifications: Array<{
+      milestone_id: string;
+      recipient: string;
+      type: string;
+      sent: boolean;
+      error?: string;
+    }> = [];
 
     for (const milestone of milestones || []) {
       const contract = Array.isArray(milestone.project_contracts) 
