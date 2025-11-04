@@ -918,7 +918,6 @@ Please enter your client's email address for contract notifications and signing:
             amount: milestone.amount,
             deadline: milestone.deadline,
             due_date: milestone.deadline,
-            order_index: index + 1,
             status: 'pending'
           }));
 

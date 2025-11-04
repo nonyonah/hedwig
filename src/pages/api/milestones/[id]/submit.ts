@@ -52,16 +52,7 @@ export default async function handler(
         description,
         amount,
         status,
-        contract_id,
-        project_contracts!contract_milestones_contract_id_fkey (
-          id,
-          project_title,
-          freelancer_id,
-          client_email,
-          client_name,
-          currency,
-          token_type
-        )
+        contract_id
       `)
       .eq('id', id)
       .single();
@@ -73,11 +64,21 @@ export default async function handler(
       });
     }
 
-    const contract = Array.isArray(milestone.project_contracts) 
-      ? milestone.project_contracts[0] 
-      : milestone.project_contracts;
+    // Get contract details separately
+    const { data: contract, error: contractError } = await supabase
+      .from('project_contracts')
+      .select(`
+        id,
+        project_title,
+        freelancer_id,
+        client_email,
+        currency,
+        token_type
+      `)
+      .eq('id', milestone.contract_id)
+      .single();
 
-    if (!contract) {
+    if (contractError || !contract) {
       return res.status(404).json({
         success: false,
         error: 'Contract not found'
@@ -99,11 +100,11 @@ export default async function handler(
       });
     }
 
-    // Update milestone status to completed with deliverables
+    // Update milestone status to submitted with deliverables
     const { data: updatedMilestone, error: updateError } = await supabase
       .from('contract_milestones')
       .update({
-        status: 'completed',
+        status: 'submitted',
         deliverables: deliverables,
         completion_notes: completion_notes,
         completed_at: new Date().toISOString()

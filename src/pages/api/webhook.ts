@@ -85,6 +85,8 @@ async function setupTelegramMenu() {
       { command: 'invoice', description: 'Create invoice' },
       { command: 'proposal', description: 'Create proposal' },
       { command: 'contract', description: 'Create binding contracts' },
+      { command: 'milestone', description: 'Submit milestone completion' },
+      { command: 'milestones', description: 'View my milestones' },
       { command: 'earnings_summary', description: 'View earnings summary' },
       { command: 'business_dashboard', description: 'Business dashboard' },
       { command: 'referral', description: 'Get your referral link and stats' },
@@ -1295,6 +1297,56 @@ async function handleCommand(msg: any) {
       } catch (error) {
         console.error('[Webhook] Error handling onramp command:', error);
         await bot.sendMessage(chatId, 'Sorry, something went wrong. Please try again.');
+      }
+      break;
+
+    case '/milestone':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+
+          if (user) {
+            await botIntegration.showMilestoneSubmissionForm(chatId, user.id);
+          } else {
+            await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
+          }
+        } else {
+          await bot.sendMessage(chatId, 'Milestone feature is not available at the moment.');
+        }
+      } catch (error) {
+        console.error('[Webhook] Error handling /milestone command:', error);
+        await bot.sendMessage(chatId, 'Failed to load milestone submission form. Please try again later.');
+      }
+      break;
+
+    case '/milestones':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+
+          if (user) {
+            await botIntegration.showMilestoneList(chatId, user.id);
+          } else {
+            await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
+          }
+        } else {
+          await bot.sendMessage(chatId, 'Milestones feature is not available at the moment.');
+        }
+      } catch (error) {
+        console.error('[Webhook] Error handling /milestones command:', error);
+        await bot.sendMessage(chatId, 'Failed to load milestones list. Please try again later.');
       }
       break;
 

@@ -326,6 +326,12 @@ export class TelegramBotService {
         return;
       }
 
+      // Check if user is in milestone completion state
+      const milestoneHandled = await this.handleMilestoneCompletionInput(chatId, userId?.toString() || '', messageText);
+      if (milestoneHandled) {
+        return;
+      }
+
       // Check if user is in onramp flow and handle text input
       const onrampHandled = await this.handleOnrampTextInput(chatId, messageText);
       if (onrampHandled) {
@@ -481,6 +487,21 @@ export class TelegramBotService {
         case 'swap_tokens':
           await this.sendMessage(chatId, '🔄 **Token Swap**\n\nTo swap tokens, just tell me what you want to do! For example:\n• "Swap 100 USDC to ETH"\n• "I want to swap tokens"\n• "Convert my USDT to USDC"', { parse_mode: 'Markdown' });
           break;
+        case 'milestone_list':
+          await this.showMilestoneList(chatId, userId);
+          break;
+        case 'milestone_submit':
+          await this.showMilestoneSubmissionForm(chatId, userId);
+          break;
+        case 'milestone_menu':
+          await this.showMilestoneMenu(chatId, userId);
+          break;
+        case 'milestone_status':
+          await this.showMilestoneList(chatId, userId);
+          break;
+        case 'milestone_due_soon':
+          await this.showMilestonesApproachingDeadline(chatId, userId);
+          break;
         default:
           // Handle onramp callbacks
           if (data.startsWith('onramp_')) {
@@ -504,8 +525,19 @@ export class TelegramBotService {
             break;
           }
 
+          // Handle milestone-specific callbacks
+          if (data.startsWith('milestone_submit_')) {
+            const milestoneId = data.replace('milestone_submit_', '');
+            await this.handleMilestoneSubmission(chatId, userId, milestoneId);
+          } else if (data.startsWith('milestone_quick_submit_')) {
+            const milestoneId = data.replace('milestone_quick_submit_', '');
+            await this.handleQuickMilestoneSubmit(chatId, userId, milestoneId);
+          } else if (data.startsWith('milestone_start_')) {
+            const milestoneId = data.replace('milestone_start_', '');
+            await this.handleMilestoneStart(chatId, userId, milestoneId);
+          }
           // Handle dynamic callbacks like 'view_invoice_ID' or 'delete_invoice_ID'
-          if (data.startsWith('view_invoice_') || data.startsWith('delete_invoice_')) {
+          else if (data.startsWith('view_invoice_') || data.startsWith('delete_invoice_')) {
             // Delegate to a specific handler in BotIntegration if it exists
             // This part is not implemented in the provided bot-integration.ts, but this is where it would go.
             console.log(`[TelegramBot] Received dynamic invoice action: ${data}`)
@@ -664,6 +696,14 @@ export class TelegramBotService {
         const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
         console.log('[TelegramBot] Contract command user resolution:', { resolvedUserId });
         await this.botIntegration.handleBusinessMessage(msg, resolvedUserId);
+        break;
+      }
+      case '/milestone':
+      case '/milestones': {
+        // Handle milestone submission and management
+        const resolvedUserId = from?.id?.toString() || await this.botIntegration.getUserIdByChatId(chatId) || chatId.toString();
+        console.log('[TelegramBot] Milestone command user resolution:', { resolvedUserId });
+        await this.handleMilestoneCommand(chatId, resolvedUserId, command);
         break;
       }
 
@@ -1276,6 +1316,8 @@ Now you can create personalized invoices and proposals. Type /help to see what I
         { command: 'invoice', description: '📄 Create an invoice' },
         { command: 'proposal', description: '📝 Create a proposal' },
         { command: 'contract', description: '📝 Create smart contract' },
+        { command: 'milestone', description: '🎯 Submit milestone completion' },
+        { command: 'milestones', description: '📋 View my milestones' },
         { command: 'paymentlink', description: '🔗 Create a payment link' },
         { command: 'referral', description: '🎁 Get your referral link and stats' },
         { command: 'leaderboard', description: '🏆 View referral leaderboard' },
@@ -1868,6 +1910,570 @@ Now you can create personalized invoices and proposals. Type /help to see what I
       console.error('[TelegramBot] Error handling onramp text input:', error);
       await this.sendMessage(chatId, '❌ Error processing amount. Please try again.');
       return true;
+    }
+  }
+
+  /**
+   * Handle milestone commands
+   */
+  async handleMilestoneCommand(chatId: number, userId: string, command: string): Promise<void> {
+    try {
+      const commandParts = command.split(' ');
+      const baseCommand = commandParts[0].toLowerCase();
+
+      if (baseCommand === '/milestones') {
+        await this.showMilestoneList(chatId, userId);
+      } else if (baseCommand === '/milestone') {
+        if (commandParts.length > 1) {
+          const action = commandParts[1].toLowerCase();
+          if (action === 'submit') {
+            await this.showMilestoneSubmissionForm(chatId, userId);
+          } else {
+            await this.showMilestoneMenu(chatId, userId);
+          }
+        } else {
+          await this.showMilestoneMenu(chatId, userId);
+        }
+      }
+    } catch (error) {
+      console.error('[TelegramBot] Error handling milestone command:', error);
+      await this.sendMessage(chatId, '❌ Error processing milestone command. Please try again.');
+    }
+  }
+
+  /**
+   * Show milestone menu with options
+   */
+  private async showMilestoneMenu(chatId: number, userId: string): Promise<void> {
+    try {
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📋 View My Milestones', callback_data: 'milestone_list' },
+            { text: '✅ Submit Milestone', callback_data: 'milestone_submit' }
+          ],
+          [
+            { text: '📊 Milestone Status', callback_data: 'milestone_status' },
+            { text: '🔔 Due Soon', callback_data: 'milestone_due_soon' }
+          ]
+        ]
+      };
+
+      const menuText = `🎯 **Milestone Management**
+
+Choose an action:
+
+📋 **View My Milestones** - See all your active milestones
+✅ **Submit Milestone** - Mark a milestone as completed
+📊 **Milestone Status** - Check status of your milestones
+🔔 **Due Soon** - See milestones approaching deadline
+
+You can also use:
+• \`/milestones\` - View all milestones
+• \`/milestone submit\` - Quick submit form`;
+
+      await this.sendMessage(chatId, menuText, { reply_markup: keyboard });
+    } catch (error) {
+      console.error('[TelegramBot] Error showing milestone menu:', error);
+      await this.sendMessage(chatId, '❌ Error loading milestone menu. Please try again.');
+    }
+  }
+
+  /**
+   * Show list of user's milestones
+   */
+  private async showMilestoneList(chatId: number, userId: string): Promise<void> {
+    try {
+      // Get user's milestones from database
+      const { supabase } = await import('./supabase');
+      
+      const { data: milestones, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          status,
+          deadline,
+          started_at,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('project_contracts.freelancer_id', userId)
+        .order('deadline', { ascending: true });
+
+      if (error) {
+        console.error('[TelegramBot] Error fetching milestones:', error);
+        await this.sendMessage(chatId, '❌ Error loading your milestones. Please try again.');
+        return;
+      }
+
+      if (!milestones || milestones.length === 0) {
+        await this.sendMessage(chatId, '📋 **No Milestones Found**\n\nYou don\'t have any active milestones at the moment.\n\nMilestones will appear here when you have active contracts with milestone-based payments.');
+        return;
+      }
+
+      let message = '📋 **Your Milestones**\n\n';
+      
+      milestones.forEach((milestone, index) => {
+        const contract = Array.isArray(milestone.project_contracts) 
+          ? milestone.project_contracts[0] 
+          : milestone.project_contracts;
+        
+        const statusEmoji = this.getMilestoneStatusEmoji(milestone.status);
+        const deadlineDate = new Date(milestone.deadline).toLocaleDateString();
+        
+        message += `${index + 1}. **${milestone.title}** ${statusEmoji}\n`;
+        message += `   📁 Project: ${contract?.project_title || 'Unknown'}\n`;
+        message += `   💰 Amount: $${milestone.amount}\n`;
+        message += `   📅 Due: ${deadlineDate}\n`;
+        message += `   📊 Status: ${milestone.status.replace('_', ' ').toUpperCase()}\n\n`;
+      });
+
+      // Add action buttons for in-progress milestones
+      const inProgressMilestones = milestones.filter(m => m.status === 'in_progress');
+      
+      if (inProgressMilestones.length > 0) {
+        const keyboard: TelegramBot.InlineKeyboardMarkup = {
+          inline_keyboard: [
+            [{ text: '✅ Submit Milestone', callback_data: 'milestone_submit' }],
+            [{ text: '🔄 Refresh List', callback_data: 'milestone_list' }]
+          ]
+        };
+        
+        message += '\n💡 **Tip:** Click "Submit Milestone" when you\'ve completed work on any in-progress milestone.';
+        
+        await this.sendMessage(chatId, message, { reply_markup: keyboard });
+      } else {
+        await this.sendMessage(chatId, message);
+      }
+
+    } catch (error) {
+      console.error('[TelegramBot] Error showing milestone list:', error);
+      await this.sendMessage(chatId, '❌ Error loading milestone list. Please try again.');
+    }
+  }
+
+  /**
+   * Show milestone submission form
+   */
+  private async showMilestoneSubmissionForm(chatId: number, userId: string): Promise<void> {
+    try {
+      // Get user's in-progress milestones
+      const { supabase } = await import('./supabase');
+      
+      const { data: milestones, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          deadline,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('project_contracts.freelancer_id', userId)
+        .eq('status', 'in_progress')
+        .order('deadline', { ascending: true });
+
+      if (error) {
+        console.error('[TelegramBot] Error fetching in-progress milestones:', error);
+        await this.sendMessage(chatId, '❌ Error loading your milestones. Please try again.');
+        return;
+      }
+
+      if (!milestones || milestones.length === 0) {
+        await this.sendMessage(chatId, '📋 **No In-Progress Milestones**\n\nYou don\'t have any milestones currently in progress.\n\nStart working on a milestone first, then you can submit it for review.');
+        return;
+      }
+
+      let message = '✅ **Submit Milestone Completion**\n\nSelect a milestone to submit:\n\n';
+      
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: milestones.map((milestone, index) => {
+          const contract = Array.isArray(milestone.project_contracts) 
+            ? milestone.project_contracts[0] 
+            : milestone.project_contracts;
+          
+          return [{
+            text: `${index + 1}. ${milestone.title} ($${milestone.amount})`,
+            callback_data: `milestone_submit_${milestone.id}`
+          }];
+        })
+      };
+
+      // Add cancel button
+      keyboard.inline_keyboard.push([{ text: '❌ Cancel', callback_data: 'milestone_menu' }]);
+
+      await this.sendMessage(chatId, message, { reply_markup: keyboard });
+
+    } catch (error) {
+      console.error('[TelegramBot] Error showing milestone submission form:', error);
+      await this.sendMessage(chatId, '❌ Error loading submission form. Please try again.');
+    }
+  }
+
+  /**
+   * Handle milestone submission
+   */
+  async handleMilestoneSubmission(chatId: number, userId: string, milestoneId: string): Promise<void> {
+    try {
+      // Get milestone details
+      const { supabase } = await import('./supabase');
+      
+      const { data: milestone, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          status,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('id', milestoneId)
+        .single();
+
+      if (error || !milestone) {
+        await this.sendMessage(chatId, '❌ Milestone not found. Please try again.');
+        return;
+      }
+
+      if (milestone.status !== 'in_progress') {
+        await this.sendMessage(chatId, `❌ This milestone is currently "${milestone.status}" and cannot be submitted.`);
+        return;
+      }
+
+      // Show submission confirmation template
+      const contract = Array.isArray(milestone.project_contracts) 
+        ? milestone.project_contracts[0] 
+        : milestone.project_contracts;
+
+      const confirmationMessage = `🎯 **Milestone Submission Confirmation**
+
+**Project:** ${contract?.project_title || 'Unknown'}
+**Milestone:** ${milestone.title}
+**Amount:** $${milestone.amount}
+**Description:** ${milestone.description || 'No description'}
+
+📝 **Please provide details about your completed work:**
+
+You can describe:
+• What you've delivered
+• Key features completed
+• Any notes for the client
+• Links to deliverables (if applicable)
+
+Type your completion notes below, or use the quick submit button:`;
+
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: [
+          [{ text: '⚡ Quick Submit', callback_data: `milestone_quick_submit_${milestoneId}` }],
+          [{ text: '❌ Cancel', callback_data: 'milestone_submit' }]
+        ]
+      };
+
+      // Set user state to expect completion notes
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'awaiting_milestone_completion',
+          state_data: { milestone_id: milestoneId },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+
+      await this.sendMessage(chatId, confirmationMessage, { reply_markup: keyboard });
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling milestone submission:', error);
+      await this.sendMessage(chatId, '❌ Error processing milestone submission. Please try again.');
+    }
+  }
+
+  /**
+   * Process milestone completion notes
+   */
+  async processMilestoneCompletion(chatId: number, userId: string, milestoneId: string, completionNotes: string): Promise<void> {
+    try {
+      // Submit milestone via API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/milestones/${milestoneId}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          deliverables: 'Submitted via Telegram',
+          completion_notes: completionNotes
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const successMessage = `✅ **Milestone Submitted Successfully!**
+
+Your milestone has been submitted for client review.
+
+📧 **Client Notified:** The client has been notified via email
+⏰ **Next Steps:** Wait for client approval or feedback
+💰 **Payment:** You'll receive payment once approved
+
+**Submitted Work:**
+${completionNotes}
+
+You'll be notified when the client responds!`;
+
+        await this.sendMessage(chatId, successMessage);
+
+        // Clear user state
+        const { supabase } = await import('./supabase');
+        await supabase
+          .from('user_states')
+          .delete()
+          .eq('user_id', userId)
+          .eq('state_type', 'awaiting_milestone_completion');
+
+      } else {
+        await this.sendMessage(chatId, `❌ **Submission Failed**\n\n${result.error || 'Unknown error occurred'}\n\nPlease try again.`);
+      }
+
+    } catch (error) {
+      console.error('[TelegramBot] Error processing milestone completion:', error);
+      await this.sendMessage(chatId, '❌ Error submitting milestone. Please try again.');
+    }
+  }
+
+  /**
+   * Handle quick milestone submission
+   */
+  async handleQuickMilestoneSubmit(chatId: number, userId: string, milestoneId: string): Promise<void> {
+    const defaultNotes = 'Work completed as requested. Ready for review.';
+    await this.processMilestoneCompletion(chatId, userId, milestoneId, defaultNotes);
+  }
+
+  /**
+   * Get emoji for milestone status
+   */
+  private getMilestoneStatusEmoji(status: string): string {
+    switch (status) {
+      case 'pending': return '⏳';
+      case 'in_progress': return '🔄';
+      case 'submitted': return '📤';
+      case 'completed': return '✅';
+      case 'approved': return '✅';
+      case 'changes_requested': return '🔄';
+      case 'paid': return '💰';
+      default: return '❓';
+    }
+  }
+
+  /**
+   * Send milestone deadline reminder
+   */
+  async sendMilestoneDeadlineReminder(chatId: number, milestone: any, daysUntilDeadline: number): Promise<void> {
+    try {
+      const urgencyEmoji = daysUntilDeadline <= 1 ? '🚨' : daysUntilDeadline <= 3 ? '⚠️' : '📅';
+      const urgencyText = daysUntilDeadline <= 1 ? 'URGENT' : daysUntilDeadline <= 3 ? 'Soon' : 'Upcoming';
+      
+      const message = `${urgencyEmoji} **Milestone Deadline ${urgencyText}**
+
+**Project:** ${milestone.project_title}
+**Milestone:** ${milestone.title}
+**Amount:** $${milestone.amount}
+**Deadline:** ${new Date(milestone.deadline).toLocaleDateString()}
+**Days Remaining:** ${daysUntilDeadline}
+
+${daysUntilDeadline <= 1 ? 
+  '🚨 **This milestone is due very soon!**' : 
+  daysUntilDeadline <= 3 ? 
+  '⚠️ **This milestone is due soon.**' : 
+  '📅 **Reminder: This milestone is approaching its deadline.**'
+}
+
+Current Status: ${milestone.status.replace('_', ' ').toUpperCase()}`;
+
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: [
+          milestone.status === 'in_progress' ? 
+            [{ text: '✅ Submit Now', callback_data: `milestone_submit_${milestone.id}` }] : 
+            [{ text: '🔄 Start Working', callback_data: `milestone_start_${milestone.id}` }],
+          [{ text: '📋 View All Milestones', callback_data: 'milestone_list' }]
+        ]
+      };
+
+      await this.sendMessage(chatId, message, { reply_markup: keyboard });
+
+    } catch (error) {
+      console.error('[TelegramBot] Error sending milestone deadline reminder:', error);
+    }
+  }
+
+  /**
+   * Show milestones approaching deadline
+   */
+  private async showMilestonesApproachingDeadline(chatId: number, userId: string): Promise<void> {
+    try {
+      const { supabase } = await import('./supabase');
+      
+      // Get milestones due within 7 days
+      const sevenDaysFromNow = new Date();
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+      
+      const { data: milestones, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          status,
+          deadline,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('project_contracts.freelancer_id', userId)
+        .in('status', ['pending', 'in_progress'])
+        .lte('deadline', sevenDaysFromNow.toISOString())
+        .order('deadline', { ascending: true });
+
+      if (error) {
+        console.error('[TelegramBot] Error fetching approaching milestones:', error);
+        await this.sendMessage(chatId, '❌ Error loading milestones. Please try again.');
+        return;
+      }
+
+      if (!milestones || milestones.length === 0) {
+        await this.sendMessage(chatId, '✅ **No Urgent Milestones**\n\nYou don\'t have any milestones due in the next 7 days.\n\nKeep up the great work! 🎉');
+        return;
+      }
+
+      let message = '🔔 **Milestones Due Soon**\n\n';
+      
+      milestones.forEach((milestone, index) => {
+        const contract = Array.isArray(milestone.project_contracts) 
+          ? milestone.project_contracts[0] 
+          : milestone.project_contracts;
+        
+        const deadlineDate = new Date(milestone.deadline);
+        const daysUntilDeadline = Math.ceil((deadlineDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+        const urgencyEmoji = daysUntilDeadline <= 1 ? '🚨' : daysUntilDeadline <= 3 ? '⚠️' : '📅';
+        
+        message += `${urgencyEmoji} **${milestone.title}**\n`;
+        message += `   📁 ${contract?.project_title || 'Unknown'}\n`;
+        message += `   💰 $${milestone.amount}\n`;
+        message += `   📅 Due in ${daysUntilDeadline} day${daysUntilDeadline !== 1 ? 's' : ''}\n`;
+        message += `   📊 ${milestone.status.replace('_', ' ').toUpperCase()}\n\n`;
+      });
+
+      const keyboard: TelegramBot.InlineKeyboardMarkup = {
+        inline_keyboard: [
+          [{ text: '✅ Submit Milestone', callback_data: 'milestone_submit' }],
+          [{ text: '📋 View All Milestones', callback_data: 'milestone_list' }]
+        ]
+      };
+
+      await this.sendMessage(chatId, message, { reply_markup: keyboard });
+
+    } catch (error) {
+      console.error('[TelegramBot] Error showing approaching milestones:', error);
+      await this.sendMessage(chatId, '❌ Error loading approaching milestones. Please try again.');
+    }
+  }
+
+  /**
+   * Handle milestone start
+   */
+  async handleMilestoneStart(chatId: number, userId: string, milestoneId: string): Promise<void> {
+    try {
+      // Start milestone via API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/milestones/${milestoneId}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          freelancer_id: userId
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const successMessage = `🚀 **Milestone Started!**
+
+You've successfully started working on this milestone.
+
+**Next Steps:**
+• Work on the milestone deliverables
+• Submit for review when completed
+• Get paid once approved by client
+
+Good luck with your work! 💪`;
+
+        await this.sendMessage(chatId, successMessage);
+      } else {
+        await this.sendMessage(chatId, `❌ **Failed to Start Milestone**\n\n${result.error || 'Unknown error occurred'}\n\nPlease try again.`);
+      }
+
+    } catch (error) {
+      console.error('[TelegramBot] Error starting milestone:', error);
+      await this.sendMessage(chatId, '❌ Error starting milestone. Please try again.');
+    }
+  }
+
+  /**
+   * Handle milestone completion text input
+   */
+  async handleMilestoneCompletionInput(chatId: number, userId: string, messageText: string): Promise<boolean> {
+    try {
+      // Check if user is in milestone completion state
+      const { supabase } = await import('./supabase');
+      
+      const { data: userState, error } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_milestone_completion')
+        .single();
+
+      if (error || !userState) {
+        return false; // Not in milestone completion state
+      }
+
+      const milestoneId = userState.state_data?.milestone_id;
+      if (!milestoneId) {
+        return false;
+      }
+
+      // Process the completion
+      await this.processMilestoneCompletion(chatId, userId, milestoneId, messageText);
+      return true;
+
+    } catch (error) {
+      console.error('[TelegramBot] Error handling milestone completion input:', error);
+      return false;
     }
   }
 

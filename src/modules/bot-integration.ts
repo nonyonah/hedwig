@@ -2553,6 +2553,50 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
+      // Milestone callbacks
+      else if (data === 'milestone_list') {
+        await this.showMilestoneList(chatId, userId!);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data === 'milestone_submit') {
+        await this.showMilestoneSubmissionForm(chatId, userId!);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data === 'milestone_menu') {
+        await this.showMilestoneMenu(chatId, userId!);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data === 'milestone_status') {
+        await this.showMilestoneList(chatId, userId!);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data === 'milestone_due_soon') {
+        await this.showMilestonesApproachingDeadline(chatId, userId!);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data.startsWith('milestone_submit_')) {
+        const milestoneId = data.replace('milestone_submit_', '');
+        await this.handleMilestoneSubmission(chatId, userId!, milestoneId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data.startsWith('milestone_quick_submit_')) {
+        const milestoneId = data.replace('milestone_quick_submit_', '');
+        await this.handleQuickMilestoneSubmit(chatId, userId!, milestoneId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
+      else if (data.startsWith('milestone_start_')) {
+        const milestoneId = data.replace('milestone_start_', '');
+        await this.handleMilestoneStart(chatId, userId!, milestoneId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
 
       return false;
     } catch (error) {
@@ -2743,7 +2787,11 @@ export class BotIntegration {
           await this.handleLeaderboardCommand(chatId);
           return true;
 
-
+        case '/milestone':
+        case '/milestones':
+        case '🎯 Milestones':
+          await this.handleMilestoneCommand(chatId, userId, text);
+          return true;
 
         case '/buy_crypto':
         case '/buy':
@@ -3784,4 +3832,504 @@ export class BotIntegration {
     } else {
       await this.handleEarningsWithWallet(chatId, userId);
     }
-  }}
+  }
+
+  // Milestone Management Methods
+
+  /**
+   * Handle milestone commands
+   */
+  async handleMilestoneCommand(chatId: number, userId: string, command: string): Promise<void> {
+    try {
+      const commandParts = command.split(' ');
+      const baseCommand = commandParts[0].toLowerCase();
+
+      if (baseCommand === '/milestones') {
+        await this.showMilestoneList(chatId, userId);
+      } else if (baseCommand === '/milestone') {
+        if (commandParts.length > 1) {
+          const action = commandParts[1].toLowerCase();
+          if (action === 'submit') {
+            await this.showMilestoneSubmissionForm(chatId, userId);
+          } else {
+            await this.showMilestoneMenu(chatId, userId);
+          }
+        } else {
+          await this.showMilestoneMenu(chatId, userId);
+        }
+      } else if (baseCommand === '🎯 milestones') {
+        await this.showMilestoneMenu(chatId, userId);
+      }
+    } catch (error) {
+      console.error('[BotIntegration] Error handling milestone command:', error);
+      await this.bot.sendMessage(chatId, '❌ Error processing milestone command. Please try again.');
+    }
+  }
+
+  /**
+   * Show milestone menu with options
+   */
+  private async showMilestoneMenu(chatId: number, userId: string): Promise<void> {
+    try {
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: '📋 View My Milestones', callback_data: 'milestone_list' },
+            { text: '✅ Submit Milestone', callback_data: 'milestone_submit' }
+          ],
+          [
+            { text: '📊 Milestone Status', callback_data: 'milestone_status' },
+            { text: '🔔 Due Soon', callback_data: 'milestone_due_soon' }
+          ]
+        ]
+      };
+
+      const menuText = `🎯 **Milestone Management**
+
+Choose an action:
+
+📋 **View My Milestones** - See all your active milestones
+✅ **Submit Milestone** - Mark a milestone as completed
+📊 **Milestone Status** - Check status of your milestones
+🔔 **Due Soon** - See milestones approaching deadline
+
+You can also use:
+• \`/milestones\` - View all milestones
+• \`/milestone submit\` - Quick submit form`;
+
+      await this.bot.sendMessage(chatId, menuText, { 
+        parse_mode: 'Markdown',
+        reply_markup: keyboard 
+      });
+    } catch (error) {
+      console.error('[BotIntegration] Error showing milestone menu:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading milestone menu. Please try again.');
+    }
+  }
+
+  /**
+   * Show list of user's milestones
+   */
+  public async showMilestoneList(chatId: number, userId: string): Promise<void> {
+    try {
+      // Get user's milestones from database
+      const { data: milestones, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          status,
+          deadline,
+          started_at,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('project_contracts.freelancer_id', userId)
+        .order('deadline', { ascending: true });
+
+      if (error) {
+        console.error('[BotIntegration] Error fetching milestones:', error);
+        await this.bot.sendMessage(chatId, '❌ Error loading your milestones. Please try again.');
+        return;
+      }
+
+      if (!milestones || milestones.length === 0) {
+        await this.bot.sendMessage(chatId, '📋 **No Milestones Found**\n\nYou don\'t have any active milestones at the moment.\n\nMilestones will appear here when you have active contracts with milestone-based payments.');
+        return;
+      }
+
+      let message = '📋 **Your Milestones**\n\n';
+      
+      milestones.forEach((milestone, index) => {
+        const contract = Array.isArray(milestone.project_contracts) 
+          ? milestone.project_contracts[0] 
+          : milestone.project_contracts;
+        
+        const statusEmoji = this.getMilestoneStatusEmoji(milestone.status);
+        const deadlineDate = new Date(milestone.deadline).toLocaleDateString();
+        
+        message += `${index + 1}. **${milestone.title}** ${statusEmoji}\n`;
+        message += `   📁 Project: ${contract?.project_title || 'Unknown'}\n`;
+        message += `   💰 Amount: $${milestone.amount}\n`;
+        message += `   📅 Due: ${deadlineDate}\n`;
+        message += `   📊 Status: ${milestone.status.replace('_', ' ').toUpperCase()}\n\n`;
+      });
+
+      // Add action buttons for in-progress milestones
+      const inProgressMilestones = milestones.filter(m => m.status === 'in_progress');
+      
+      if (inProgressMilestones.length > 0) {
+        const keyboard = {
+          inline_keyboard: [
+            [{ text: '✅ Submit Milestone', callback_data: 'milestone_submit' }],
+            [{ text: '🔄 Refresh List', callback_data: 'milestone_list' }]
+          ]
+        };
+        
+        message += '\n💡 **Tip:** Click "Submit Milestone" when you\'ve completed work on any in-progress milestone.';
+        
+        await this.bot.sendMessage(chatId, message, { 
+          parse_mode: 'Markdown',
+          reply_markup: keyboard 
+        });
+      } else {
+        await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+      }
+
+    } catch (error) {
+      console.error('[BotIntegration] Error showing milestone list:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading milestone list. Please try again.');
+    }
+  }
+
+  /**
+   * Show milestone submission form
+   */
+  public async showMilestoneSubmissionForm(chatId: number, userId: string): Promise<void> {
+    try {
+      // Get user's in-progress milestones
+      const { data: milestones, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          deadline,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('project_contracts.freelancer_id', userId)
+        .eq('status', 'in_progress')
+        .order('deadline', { ascending: true });
+
+      if (error) {
+        console.error('[BotIntegration] Error fetching in-progress milestones:', error);
+        await this.bot.sendMessage(chatId, '❌ Error loading your milestones. Please try again.');
+        return;
+      }
+
+      if (!milestones || milestones.length === 0) {
+        await this.bot.sendMessage(chatId, '📋 **No In-Progress Milestones**\n\nYou don\'t have any milestones currently in progress.\n\nStart working on a milestone first, then you can submit it for review.');
+        return;
+      }
+
+      let message = '✅ **Submit Milestone Completion**\n\nSelect a milestone to submit:\n\n';
+      
+      const keyboard = {
+        inline_keyboard: milestones.map((milestone, index) => {
+          const contract = Array.isArray(milestone.project_contracts) 
+            ? milestone.project_contracts[0] 
+            : milestone.project_contracts;
+          
+          return [{
+            text: `${index + 1}. ${milestone.title} ($${milestone.amount})`,
+            callback_data: `milestone_submit_${milestone.id}`
+          }];
+        })
+      };
+
+      // Add cancel button
+      keyboard.inline_keyboard.push([{ text: '❌ Cancel', callback_data: 'milestone_menu' }]);
+
+      await this.bot.sendMessage(chatId, message, { 
+        parse_mode: 'Markdown',
+        reply_markup: keyboard 
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error showing milestone submission form:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading submission form. Please try again.');
+    }
+  }
+
+  /**
+   * Show milestones approaching deadline
+   */
+  private async showMilestonesApproachingDeadline(chatId: number, userId: string): Promise<void> {
+    try {
+      // Get milestones due within 7 days
+      const sevenDaysFromNow = new Date();
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+      
+      const { data: milestones, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          status,
+          deadline,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('project_contracts.freelancer_id', userId)
+        .in('status', ['pending', 'in_progress'])
+        .lte('deadline', sevenDaysFromNow.toISOString())
+        .order('deadline', { ascending: true });
+
+      if (error) {
+        console.error('[BotIntegration] Error fetching approaching milestones:', error);
+        await this.bot.sendMessage(chatId, '❌ Error loading milestones. Please try again.');
+        return;
+      }
+
+      if (!milestones || milestones.length === 0) {
+        await this.bot.sendMessage(chatId, '✅ **No Urgent Milestones**\n\nYou don\'t have any milestones due in the next 7 days.\n\nKeep up the great work! 🎉');
+        return;
+      }
+
+      let message = '🔔 **Milestones Due Soon**\n\n';
+      
+      milestones.forEach((milestone, index) => {
+        const contract = Array.isArray(milestone.project_contracts) 
+          ? milestone.project_contracts[0] 
+          : milestone.project_contracts;
+        
+        const deadlineDate = new Date(milestone.deadline);
+        const daysUntilDeadline = Math.ceil((deadlineDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+        const urgencyEmoji = daysUntilDeadline <= 1 ? '🚨' : daysUntilDeadline <= 3 ? '⚠️' : '📅';
+        
+        message += `${urgencyEmoji} **${milestone.title}**\n`;
+        message += `   📁 ${contract?.project_title || 'Unknown'}\n`;
+        message += `   💰 $${milestone.amount}\n`;
+        message += `   📅 Due in ${daysUntilDeadline} day${daysUntilDeadline !== 1 ? 's' : ''}\n`;
+        message += `   📊 ${milestone.status.replace('_', ' ').toUpperCase()}\n\n`;
+      });
+
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: '✅ Submit Milestone', callback_data: 'milestone_submit' }],
+          [{ text: '📋 View All Milestones', callback_data: 'milestone_list' }]
+        ]
+      };
+
+      await this.bot.sendMessage(chatId, message, { 
+        parse_mode: 'Markdown',
+        reply_markup: keyboard 
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error showing approaching milestones:', error);
+      await this.bot.sendMessage(chatId, '❌ Error loading approaching milestones. Please try again.');
+    }
+  }
+
+  /**
+   * Handle milestone submission
+   */
+  async handleMilestoneSubmission(chatId: number, userId: string, milestoneId: string): Promise<void> {
+    try {
+      // Get milestone details
+      const { data: milestone, error } = await supabase
+        .from('contract_milestones')
+        .select(`
+          id,
+          title,
+          description,
+          amount,
+          status,
+          contract_id,
+          project_contracts (
+            project_title,
+            client_email,
+            freelancer_id
+          )
+        `)
+        .eq('id', milestoneId)
+        .single();
+
+      if (error || !milestone) {
+        await this.bot.sendMessage(chatId, '❌ Milestone not found. Please try again.');
+        return;
+      }
+
+      if (milestone.status !== 'in_progress') {
+        await this.bot.sendMessage(chatId, `❌ This milestone is currently "${milestone.status}" and cannot be submitted.`);
+        return;
+      }
+
+      // Show submission confirmation template
+      const contract = Array.isArray(milestone.project_contracts) 
+        ? milestone.project_contracts[0] 
+        : milestone.project_contracts;
+
+      const confirmationMessage = `🎯 **Milestone Submission Confirmation**
+
+**Project:** ${contract?.project_title || 'Unknown'}
+**Milestone:** ${milestone.title}
+**Amount:** $${milestone.amount}
+**Description:** ${milestone.description || 'No description'}
+
+📝 **Please provide details about your completed work:**
+
+You can describe:
+• What you've delivered
+• Key features completed
+• Any notes for the client
+• Links to deliverables (if applicable)
+
+Type your completion notes below, or use the quick submit button:`;
+
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: '⚡ Quick Submit', callback_data: `milestone_quick_submit_${milestoneId}` }],
+          [{ text: '❌ Cancel', callback_data: 'milestone_submit' }]
+        ]
+      };
+
+      // Set user state to expect completion notes
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'awaiting_milestone_completion',
+          state_data: { milestone_id: milestoneId },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+
+      await this.bot.sendMessage(chatId, confirmationMessage, { 
+        parse_mode: 'Markdown',
+        reply_markup: keyboard 
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error handling milestone submission:', error);
+      await this.bot.sendMessage(chatId, '❌ Error processing milestone submission. Please try again.');
+    }
+  }
+
+  /**
+   * Handle quick milestone submission
+   */
+  async handleQuickMilestoneSubmit(chatId: number, userId: string, milestoneId: string): Promise<void> {
+    const defaultNotes = 'Work completed as requested. Ready for review.';
+    await this.processMilestoneCompletion(chatId, userId, milestoneId, defaultNotes);
+  }
+
+  /**
+   * Process milestone completion
+   */
+  async processMilestoneCompletion(chatId: number, userId: string, milestoneId: string, completionNotes: string): Promise<void> {
+    try {
+      // Submit milestone via API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/milestones/${milestoneId}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          deliverables: 'Submitted via Telegram',
+          completion_notes: completionNotes
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const successMessage = `✅ **Milestone Submitted Successfully!**
+
+Your milestone has been submitted for client review.
+
+📧 **Client Notified:** The client has been notified via email
+⏰ **Next Steps:** Wait for client approval or feedback
+💰 **Payment:** You'll receive payment once approved
+
+**Submitted Work:**
+${completionNotes}
+
+You'll be notified when the client responds!`;
+
+        await this.bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
+
+        // Clear user state
+        await supabase
+          .from('user_states')
+          .delete()
+          .eq('user_id', userId)
+          .eq('state_type', 'awaiting_milestone_completion');
+
+      } else {
+        await this.bot.sendMessage(chatId, `❌ **Submission Failed**\n\n${result.error || 'Unknown error occurred'}\n\nPlease try again.`);
+      }
+
+    } catch (error) {
+      console.error('[BotIntegration] Error processing milestone completion:', error);
+      await this.bot.sendMessage(chatId, '❌ Error submitting milestone. Please try again.');
+    }
+  }
+
+  /**
+   * Handle milestone start
+   */
+  async handleMilestoneStart(chatId: number, userId: string, milestoneId: string): Promise<void> {
+    try {
+      // Start milestone via API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/milestones/${milestoneId}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          freelancer_id: userId
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const successMessage = `🚀 **Milestone Started!**
+
+You've successfully started working on this milestone.
+
+**Next Steps:**
+• Work on the milestone deliverables
+• Submit for review when completed
+• Get paid once approved by client
+
+Good luck with your work! 💪`;
+
+        await this.bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
+      } else {
+        await this.bot.sendMessage(chatId, `❌ **Failed to Start Milestone**\n\n${result.error || 'Unknown error occurred'}\n\nPlease try again.`);
+      }
+
+    } catch (error) {
+      console.error('[BotIntegration] Error starting milestone:', error);
+      await this.bot.sendMessage(chatId, '❌ Error starting milestone. Please try again.');
+    }
+  }
+
+  /**
+   * Get emoji for milestone status
+   */
+  private getMilestoneStatusEmoji(status: string): string {
+    switch (status) {
+      case 'pending': return '⏳';
+      case 'in_progress': return '🔄';
+      case 'submitted': return '📤';
+      case 'completed': return '✅';
+      case 'approved': return '✅';
+      case 'changes_requested': return '🔄';
+      case 'paid': return '💰';
+      default: return '❓';
+    }
+  }
+}

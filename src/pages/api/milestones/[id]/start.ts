@@ -35,7 +35,7 @@ export default async function handler(
   }
 
   try {
-    // Get milestone details with contract info
+    // Get milestone details
     const { data: milestone, error: milestoneError } = await supabase
       .from('contract_milestones')
       .select(`
@@ -44,16 +44,7 @@ export default async function handler(
         description,
         amount,
         status,
-        contract_id,
-        project_contracts!contract_milestones_contract_id_fkey (
-          id,
-          project_title,
-          freelancer_id,
-          client_email,
-          client_name,
-          currency,
-          token_type
-        )
+        contract_id
       `)
       .eq('id', id)
       .single();
@@ -65,11 +56,21 @@ export default async function handler(
       });
     }
 
-    const contract = Array.isArray(milestone.project_contracts) 
-      ? milestone.project_contracts[0] 
-      : milestone.project_contracts;
+    // Get contract details separately
+    const { data: contract, error: contractError } = await supabase
+      .from('project_contracts')
+      .select(`
+        id,
+        project_title,
+        freelancer_id,
+        client_email,
+        currency,
+        token_type
+      `)
+      .eq('id', milestone.contract_id)
+      .single();
 
-    if (!contract) {
+    if (contractError || !contract) {
       return res.status(404).json({
         success: false,
         error: 'Contract not found'
@@ -106,7 +107,8 @@ export default async function handler(
       console.error('Error updating milestone status:', updateError);
       return res.status(500).json({
         success: false,
-        error: 'Failed to start milestone'
+        error: 'Failed to start milestone',
+        debug: updateError
       });
     }
 
