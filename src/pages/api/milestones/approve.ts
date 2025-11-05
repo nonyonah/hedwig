@@ -79,7 +79,6 @@ export default async function handler(
           freelancer_id,
           client_id,
           client_email,
-          client_name,
           currency,
           users!project_contracts_freelancer_id_fkey (
             id,
@@ -206,7 +205,7 @@ async function sendMilestoneApprovalNotifications(
 ) {
   const freelancerName = contract.users?.username || 'Freelancer';
   const freelancerEmail = contract.users?.email;
-  const clientName = contract.client_name || 'Client';
+  const clientName = 'Client';
 
   if (action === 'approve') {
     // Send approval notifications

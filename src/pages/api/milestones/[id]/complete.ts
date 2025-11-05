@@ -48,7 +48,6 @@ export default async function handler(
           title,
           freelancer_id,
           client_email,
-          client_name,
           currency,
           users!contracts_freelancer_id_fkey (
             email,
@@ -104,7 +103,7 @@ export default async function handler(
         freelancerId: contract?.freelancer_id,
         freelancerName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim(),
         freelancerEmail: user?.email,
-        clientName: contract?.client_name,
+        clientName: 'Client',
         clientEmail: contract?.client_email,
         amount: milestone.amount,
         currency: contract?.currency || 'USD',

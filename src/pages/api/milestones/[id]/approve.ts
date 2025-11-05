@@ -194,7 +194,7 @@ export default async function handler(
       try {
         await sendClientApprovalConfirmation(
           contract.client_email,
-          contract.client_name || 'Client',
+          'Client',
           milestone,
           contract,
           freelancerName

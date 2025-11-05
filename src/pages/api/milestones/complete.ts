@@ -72,7 +72,6 @@ export default async function handler(
           freelancer_id,
           client_id,
           client_email,
-          client_name,
           currency,
           users!project_contracts_freelancer_id_fkey (
             id,
@@ -169,7 +168,7 @@ export default async function handler(
 async function sendMilestoneCompletionNotifications(milestone: any, contract: any) {
   const freelancerName = contract.users?.username || 'Freelancer';
   const clientEmail = contract.client_email;
-  const clientName = contract.client_name || 'Client';
+  const clientName = 'Client';
 
   // Send email notification to client
   if (clientEmail) {

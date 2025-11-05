@@ -60,7 +60,6 @@ export default async function handler(
           project_title,
           freelancer_id,
           client_email,
-          client_name,
           currency,
           token_type
         )
@@ -166,7 +165,7 @@ export default async function handler(
       try {
         await sendClientChangeRequestConfirmation(
           contract.client_email,
-          contract.client_name || 'Client',
+          'Client',
           milestone,
           contract,
           freelancerName,
