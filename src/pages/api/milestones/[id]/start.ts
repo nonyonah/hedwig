@@ -107,8 +107,7 @@ export default async function handler(
       console.error('Error updating milestone status:', updateError);
       return res.status(500).json({
         success: false,
-        error: 'Failed to start milestone',
-        debug: updateError
+        error: 'Failed to start milestone'
       });
     }
 
