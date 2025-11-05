@@ -4008,6 +4008,7 @@ You can also use:
           description,
           amount,
           deadline,
+          status,
           contract_id,
           project_contracts (
             project_title,
