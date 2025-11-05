@@ -2702,6 +2702,12 @@ export class BotIntegration {
         return true;
       }
 
+      // Check if user is providing milestone completion notes
+      const milestoneCompletionHandled = await this.handleMilestoneCompletionNotes(chatId, userId, text);
+      if (milestoneCompletionHandled) {
+        return true;
+      }
+
       switch (text) {
         case '📄 Invoice':
           await this.invoiceModule.handleInvoiceCreation(chatId, userId);
@@ -4010,7 +4016,7 @@ You can also use:
           )
         `)
         .eq('project_contracts.freelancer_id', userId)
-        .eq('status', 'in_progress')
+        .in('status', ['pending', 'in_progress'])
         .order('deadline', { ascending: true });
 
       if (error) {
@@ -4020,11 +4026,11 @@ You can also use:
       }
 
       if (!milestones || milestones.length === 0) {
-        await this.bot.sendMessage(chatId, '📋 **No In-Progress Milestones**\n\nYou don\'t have any milestones currently in progress.\n\nStart working on a milestone first, then you can submit it for review.');
+        await this.bot.sendMessage(chatId, '📋 **No Available Milestones**\n\nYou don\'t have any milestones available for submission.\n\nAll your milestones are either completed or awaiting approval.');
         return;
       }
 
-      let message = '✅ **Submit Milestone Completion**\n\nSelect a milestone to submit:\n\n';
+      let message = '✅ **Submit Milestone Completion**\n\nSelect a milestone to submit (you can submit any pending or in-progress milestone):\n\n';
       
       const keyboard = {
         inline_keyboard: milestones.map((milestone, index) => {
@@ -4033,7 +4039,7 @@ You can also use:
             : milestone.project_contracts;
           
           return [{
-            text: `${index + 1}. ${milestone.title} ($${milestone.amount})`,
+            text: `${index + 1}. ${milestone.title} ($${milestone.amount}) - ${milestone.status}`,
             callback_data: `milestone_submit_${milestone.id}`
           }];
         })
@@ -4159,7 +4165,7 @@ You can also use:
         return;
       }
 
-      if (milestone.status !== 'in_progress') {
+      if (!['pending', 'in_progress'].includes(milestone.status)) {
         await this.bot.sendMessage(chatId, `❌ This milestone is currently "${milestone.status}" and cannot be submitted.`);
         return;
       }
@@ -4273,6 +4279,38 @@ You'll be notified when the client responds!`;
     } catch (error) {
       console.error('[BotIntegration] Error processing milestone completion:', error);
       await this.bot.sendMessage(chatId, '❌ Error submitting milestone. Please try again.');
+    }
+  }
+
+  /**
+   * Handle milestone completion notes input
+   */
+  async handleMilestoneCompletionNotes(chatId: number, userId: string, text: string): Promise<boolean> {
+    try {
+      // Check if user is in milestone completion state
+      const { data: userState } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_milestone_completion')
+        .single();
+
+      if (!userState) {
+        return false; // User is not in milestone completion state
+      }
+
+      const milestoneId = userState.state_data?.milestone_id;
+      if (!milestoneId) {
+        return false;
+      }
+
+      // Process the completion notes
+      await this.processMilestoneCompletion(chatId, userId, milestoneId, text);
+      return true;
+
+    } catch (error) {
+      console.error('[BotIntegration] Error handling milestone completion notes:', error);
+      return false;
     }
   }
 

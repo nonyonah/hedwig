@@ -115,7 +115,7 @@ export default async function handler(
       });
     }
 
-    // Find and update the corresponding invoice to 'sent' status
+    // Find and update the corresponding invoice to 'sent' status, or create one if it doesn't exist
     let invoice = null;
     const { data: invoices } = await supabase
       .from('invoices')
@@ -126,6 +126,7 @@ export default async function handler(
       .limit(1);
 
     if (invoices && invoices.length > 0) {
+      // Update existing draft invoice
       const { data: updatedInvoice, error: invoiceError } = await supabase
         .from('invoices')
         .update({
@@ -139,6 +140,44 @@ export default async function handler(
 
       if (!invoiceError) {
         invoice = updatedInvoice;
+      }
+    } else {
+      // Create new invoice for the approved milestone
+      const invoiceNumber = `INV-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Math.floor(Math.random() * 1000)}`;
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 30); // 30 days from now
+
+      const { data: newInvoice, error: createInvoiceError } = await supabase
+        .from('invoices')
+        .insert({
+          freelancer_name: 'Freelancer',
+          freelancer_email: '',
+          client_name: 'Client',
+          client_email: contract.client_email || '',
+          date_created: new Date().toISOString(),
+          project_description: `${contract.project_title} - ${milestone.title} (APPROVED)`,
+          amount: milestone.amount,
+          currency: contract.currency || 'USDC',
+          status: 'sent',
+          invoice_number: invoiceNumber,
+          due_date: dueDate.toISOString().split('T')[0],
+          additional_notes: `Milestone approved by client. ${approval_feedback || ''}`.trim(),
+          project_contract_id: contract.id,
+          user_id: contract.freelancer_id,
+          payment_methods: {
+            cusd_celo: false,
+            usdc_base: true
+          },
+          quantity: 1,
+          rate: milestone.amount
+        })
+        .select()
+        .single();
+
+      if (!createInvoiceError) {
+        invoice = newInvoice;
+      } else {
+        console.error('Error creating invoice for approved milestone:', createInvoiceError);
       }
     }
 
