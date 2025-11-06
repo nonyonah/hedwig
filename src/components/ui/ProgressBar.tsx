@@ -293,13 +293,26 @@ export const MilestoneProgress: React.FC<MilestoneProgressProps> = ({
                       disabled={actionLoading === milestone.id}
                       className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
                     >
-                      {actionLoading === milestone.id ? 'Approving...' : '✅ Approve & Pay'}
+                      {actionLoading === milestone.id ? 'Approving...' : '✅ Approve'}
                     </button>
                     <button
                       onClick={() => setShowFeedbackForm(milestone.id)}
                       className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
                     >
                       🔄 Request Changes
+                    </button>
+                  </div>
+                )}
+
+                {/* Payment button for approved milestones */}
+                {isClient && milestone.status === 'approved' && (
+                  <div className="ml-8 flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => handleMilestoneAction(milestone.id, 'initiate_payment')}
+                      disabled={actionLoading === milestone.id}
+                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {actionLoading === milestone.id ? 'Processing...' : '💰 Pay Now'}
                     </button>
                   </div>
                 )}

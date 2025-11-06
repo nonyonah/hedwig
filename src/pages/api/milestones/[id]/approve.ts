@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { sendSimpleEmail } from '../../../../lib/emailService';
+import { autoGenerateInvoiceOnApproval } from '../../../../services/invoiceAutoGenerationService';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -95,11 +96,11 @@ export default async function handler(
       });
     }
 
-    // Update milestone status to completed (approved)
+    // Update milestone status to approved
     const { data: updatedMilestone, error: updateError } = await supabase
       .from('contract_milestones')
       .update({
-        status: 'completed',
+        status: 'approved',
         approval_feedback: approval_feedback || 'Approved by client',
         approved_at: new Date().toISOString()
       })
@@ -113,6 +114,13 @@ export default async function handler(
         success: false,
         error: 'Failed to approve milestone'
       });
+    }
+
+    // Auto-generate invoice for the approved milestone
+    const invoiceResult = await autoGenerateInvoiceOnApproval(id, milestone.contract_id);
+    if (!invoiceResult.success) {
+      console.error('Warning: Failed to auto-generate invoice:', invoiceResult.error);
+      // Continue with approval process even if invoice generation fails
     }
 
     // Find and update the corresponding invoice to 'sent' status, or create one if it doesn't exist
@@ -236,7 +244,8 @@ export default async function handler(
           'Client',
           milestone,
           contract,
-          freelancerName
+          freelancerName,
+          invoice
         );
       } catch (emailError) {
         console.error('Failed to send client confirmation:', emailError);
@@ -341,7 +350,7 @@ async function sendMilestoneApprovalNotification(
             </ul>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/invoices/${invoice.id}" class="button">💰 View Invoice</a>
+              <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/invoice/${invoice.id}?contract=${contract.id}&milestone=${milestone.id}" class="button">💰 Pay Now</a>
             </div>
           ` : ''}
           
@@ -417,7 +426,8 @@ async function sendClientApprovalConfirmation(
   name: string,
   milestone: any,
   contract: any,
-  freelancerName: string
+  freelancerName: string,
+  invoice: any = null
 ) {
   const currency = contract.currency || contract.token_type || 'USDC';
   
@@ -466,8 +476,14 @@ async function sendClientApprovalConfirmation(
           </ul>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/contracts/${contract.id}" class="button">💰 Process Payment</a>
+            <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/contracts/${contract.id}" class="button">📋 View Contract</a>
           </div>
+          
+          ${invoice ? `
+            <div style="text-align: center; margin: 20px 0;">
+              <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/invoice/${invoice.id}?contract=${contract.id}&milestone=${milestone.id}" class="button" style="background: #10b981;">💰 Pay Now</a>
+            </div>
+          ` : ''}
           
           <h3>🚀 Next Steps</h3>
           <ol>

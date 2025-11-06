@@ -128,6 +128,79 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     }
   };
 
+  const handleMilestoneAction = async (milestoneId: string, action: string, data?: any) => {
+    setIsProcessing(true);
+    
+    try {
+      let response;
+      
+      switch (action) {
+        case 'start':
+          response = await fetch(`/api/milestones/${milestoneId}/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          break;
+          
+        case 'submit':
+          response = await fetch(`/api/milestones/${milestoneId}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          break;
+          
+        case 'approve':
+          response = await fetch(`/api/milestones/${milestoneId}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          break;
+          
+        case 'request_changes':
+          response = await fetch(`/api/milestones/${milestoneId}/request-changes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          break;
+          
+        case 'initiate_payment':
+          response = await fetch(`/api/milestones/${milestoneId}/initiate-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.redirectUrl) {
+              // Redirect to invoice page for payment
+              window.location.href = result.redirectUrl;
+              return;
+            }
+          }
+          break;
+          
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+
+      if (response && response.ok) {
+        // Reload the page to show updated milestone status
+        router.reload();
+      } else {
+        const errorData = await response?.json();
+        throw new Error(errorData?.error || 'Action failed');
+      }
+    } catch (error) {
+      console.error(`Failed to ${action} milestone:`, error);
+      alert(`Failed to ${action} milestone. Please try again.`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (error || !contract) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -524,6 +597,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               contractId={contract.id}
               isFreelancer={isFreelancer}
               isClient={isClient}
+              onMilestoneAction={handleMilestoneAction}
             />
           </div>
         )}

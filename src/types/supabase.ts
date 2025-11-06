@@ -65,9 +65,43 @@ export type User = {
     description?: string;
     amount: number;
     deadline?: string;
-    status: 'pending' | 'completed' | 'approved' | 'disputed';
+    status: 'pending' | 'in_progress' | 'completed' | 'approved';
     completed_at?: string;
     approved_at?: string;
+    // Payment tracking fields
+    payment_status: 'unpaid' | 'paid' | 'processing' | 'failed';
+    paid_at?: string;
+    transaction_hash?: string;
+    payment_amount?: number;
+    invoice_id?: string;
     created_at: string;
     updated_at: string;
+  };
+
+  // Payment-related types for milestone payment enhancement
+  export type PaymentRequest = {
+    milestoneIds: string[];
+    contractId: string;
+    totalAmount: number;
+    currency: string;
+    paymentType: 'single' | 'bulk';
+  };
+
+  export type PaymentResponse = {
+    success: boolean;
+    invoiceIds: string[];
+    redirectUrl?: string;
+    error?: string;
+    paymentSummary?: {
+      totalAmount: number;
+      currency: string;
+      milestoneCount: number;
+    };
+  };
+
+  export type PaymentError = {
+    type: 'invoice_generation_failed' | 'wallet_not_connected' | 'insufficient_funds' | 'network_error' | 'milestone_not_approved' | 'already_paid';
+    message: string;
+    retryable: boolean;
+    suggestedAction?: string;
   };
