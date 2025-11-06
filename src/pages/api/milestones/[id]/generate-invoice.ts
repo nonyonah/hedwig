@@ -110,7 +110,7 @@ export default async function handler(
     // Generate new invoice with retry logic
     const maxRetries = 3;
     let retryCount = 0;
-    let invoice = null;
+    let invoice: any = null;
 
     while (retryCount < maxRetries && !invoice) {
       try {
@@ -159,17 +159,19 @@ export default async function handler(
         invoice = newInvoice;
 
         // Update milestone with invoice_id
-        const { error: updateError } = await supabase
-          .from('contract_milestones')
-          .update({ 
-            invoice_id: invoice.id,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', milestone.id);
+        if (invoice) {
+          const { error: updateError } = await supabase
+            .from('contract_milestones')
+            .update({ 
+              invoice_id: invoice.id,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', milestone.id);
 
-        if (updateError) {
-          console.error('Warning: Failed to update milestone with invoice_id:', updateError);
-          // Continue anyway as invoice is created
+          if (updateError) {
+            console.error('Warning: Failed to update milestone with invoice_id:', updateError);
+            // Continue anyway as invoice is created
+          }
         }
 
         break; // Success, exit retry loop
