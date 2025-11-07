@@ -13,7 +13,17 @@ interface Milestone {
   description: string;
   amount: number;
   deadline: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'approved';
+  due_date?: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'submitted' | 'approved';
+  payment_status?: 'unpaid' | 'paid' | 'processing' | 'failed';
+  paid_at?: string;
+  deliverables?: string;
+  completion_notes?: string;
+  changes_requested?: string;
+  client_feedback?: string;
+  started_at?: string;
+  completed_at?: string;
+  approved_at?: string;
 }
 
 interface LegalContract {
@@ -68,8 +78,13 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
     if (contract?.milestones) {
       const nextMilestone = contract.milestones.find(m => m.status === 'pending' || m.status === 'in_progress');
       setCurrentMilestone(nextMilestone || null);
+      
+      // Debug logging
+      console.log('[Contract Page] Milestones loaded:', contract.milestones);
+      console.log('[Contract Page] Freelancer wallet:', contract.freelancer_wallet);
+      console.log('[Contract Page] Connected address:', address);
     }
-  }, [contract]);
+  }, [contract, address]);
 
 
 
@@ -293,8 +308,13 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
 
 
 
-  const isFreelancer = address?.toLowerCase() === contract.legal_contract?.freelancer_email?.toLowerCase();
-  const isClient = address?.toLowerCase() === contract.legal_contract?.client_email?.toLowerCase();
+  // Check if connected wallet is the freelancer's wallet
+  const isFreelancer = address && contract.freelancer_wallet 
+    ? address.toLowerCase() === contract.freelancer_wallet.toLowerCase()
+    : false;
+  
+  // Check if connected wallet is the client's wallet (not the freelancer)
+  const isClient = address && !isFreelancer ? true : false;
 
   const handleDownloadPDF = async () => {
     setIsGeneratingPDF(true);
@@ -412,6 +432,10 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               <h1 className="text-xl font-semibold text-gray-900">Contract Details</h1>
             </div>
             <div className="flex items-center gap-3">
+              {!isConnected && (
+                <AppKitButton />
+              )}
+              
               <button
                 onClick={handleDownloadPDF}
                 disabled={isGeneratingPDF}
@@ -656,6 +680,10 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
           ) : contract.status === 'deployment_pending' ? (
             <div className="flex-1 bg-orange-50 border border-orange-200 text-orange-800 py-3 px-6 rounded-lg text-center font-medium">
               ⏳ Contract Approved - Invoice Generation Pending
+            </div>
+          ) : contract.status === 'completed' ? (
+            <div className="flex-1 bg-blue-50 border border-blue-200 text-blue-800 py-3 px-6 rounded-lg text-center font-medium">
+              🎉 Contract Completed - All Milestones Paid
             </div>
           ) : contract.status === 'approved' || contract.status === 'active' ? (
             <div className="flex-1 bg-green-50 border border-green-200 text-green-800 py-3 px-6 rounded-lg text-center font-medium">

@@ -104,6 +104,39 @@ export default async function handler(
       });
     }
 
+    // Update milestone payment status if this invoice is linked to a milestone
+    if (invoice.contract_id) {
+      console.log('[Mark Paid] Invoice paid, checking for linked milestone');
+      
+      // Check if this is a milestone invoice by looking at the title
+      const { data: milestones } = await supabase
+        .from('contract_milestones')
+        .select('id, title, payment_status')
+        .eq('contract_id', invoice.contract_id)
+        .eq('status', 'approved')
+        .in('payment_status', ['unpaid', 'processing']);
+      
+      if (milestones && milestones.length > 0) {
+        const invoiceTitle = invoice.title || '';
+        const matchedMilestone = milestones.find(m => 
+          invoiceTitle.toLowerCase().includes(m.title.toLowerCase())
+        );
+        
+        if (matchedMilestone) {
+          console.log('[Mark Paid] Updating milestone payment status:', matchedMilestone.id);
+          
+          await supabase
+            .from('contract_milestones')
+            .update({
+              payment_status: 'paid',
+              paid_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', matchedMilestone.id);
+        }
+      }
+    }
+
     // Send notifications
     try {
       const contract = Array.isArray(invoice.contracts) ? invoice.contracts[0] : invoice.contracts;

@@ -113,6 +113,80 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
+    // Update milestone payment status if this invoice is linked to a milestone
+    if (status === 'paid' && data[0].project_contract_id) {
+      console.log('[Invoice Status] Invoice paid, updating milestone payment status');
+      
+      let matchedMilestone = null;
+      
+      // Method 1: Try to find milestone by invoice_id (if column exists)
+      try {
+        const { data: milestoneByInvoiceId } = await supabase
+          .from('contract_milestones')
+          .select('id, title, payment_status')
+          .eq('invoice_id', id)
+          .eq('status', 'approved')
+          .in('payment_status', ['unpaid', 'processing'])
+          .maybeSingle();
+        
+        if (milestoneByInvoiceId) {
+          matchedMilestone = milestoneByInvoiceId;
+          console.log('[Invoice Status] Found milestone by invoice_id:', matchedMilestone.id);
+        }
+      } catch (error) {
+        console.log('[Invoice Status] invoice_id column may not exist, trying alternative method');
+      }
+      
+      // Method 2: If not found, match by contract_id and invoice description
+      if (!matchedMilestone) {
+        const { data: milestones } = await supabase
+          .from('contract_milestones')
+          .select('id, title, payment_status')
+          .eq('contract_id', data[0].project_contract_id)
+          .eq('status', 'approved')
+          .in('payment_status', ['unpaid', 'processing']);
+        
+        if (milestones && milestones.length > 0) {
+          // Match milestone by checking if invoice description contains milestone title
+          const invoiceDescription = data[0].project_description || '';
+          matchedMilestone = milestones.find(m => 
+            invoiceDescription.toLowerCase().includes(m.title.toLowerCase())
+          );
+          
+          if (matchedMilestone) {
+            console.log('[Invoice Status] Found milestone by description match:', matchedMilestone.id);
+          }
+        }
+      }
+      
+      // Update the matched milestone
+      if (matchedMilestone) {
+        console.log('[Invoice Status] Updating milestone payment status:', {
+          milestone_id: matchedMilestone.id,
+          milestone_title: matchedMilestone.title,
+          old_status: matchedMilestone.payment_status,
+          new_status: 'paid'
+        });
+        
+        const { error: updateMilestoneError } = await supabase
+          .from('contract_milestones')
+          .update({
+            payment_status: 'paid',
+            paid_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', matchedMilestone.id);
+        
+        if (updateMilestoneError) {
+          console.error('[Invoice Status] Error updating milestone:', updateMilestoneError);
+        } else {
+          console.log('[Invoice Status] Milestone payment status updated successfully');
+        }
+      } else {
+        console.log('[Invoice Status] No matching milestone found for this invoice');
+      }
+    }
+
     // Send Telegram notification if status is paid and transactionHash is provided
     if (status === 'paid' && transactionHash) {
       try {

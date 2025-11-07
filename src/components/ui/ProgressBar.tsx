@@ -55,7 +55,9 @@ interface MilestoneProgressProps {
     amount: number;
     deadline: string;
     due_date?: string;
-    status: 'pending' | 'in_progress' | 'completed' | 'approved';
+    status: 'pending' | 'in_progress' | 'completed' | 'submitted' | 'approved';
+    payment_status?: 'unpaid' | 'paid' | 'processing' | 'failed';
+    paid_at?: string;
     deliverables?: string;
     completion_notes?: string;
     changes_requested?: string;
@@ -87,19 +89,29 @@ export const MilestoneProgress: React.FC<MilestoneProgressProps> = ({
   const [showFeedbackForm, setShowFeedbackForm] = React.useState<string | null>(null);
   const [feedbackData, setFeedbackData] = React.useState({ changes_requested: '', client_feedback: '' });
 
-  const completedMilestones = milestones.filter(m => m.status === 'completed' || m.status === 'approved').length;
+  const completedMilestones = milestones.filter(m => 
+    m.status === 'completed' || m.status === 'submitted' || m.status === 'approved'
+  ).length;
   const approvedMilestones = milestones.filter(m => m.status === 'approved').length;
+  const submittedMilestones = milestones.filter(m => 
+    m.status === 'completed' || m.status === 'submitted'
+  ).length;
   const inProgressMilestones = milestones.filter(m => m.status === 'in_progress').length;
   const totalMilestones = milestones.length;
   
+  // Completion percentage based on approved milestones only
   const completionPercentage = totalMilestones > 0 ? (approvedMilestones / totalMilestones) * 100 : 0;
-  const progressPercentage = totalMilestones > 0 ? ((approvedMilestones + inProgressMilestones * 0.5) / totalMilestones) * 100 : 0;
+  
+  // Progress percentage includes approved (100%), submitted/completed (80%), and in-progress (50%)
+  const progressPercentage = totalMilestones > 0 ? 
+    ((approvedMilestones + submittedMilestones * 0.8 + inProgressMilestones * 0.5) / totalMilestones) * 100 : 0;
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
         return 'text-green-600 bg-green-100';
       case 'completed':
+      case 'submitted':
         return 'text-blue-600 bg-blue-100';
       case 'in_progress':
         return 'text-yellow-600 bg-yellow-100';
@@ -113,6 +125,7 @@ export const MilestoneProgress: React.FC<MilestoneProgressProps> = ({
       case 'approved':
         return '✅';
       case 'completed':
+      case 'submitted':
         return '📋';
       case 'in_progress':
         return '🔄';
@@ -285,35 +298,44 @@ export const MilestoneProgress: React.FC<MilestoneProgressProps> = ({
                   </div>
                 )}
 
-                {/* Action buttons for client */}
-                {isClient && milestone.status === 'completed' && (
+                {/* Action buttons for client - Completed/Submitted milestones (not yet approved) */}
+                {isClient && (milestone.status === 'completed' || milestone.status === 'submitted') && (
                   <div className="ml-8 flex gap-2 flex-wrap">
                     <button
                       onClick={() => handleMilestoneAction(milestone.id, 'approve')}
                       disabled={actionLoading === milestone.id}
                       className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
                     >
-                      {actionLoading === milestone.id ? 'Approving...' : '✅ Approve'}
+                      {actionLoading === milestone.id ? 'Approving...' : '✅ Approve Milestone'}
                     </button>
                     <button
                       onClick={() => setShowFeedbackForm(milestone.id)}
-                      className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
+                      className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"
                     >
-                      🔄 Request Changes
+                      💬 Send Feedback
                     </button>
                   </div>
                 )}
 
-                {/* Payment button for approved milestones */}
-                {isClient && milestone.status === 'approved' && (
+                {/* Payment button for approved milestones (not yet paid) */}
+                {isClient && milestone.status === 'approved' && (!milestone.payment_status || milestone.payment_status === 'unpaid' || milestone.payment_status === 'processing') && (
                   <div className="ml-8 flex gap-2 flex-wrap">
                     <button
                       onClick={() => handleMilestoneAction(milestone.id, 'initiate_payment')}
                       disabled={actionLoading === milestone.id}
                       className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {actionLoading === milestone.id ? 'Processing...' : '💰 Pay Now'}
+                      {actionLoading === milestone.id ? 'Processing...' : '💰 Generate Invoice & Pay'}
                     </button>
+                  </div>
+                )}
+                
+                {/* Show paid status */}
+                {isClient && milestone.status === 'approved' && milestone.payment_status === 'paid' && (
+                  <div className="ml-8 flex gap-2 flex-wrap">
+                    <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded font-medium">
+                      ✅ Paid on {milestone.paid_at ? new Date(milestone.paid_at).toLocaleDateString() : 'N/A'}
+                    </span>
                   </div>
                 )}
 
@@ -368,28 +390,28 @@ export const MilestoneProgress: React.FC<MilestoneProgressProps> = ({
                 {/* Feedback form */}
                 {showFeedbackForm === milestone.id && (
                   <div className="ml-8 mt-3 p-4 bg-gray-50 rounded border">
-                    <h5 className="font-medium text-gray-900 mb-3">Request Changes</h5>
+                    <h5 className="font-medium text-gray-900 mb-3">Send Feedback to Freelancer</h5>
                     <div className="space-y-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Changes Requested *
+                          Feedback / Changes Requested
                         </label>
                         <textarea
                           value={feedbackData.changes_requested}
                           onChange={(e) => setFeedbackData(prev => ({ ...prev, changes_requested: e.target.value }))}
-                          placeholder="Describe what changes are needed"
+                          placeholder="Provide feedback or describe what changes are needed"
                           className="w-full p-2 border border-gray-300 rounded text-sm"
                           rows={3}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Additional Feedback
+                          Additional Notes
                         </label>
                         <textarea
                           value={feedbackData.client_feedback}
                           onChange={(e) => setFeedbackData(prev => ({ ...prev, client_feedback: e.target.value }))}
-                          placeholder="Any additional feedback or context"
+                          placeholder="Any additional context or suggestions"
                           className="w-full p-2 border border-gray-300 rounded text-sm"
                           rows={2}
                         />
@@ -398,9 +420,9 @@ export const MilestoneProgress: React.FC<MilestoneProgressProps> = ({
                         <button
                           onClick={() => handleRequestChanges(milestone.id)}
                           disabled={actionLoading === milestone.id}
-                          className="px-4 py-2 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700 disabled:opacity-50"
+                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
                         >
-                          {actionLoading === milestone.id ? 'Sending...' : 'Request Changes'}
+                          {actionLoading === milestone.id ? 'Sending...' : 'Send Feedback'}
                         </button>
                         <button
                           onClick={() => setShowFeedbackForm(null)}

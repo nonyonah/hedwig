@@ -30,15 +30,16 @@ END;
 UPDATE contract_milestones 
 SET status = CASE 
   WHEN status = 'paid' THEN 'approved'
-  WHEN status = 'completed' THEN 'approved'
-  WHEN status NOT IN ('pending', 'in_progress', 'completed', 'approved') THEN 'pending'
+  WHEN status = 'completed' THEN 'completed'
+  WHEN status = 'submitted' THEN 'submitted'
+  WHEN status NOT IN ('pending', 'in_progress', 'completed', 'submitted', 'approved') THEN 'pending'
   ELSE status
 END;
 
--- Add the new constraint with the updated valid values
+-- Add the new constraint with the updated valid values (including 'submitted')
 ALTER TABLE contract_milestones 
 ADD CONSTRAINT contract_milestones_status_check 
-CHECK (status IN ('pending', 'in_progress', 'completed', 'approved'));
+CHECK (status IN ('pending', 'in_progress', 'completed', 'submitted', 'approved'));
 
 -- Add indexes for payment tracking queries
 CREATE INDEX IF NOT EXISTS idx_contract_milestones_payment_status 

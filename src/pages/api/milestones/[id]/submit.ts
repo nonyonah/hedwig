@@ -261,15 +261,14 @@ async function sendMilestoneCompletionNotificationToClient(
           </div>
           
           <div class="action-buttons">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/contracts/${contract.id}?action=approve&milestone=${milestone.id}" class="approve-btn">✅ Approve & Pay</a>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/contracts/${contract.id}?action=request_changes&milestone=${milestone.id}" class="changes-btn">🔄 Request Changes</a>
+            <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://hedwigbot.xyz'}/contracts/${contract.id}" class="approve-btn">📋 Continue to Contract</a>
           </div>
           
           <h3>🚀 Next Steps</h3>
           <ol>
             <li><strong>Review the deliverables</strong> - Check if the work meets your requirements</li>
-            <li><strong>Approve or request changes</strong> - Use the buttons above to take action</li>
-            <li><strong>Payment processing</strong> - Once approved, payment will be processed automatically</li>
+            <li><strong>Take action on the contract page</strong> - Approve, send feedback, or generate invoice for payment</li>
+            <li><strong>Payment</strong> - Generate invoice and pay once you're satisfied with the work</li>
           </ol>
           
           <p><strong>Important:</strong> Please review and respond within 7 days to keep the project on track.</p>

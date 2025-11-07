@@ -209,6 +209,9 @@ export default async function handler(
     // Update contract amount_paid if payment completed
     if (status === 'paid') {
       await updateContractPaidAmount(contract.id);
+      
+      // Check if all milestones are paid and mark contract as completed
+      await checkAndCompleteContract(contract.id);
     }
 
     return res.status(200).json({
@@ -282,6 +285,217 @@ async function updateContractPaidAmount(contractId: string) {
     }
   } catch (error) {
     console.error('Error updating contract paid amount:', error);
+  }
+}
+
+/**
+ * Checks if all milestones are paid and marks contract as completed
+ */
+async function checkAndCompleteContract(contractId: string) {
+  try {
+    // Get all milestones for the contract
+    const { data: allMilestones } = await supabase
+      .from('contract_milestones')
+      .select('id, status, payment_status')
+      .eq('contract_id', contractId);
+
+    if (!allMilestones || allMilestones.length === 0) {
+      return;
+    }
+
+    // Check if all milestones are approved and paid
+    const allPaid = allMilestones.every(m => 
+      m.status === 'approved' && m.payment_status === 'paid'
+    );
+
+    if (allPaid) {
+      // Update contract status to completed
+      await supabase
+        .from('contracts')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', contractId);
+
+      // Get contract details for notifications
+      const { data: contract } = await supabase
+        .from('contracts')
+        .select('id, title, client_id, freelancer_id, total_amount, token_type')
+        .eq('id', contractId)
+        .single();
+
+      if (contract) {
+        // Send completion notifications
+        await sendContractCompletionNotifications(contract);
+      }
+    }
+  } catch (error) {
+    console.error('Error checking contract completion:', error);
+  }
+}
+
+/**
+ * Sends completion notifications to both client and freelancer
+ */
+async function sendContractCompletionNotifications(contract: any) {
+  try {
+    // Get client and freelancer details
+    const { data: client } = await supabase
+      .from('auth.users')
+      .select('email, raw_user_meta_data')
+      .eq('id', contract.client_id)
+      .single();
+
+    const { data: freelancer } = await supabase
+      .from('auth.users')
+      .select('email, raw_user_meta_data, telegram_chat_id')
+      .eq('id', contract.freelancer_id)
+      .single();
+
+    const clientEmail = client?.email;
+    const freelancerEmail = freelancer?.email;
+    const freelancerTelegram = freelancer?.raw_user_meta_data?.telegram_chat_id;
+    const clientName = client?.raw_user_meta_data?.name || 'Client';
+    const freelancerName = freelancer?.raw_user_meta_data?.name || 'Freelancer';
+
+    // Send email to client
+    if (clientEmail) {
+      await sendContractCompletionEmail(
+        clientEmail,
+        clientName,
+        contract,
+        'client',
+        freelancerName
+      );
+    }
+
+    // Send email to freelancer
+    if (freelancerEmail) {
+      await sendContractCompletionEmail(
+        freelancerEmail,
+        freelancerName,
+        contract,
+        'freelancer',
+        clientName
+      );
+    }
+
+    // Send Telegram notification to freelancer
+    if (freelancerTelegram) {
+      await sendContractCompletionTelegram(
+        freelancerTelegram,
+        contract,
+        clientName
+      );
+    }
+  } catch (error) {
+    console.error('Error sending contract completion notifications:', error);
+  }
+}
+
+async function sendContractCompletionEmail(
+  email: string,
+  name: string,
+  contract: any,
+  userType: 'client' | 'freelancer',
+  otherPartyName: string
+) {
+  const subject = `🎉 Contract Completed: ${contract.title}`;
+  const currency = contract.token_type || 'USDC';
+
+  const emailTemplate = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>${subject}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; }
+        .amount { font-size: 24px; font-weight: bold; color: #10b981; }
+        .success { background: #f0fdf4; border: 1px solid #10b981; padding: 20px; border-radius: 5px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div style="font-size: 48px; margin-bottom: 20px;">🎉</div>
+          <h1>Contract Completed!</h1>
+          <p>All milestones have been completed and paid</p>
+        </div>
+        
+        <div class="content">
+          <p>Hello <strong>${name}</strong>,</p>
+          
+          <div class="success">
+            <strong>🎉 Congratulations!</strong><br>
+            The contract "${contract.title}" has been successfully completed. All milestones have been delivered and paid.
+          </div>
+          
+          <h3>📋 Contract Summary</h3>
+          <ul>
+            <li><strong>Project:</strong> ${contract.title}</li>
+            <li><strong>${userType === 'client' ? 'Freelancer' : 'Client'}:</strong> ${otherPartyName}</li>
+            <li><strong>Total Amount:</strong> <span class="amount">${contract.total_amount} ${currency}</span></li>
+            <li><strong>Status:</strong> ✅ Completed</li>
+          </ul>
+          
+          ${userType === 'client' ? `
+            <h3>🙏 Thank You</h3>
+            <p>Thank you for using Hedwig for your project. We hope you had a great experience working with ${otherPartyName}.</p>
+            <p>If you have another project, feel free to create a new contract anytime!</p>
+          ` : `
+            <h3>🎊 Well Done!</h3>
+            <p>Congratulations on completing this project! All payments have been processed and the contract is now closed.</p>
+            <p>We hope you enjoyed working with ${otherPartyName}. Looking forward to your next project!</p>
+          `}
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await sendSimpleEmail(email, subject, emailTemplate);
+}
+
+async function sendContractCompletionTelegram(
+  telegramChatId: string,
+  contract: any,
+  clientName: string
+) {
+  const currency = contract.token_type || 'USDC';
+  
+  const message = `🎉 *Contract Completed!*
+
+Congratulations! Your contract has been successfully completed!
+
+📋 *Project:* "${contract.title}"
+👤 *Client:* ${clientName}
+💰 *Total Amount:* ${contract.total_amount} ${currency}
+✅ *Status:* Completed
+
+All milestones have been delivered and paid. The contract is now closed.
+
+Well done! 🎊`;
+
+  const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      chat_id: telegramChatId,
+      text: message,
+      parse_mode: 'Markdown'
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Telegram API error: ${response.statusText}`);
   }
 }
 

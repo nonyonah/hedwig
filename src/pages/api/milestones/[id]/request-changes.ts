@@ -43,6 +43,9 @@ export default async function handler(
   }
 
   try {
+    console.log('[Request Changes] Starting feedback request for milestone:', id);
+    console.log('[Request Changes] Feedback data:', { changes_requested, client_feedback });
+    
     // Get milestone details with contract info
     const { data: milestone, error: milestoneError } = await supabase
       .from('contract_milestones')
@@ -68,11 +71,18 @@ export default async function handler(
       .single();
 
     if (milestoneError || !milestone) {
+      console.error('[Request Changes] Milestone not found:', milestoneError);
       return res.status(404).json({
         success: false,
         error: 'Milestone not found'
       });
     }
+
+    console.log('[Request Changes] Milestone found:', {
+      id: milestone.id,
+      title: milestone.title,
+      status: milestone.status
+    });
 
     const contract = Array.isArray(milestone.project_contracts) 
       ? milestone.project_contracts[0] 
@@ -85,10 +95,10 @@ export default async function handler(
       });
     }
 
-    if (milestone.status !== 'completed') {
+    if (milestone.status !== 'completed' && milestone.status !== 'submitted') {
       return res.status(400).json({
         success: false,
-        error: 'Can only request changes for completed milestones'
+        error: 'Can only request changes for completed or submitted milestones (not yet approved)'
       });
     }
 
@@ -137,6 +147,7 @@ export default async function handler(
     // Send change request notification to freelancer
     if (freelancerEmail) {
       try {
+        console.log('[Request Changes] Sending email notification to:', freelancerEmail);
         await sendChangeRequestNotification(
           freelancerEmail,
           freelancerName,
@@ -148,16 +159,20 @@ export default async function handler(
 
         // Send Telegram notification if available
         if (telegramChatId) {
+          console.log('[Request Changes] Sending Telegram notification to:', telegramChatId);
           await sendChangeRequestTelegram(
             telegramChatId,
             milestone,
             contract,
             changes_requested
           );
+          console.log('[Request Changes] Telegram notification sent successfully');
         }
       } catch (emailError) {
         console.error('Failed to send freelancer notification:', emailError);
       }
+    } else {
+      console.warn('[Request Changes] No freelancer email found, skipping notifications');
     }
 
     // Send confirmation to client
@@ -303,6 +318,12 @@ async function sendChangeRequestTelegram(
   changesRequested: string
 ) {
   const currency = contract.currency || contract.token_type || 'USDC';
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  
+  if (!botToken) {
+    console.error('[Telegram] TELEGRAM_BOT_TOKEN not configured');
+    throw new Error('Telegram bot token not configured');
+  }
   
   const message = `🔄 *Changes Requested*
 
@@ -326,7 +347,10 @@ ${changesRequested}
 
 Don't worry - change requests help ensure quality! 💪`;
 
-  const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  console.log('[Telegram] Sending message to chat_id:', telegramChatId);
+  console.log('[Telegram] Message preview:', message.substring(0, 100) + '...');
+
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -339,9 +363,14 @@ Don't worry - change requests help ensure quality! 💪`;
     })
   });
 
+  const responseData = await response.json();
+  
   if (!response.ok) {
-    throw new Error(`Telegram API error: ${response.statusText}`);
+    console.error('[Telegram] API error response:', responseData);
+    throw new Error(`Telegram API error: ${response.statusText} - ${JSON.stringify(responseData)}`);
   }
+  
+  console.log('[Telegram] Message sent successfully:', responseData);
 }
 
 async function sendClientChangeRequestConfirmation(

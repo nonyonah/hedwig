@@ -65,7 +65,7 @@ export type User = {
     description?: string;
     amount: number;
     deadline?: string;
-    status: 'pending' | 'in_progress' | 'completed' | 'approved';
+    status: 'pending' | 'in_progress' | 'completed' | 'submitted' | 'approved';
     completed_at?: string;
     approved_at?: string;
     // Payment tracking fields
