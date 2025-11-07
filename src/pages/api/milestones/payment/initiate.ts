@@ -124,7 +124,7 @@ export default async function handler(
     const createdInvoices: any[] = [];
 
     for (const milestone of milestones) {
-      let invoice = null;
+      let invoice: any = null;
 
       // Check if invoice already exists for this milestone
       if (milestone.invoice_id) {
@@ -173,14 +173,18 @@ export default async function handler(
         invoice = newInvoice;
 
         // Update milestone with invoice_id
-        await supabase
-          .from('contract_milestones')
-          .update({ invoice_id: invoice.id })
-          .eq('id', milestone.id);
+        if (invoice) {
+          await supabase
+            .from('contract_milestones')
+            .update({ invoice_id: invoice.id })
+            .eq('id', milestone.id);
+        }
       }
 
-      invoiceIds.push(invoice.id);
-      createdInvoices.push(invoice);
+      if (invoice) {
+        invoiceIds.push(invoice.id);
+        createdInvoices.push(invoice);
+      }
     }
 
     // Update milestone payment status to processing
