@@ -66,7 +66,7 @@ export default async function handler(
         title,
         description,
         amount,
-        status as milestone_status,
+        status,
         payment_status,
         contract_id,
         invoice_id,
