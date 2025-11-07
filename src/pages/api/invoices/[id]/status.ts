@@ -1,6 +1,12 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
 
+type Milestone = {
+  id: string;
+  title: string;
+  payment_status: string;
+};
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -117,7 +123,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (status === 'paid' && data[0].project_contract_id) {
       console.log('[Invoice Status] Invoice paid, updating milestone payment status');
       
-      let matchedMilestone = null;
+      let matchedMilestone: Milestone | null = null;
       
       // Method 1: Try to find milestone by invoice_id (if column exists)
       try {
@@ -130,7 +136,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           .maybeSingle();
         
         if (milestoneByInvoiceId) {
-          matchedMilestone = milestoneByInvoiceId;
+          matchedMilestone = milestoneByInvoiceId as Milestone;
           console.log('[Invoice Status] Found milestone by invoice_id:', matchedMilestone.id);
         }
       } catch (error) {
@@ -149,18 +155,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (milestones && milestones.length > 0) {
           // Match milestone by checking if invoice description contains milestone title
           const invoiceDescription = data[0].project_description || '';
-          matchedMilestone = milestones.find(m => 
+          const found = milestones.find(m => 
             invoiceDescription.toLowerCase().includes(m.title.toLowerCase())
           );
           
-          if (matchedMilestone) {
+          if (found) {
+            matchedMilestone = found as Milestone;
             console.log('[Invoice Status] Found milestone by description match:', matchedMilestone.id);
           }
         }
       }
       
       // Update the matched milestone
-      if (matchedMilestone) {
+      if (matchedMilestone != null) {
         console.log('[Invoice Status] Updating milestone payment status:', {
           milestone_id: matchedMilestone.id,
           milestone_title: matchedMilestone.title,
