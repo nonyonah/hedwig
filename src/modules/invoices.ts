@@ -24,8 +24,32 @@ export interface InvoiceData {
   payment_methods: {
     usdc_base?: boolean;
   };
+  items?: Array<{
+    description: string;
+    quantity: number;
+    rate: number;
+    amount: number;
+  }>;
   created_at: string;
   updated_at: string;
+}
+
+interface InvoiceCreationState {
+  invoice_id: string;
+  step: 'client_name' | 'client_email' | 'project_description' | 'quantity' | 'rate' | 'add_items' | 'due_date' | 'chain_selection' | 'complete';
+  items: Array<{
+    description: string;
+    quantity: number;
+    rate: number;
+    amount: number;
+  }>;
+  currentItem?: {
+    description?: string;
+    quantity?: number;
+    rate?: number;
+  };
+  editing?: boolean;
+  editing_user_info?: boolean;
 }
 
 export class InvoiceModule {
@@ -150,7 +174,8 @@ export class InvoiceModule {
       // Set user state for invoice creation
       await this.setUserState(userId, {
         invoice_id: invoice.id,
-        step: 'client_name'
+        step: 'client_name',
+        items: []
       });
 
       await this.sendStepPrompt(chatId, 'client_name', invoice.id);
@@ -241,8 +266,16 @@ export class InvoiceModule {
 
         case 'project_description':
           updateData.project_description = userInput.trim();
+
+          // Update current item in state
+          const userStateForDesc = await this.getUserState(userId);
+          if (userStateForDesc) {
+            userStateForDesc.currentItem = { ...userStateForDesc.currentItem, description: userInput.trim() };
+            await this.setUserState(userId, userStateForDesc);
+          }
+
           nextStep = 'quantity';
-          responseMessage = `✅ Project: ${userInput}\n\n**Step 6/9:** How many units/hours? (e.g., 1, 5, 10)`;
+          responseMessage = `✅ Project: ${userInput}\n\n**Step 6/10:** How many units/hours for this item? (e.g., 1, 5, 10)`;
           break;
 
         case 'quantity':
@@ -251,8 +284,16 @@ export class InvoiceModule {
             return '❌ Please enter a valid quantity (positive number)';
           }
           updateData.quantity = quantity;
+
+          // Update current item in state
+          const userStateForQty = await this.getUserState(userId);
+          if (userStateForQty) {
+            userStateForQty.currentItem = { ...userStateForQty.currentItem, quantity };
+            await this.setUserState(userId, userStateForQty);
+          }
+
           nextStep = 'rate';
-          responseMessage = `✅ Quantity: ${quantity}\n\n**Step 7/9:** What's the rate per unit? (e.g., 100, 50.5)`;
+          responseMessage = `✅ Quantity: ${quantity}\n\n**Step 7/10:** What's the rate per unit? (e.g., 100, 50.5)`;
           break;
 
         case 'rate':
@@ -260,16 +301,29 @@ export class InvoiceModule {
           if (!rateData) {
             return '❌ Please enter a valid rate (e.g., 100, 50.5)';
           }
+
+          // Get user state to access items and update currentItem with rate
+          const userStateForItem = await this.getUserState(userId);
+          if (!userStateForItem) {
+            return '❌ Error: User state not found';
+          }
+
+          // Update invoice with rate and currency for backward compatibility
           updateData.rate = rateData.amount;
           updateData.currency = rateData.currency;
-          
-          // Calculate total amount
-          const currentInvoice = await this.getCurrentInvoiceData(invoice_id);
-          const totalAmount = (currentInvoice?.quantity || 1) * rateData.amount;
-          updateData.amount = totalAmount;
-          
-          nextStep = 'due_date';
-          responseMessage = `✅ Rate: ${rateData.amount} ${rateData.currency} per unit\n✅ Total: ${totalAmount} ${rateData.currency}\n\n**Step 8/10:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")`;
+
+          // Save the rate to currentItem immediately to ensure it's available in the special case logic
+          userStateForItem.currentItem = { ...userStateForItem.currentItem, rate: rateData.amount };
+          await this.setUserState(userId, userStateForItem);
+
+          nextStep = 'add_items';
+
+          responseMessage = `✅ Rate: ${rateData.amount} ${rateData.currency} per unit\n\n**Step 8/11:** Add more items or continue?`;
+          break;
+
+        case 'add_items':
+          // This step is handled via callbacks, not text input
+          return '❌ Please use the buttons to add items or continue';
           break;
 
         case 'due_date':
@@ -317,11 +371,50 @@ export class InvoiceModule {
 
       // Update user state
       console.log(`[InvoiceModule] Updating user state to step: ${nextStep}`);
-      await this.setUserState(userId, {
+
+      // Get current user state to preserve items and currentItem
+      const currentUserState = await this.getUserState(userId);
+      const stateUpdate: any = {
         invoice_id,
         step: nextStep
-      });
+      };
+
+      // Preserve items and currentItem if they exist
+      if (currentUserState?.items) {
+        stateUpdate.items = currentUserState.items;
+      }
+      if (currentUserState?.currentItem) {
+        stateUpdate.currentItem = currentUserState.currentItem;
+      }
+
+      // Special case: after rate step, we need to add the completed item to items array
+      if (nextStep === 'add_items' && currentUserState?.currentItem) {
+        // Use the rate from currentItem since we just saved it there in the rate step
+        const currentRate = currentUserState.currentItem.rate || updateData.rate || 0;
+        const completedItem = {
+          description: currentUserState.currentItem.description || '',
+          quantity: currentUserState.currentItem.quantity || 1,
+          rate: currentRate,
+          amount: (currentUserState.currentItem.quantity || 1) * currentRate
+        };
+        stateUpdate.items = [...(currentUserState.items || []), completedItem];
+        stateUpdate.currentItem = undefined; // Clear currentItem after adding to items
+
+        // Update invoice with items array
+        const totalAmount = stateUpdate.items.reduce((sum, item) => sum + item.amount, 0);
+        updateData.items = stateUpdate.items;
+        updateData.amount = totalAmount;
+        console.log(`[InvoiceModule] Added item to items array:`, completedItem);
+        console.log(`[InvoiceModule] Total items now:`, stateUpdate.items.length);
+      }
+
+      await this.setUserState(userId, stateUpdate);
       console.log(`[InvoiceModule] User state updated successfully`);
+
+      // If add_items step, show buttons instead of text response
+      if (nextStep === 'add_items') {
+        return await this.showAddItemsOptions(chatId, userId, invoice_id);
+      }
 
       // If complete, finish the invoice creation
       if (nextStep === 'complete') {
@@ -470,6 +563,36 @@ export class InvoiceModule {
         // Don't fail invoice creation if calendar fails
       }
 
+      // Get user state to save items array to database
+      const userState = await this.getUserState(userId);
+
+      // Save items array to database if it exists
+      if (userState?.items && userState.items.length > 0) {
+        console.log(`[InvoiceModule] Saving ${userState.items.length} items to database for invoice ${invoiceId}`);
+
+        // Calculate total amount from items
+        const totalAmount = userState.items.reduce((sum, item) => sum + item.amount, 0);
+
+        // Update invoice with items array and total amount
+        const { error: itemsUpdateError } = await supabase
+          .from('invoices')
+          .update({
+            items: userState.items,
+            amount: totalAmount
+          })
+          .eq('id', invoiceId);
+
+        if (itemsUpdateError) {
+          console.error(`[InvoiceModule] Error saving items to database:`, itemsUpdateError);
+        } else {
+          console.log(`[InvoiceModule] Successfully saved items to database`);
+
+          // Update invoice object with items for preview
+          invoice.items = userState.items;
+          invoice.amount = totalAmount;
+        }
+      }
+
       // Clear user state
       await this.clearUserState(userId);
 
@@ -513,21 +636,31 @@ export class InvoiceModule {
     const invoiceLink = `${baseUrl}/invoice/${invoice.id}`;
     const platformFee = invoice.amount * 0.01;
     const freelancerReceives = invoice.amount - platformFee;
-    
+
     // Get blockchain display info
     const blockchainInfo = this.getBlockchainDisplayInfo(invoice.blockchain || 'base');
-    
+
+    // Build items list or use single item format for backward compatibility
+    let itemsSection = '';
+    if (invoice.items && Array.isArray(invoice.items) && invoice.items.length > 0) {
+      // Multi-item format
+      itemsSection = invoice.items.map((item, index) =>
+        `${index + 1}. ${item.description} - ${item.quantity} × ${item.rate} = ${item.amount} ${invoice.currency || 'USD'}`
+      ).join('\n');
+    } else {
+      // Backward compatibility: single item format
+      itemsSection = `${invoice.project_description} - ${invoice.quantity} × ${invoice.rate} = ${invoice.amount} ${invoice.currency || 'USD'}`;
+    }
+
     return (
       `📋 **Invoice Preview**\n\n` +
       `**Invoice #:** ${invoice.invoice_number}\n` +
       `**From:** ${invoice.freelancer_name} (${invoice.freelancer_email})\n` +
-      `**To:** ${invoice.client_name} (${invoice.client_email})\n` +
-      `**Project:** ${invoice.project_description}\n` +
-      `**Quantity:** ${invoice.quantity}\n` +
-      `**Rate:** ${invoice.rate} ${invoice.currency}\n` +
-      `**Invoice Amount:** ${invoice.amount} ${invoice.currency}\n` +
-      `**Platform Fee (1%):** -${platformFee.toFixed(2)} ${invoice.currency}\n` +
-      `**You'll Receive:** ${freelancerReceives.toFixed(2)} ${invoice.currency}\n` +
+      `**To:** ${invoice.client_name} (${invoice.client_email})\n\n` +
+      `**Items:**\n${itemsSection}\n\n` +
+      `**Invoice Amount:** ${invoice.amount} ${invoice.currency || 'USD'}\n` +
+      `**Platform Fee (1%):** -${platformFee.toFixed(2)} ${invoice.currency || 'USD'}\n` +
+      `**You'll Receive:** ${freelancerReceives.toFixed(2)} ${invoice.currency || 'USD'}\n` +
       `**Due Date:** ${invoice.due_date}\n` +
       `**Blockchain:** ${blockchainInfo.displayName}\n` +
       `**Status:** ${invoice.status.toUpperCase()}\n\n` +
@@ -615,6 +748,28 @@ export class InvoiceModule {
       } else if (data.startsWith('edit_user_info_back_')) {
         const userId = data.replace('edit_user_info_back_', '');
         await this.continueInvoiceCreationFlow(chatId, userId);
+      } else if (data === 'invoice_add_item') {
+        // Get user ID from chatId
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', chatId)
+          .single();
+
+        if (user?.id) {
+          await this.handleAddItem(chatId, user.id);
+        }
+      } else if (data === 'invoice_continue_items') {
+        // Get user ID from chatId
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', chatId)
+          .single();
+
+        if (user?.id) {
+          await this.handleContinueToDueDate(chatId, user.id);
+        }
       }
 
       await this.bot.answerCallbackQuery(callbackQuery.id);
@@ -790,19 +945,19 @@ export class InvoiceModule {
         message = '**Step 4/9:** What\'s your client\'s email address?';
         break;
       case 'project_description':
-        message = '**Step 5/9:** What\'s the project description?';
+        message = '**Step 5/10:** What\'s the project description?';
         break;
       case 'quantity':
-        message = '**Step 6/9:** How many units/hours? (e.g., 1, 5, 10)';
+        message = '**Step 6/10:** How many units/hours? (e.g., 1, 5, 10)';
         break;
       case 'rate':
-        message = '**Step 7/9:** What\'s the rate per unit? (e.g., 100, 50.5)';
+        message = '**Step 7/10:** What\'s the rate per unit? (e.g., 100, 50.5)';
         break;
       case 'due_date':
-        message = '**Step 8/10:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")';
+        message = '**Step 9/11:** When is the payment due? (e.g., 2024-02-15 or "in 30 days")';
         break;
       case 'chain_selection':
-        message = '**Step 9/10:** Which blockchain network would you like to use for payments?\n\n' +
+        message = '**Step 10/11:** Which blockchain network would you like to use for payments?\n\n' +
           '**Currently Supported Networks:**\n\n' +
           '🔵 **Base Network** - Type "base"\n' +
           '• Lower fees, faster transactions\n' +
@@ -1432,6 +1587,118 @@ export class InvoiceModule {
     } catch (error) {
       console.error('Error handling edit input:', error);
       return '❌ Error processing edit. Please try again.';
+    }
+  }
+
+  // Show add items options (Add Another or Continue)
+  private async showAddItemsOptions(chatId: number, userId: string, invoiceId: string) {
+    try {
+      const userState = await this.getUserState(userId);
+      if (!userState) {
+        await this.bot.sendMessage(chatId, '❌ Error: User state not found.');
+        return;
+      }
+
+      const items = userState.items || [];
+      console.log(`[InvoiceModule] showAddItemsOptions: Found ${items.length} items:`, items);
+
+      if (items.length === 0) {
+        await this.bot.sendMessage(chatId, '❌ Error: No items found.');
+        return;
+      }
+
+      const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+      const currency = 'USD'; // Default to USD
+
+      const itemsList = items.map((item, index) =>
+        `${index + 1}. ${item.description} - ${item.quantity} × ${item.rate} = ${item.amount} ${currency}`
+      ).join('\n');
+
+      const message = `✅ **Current Invoice Items (${items.length}):**\n\n${itemsList}\n\n💰 **Total: ${totalAmount.toFixed(2)} ${currency}**\n\n➕ Add more items or continue to due date?`;
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔄 Add Another Item', callback_data: 'invoice_add_item' },
+              { text: '✅ Continue to Due Date', callback_data: 'invoice_continue_items' }
+            ],
+            [
+              { text: '❌ Cancel', callback_data: `cancel_invoice_${invoiceId}` }
+            ]
+          ]
+        }
+      });
+
+      // Update user state to add_items step
+      await this.setUserState(userId, {
+        ...userState,
+        step: 'add_items'
+      });
+
+      return 'Add items options displayed';
+    } catch (error) {
+      console.error('Error showing add items options:', error);
+      await this.bot.sendMessage(chatId, '❌ Error occurred. Please try again.');
+    }
+  }
+
+  // Handle adding another item
+  async handleAddItem(chatId: number, userId: string) {
+    try {
+      const userState = await this.getUserState(userId);
+      if (!userState) {
+        await this.bot.sendMessage(chatId, '❌ Error: User state not found.');
+        return;
+      }
+
+      // Reset currentItem for new item
+      await this.setUserState(userId, {
+        ...userState,
+        step: 'project_description',
+        currentItem: {}
+      });
+
+      await this.bot.sendMessage(chatId,
+        `📝 **Add New Item**\n\n**Step 6/10:** What's the project description for this new item?`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '❌ Cancel', callback_data: `cancel_invoice_${userState.invoice_id}` }
+            ]]
+          }
+        }
+      );
+
+      return 'Started adding new item';
+    } catch (error) {
+      console.error('Error handling add item:', error);
+      await this.bot.sendMessage(chatId, '❌ Error occurred. Please try again.');
+    }
+  }
+
+  // Handle continuing to due date
+  async handleContinueToDueDate(chatId: number, userId: string) {
+    try {
+      const userState = await this.getUserState(userId);
+      if (!userState) {
+        await this.bot.sendMessage(chatId, '❌ Error: User state not found.');
+        return;
+      }
+
+      // Update step to due_date
+      await this.setUserState(userId, {
+        ...userState,
+        step: 'due_date'
+      });
+
+      await this.sendStepPrompt(chatId, 'due_date', userState.invoice_id);
+      return 'Continued to due date';
+    } catch (error) {
+      console.error('Error handling continue to due date:', error);
+      await this.bot.sendMessage(chatId, '❌ Error occurred. Please try again.');
     }
   }
 }

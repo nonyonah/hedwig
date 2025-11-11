@@ -38,18 +38,40 @@ export default async function handler(
       }
       
       const subtotal = quantity * rate;
-      const taxRate = 0.08; // 8% tax
-      const tax = subtotal * taxRate;
-      const total = subtotal + tax;
-
       // Create items array from invoice data
-      const items = [{
-        id: '1',
-        description: invoice.project_description || 'Service',
-        quantity: quantity,
-        rate: rate,
-        amount: subtotal
-      }];
+      let items: any[];
+      let calculatedSubtotal: number;
+      let calculatedTotal: number;
+
+      // Check if invoice has items array (new format) or use single item format (backward compatibility)
+      if (invoice.items && Array.isArray(invoice.items) && invoice.items.length > 0) {
+        // New multi-item format
+        items = invoice.items.map((item: any, index: number) => ({
+          id: String(index + 1),
+          description: item.description || 'Service',
+          quantity: item.quantity || 1,
+          rate: item.rate || 0,
+          amount: item.amount || 0
+        }));
+
+        // Calculate totals from items array
+        calculatedSubtotal = items.reduce((sum, item) => sum + item.amount, 0);
+      } else {
+        // Backward compatibility: single item format
+        items = [{
+          id: '1',
+          description: invoice.project_description || 'Service',
+          quantity: quantity,
+          rate: rate,
+          amount: subtotal
+        }];
+
+        calculatedSubtotal = subtotal;
+      }
+
+      const taxRate = 0.08; // 8% tax
+      const tax = calculatedSubtotal * taxRate;
+      calculatedTotal = calculatedSubtotal + tax;
 
       // Transform database data to match frontend interface
       const transformedInvoice = {
@@ -72,9 +94,9 @@ export default async function handler(
           phone: invoice.client_phone || ''
         },
         items: items,
-        subtotal: subtotal,
+        subtotal: calculatedSubtotal,
         tax: tax,
-        total: total,
+        total: calculatedTotal,
         notes: invoice.additional_notes || 'Thank you for your business!',
         paymentTerms: invoice.payment_instructions || '',
         paymentTransaction: invoice.payment_transaction || null,

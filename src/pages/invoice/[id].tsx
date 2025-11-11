@@ -423,32 +423,6 @@ export default function InvoicePage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm p-8 md:p-12">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-              Invoice
-            </h1>
-            <p className="text-gray-500">Invoice Number {invoiceData.invoiceNumber}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <Badge className={statusColor[isOverdue ? 'overdue' : invoiceData.status]}>
-              {isOverdue ? 'Overdue' : invoiceData.status.charAt(0).toUpperCase() + invoiceData.status.slice(1)}
-            </Badge>
-            <div className="flex gap-2 flex-wrap">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleDownloadPDF}
-                className="rounded-full px-4 py-2 border-gray-300 hover:bg-gray-50"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download PDF
-              </Button>
-            </div>
-          </div>
-        </div>
-
         {/* Company Details */}
         <div className="grid md:grid-cols-2 gap-8 mb-8">
           <div>
