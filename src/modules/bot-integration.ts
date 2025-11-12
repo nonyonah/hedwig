@@ -4447,7 +4447,7 @@ Good luck with your work! 💪`;
           state_data: {
             contract_id: contracts.id,
             contract_title: contracts.project_title,
-            client_name: contracts.legal_contracts?.client_name || 'Client',
+            client_name: contracts.legal_contracts?.[0]?.client_name || 'Client',
             total_amount: contracts.total_amount,
             currency: contracts.currency
           },
@@ -4459,7 +4459,7 @@ Good luck with your work! 💪`;
       const completionMessage = `🎯 **Complete Project**
 
 **Contract:** ${contracts.project_title}
-**Client:** ${contracts.legal_contracts?.client_name || contracts.client_email}
+**Client:** ${contracts.legal_contracts?.[0]?.client_name || contracts.client_email}
 **Amount:** ${contracts.total_amount} ${contracts.currency || 'USD'}
 
 Please provide details about your completed project:
