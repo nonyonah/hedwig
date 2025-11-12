@@ -85,6 +85,7 @@ async function setupTelegramMenu() {
       { command: 'invoice', description: 'Create invoice' },
       { command: 'proposal', description: 'Create proposal' },
       { command: 'contract', description: 'Create binding contracts' },
+      { command: 'complete', description: 'Submit project completion' },
       { command: 'milestone', description: 'Submit milestone completion' },
       { command: 'milestones', description: 'View my milestones' },
       { command: 'earnings_summary', description: 'View earnings summary' },
@@ -1322,6 +1323,31 @@ async function handleCommand(msg: any) {
       } catch (error) {
         console.error('[Webhook] Error handling /milestone command:', error);
         await bot.sendMessage(chatId, 'Failed to load milestone submission form. Please try again later.');
+      }
+      break;
+
+    case '/complete':
+      try {
+        if (botIntegration) {
+          // Get user ID from chat ID
+          const { supabase } = await import('../../lib/supabase');
+          const { data: user } = await supabase
+            .from('users')
+            .select('id')
+            .eq('telegram_chat_id', chatId)
+            .single() as { data: { id: string } | null };
+
+          if (user) {
+            await botIntegration.showContractCompletionForm(chatId, user.id);
+          } else {
+            await bot.sendMessage(chatId, 'User not found. Please try /start to initialize your account.');
+          }
+        } else {
+          await bot.sendMessage(chatId, 'Project completion feature is not available at the moment.');
+        }
+      } catch (error) {
+        console.error('[Webhook] Error handling /complete command:', error);
+        await bot.sendMessage(chatId, 'Failed to load contract completion form. Please try again later.');
       }
       break;
 

@@ -2591,6 +2591,11 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
+      else if (data === 'cancel_contract_completion') {
+        await this.cancelContractCompletion(chatId, userId!);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
       else if (data.startsWith('milestone_start_')) {
         const milestoneId = data.replace('milestone_start_', '');
         await this.handleMilestoneStart(chatId, userId!, milestoneId);
@@ -2705,6 +2710,12 @@ export class BotIntegration {
       // Check if user is providing milestone completion notes
       const milestoneCompletionHandled = await this.handleMilestoneCompletionNotes(chatId, userId, text);
       if (milestoneCompletionHandled) {
+        return true;
+      }
+
+      // Check if user is providing contract completion notes
+      const contractCompletionHandled = await this.handleContractCompletionNotes(chatId, userId, text);
+      if (contractCompletionHandled) {
         return true;
       }
 
@@ -4369,6 +4380,223 @@ Good luck with your work! 💪`;
       case 'changes_requested': return '🔄';
       case 'paid': return '💰';
       default: return '❓';
+    }
+  }
+
+  /**
+   * Show contract completion form for contracts without milestones
+   */
+  public async showContractCompletionForm(chatId: number, userId: string): Promise<void> {
+    try {
+      // Get user's active contracts without milestones
+      const { data: contracts, error } = await supabase
+        .from('project_contracts')
+        .select(`
+          id,
+          project_title,
+          total_amount,
+          currency,
+          status,
+          client_email,
+          legal_contracts (
+            client_name,
+            freelancer_name
+          )
+        `)
+        .eq('freelancer_id', userId)
+        .eq('status', 'active')
+        .single();
+
+      if (error || !contracts) {
+        await this.bot.sendMessage(chatId,
+          '📋 **No Active Contracts Found**\n\n' +
+          'You don\'t have any active contracts that are ready for completion.\n\n' +
+          '**To submit project completion:**\n' +
+          '• Contract must be active\n' +
+          '• Contract should not have milestones\n' +
+          '• Project work should be completed\n\n' +
+          'If you believe you have an active contract, please contact support.',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      // Check if contract has milestones
+      const { data: milestones, error: milestoneError } = await supabase
+        .from('contract_milestones')
+        .select('id')
+        .eq('contract_id', contracts.id)
+        .limit(1);
+
+      if (!milestoneError && milestones && milestones.length > 0) {
+        await this.bot.sendMessage(chatId,
+          '📋 **Contract Has Milestones**\n\n' +
+          'This contract has milestones set up. Please use the `/milestone` command to submit individual milestone completions instead.\n\n' +
+          'Use `/milestones` to view all milestones for this contract.',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      // Store contract ID in user state for completion processing
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'awaiting_contract_completion',
+          state_data: {
+            contract_id: contracts.id,
+            contract_title: contracts.project_title,
+            client_name: contracts.legal_contracts?.client_name || 'Client',
+            total_amount: contracts.total_amount,
+            currency: contracts.currency
+          },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+
+      const completionMessage = `🎯 **Complete Project**
+
+**Contract:** ${contracts.project_title}
+**Client:** ${contracts.legal_contracts?.client_name || contracts.client_email}
+**Amount:** ${contracts.total_amount} ${contracts.currency || 'USD'}
+
+Please provide details about your completed project:
+
+1. **Work Completed:** What was delivered?
+2. **Key Deliverables:** List main items completed
+3. **Any Notes:** Additional information for the client
+
+Please type your completion details now:`;
+
+      const keyboard = [
+        [
+          { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
+        ]
+      ];
+
+      await this.bot.sendMessage(chatId, completionMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error showing contract completion form:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to load contract completion form. Please try again later.');
+    }
+  }
+
+  /**
+   * Handle contract completion submission
+   */
+  async handleContractCompletion(chatId: number, userId: string, completionNotes: string): Promise<void> {
+    try {
+      // Get user state for contract completion
+      const { data: userState } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_contract_completion')
+        .single();
+
+      if (!userState?.state_data) {
+        await this.bot.sendMessage(chatId, '❌ Contract completion session expired. Please start again with /complete.');
+        return;
+      }
+
+      const contractData = userState.state_data;
+
+      // Update contract status to completed
+      const { error: updateError } = await supabase
+        .from('project_contracts')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          completion_notes: completionNotes
+        })
+        .eq('id', contractData.contract_id);
+
+      if (updateError) {
+        console.error('[BotIntegration] Error updating contract status:', updateError);
+        await this.bot.sendMessage(chatId, '❌ Failed to update contract status. Please try again.');
+        return;
+      }
+
+      // Project completed successfully - invoice will be generated through existing system
+      const successMessage = `✅ **Project Completed Successfully!**
+
+Your project completion has been submitted.
+
+📋 **Contract:** ${contractData.contract_title}
+💰 **Amount:** ${contractData.total_amount} ${contractData.currency || 'USD'}
+📧 **Client:** ${contractData.client_name}
+
+**Completed Work:**
+${completionNotes}
+
+The contract has been marked as completed. You can generate an invoice through the regular invoice system, and the client will be able to view and pay for your completed work.`;
+
+      await this.bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
+
+      // Clear user state
+      await supabase
+        .from('user_states')
+        .delete()
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_contract_completion');
+
+    } catch (error) {
+      console.error('[BotIntegration] Error processing contract completion:', error);
+      await this.bot.sendMessage(chatId, '❌ Error submitting project completion. Please try again.');
+    }
+  }
+
+  /**
+   * Handle contract completion notes input
+   */
+  async handleContractCompletionNotes(chatId: number, userId: string, text: string): Promise<boolean> {
+    try {
+      // Check if user is in contract completion state
+      const { data: userState } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_contract_completion')
+        .single();
+
+      if (!userState) {
+        return false; // Not in contract completion state
+      }
+
+      // Process the completion notes
+      await this.handleContractCompletion(chatId, userId, text);
+      return true;
+
+    } catch (error) {
+      console.error('[BotIntegration] Error handling contract completion notes:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Cancel contract completion
+   */
+  async cancelContractCompletion(chatId: number, userId: string): Promise<void> {
+    try {
+      // Clear user state
+      await supabase
+        .from('user_states')
+        .delete()
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_contract_completion');
+
+      await this.bot.sendMessage(chatId, '❌ Contract completion cancelled. You can start again anytime with /complete.');
+    } catch (error) {
+      console.error('[BotIntegration] Error cancelling contract completion:', error);
+      await this.bot.sendMessage(chatId, '❌ Error cancelling contract completion.');
     }
   }
 }

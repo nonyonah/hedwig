@@ -53,6 +53,7 @@ interface ContractData {
   transaction_hash?: string;
   freelancer_id?: string;
   freelancer_wallet?: string;
+  freelancer_name?: string;
   client_id?: string;
   milestones: Milestone[];
   legal_contract: LegalContract;
@@ -483,7 +484,7 @@ export default function ContractPage({ contract, error }: ContractPageProps) {
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Freelancer Name</label>
-                <p className="text-gray-900 font-medium">{contract.legal_contract?.freelancer_name || 'Not provided'}</p>
+                <p className="text-gray-900 font-medium">{contract.freelancer_name || contract.legal_contract?.freelancer_name || 'Not provided'}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Start Date</label>
@@ -812,6 +813,40 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
 
+    // Resolve freelancer name
+    let freelancerName: string | null = null;
+
+    // First try to get from legal contract
+    if (legalContract?.freelancer_name) {
+      freelancerName = legalContract.freelancer_name;
+    }
+
+    // If not found and we have freelancer_id, fetch from users table
+    if (!freelancerName && contract.freelancer_id) {
+      const { data: user } = await supabaseServer
+        .from('users')
+        .select('name')
+        .eq('id', contract.freelancer_id)
+        .single();
+
+      if (user?.name) {
+        freelancerName = user.name;
+      }
+    }
+
+    // If still no name and we have freelancer email, try to find user by email
+    if (!freelancerName && legalContract?.freelancer_email) {
+      const { data: user } = await supabaseServer
+        .from('users')
+        .select('name')
+        .eq('email', legalContract.freelancer_email)
+        .single();
+
+      if (user?.name) {
+        freelancerName = user.name;
+      }
+    }
+
     // Debug logging
     console.log('[Contract Page] Freelancer wallet resolution:', {
       contractId: contract.id,
@@ -826,7 +861,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         contract: {
           ...contract,
           legal_contract: legalContract,
-          freelancer_wallet: freelancerWallet
+          freelancer_wallet: freelancerWallet,
+          freelancer_name: freelancerName
         }
       }
     };
