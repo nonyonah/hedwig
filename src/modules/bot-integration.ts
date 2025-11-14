@@ -2596,6 +2596,12 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
+      else if (data.startsWith('select_contract_completion_')) {
+        const contractId = data.replace('select_contract_completion_', '');
+        await this.handleContractSelection(chatId, userId!, contractId);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
       else if (data.startsWith('milestone_start_')) {
         const milestoneId = data.replace('milestone_start_', '');
         await this.handleMilestoneStart(chatId, userId!, milestoneId);
@@ -4404,10 +4410,15 @@ Good luck with your work! 💪`;
           )
         `)
         .eq('freelancer_id', userId)
-        .eq('status', 'active')
-        .single();
+        .eq('status', 'active');
 
-      if (error || !contracts) {
+      if (error) {
+        console.error('[BotIntegration] Error fetching active contracts:', error);
+        await this.bot.sendMessage(chatId, '❌ Error fetching contracts. Please try again later.');
+        return;
+      }
+
+      if (!contracts || contracts.length === 0) {
         await this.bot.sendMessage(chatId,
           '📋 **No Active Contracts Found**\n\n' +
           'You don\'t have any active contracts that are ready for completion.\n\n' +
@@ -4421,46 +4432,53 @@ Good luck with your work! 💪`;
         return;
       }
 
-      // Check if contract has milestones
+      // Filter contracts that don't have milestones
+      const contractIds = contracts.map((c: any) => c.id);
       const { data: milestones, error: milestoneError } = await supabase
         .from('contract_milestones')
-        .select('id')
-        .eq('contract_id', contracts.id)
-        .limit(1);
+        .select('contract_id')
+        .in('contract_id', contractIds);
 
-      if (!milestoneError && milestones && milestones.length > 0) {
+      const contractsWithMilestones = new Set((milestones || []).map(m => m.contract_id));
+      const eligibleContracts = contracts.filter(c => !contractsWithMilestones.has(c.id));
+
+      if (eligibleContracts.length === 0) {
         await this.bot.sendMessage(chatId,
-          '📋 **Contract Has Milestones**\n\n' +
-          'This contract has milestones set up. Please use the `/milestone` command to submit individual milestone completions instead.\n\n' +
-          'Use `/milestones` to view all milestones for this contract.',
+          '📋 **No Eligible Contracts Found**\n\n' +
+          'All your active contracts have milestones set up. Please use the `/milestone` command to submit individual milestone completions instead.\n\n' +
+          'Use `/milestones` to view all milestones for your contracts.',
           { parse_mode: 'Markdown' }
         );
         return;
       }
 
-      // Store contract ID in user state for completion processing
-      await supabase
-        .from('user_states')
-        .upsert({
-          user_id: userId,
-          state_type: 'awaiting_contract_completion',
-          state_data: {
-            contract_id: contracts.id,
-            contract_title: contracts.project_title,
-            client_name: contracts.legal_contracts?.[0]?.client_name || 'Client',
-            total_amount: contracts.total_amount,
-            currency: contracts.currency
-          },
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id,state_type'
-        });
+      // If only one eligible contract, proceed with completion form
+      if (eligibleContracts.length === 1) {
+        const contract = eligibleContracts[0];
 
-      const completionMessage = `🎯 **Complete Project**
+        // Store contract ID in user state for completion processing
+        await supabase
+          .from('user_states')
+          .upsert({
+            user_id: userId,
+            state_type: 'awaiting_contract_completion',
+            state_data: {
+              contract_id: contract.id,
+              contract_title: contract.project_title,
+              client_name: contract.legal_contracts?.[0]?.client_name || 'Client',
+              total_amount: contract.total_amount,
+              currency: contract.currency
+            },
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,state_type'
+          });
 
-**Contract:** ${contracts.project_title}
-**Client:** ${contracts.legal_contracts?.[0]?.client_name || contracts.client_email}
-**Amount:** ${contracts.total_amount} ${contracts.currency || 'USD'}
+        const completionMessage = `🎯 **Complete Project**
+
+**Contract:** ${contract.project_title}
+**Client:** ${contract.legal_contracts?.[0]?.client_name || contract.client_email}
+**Amount:** ${contract.total_amount} ${contract.currency || 'USD'}
 
 Please provide details about your completed project:
 
@@ -4470,13 +4488,37 @@ Please provide details about your completed project:
 
 Please type your completion details now:`;
 
-      const keyboard = [
-        [
-          { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
-        ]
-      ];
+        const keyboard = [
+          [
+            { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
+          ]
+        ];
 
-      await this.bot.sendMessage(chatId, completionMessage, {
+        await this.bot.sendMessage(chatId, completionMessage, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: keyboard
+          }
+        });
+        return;
+      }
+
+      // If multiple eligible contracts, show selection list
+      let selectionMessage = '🎯 **Select Contract to Complete**\n\n';
+      selectionMessage += 'You have multiple active contracts without milestones. Please select which one you want to complete:\n\n';
+
+      const keyboard = eligibleContracts.map((contract, index) => [
+        {
+          text: `${index + 1}. ${contract.project_title} (${contract.total_amount} ${contract.currency || 'USD'})`,
+          callback_data: `select_contract_completion_${contract.id}`
+        }
+      ]);
+
+      keyboard.push([
+        { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
+      ]);
+
+      await this.bot.sendMessage(chatId, selectionMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: keyboard
@@ -4578,6 +4620,86 @@ The contract has been marked as completed. You can generate an invoice through t
     } catch (error) {
       console.error('[BotIntegration] Error handling contract completion notes:', error);
       return false;
+    }
+  }
+
+  /**
+   * Handle contract selection from multiple contracts list
+   */
+  async handleContractSelection(chatId: number, userId: string, contractId: string): Promise<void> {
+    try {
+      // Get the selected contract details
+      const { data: contract, error } = await supabase
+        .from('project_contracts')
+        .select(`
+          id,
+          project_title,
+          total_amount,
+          currency,
+          status,
+          client_email,
+          legal_contracts (
+            client_name,
+            freelancer_name
+          )
+        `)
+        .eq('freelancer_id', userId)
+        .eq('status', 'active')
+        .eq('id', contractId)
+        .single();
+
+      if (error || !contract) {
+        await this.bot.sendMessage(chatId, '❌ Contract not found. Please try again.');
+        return;
+      }
+
+      // Store contract ID in user state for completion processing
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'awaiting_contract_completion',
+          state_data: {
+            contract_id: contract.id,
+            contract_title: contract.project_title,
+            client_name: contract.legal_contracts?.[0]?.client_name || 'Client',
+            total_amount: contract.total_amount,
+            currency: contract.currency
+          },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+
+      const completionMessage = `🎯 **Complete Project**
+
+**Contract:** ${contract.project_title}
+**Client:** ${contract.legal_contracts?.[0]?.client_name || contract.client_email}
+**Amount:** ${contract.total_amount} ${contract.currency || 'USD'}
+
+Please provide details about your completed project:
+
+1. **Work Completed:** What was delivered?
+2. **Key Deliverables:** List main items completed
+3. **Any Notes:** Additional information for the client
+
+Please type your completion details now:`;
+
+      const keyboard = [
+        [
+          { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
+        ]
+      ];
+
+      await this.bot.sendMessage(chatId, completionMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      });
+    } catch (error) {
+      console.error('[BotIntegration] Error handling contract selection:', error);
+      await this.bot.sendMessage(chatId, '❌ Error selecting contract. Please try again.');
     }
   }
 
