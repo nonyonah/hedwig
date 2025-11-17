@@ -4403,11 +4403,7 @@ Good luck with your work! 💪`;
           total_amount,
           currency,
           status,
-          client_email,
-          legal_contracts (
-            client_name,
-            freelancer_name
-          )
+          client_email
         `)
         .eq('freelancer_id', userId)
         .eq('status', 'active');
@@ -4465,7 +4461,7 @@ Good luck with your work! 💪`;
             state_data: {
               contract_id: contract.id,
               contract_title: contract.project_title,
-              client_name: contract.legal_contracts?.[0]?.client_name || 'Client',
+              client_name: 'Client',
               total_amount: contract.total_amount,
               currency: contract.currency
             },
@@ -4477,7 +4473,7 @@ Good luck with your work! 💪`;
         const completionMessage = `🎯 **Complete Project**
 
 **Contract:** ${contract.project_title}
-**Client:** ${contract.legal_contracts?.[0]?.client_name || contract.client_email}
+**Client:** ${contract.client_email}
 **Amount:** ${contract.total_amount} ${contract.currency || 'USD'}
 
 Please provide details about your completed project:
@@ -4637,11 +4633,7 @@ The contract has been marked as completed. You can generate an invoice through t
           total_amount,
           currency,
           status,
-          client_email,
-          legal_contracts (
-            client_name,
-            freelancer_name
-          )
+          client_email
         `)
         .eq('freelancer_id', userId)
         .eq('status', 'active')
@@ -4662,7 +4654,7 @@ The contract has been marked as completed. You can generate an invoice through t
           state_data: {
             contract_id: contract.id,
             contract_title: contract.project_title,
-            client_name: contract.legal_contracts?.[0]?.client_name || 'Client',
+            client_name: 'Client',
             total_amount: contract.total_amount,
             currency: contract.currency
           },
@@ -4674,7 +4666,7 @@ The contract has been marked as completed. You can generate an invoice through t
       const completionMessage = `🎯 **Complete Project**
 
 **Contract:** ${contract.project_title}
-**Client:** ${contract.legal_contracts?.[0]?.client_name || contract.client_email}
+**Client:** ${contract.client_email}
 **Amount:** ${contract.total_amount} ${contract.currency || 'USD'}
 
 Please provide details about your completed project:
