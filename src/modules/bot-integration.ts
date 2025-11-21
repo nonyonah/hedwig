@@ -766,14 +766,14 @@ export class BotIntegration {
       }
 
       let message = '📝 *Your Contracts*\n\n';
-      
+
       for (const contract of contracts) {
         const statusEmoji = this.getStatusEmoji(contract.status);
         const deadline = new Date(contract.deadline).toLocaleDateString();
-        
+
         // Determine token type from address
         const tokenType = this.getTokenTypeFromAddress(contract.token_address, contract.chain);
-        
+
         message += `${statusEmoji} *${contract.project_title}*\n`;
         message += `💰 ${contract.total_amount} ${tokenType}\n`;
         message += `📅 Deadline: ${deadline}\n`;
@@ -4390,125 +4390,58 @@ Good luck with your work! 💪`;
   }
 
   /**
-   * Show contract completion form for contracts without milestones
+   * Show contract completion form for all user contracts
    */
   public async showContractCompletionForm(chatId: number, userId: string): Promise<void> {
     try {
-      // Get user's active contracts without milestones
+      // Get all user's contracts
       const { data: contracts, error } = await supabase
         .from('project_contracts')
         .select(`
           id,
           project_title,
           total_amount,
-          currency,
+          token_address,
+          chain,
           status,
-          client_email
+          client_email,
+          created_at
         `)
         .eq('freelancer_id', userId)
-        .eq('status', 'active');
+        .order('created_at', { ascending: false })
+        .limit(20);
 
       if (error) {
-        console.error('[BotIntegration] Error fetching active contracts:', error);
+        console.error('[BotIntegration] Error fetching contracts:', error);
         await this.bot.sendMessage(chatId, '❌ Error fetching contracts. Please try again later.');
         return;
       }
 
       if (!contracts || contracts.length === 0) {
         await this.bot.sendMessage(chatId,
-          '📋 **No Active Contracts Found**\n\n' +
-          'You don\'t have any active contracts that are ready for completion.\n\n' +
-          '**To submit project completion:**\n' +
-          '• Contract must be active\n' +
-          '• Contract should not have milestones\n' +
-          '• Project work should be completed\n\n' +
-          'If you believe you have an active contract, please contact support.',
+          '📋 **No Contracts Found**\n\n' +
+          'You haven\'t created any contracts yet.\n\n' +
+          'Use /contract to create your first contract!',
           { parse_mode: 'Markdown' }
         );
         return;
       }
 
-      // Filter contracts that don't have milestones
-      const contractIds = contracts.map((c: any) => c.id);
-      const { data: milestones, error: milestoneError } = await supabase
-        .from('contract_milestones')
-        .select('contract_id')
-        .in('contract_id', contractIds);
+      // Show all contracts for selection
+      let selectionMessage = '🎯 **Select Contract to Send to Client**\n\n';
+      selectionMessage += 'Here are all your contracts. Please select which one you want to send to the client:\n\n';
 
-      const contractsWithMilestones = new Set((milestones || []).map(m => m.contract_id));
-      const eligibleContracts = contracts.filter(c => !contractsWithMilestones.has(c.id));
+      const keyboard = contracts.map((contract, index) => {
+        const statusEmoji = this.getStatusEmoji(contract.status);
+        const tokenType = this.getTokenTypeFromAddress(contract.token_address, contract.chain);
 
-      if (eligibleContracts.length === 0) {
-        await this.bot.sendMessage(chatId,
-          '📋 **No Eligible Contracts Found**\n\n' +
-          'All your active contracts have milestones set up. Please use the `/milestone` command to submit individual milestone completions instead.\n\n' +
-          'Use `/milestones` to view all milestones for your contracts.',
-          { parse_mode: 'Markdown' }
-        );
-        return;
-      }
-
-      // If only one eligible contract, proceed with completion form
-      if (eligibleContracts.length === 1) {
-        const contract = eligibleContracts[0];
-
-        // Store contract ID in user state for completion processing
-        await supabase
-          .from('user_states')
-          .upsert({
-            user_id: userId,
-            state_type: 'awaiting_contract_completion',
-            state_data: {
-              contract_id: contract.id,
-              contract_title: contract.project_title,
-              client_name: 'Client',
-              total_amount: contract.total_amount,
-              currency: contract.currency
-            },
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'user_id,state_type'
-          });
-
-        const completionMessage = `🎯 **Complete Project**
-
-**Contract:** ${contract.project_title}
-**Client:** ${contract.client_email}
-**Amount:** ${contract.total_amount} ${contract.currency || 'USD'}
-
-Please provide details about your completed project:
-
-1. **Work Completed:** What was delivered?
-2. **Key Deliverables:** List main items completed
-3. **Any Notes:** Additional information for the client
-
-Please type your completion details now:`;
-
-        const keyboard = [
-          [
-            { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
-          ]
-        ];
-
-        await this.bot.sendMessage(chatId, completionMessage, {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: keyboard
+        return [
+          {
+            text: `${statusEmoji} ${contract.project_title} (${contract.total_amount} ${tokenType})`,
+            callback_data: `select_contract_completion_${contract.id}`
           }
-        });
-        return;
-      }
-
-      // If multiple eligible contracts, show selection list
-      let selectionMessage = '🎯 **Select Contract to Complete**\n\n';
-      selectionMessage += 'You have multiple active contracts without milestones. Please select which one you want to complete:\n\n';
-
-      const keyboard = eligibleContracts.map((contract, index) => [
-        {
-          text: `${index + 1}. ${contract.project_title} (${contract.total_amount} ${contract.currency || 'USD'})`,
-          callback_data: `select_contract_completion_${contract.id}`
-        }
-      ]);
+        ];
+      });
 
       keyboard.push([
         { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
@@ -4631,12 +4564,13 @@ The contract has been marked as completed. You can generate an invoice through t
           id,
           project_title,
           total_amount,
-          currency,
+          token_address,
+          chain,
           status,
-          client_email
+          client_email,
+          created_at
         `)
         .eq('freelancer_id', userId)
-        .eq('status', 'active')
         .eq('id', contractId)
         .single();
 
@@ -4645,45 +4579,33 @@ The contract has been marked as completed. You can generate an invoice through t
         return;
       }
 
-      // Store contract ID in user state for completion processing
-      await supabase
-        .from('user_states')
-        .upsert({
-          user_id: userId,
-          state_type: 'awaiting_contract_completion',
-          state_data: {
-            contract_id: contract.id,
-            contract_title: contract.project_title,
-            client_name: 'Client',
-            total_amount: contract.total_amount,
-            currency: contract.currency
-          },
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id,state_type'
-        });
+      // Get token type from address
+      const tokenType = this.getTokenTypeFromAddress(contract.token_address, contract.chain);
+      const statusEmoji = this.getStatusEmoji(contract.status);
 
-      const completionMessage = `🎯 **Complete Project**
+      // Show contract details with options to send to client
+      const contractMessage = `📄 **Contract Details**
 
-**Contract:** ${contract.project_title}
+${statusEmoji} **Status:** ${contract.status.toUpperCase()}
+**Project:** ${contract.project_title}
 **Client:** ${contract.client_email}
-**Amount:** ${contract.total_amount} ${contract.currency || 'USD'}
+**Amount:** ${contract.total_amount} ${tokenType}
+**Network:** ${contract.chain.toUpperCase()}
+**Created:** ${new Date(contract.created_at).toLocaleDateString()}
 
-Please provide details about your completed project:
-
-1. **Work Completed:** What was delivered?
-2. **Key Deliverables:** List main items completed
-3. **Any Notes:** Additional information for the client
-
-Please type your completion details now:`;
+What would you like to do with this contract?`;
 
       const keyboard = [
+        [
+          { text: '📧 Send to Client', callback_data: `contract_send_email_${contract.id}` },
+          { text: '📄 View PDF', callback_data: `contract_view_${contract.id}` }
+        ],
         [
           { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
         ]
       ];
 
-      await this.bot.sendMessage(chatId, completionMessage, {
+      await this.bot.sendMessage(chatId, contractMessage, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: keyboard
