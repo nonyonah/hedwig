@@ -2596,9 +2596,9 @@ export class BotIntegration {
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
-      else if (data.startsWith('select_contract_completion_')) {
-        const contractId = data.replace('select_contract_completion_', '');
-        await this.handleContractSelection(chatId, userId!, contractId);
+      else if (data.startsWith('mark_contract_complete_')) {
+        const contractId = data.replace('mark_contract_complete_', '');
+        await this.handleMarkContractComplete(chatId, userId!, contractId);
         await this.bot.answerCallbackQuery(callbackQuery.id);
         return true;
       }
@@ -4390,11 +4390,11 @@ Good luck with your work! 💪`;
   }
 
   /**
-   * Show contract completion form for all user contracts
+   * Show contract completion form for active contracts
    */
   public async showContractCompletionForm(chatId: number, userId: string): Promise<void> {
     try {
-      // Get all user's contracts
+      // Get user's active contracts only
       const { data: contracts, error } = await supabase
         .from('project_contracts')
         .select(`
@@ -4405,43 +4405,53 @@ Good luck with your work! 💪`;
           chain,
           status,
           client_email,
-          created_at
+          created_at,
+          deadline
         `)
         .eq('freelancer_id', userId)
+        .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(20);
 
       if (error) {
-        console.error('[BotIntegration] Error fetching contracts:', error);
+        console.error('[BotIntegration] Error fetching active contracts:', error);
         await this.bot.sendMessage(chatId, '❌ Error fetching contracts. Please try again later.');
         return;
       }
 
       if (!contracts || contracts.length === 0) {
         await this.bot.sendMessage(chatId,
-          '📋 **No Contracts Found**\n\n' +
-          'You haven\'t created any contracts yet.\n\n' +
+          '📋 **No Active Contracts Found**\n\n' +
+          'You don\'t have any active contracts to complete.\n\n' +
+          'Active contracts are those that are currently in progress.\n' +
           'Use /contract to create your first contract!',
           { parse_mode: 'Markdown' }
         );
         return;
       }
 
-      // Show all contracts for selection
-      let selectionMessage = '🎯 **Select Contract to Send to Client**\n\n';
-      selectionMessage += 'Here are all your contracts. Please select which one you want to send to the client:\n\n';
+      // Show active contracts with Mark as Complete buttons
+      let selectionMessage = '🎯 **Mark Contract as Complete**\n\n';
+      selectionMessage += 'Here are your active contracts. Select the one you want to mark as complete and send to the client:\n\n';
 
-      const keyboard = contracts.map((contract, index) => {
-        const statusEmoji = this.getStatusEmoji(contract.status);
+      const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
+
+      for (const contract of contracts) {
         const tokenType = this.getTokenTypeFromAddress(contract.token_address, contract.chain);
+        const deadline = new Date(contract.deadline).toLocaleDateString();
 
-        return [
+        selectionMessage += `✅ **${contract.project_title}**\n`;
+        selectionMessage += `💰 ${contract.total_amount} ${tokenType}\n`;
+        selectionMessage += `📅 Deadline: ${deadline}\n`;
+        selectionMessage += `📧 Client: ${contract.client_email}\n\n`;
+
+        keyboard.push([
           {
-            text: `${statusEmoji} ${contract.project_title} (${contract.total_amount} ${tokenType})`,
-            callback_data: `select_contract_completion_${contract.id}`
+            text: `✅ Mark as Complete - ${contract.project_title}`,
+            callback_data: `mark_contract_complete_${contract.id}`
           }
-        ];
-      });
+        ]);
+      }
 
       keyboard.push([
         { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
@@ -4530,25 +4540,200 @@ The contract has been marked as completed. You can generate an invoice through t
    */
   async handleContractCompletionNotes(chatId: number, userId: string, text: string): Promise<boolean> {
     try {
-      // Check if user is in contract completion state
+      // Check if user is in contract completion state (old or new)
       const { data: userState } = await supabase
         .from('user_states')
-        .select('state_data')
+        .select('state_data, state_type')
         .eq('user_id', userId)
-        .eq('state_type', 'awaiting_contract_completion')
+        .or('state_type.eq.awaiting_contract_completion,state_type.eq.awaiting_completion_details')
         .single();
 
       if (!userState) {
         return false; // Not in contract completion state
       }
 
-      // Process the completion notes
-      await this.handleContractCompletion(chatId, userId, text);
+      // Process the completion notes based on state type
+      if (userState.state_type === 'awaiting_completion_details') {
+        await this.handleContractCompletionSubmission(chatId, userId, text);
+      } else {
+        await this.handleContractCompletion(chatId, userId, text);
+      }
       return true;
 
     } catch (error) {
       console.error('[BotIntegration] Error handling contract completion notes:', error);
       return false;
+    }
+  }
+
+  /**
+   * Handle marking contract as complete and sending to client for approval
+   */
+  async handleMarkContractComplete(chatId: number, userId: string, contractId: string): Promise<void> {
+    try {
+      // Get the selected contract details
+      const { data: contract, error } = await supabase
+        .from('project_contracts')
+        .select(`
+          id,
+          project_title,
+          total_amount,
+          token_address,
+          chain,
+          status,
+          client_email,
+          created_at,
+          freelancer_id
+        `)
+        .eq('freelancer_id', userId)
+        .eq('id', contractId)
+        .eq('status', 'active')
+        .single();
+
+      if (error || !contract) {
+        await this.bot.sendMessage(chatId, '❌ Active contract not found. Please try again.');
+        return;
+      }
+
+      // Store contract ID in user state for completion processing
+      await supabase
+        .from('user_states')
+        .upsert({
+          user_id: userId,
+          state_type: 'awaiting_completion_details',
+          state_data: {
+            contract_id: contract.id,
+            contract_title: contract.project_title,
+            client_email: contract.client_email,
+            total_amount: contract.total_amount,
+            token_address: contract.token_address,
+            chain: contract.chain
+          },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,state_type'
+        });
+
+      const completionMessage = `🎯 **Mark Contract as Complete**
+
+**Project:** ${contract.project_title}
+**Client:** ${contract.client_email}
+**Amount:** ${this.getTokenTypeFromAddress(contract.token_address, contract.chain)} ${contract.total_amount}
+
+Please provide details about your completed work:
+
+1. **What was delivered:** Describe the work completed
+2. **Key achievements:** Main accomplishments
+3. **Any notes:** Additional information for the client
+
+Please type your completion details now:`;
+
+      const keyboard = [
+        [
+          { text: '❌ Cancel', callback_data: 'cancel_contract_completion' }
+        ]
+      ];
+
+      await this.bot.sendMessage(chatId, completionMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: keyboard
+        }
+      });
+    } catch (error) {
+      console.error('[BotIntegration] Error handling mark contract complete:', error);
+      await this.bot.sendMessage(chatId, '❌ Error marking contract as complete. Please try again.');
+    }
+  }
+
+  /**
+   * Handle contract completion submission and send to client
+   */
+  async handleContractCompletionSubmission(chatId: number, userId: string, completionDetails: string): Promise<void> {
+    try {
+      // Get user state for contract completion
+      const { data: userState } = await supabase
+        .from('user_states')
+        .select('state_data')
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_completion_details')
+        .single();
+
+      if (!userState?.state_data) {
+        await this.bot.sendMessage(chatId, '❌ Contract completion session expired. Please start again with /complete.');
+        return;
+      }
+
+      const contractData = userState.state_data;
+
+      // Update contract status to pending_client_approval
+      const { error: updateError } = await supabase
+        .from('project_contracts')
+        .update({
+          status: 'pending_client_approval',
+          completion_details: completionDetails,
+          submitted_for_approval_at: new Date().toISOString()
+        })
+        .eq('id', contractData.contract_id);
+
+      if (updateError) {
+        console.error('[BotIntegration] Error updating contract status:', updateError);
+        await this.bot.sendMessage(chatId, '❌ Failed to update contract status. Please try again.');
+        return;
+      }
+
+      // Send email to client with approval link
+      try {
+        const { sendContractCompletionEmail } = await import('../services/emailService');
+        await sendContractCompletionEmail({
+          contractId: contractData.contract_id,
+          projectTitle: contractData.contract_title,
+          clientEmail: contractData.client_email,
+          totalAmount: contractData.total_amount,
+          tokenType: this.getTokenTypeFromAddress(contractData.token_address, contractData.chain),
+          completionDetails: completionDetails
+        });
+
+        await this.bot.sendMessage(chatId,
+          `✅ **Contract Submitted for Client Approval**
+
+📋 **Project:** ${contractData.contract_title}
+💰 **Amount:** ${this.getTokenTypeFromAddress(contractData.token_address, contractData.chain)} ${contractData.total_amount}
+📧 **Client:** ${contractData.client_email}
+
+Your completion details have been sent to the client for review and approval.
+The client will receive an email with options to:
+• ✅ Approve the completed work
+• 🔄 Request changes if needed
+
+You'll receive a Telegram notification when the client responds.`,
+          { parse_mode: 'Markdown' }
+        );
+
+      } catch (emailError) {
+        console.error('[BotIntegration] Error sending completion email:', emailError);
+        await this.bot.sendMessage(chatId,
+          `✅ **Contract Marked as Complete**
+
+📋 **Project:** ${contractData.contract_title}
+💰 **Amount:** ${this.getTokenTypeFromAddress(contractData.token_address, contractData.chain)} ${contractData.total_amount}
+
+⚠️ Note: There was an issue sending the email to the client.
+Please manually contact your client to review and approve the completed work.`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      // Clear user state
+      await supabase
+        .from('user_states')
+        .delete()
+        .eq('user_id', userId)
+        .eq('state_type', 'awaiting_completion_details');
+
+    } catch (error) {
+      console.error('[BotIntegration] Error handling contract completion submission:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to submit contract completion. Please try again.');
     }
   }
 

@@ -897,3 +897,167 @@ export function generateContractEmailTemplate(contract: any): string {
     </html>
   `;
 }
+// Contract completion email template
+export function generateContractCompletionEmailTemplate(data: {
+  contractId: string;
+  projectTitle: string;
+  clientEmail: string;
+  totalAmount: number;
+  tokenType: string;
+  completionDetails: string;
+  freelancerName?: string;
+}) {
+  const appUrl = ensureHttps(process.env.WEBAPP_BASE_URL);
+  const approvalUrl = `${appUrl}/contracts/approve/${data.contractId}`;
+  const changesUrl = `${appUrl}/contracts/request-changes/${data.contractId}`;
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Ready for Your Review</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc;">
+        <tr>
+            <td style="padding: 32px 20px;">
+                <!-- Content Container -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 650px; margin: 0 auto;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding-bottom: 32px;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                    <td style="text-align: left;">
+                                        <h1 style="margin: 0; font-size: 18px; font-weight: 500; color: #262624;">hedwig.</h1>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Main Card -->
+                    <tr>
+                        <td>
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                                <!-- Card Header -->
+                                <tr>
+                                    <td style="padding: 32px 32px 24px 32px; text-align: center; border-bottom: 1px solid #f1f5f9; background: linear-gradient(135deg, #8e01bb 0%, #6b0aa8 100%); border-radius: 12px 12px 0 0;">
+                                        <div style="color: white;">
+                                            <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
+                                            <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600;">Project Completed!</h2>
+                                            <p style="margin: 0; font-size: 16px; opacity: 0.9;">Your project is ready for review and approval</p>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <!-- Card Content -->
+                                <tr>
+                                    <td style="padding: 32px;">
+                                        <!-- Project Details -->
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc; border-radius: 8px; padding: 24px; margin-bottom: 32px;">
+                                            <tr>
+                                                <td>
+                                                    <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">Project Details</h3>
+                                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                                        <tr>
+                                                            <td style="padding: 8px 0; color: #64748b; font-size: 14px; width: 120px;">Project:</td>
+                                                            <td style="padding: 8px 0; color: #262624; font-size: 14px; font-weight: 600;">${data.projectTitle}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Amount:</td>
+                                                            <td style="padding: 8px 0; color: #262624; font-size: 14px; font-weight: 600;">${data.totalAmount} ${data.tokenType}</td>
+                                                        </tr>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        </table>
+
+                                        <!-- Completion Details -->
+                                        <div style="margin-bottom: 32px;">
+                                            <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #262624;">Work Completed</h3>
+                                            <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 6px; padding: 20px; margin-bottom: 24px;">
+                                                <p style="margin: 0; color: #15803d; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${data.completionDetails}</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Action Buttons -->
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 32px;">
+                                            <tr>
+                                                <td style="padding: 8px; text-align: center;">
+                                                    <a href="${approvalUrl}" style="display: inline-block; background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">✅ Approve & Release Payment</a>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 8px; text-align: center;">
+                                                    <a href="${changesUrl}" style="display: inline-block; background-color: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">🔄 Request Changes</a>
+                                                </td>
+                                            </tr>
+                                        </table>
+
+                                        <!-- Instructions -->
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 20px; margin-bottom: 24px;">
+                                            <tr>
+                                                <td>
+                                                    <h4 style="margin: 0 0 12px 0; color: #92400e; font-size: 16px; font-weight: 600;">📋 What's Next?</h4>
+                                                    <ul style="margin: 0; padding-left: 20px; color: #92400e; font-size: 14px; line-height: 1.6;">
+                                                        <li style="margin-bottom: 8px;"><strong>Review</strong> the completed work described above</li>
+                                                        <li style="margin-bottom: 8px;">If satisfied, <strong>click "Approve & Release Payment"</strong></li>
+                                                        <li style="margin-bottom: 8px;">If changes are needed, <strong>click "Request Changes"</strong> and provide details</li>
+                                                        <li>The freelancer will be notified of your decision immediately</li>
+                                                    </ul>
+                                                </td>
+                                            </tr>
+                                        </table>
+
+                                        <p style="margin: 0 0 16px 0; color: #64748b; font-size: 14px; line-height: 1.5;">
+                                            <strong>⏰ Timeline:</strong> Please review the work within 7 business days. If no action is taken, the project will be considered approved.
+                                        </p>
+
+                                        <p style="margin: 0; color: #262624; font-size: 14px; line-height: 1.5;">
+                                            <strong>❓ Need Help?</strong> Reply to this email or contact our support team for assistance.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding-top: 32px; text-align: center;">
+                            <p style="margin: 0 0 8px 0; color: #64748b; font-size: 14px;">This completion request was sent securely via Hedwig.</p>
+                            <p style="margin: 0; color: #adb5bd; font-size: 12px;">
+                                Powered by <a href="${appUrl}" style="color: #8e01bb; text-decoration: none;">Hedwig</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+  `;
+}
+
+// Send contract completion email
+export async function sendContractCompletionEmail(data: {
+  contractId: string;
+  projectTitle: string;
+  clientEmail: string;
+  totalAmount: number;
+  tokenType: string;
+  completionDetails: string;
+  freelancerName?: string;
+}) {
+  const htmlContent = generateContractCompletionEmailTemplate(data);
+
+  return await sendEmail({
+    to: data.clientEmail,
+    subject: `Project Completed: ${data.projectTitle}`,
+    html: htmlContent
+  });
+}
