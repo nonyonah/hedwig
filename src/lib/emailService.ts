@@ -907,7 +907,7 @@ export function generateContractCompletionEmailTemplate(data: {
   completionDetails: string;
   freelancerName?: string;
 }) {
-  const appUrl = ensureHttps(process.env.WEBAPP_BASE_URL);
+  const appUrl = ensureHttps(process.env.WEBAPP_BASE_URL || '');
   const approvalUrl = `${appUrl}/contracts/approve/${data.contractId}`;
   const changesUrl = `${appUrl}/contracts/request-changes/${data.contractId}`;
 

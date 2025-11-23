@@ -4684,7 +4684,7 @@ Please type your completion details now:`;
 
       // Send email to client with approval link
       try {
-        const { sendContractCompletionEmail } = await import('../services/emailService');
+        const { sendContractCompletionEmail } = await import('../lib/emailService');
         await sendContractCompletionEmail({
           contractId: contractData.contract_id,
           projectTitle: contractData.contract_title,
