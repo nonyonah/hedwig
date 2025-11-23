@@ -796,6 +796,109 @@ export class BotIntegration {
     }
   }
 
+  // Handle /complete command to show active contracts for completion
+  async handleCompleteCommand(chatId: number, userId: string) {
+    try {
+      // Get the actual user UUID if userId is a chatId
+      let actualUserId = userId;
+      if (/^\d+$/.test(userId)) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_chat_id', parseInt(userId))
+          .single();
+
+        if (user) {
+          actualUserId = user.id;
+        }
+      }
+
+      // Get active contracts that can be completed (accepted or sent status)
+      const { data: contracts, error } = await supabase
+        .from('project_contracts')
+        .select(`
+          id,
+          project_title,
+          total_amount,
+          token_address,
+          chain,
+          deadline,
+          status,
+          created_at,
+          client_id,
+          freelancer_id,
+          client_email
+        `)
+        .or(`client_id.eq.${actualUserId},freelancer_id.eq.${actualUserId}`)
+        .in('status', ['accepted', 'sent'])
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('[BotIntegration] Error fetching active contracts for completion:', error);
+        await this.bot.sendMessage(chatId, '❌ Failed to fetch active contracts. Please try again.');
+        return;
+      }
+
+      if (!contracts || contracts.length === 0) {
+        await this.bot.sendMessage(chatId, '📝 No active contracts found that can be completed.\n\nActive contracts must be in "accepted" or "sent" status to be completed.', {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📝 Create New Contract', callback_data: 'create_contract_flow' }]
+            ]
+          }
+        });
+        return;
+      }
+
+      let message = '✅ *Select a Contract to Complete*\n\n';
+
+      const inlineKeyboard: { text: string; callback_data: string }[][] = [];
+
+      for (const contract of contracts) {
+        const deadline = new Date(contract.deadline).toLocaleDateString();
+        const tokenType = this.getTokenTypeFromAddress(contract.token_address, contract.chain);
+        const isClient = contract.client_id === actualUserId;
+
+        message += `📋 *${contract.project_title}*\n`;
+        message += `💰 ${contract.total_amount} ${tokenType}\n`;
+        message += `📅 Deadline: ${deadline}\n`;
+        message += `🔗 ${contract.chain.toUpperCase()}\n`;
+        message += `👤 You are the ${isClient ? 'Client' : 'Freelancer'}\n`;
+        message += `📄 ID: ${contract.id}\n\n`;
+
+        // Add complete button for each contract
+        inlineKeyboard.push([
+          { text: `✅ Complete ${contract.project_title}`, callback_data: `complete_contract_${contract.id}` }
+        ]);
+      }
+
+      message += 'Choose a contract above to mark as completed.';
+
+      await this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: inlineKeyboard
+        }
+      });
+
+    } catch (error) {
+      console.error('[BotIntegration] Error in handleCompleteCommand:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to fetch active contracts. Please try again.');
+    }
+  }
+
+  // Handle complete contract callback
+  async handleCompleteContractCallback(chatId: number, userId: string, contractId: string, messageId?: number) {
+    try {
+      // Start the contract completion flow
+      await this.handleContractSelection(chatId, userId, contractId);
+    } catch (error) {
+      console.error('[BotIntegration] Error handling complete contract callback:', error);
+      await this.bot.sendMessage(chatId, '❌ Failed to process contract completion. Please try again.');
+    }
+  }
+
   // Handle payment links list
   async handlePaymentLinksList(chatId: number, userId: string) {
     try {
@@ -2503,11 +2606,19 @@ export class BotIntegration {
         await this.proposalModule.handleProposalCallback(callbackQuery, userId);
         return true;
       }
+      // Contract completion callbacks
+      else if (data.startsWith('complete_contract_')) {
+        const contractId = data.replace('complete_contract_', '');
+        await this.handleCompleteContractCallback(chatId, userId, contractId, callbackQuery.message?.message_id);
+        await this.bot.answerCallbackQuery(callbackQuery.id);
+        return true;
+      }
       // Contract module callbacks
       else if (data.startsWith('contract_') || data.startsWith('view_contract_') ||
         data.startsWith('edit_contract_') || data.startsWith('cancel_contract_') ||
         data.startsWith('approve_contract_') || data.startsWith('generate_contract_') ||
-        data.startsWith('continue_contract_') || data === 'cancel_contract_creation') {
+        data.startsWith('continue_contract_') ||
+        data === 'cancel_contract_creation') {
         // Answer callback query immediately to prevent timeout
         await this.bot.answerCallbackQuery(callbackQuery.id);
         // Then handle the callback
@@ -2861,6 +2972,12 @@ export class BotIntegration {
             return true;
           }
         }
+
+        case '/complete': {
+          await this.handleCompleteCommand(chatId, userId);
+          return true;
+        }
+
         default: {
           // Always check for ongoing invoice/proposal/offramp flows first, regardless of message type
           const ongoingInvoice = await this.getOngoingInvoice(userId);
